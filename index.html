@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-commerce Tracker — Metas & Previsibilidade</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        (function () {
+            try {
+                var savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'light' || savedTheme === 'dark') {
+                    document.documentElement.setAttribute('data-theme', savedTheme);
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <h1 class="logo"><i data-lucide="bar-chart-3" class="icon-logo"></i> E-commerce Tracker</h1>
+            <div class="store-switcher">
+                <label for="store-selector">Loja:</label>
+                <select id="store-selector" class="input input-sm">
+                    <option value="__ALL__">[TODAS]</option>
+                </select>
+                <button id="btn-manage-stores" class="btn btn-secondary btn-sm">Gerenciar</button>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="currency-display">
+                <span class="currency-label">USD/BRL:</span>
+                <span id="exchange-rate">--</span>
+                <button id="btn-edit-rate" class="btn-icon" title="Editar cotação"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
+                <button id="btn-refresh-rate" class="btn-icon" title="Atualizar cotação"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i></button>
+            </div>
+            <div class="notifications-wrap" id="notifications-wrap">
+                <button id="btn-notifications" type="button" class="btn btn-secondary btn-sm notifications-btn" title="Prazos">
+                    <i data-lucide="bell" style="width:16px;height:16px"></i>
+                    <span id="notifications-count" class="notifications-count" style="display:none;">0</span>
+                </button>
+                <div id="notifications-panel" class="notifications-panel">
+                    <div class="notifications-header">
+                        <strong>Prazos</strong>
+                        <span id="notifications-summary" class="notifications-summary">0 itens</span>
+                    </div>
+                    <div id="notifications-list" class="notifications-list">
+                        <div class="notifications-empty">Nenhum prazo próximo.</div>
+                    </div>
+                </div>
+            </div>
+            <button id="btn-theme-toggle" type="button" class="btn btn-secondary btn-sm" title="Alternar tema">
+                <i data-lucide="moon" style="width:14px;height:14px"></i>
+            </button>
+            <!-- Profile Avatar -->
+            <div class="profile-wrap" id="profile-wrap">
+                <button id="btn-profile-avatar" class="profile-avatar" title="Minha conta">
+                    <span id="profile-initial">?</span>
+                </button>
+                <div id="profile-dropdown" class="profile-dropdown">
+                    <div class="profile-dropdown-header">
+                        <div class="profile-dropdown-avatar"><span id="profile-dropdown-initial">?</span></div>
+                        <div class="profile-dropdown-info">
+                            <span id="profile-dropdown-email" class="profile-dropdown-email">Não conectado</span>
+                            <span class="profile-dropdown-plan">Plano gratuito</span>
+                        </div>
+                    </div>
+                    <div class="profile-dropdown-divider"></div>
+                    <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
+                    <button id="btn-connect-sheets" class="profile-dropdown-item"><i data-lucide="table" style="width:14px;height:14px"></i> Google Sheets</button>
+                    <span id="sheets-status" class="status-badge status-disconnected" style="font-size:0.65rem;margin-left:0.5rem">Desconectado</span>
+                    <div class="profile-dropdown-divider"></div>
+                    <button id="btn-supabase-logout" class="profile-dropdown-item profile-dropdown-danger"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sair da conta</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="products">Produtos</button>
+        <button class="tab-btn" data-tab="goals">Metas</button>
+        <button class="tab-btn" data-tab="diary">Diário</button>
+        <button class="tab-btn" data-tab="calculator">Simulador</button>
+        <button class="tab-btn" data-tab="creatives">Criativos</button>
+        <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
+        <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+    </nav>
+
+    <!-- Tab Content -->
+    <main class="tab-content">
+
+        <!-- ==================== DASHBOARD ==================== -->
+        <section id="tab-dashboard" class="tab-panel active">
+            <div class="section-header">
+                <h2>Dashboard</h2>
+                <div class="dash-date-controls">
+                    <!-- Currency selector -->
+                    <select id="dash-currency" class="input input-sm" style="min-width:70px;font-size:0.8rem;">
+                        <option value="USD">USD</option>
+                        <option value="BRL" selected>BRL</option>
+                    </select>
+
+                    <!-- Product filter -->
+                    <select id="dash-product-filter" class="input input-sm" style="min-width:140px;font-size:0.8rem;">
+                        <option value="todos">Todos os Produtos</option>
+                    </select>
+
+                    <!-- Primary period selector (Shopify-style) -->
+                    <div class="dash-date-picker-wrap">
+                        <button id="dash-date-picker-btn" class="dash-date-picker-btn">
+                            <i data-lucide="calendar" style="width:14px;height:14px"></i>
+                            <span id="dash-date-label">Últimos 30 dias</span>
+                            <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                        </button>
+                        <div id="dash-date-dropdown" class="dash-date-dropdown" style="display:none">
+                            <div class="dash-date-dd-left">
+                                <button class="dash-date-preset active" data-preset="today">Hoje</button>
+                                <button class="dash-date-preset" data-preset="yesterday">Ontem</button>
+                                <button class="dash-date-preset" data-preset="7">Últimos 7 dias</button>
+                                <button class="dash-date-preset" data-preset="14">Últimos 14 dias</button>
+                                <button class="dash-date-preset" data-preset="30">Últimos 30 dias</button>
+                                <button class="dash-date-preset" data-preset="month">Este mês</button>
+                                <button class="dash-date-preset" data-preset="lastMonth">Mês passado</button>
+                                <button class="dash-date-preset" data-preset="90">Últimos 90 dias</button>
+                                <button class="dash-date-preset" data-preset="custom">Personalizado</button>
+                            </div>
+                            <div class="dash-date-dd-right">
+                                <div class="dash-date-inputs">
+                                    <div class="dash-date-field">
+                                        <label>De</label>
+                                        <input type="date" id="dash-date-start" class="input input-sm">
+                                    </div>
+                                    <div class="dash-date-field">
+                                        <label>Até</label>
+                                        <input type="date" id="dash-date-end" class="input input-sm">
+                                    </div>
+                                </div>
+                                <div class="dash-date-actions">
+                                    <button id="dash-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                    <button id="dash-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Compare period (Shopify-style) -->
+                    <div class="dash-date-picker-wrap">
+                        <button id="dash-compare-btn" class="dash-compare-toggle-btn">
+                            <i data-lucide="git-compare-arrows" style="width:14px;height:14px"></i>
+                            <span id="dash-compare-label">Comparar</span>
+                        </button>
+                        <div id="dash-compare-dropdown" class="dash-date-dropdown" style="display:none">
+                            <div class="dash-date-dd-left">
+                                <button class="dash-compare-preset active" data-cmp="prev">Período anterior</button>
+                                <button class="dash-compare-preset" data-cmp="lastYear">Mesmo período ano passado</button>
+                                <button class="dash-compare-preset" data-cmp="custom">Personalizado</button>
+                                <button class="dash-compare-preset" data-cmp="none">Sem comparação</button>
+                            </div>
+                            <div class="dash-date-dd-right">
+                                <div class="dash-date-inputs">
+                                    <div class="dash-date-field">
+                                        <label>De</label>
+                                        <input type="date" id="dash-compare-start" class="input input-sm">
+                                    </div>
+                                    <div class="dash-date-field">
+                                        <label>Até</label>
+                                        <input type="date" id="dash-compare-end" class="input input-sm">
+                                    </div>
+                                </div>
+                                <div class="dash-date-actions">
+                                    <button id="dash-compare-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                    <button id="dash-compare-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 1: KPIs -->
+            <div class="dash-kpi-bar" id="dash-kpis"></div>
+
+            <!-- Row 2: Actions + Alerts -->
+            <div class="dash-row-2">
+                <div class="dash-card" id="dash-actions-card">
+                    <h3>Centro de Decisão</h3>
+                    <div id="dash-actions" class="dash-list"></div>
+                </div>
+                <div class="dash-card" id="dash-alerts-card">
+                    <h3>Produtos em Risco</h3>
+                    <div id="dash-alerts" class="dash-list"></div>
+                </div>
+            </div>
+
+            <!-- Row 2b: Goals + Funnel Diagnosis -->
+            <div class="dash-row-2">
+                <div class="dash-card">
+                    <h3><i data-lucide="target" style="width:15px;height:15px"></i> Metas</h3>
+                    <div id="dash-goals" class="dash-goals-list"></div>
+                </div>
+                <div class="dash-card">
+                    <h3><i data-lucide="filter" style="width:15px;height:15px"></i> Diagnóstico do Funil</h3>
+                    <div id="dash-funnel-diagnosis" class="dash-funnel"></div>
+                </div>
+            </div>
+
+            <!-- Row 3: Chart + Top Products -->
+            <div class="dash-row-3">
+                <div class="dash-card dash-card-wide">
+                    <h3>Desempenho</h3>
+                    <div class="dash-chart-container"><canvas id="dash-main-chart"></canvas></div>
+                </div>
+                <div class="dash-card">
+                    <div class="dash-tabs" id="dash-top-tabs">
+                        <button class="dash-tab active" data-top="profit">Lucro</button>
+                        <button class="dash-tab" data-top="roas">ROAS</button>
+                        <button class="dash-tab" data-top="revenue">Receita</button>
+                        <button class="dash-tab" data-top="cpa">CPA</button>
+                    </div>
+                    <div id="dash-top-products" class="dash-ranking"></div>
+                </div>
+            </div>
+
+            <!-- Row 3b: Opportunities + Portfolio -->
+            <div class="dash-row-2">
+                <div class="dash-card">
+                    <h3><i data-lucide="map" style="width:15px;height:15px"></i> Mapa de Oportunidades</h3>
+                    <div id="dash-opportunities" class="dash-list"></div>
+                </div>
+                <div class="dash-card">
+                    <h3><i data-lucide="activity" style="width:15px;height:15px"></i> Saúde do Portfólio</h3>
+                    <div id="dash-portfolio" class="dash-portfolio"></div>
+                </div>
+            </div>
+
+            <!-- Row 4: Pipeline + Scores + Stores -->
+            <div class="dash-row-4">
+                <div class="dash-card">
+                    <h3>Pipeline</h3>
+                    <div id="dash-pipeline" class="dash-pipeline-grid"></div>
+                </div>
+                <div class="dash-card">
+                    <h3>Score por Produto</h3>
+                    <div id="dash-scores" class="dash-scores-list"></div>
+                </div>
+                <div class="dash-card">
+                    <h3>Ranking por Loja</h3>
+                    <div id="dash-stores-ranking" class="dash-ranking"></div>
+                </div>
+            </div>
+            <!-- Row 5: Widgets -->
+            <div class="dash-row-widgets">
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-validated-pct">--</span><span class="dash-widget-label">% Validados</span></div>
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-killed-pct">--</span><span class="dash-widget-label">% Kill</span></div>
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-open-tests">--</span><span class="dash-widget-label">Testes Abertos</span></div>
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-no-diag">--</span><span class="dash-widget-label">Sem Diagnóstico</span></div>
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-worst-checkout">--</span><span class="dash-widget-label">Pior Checkout</span></div>
+                <div class="dash-widget"><span class="dash-widget-value" id="dw-best-conv">--</span><span class="dash-widget-label">Melhor Conv.</span></div>
+            </div>
+
+            <!-- Row 6: Calendar + Budget -->
+            <div class="dash-row-2">
+                <div class="dash-card">
+                    <h3><i data-lucide="calendar-days" style="width:15px;height:15px"></i> Calendário da Semana</h3>
+                    <div id="dash-calendar" class="dash-calendar"></div>
+                </div>
+                <div class="dash-card">
+                    <h3><i data-lucide="bar-chart" style="width:15px;height:15px"></i> Budget por Produto</h3>
+                    <div id="dash-budget-by-product" class="dash-ranking"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== PRODUTOS ==================== -->
+        <section id="tab-products" class="tab-panel">
+            <div class="section-header">
+                <h2>Produtos</h2>
+                <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
+            </div>
+
+            <table class="data-table" id="products-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Idioma</th>
+                        <th>Preço Final</th>
+                        <th>Custo</th>
+                        <th>Impostos %</th>
+                        <th>Custos Var. %</th>
+                        <th>CPA Alvo</th>
+                        <th>Lucro/Venda</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="products-tbody">
+                    <tr class="empty-row">
+                        <td colspan="9">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Product Modal -->
+            <div id="product-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="product-modal-title">Adicionar Produto</h3>
+                        <button class="btn-close" id="product-modal-close">&times;</button>
+                    </div>
+                    <form id="product-form">
+                        <input type="hidden" id="product-id">
+                        <div class="form-group">
+                            <label>Nome do Produto</label>
+                            <input type="text" id="product-name" class="input" required placeholder="Ex: Óculos Retangular">
+                        </div>
+                        <div class="form-group">
+                            <label>Idioma</label>
+                            <select id="product-language" class="input" required>
+                                <option value="Ingles" selected>Ingles</option>
+                                <option value="Frances">Frances</option>
+                                <option value="Espanhol">Espanhol</option>
+                                <option value="Holandes">Holandes</option>
+                                <option value="Alemao">Alemao</option>
+                                <option value="Polones">Polones</option>
+                                <option value="Checol">Checol</option>
+                                <option value="Ingles Americano">Ingles Americano</option>
+                                <option value="Dinamarques">Dinamarques</option>
+                                <option value="Sueco">Sueco</option>
+                                <option value="Noruegues">Noruegues</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Preço Final</label>
+                                <input type="number" id="product-price" class="input" required step="0.01" placeholder="39.99">
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda</label>
+                                <select id="product-price-currency" class="input">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Custo do Produto</label>
+                                <input type="number" id="product-cost" class="input" required step="0.01" placeholder="8.50">
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda</label>
+                                <select id="product-cost-currency" class="input">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Impostos (%)</label>
+                                <input type="number" id="product-tax" class="input" required step="0.1" placeholder="6.5">
+                            </div>
+                            <div class="form-group">
+                                <label>Custos Variáveis (%) <small>Gateway + Shopify</small></label>
+                                <input type="number" id="product-variable-costs" class="input" required step="0.1" placeholder="5.0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>CPA Alvo</label>
+                                <input type="number" id="product-cpa" class="input" required step="0.01" placeholder="12.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda CPA</label>
+                                <select id="product-cpa-currency" class="input">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Live Preview -->
+                        <div class="profit-preview">
+                            <h4>Lucro por Venda (estimado)</h4>
+                            <div class="profit-preview-values">
+                                <span id="preview-profit-usd">$0.00 USD</span>
+                                <span class="divider">|</span>
+                                <span id="preview-profit-brl">R$0.00 BRL</span>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="product-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== METAS ==================== -->
+        <section id="tab-goals" class="tab-panel">
+            <div class="section-header">
+                <h2>Metas</h2>
+                <button id="btn-add-goal" class="btn btn-primary">+ Nova Meta</button>
+            </div>
+
+            <div id="goals-list" class="cards-grid">
+                <div class="empty-state" id="goals-empty">
+                    <p>Nenhuma meta criada. Clique em "+ Nova Meta" para definir seus objetivos.</p>
+                </div>
+            </div>
+
+            <!-- Goal Modal -->
+            <div id="goal-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="goal-modal-title">Nova Meta</h3>
+                        <button class="btn-close" id="goal-modal-close">&times;</button>
+                    </div>
+                    <form id="goal-form">
+                        <input type="hidden" id="goal-id">
+                        <div class="form-group">
+                            <label>Produto</label>
+                            <select id="goal-product" class="input">
+                                <option value="todos">Todos os Produtos</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Lucro Alvo Diário</label>
+                                <input type="number" id="goal-target" class="input" required step="0.01" placeholder="500.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda</label>
+                                <select id="goal-currency" class="input">
+                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Data Início</label>
+                                <input type="date" id="goal-start" class="input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Data Fim</label>
+                                <input type="date" id="goal-end" class="input" required>
+                            </div>
+                        </div>
+
+                        <!-- Goal Preview -->
+                        <div class="profit-preview">
+                            <h4>Resumo da Meta</h4>
+                            <div class="goal-preview-details">
+                                <div><span>Período:</span> <strong id="preview-goal-days">-- dias</strong></div>
+                                <div><span>Lucro Total Alvo:</span> <strong id="preview-goal-total">--</strong></div>
+                                <div><span>Vendas Necessárias/dia:</span> <strong id="preview-goal-sales">--</strong></div>
+                                <div><span>Orçamento Necessário/dia:</span> <strong id="preview-goal-budget">--</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="goal-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Meta</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== DIÁRIO ==================== -->
+        <section id="tab-diary" class="tab-panel">
+            <div class="section-header">
+                <h2>Diário de Métricas</h2>
+                <div class="diary-view-tabs">
+                    <button class="diary-view-tab active" data-diary-view="all"><i data-lucide="layout-list" style="width:14px;height:14px"></i> Todos</button>
+                    <button class="diary-view-tab" data-diary-view="tests"><i data-lucide="flask-conical" style="width:14px;height:14px"></i> Testes</button>
+                </div>
+                <button id="btn-add-entry" class="btn btn-primary">+ Nova Entrada</button>
+                <button id="btn-diary-thresholds" class="diary-thresholds-btn" title="Configurar métricas alvo"><i data-lucide="target" style="width:13px;height:13px"></i> Métricas Alvo</button>
+                <div class="diary-columns-wrap">
+                    <button id="btn-diary-columns" class="diary-thresholds-btn" title="Configurar colunas"><i data-lucide="settings-2" style="width:13px;height:13px"></i> Colunas</button>
+                    <div id="diary-columns-dropdown" class="diary-columns-dropdown"></div>
+                </div>
+                <button id="btn-diary-compare" class="btn btn-secondary btn-sm" title="Comparar períodos"><i data-lucide="git-compare-arrows" style="width:13px;height:13px"></i> Comparar</button>
+            </div>
+
+            <!-- Date Filter -->
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Período:</label>
+                    <select id="diary-period" class="input">
+                        <option value="month" selected>Este Mês</option>
+                        <option value="today">Hoje</option>
+                        <option value="week">Esta Semana</option>
+                        <option value="all">Todos</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
+                </div>
+                <div class="filter-group" id="diary-custom-range" style="display:none">
+                    <input type="date" id="diary-start" class="input">
+                    <span>até</span>
+                    <input type="date" id="diary-end" class="input">
+                    <button id="diary-filter-apply" class="btn btn-secondary btn-sm">Aplicar</button>
+                </div>
+                <div class="filter-group">
+                    <label>Produto:</label>
+                    <select id="diary-product-filter" class="input">
+                        <option value="todos">Todos</option>
+                        <option value="__STORE__">🏪 Teste de Loja</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Plataforma:</label>
+                    <select id="diary-platform-filter" class="input">
+                        <option value="todos">Todas</option>
+                        <option value="Meta Ads">Meta Ads</option>
+                        <option value="Google Ads">Google Ads</option>
+                        <option value="TikTok Ads">TikTok Ads</option>
+                        <option value="Outra">Outra</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="diary-summary" id="diary-summary">
+                <div class="summary-card">
+                    <label>Orçamento Total</label>
+                    <span id="summary-budget">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>Total Vendas</label>
+                    <span id="summary-sales">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>Receita Total</label>
+                    <span id="summary-revenue">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>Lucro Total</label>
+                    <span id="summary-profit">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>CPA Médio</label>
+                    <span id="summary-cpa">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>ROAS</label>
+                    <span id="summary-roas">--</span>
+                </div>
+            </div>
+
+            <!-- Diary Compare Panel -->
+            <div id="diary-compare-panel" class="diary-compare-panel" style="display:none">
+                <div class="diary-compare-header">
+                    <h3>Comparação</h3>
+                    <button id="btn-diary-compare-close" class="btn-icon" title="Fechar">✕</button>
+                </div>
+                <div id="diary-compare-slots"></div>
+                <button id="btn-add-compare-slot" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">+ Adicionar comparação</button>
+                <div id="diary-compare-table-wrap" style="margin-top:1rem"></div>
+            </div>
+
+            <!-- Diary Bulk Actions -->
+            <div id="diary-bulk-bar" class="diary-bulk-bar" style="display:none">
+                <label><input type="checkbox" id="diary-select-all-cb"> Selecionar todos</label>
+                <span id="diary-selected-count" class="diary-bulk-count">0 selecionados</span>
+                <button id="btn-diary-bulk-delete" class="btn btn-danger btn-sm">🗑️ Excluir selecionados</button>
+            </div>
+
+            <!-- Diary Notion View -->
+            <div id="diary-notion-list" class="diary-notion-list">
+                <div class="empty-state">
+                    <p>Nenhuma entrada registrada. Clique em "+ Nova Entrada".</p>
+                </div>
+            </div>
+
+            <!-- Diary Funnel Chart -->
+            <div class="diary-chart-section">
+                <div class="funnel-chart-header">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+                        <h3>Gráfico do Funil</h3>
+                        <div style="display:flex; align-items:center; gap:0.3rem;">
+                            <select id="diary-chart-metric-select" class="input input-sm" style="width:auto; min-width:150px;">
+                                <option value="faturamento">Faturamento</option>
+                                <option value="funnel" selected>Funil (Números)</option>
+                                <option value="rates">Taxas (%)</option>
+                                <option value="budget">Budget / CPA / ROAS</option>
+                            </select>
+                            <button type="button" class="funnel-chart-type-btn active" id="diary-chart-bar-btn" title="Barras">&#9646;&#9646;&#9646;</button>
+                            <button type="button" class="funnel-chart-type-btn" id="diary-chart-line-btn" title="Linha">&#8600;</button>
+                        </div>
+                    </div>
+                    <div class="funnel-chart-toggles" id="diary-chart-toggles"></div>
+                </div>
+                <div class="funnel-chart-container">
+                    <canvas id="diary-chart-canvas"></canvas>
+                </div>
+            </div>
+
+            <!-- Diary Table -->
+            <table class="data-table" id="diary-table" style="display:none">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Produto</th>
+                        <th>Plataforma</th>
+                        <th>Orçamento</th>
+                        <th>Vendas</th>
+                        <th>Receita</th>
+                        <th>CPA Real</th>
+                        <th>CPC</th>
+                        <th>Lucro</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="diary-tbody">
+                    <tr class="empty-row">
+                        <td colspan="10">Nenhuma entrada registrada. Clique em "+ Nova Entrada".</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Metric Thresholds Modal -->
+            <div id="thresholds-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:420px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="target" style="width:13px;height:13px"></i> Métricas Alvo</h3>
+                        <button class="modal-close" onclick="closeModal('thresholds-modal')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.6rem">
+                            Defina os limites para colorir as métricas no diário. Valores em %.
+                        </p>
+                        <div class="threshold-header">
+                            <span>Métrica</span>
+                            <span>🟢 Bom ≥</span>
+                            <span>🟡 Ok ≥</span>
+                            <span>🔴 Ruim &lt;</span>
+                        </div>
+                        <form id="thresholds-form" class="thresholds-grid">
+                            <div class="threshold-row">
+                                <label>Página &gt; Carrinho</label>
+                                <input type="number" step="0.1" id="th-atcRate-good" class="input input-sm" placeholder="8">
+                                <input type="number" step="0.1" id="th-atcRate-avg" class="input input-sm" placeholder="4">
+                                <input type="number" step="0.1" id="th-atcRate-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div class="threshold-row">
+                                <label>Carrinho &gt; IC</label>
+                                <input type="number" step="0.1" id="th-icRate-good" class="input input-sm" placeholder="50">
+                                <input type="number" step="0.1" id="th-icRate-avg" class="input input-sm" placeholder="30">
+                                <input type="number" step="0.1" id="th-icRate-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div class="threshold-row">
+                                <label>Conv. Página</label>
+                                <input type="number" step="0.1" id="th-convPage-good" class="input input-sm" placeholder="3">
+                                <input type="number" step="0.1" id="th-convPage-avg" class="input input-sm" placeholder="1.5">
+                                <input type="number" step="0.1" id="th-convPage-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div class="threshold-row">
+                                <label>Conv. Checkout</label>
+                                <input type="number" step="0.1" id="th-convCheckout-good" class="input input-sm" placeholder="50">
+                                <input type="number" step="0.1" id="th-convCheckout-avg" class="input input-sm" placeholder="30">
+                                <input type="number" step="0.1" id="th-convCheckout-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div style="text-align:right;margin-top:0.5rem">
+                                <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diary Entry Modal -->
+            <div id="diary-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="diary-modal-title">Nova Entrada</h3>
+                        <button class="btn-close" id="diary-modal-close">&times;</button>
+                    </div>
+                    <form id="diary-form">
+                        <input type="hidden" id="entry-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Data</label>
+                                <input type="date" id="entry-date" class="input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Produto</label>
+                                <select id="entry-product" class="input">
+                                    <option value="">Selecione</option>
+                                    <option value="__STORE__">🏪 Teste de Loja</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Plataforma</label>
+                                <select id="entry-platform" class="input">
+                                    <option value="Meta Ads">Meta Ads</option>
+                                    <option value="Google Ads">Google Ads</option>
+                                    <option value="TikTok Ads">TikTok Ads</option>
+                                    <option value="Outra">Outra</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda</label>
+                                <select id="entry-currency" class="input">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>É um teste?</label>
+                                <select id="entry-is-test" class="input">
+                                    <option value="nao" selected>Não</option>
+                                    <option value="sim">Sim</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="entry-test-end-wrap" style="display:none">
+                                <label>Data de finalização do teste</label>
+                                <input type="date" id="entry-test-end" class="input">
+                            </div>
+                            <div class="form-group" id="entry-test-validation-wrap" style="display:none">
+                                <label>Validado?</label>
+                                <select id="entry-test-validation" class="input">
+                                    <option value="pendente" selected>Pendente</option>
+                                    <option value="validado">Validado</option>
+                                    <option value="nao_validado">Não validado</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="entry-test-goal-wrap" style="display:none">
+                                <label>Meta do Teste</label>
+                                <input type="text" id="entry-test-goal" class="input" placeholder="Ex: Conv > 5%">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Orçamento Gasto</label>
+                                <input type="number" id="entry-budget" class="input" step="0.01" placeholder="120.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Vendas Realizadas</label>
+                                <input type="number" id="entry-sales" class="input" step="1" placeholder="8">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Receita Total</label>
+                                <input type="number" id="entry-revenue" class="input" step="0.01" placeholder="319.92">
+                            </div>
+                            <div class="form-group">
+                                <label>CPC Real</label>
+                                <input type="number" id="entry-cpc" class="input" step="0.01" placeholder="0.85">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Impressões</label>
+                                <input type="number" id="entry-impressions" class="input" step="1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Page Views</label>
+                                <input type="number" id="entry-pageviews" class="input" step="1" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Add to Cart</label>
+                                <input type="number" id="entry-addtocart" class="input" step="1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Checkouts</label>
+                                <input type="number" id="entry-checkout" class="input" step="1" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notas</label>
+                            <textarea id="entry-notes" class="input" rows="2" placeholder="Observações do dia..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Criativo (opcional)</label>
+                                <select id="entry-creative" class="input">
+                                    <option value="">Nenhum</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Histórico de alterações do produto</label>
+                            <textarea id="entry-product-history" class="input" rows="3" placeholder="Ex: mudou criativo, alterou preço, ajustou página..."></textarea>
+                        </div>
+
+                        <!-- Auto-calculated fields -->
+                        <div class="profit-preview">
+                            <h4>Calculado Automaticamente</h4>
+                            <div class="goal-preview-details">
+                                <div><span>CPA Real:</span> <strong id="preview-entry-cpa">--</strong></div>
+                                <div><span>Lucro do Dia:</span> <strong id="preview-entry-profit">--</strong></div>
+                                <div><span>ROAS:</span> <strong id="preview-entry-roas">--</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="diary-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Entrada</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== SIMULADOR ==================== -->
+        <section id="tab-calculator" class="tab-panel">
+            <div class="section-header">
+                <h2>Simulador de CPA & Orçamento</h2>
+                <span class="section-subtitle">Previsibilidade de lucro e orçamento baseado no seu CPA</span>
+            </div>
+
+            <!-- Product Selection -->
+            <div class="calc-product-select">
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Selecione o Produto</label>
+                        <select id="calc-product" class="input input-lg">
+                            <option value="">Selecione um produto</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Ticket / Preço (editável)</label>
+                        <input type="number" id="calc-ticket" class="input input-lg" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>CPA (editável)</label>
+                        <input type="number" id="calc-cpa" class="input input-lg" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Moeda</label>
+                        <select id="calc-currency" class="input input-lg">
+                            <option value="USD">USD</option>
+                            <option value="BRL">BRL</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Product Info Auto-filled -->
+                <div class="calc-product-info" id="calc-product-info" style="display:none">
+                    <div class="info-chip"><span>Preço:</span> <strong id="calc-info-price">--</strong></div>
+                    <div class="info-chip"><span>Custo:</span> <strong id="calc-info-cost">--</strong></div>
+                    <div class="info-chip"><span>Impostos:</span> <strong id="calc-info-tax">--%</strong></div>
+                    <div class="info-chip"><span>Custos Var.:</span> <strong id="calc-info-variable">--%</strong></div>
+                    <div class="info-chip highlight"><span>Lucro/Venda:</span> <strong id="calc-info-profit">--</strong></div>
+                </div>
+            </div>
+
+            <!-- Calculator Sections -->
+            <div class="calc-sections">
+
+                <!-- Section A: Sales Simulation -->
+                <div class="calc-section">
+                    <h3>A — Simulação por Quantidade de Vendas</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Quantidade de Vendas</label>
+                            <input type="number" id="calc-a-sales" class="input" step="1" placeholder="10">
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-a-results" style="display:none">
+                        <div class="result-card">
+                            <label>Lucro Final</label>
+                            <span class="result-value" id="calc-a-profit">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>Orçamento Necessário</label>
+                            <span class="result-value" id="calc-a-budget">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>Receita Total</label>
+                            <span class="result-value" id="calc-a-revenue">--</span>
+                        </div>
+                    </div>
+                    <!-- Quick scenarios table -->
+                    <div class="scenarios-table-wrap" id="calc-a-scenarios" style="display:none">
+                        <h4>Cenários Rápidos</h4>
+                        <table class="data-table scenarios-table">
+                            <thead>
+                                <tr>
+                                    <th>Vendas</th>
+                                    <th>Lucro</th>
+                                    <th>Orçamento</th>
+                                    <th>Receita</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calc-a-scenarios-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Section B: Profit Target → Budget -->
+                <div class="calc-section">
+                    <h3>B — Meta de Lucro → Orçamento Necessário</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Lucro Desejado no Dia</label>
+                            <input type="number" id="calc-b-target" class="input" step="0.01" placeholder="500.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-b-currency" class="input">
+                                <option value="USD">USD</option>
+                                <option value="BRL">BRL</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-b-results" style="display:none">
+                        <div class="result-card">
+                            <label>Vendas Necessárias</label>
+                            <span class="result-value" id="calc-b-sales">--</span>
+                        </div>
+                        <div class="result-card highlight">
+                            <label>Orçamento Necessário</label>
+                            <span class="result-value" id="calc-b-budget">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>Receita Prevista</label>
+                            <span class="result-value" id="calc-b-revenue">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section C: Budget → Profit Prediction -->
+                <div class="calc-section">
+                    <h3>C — Orçamento do Dia → Previsão de Lucro</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Orçamento que vai Investir</label>
+                            <input type="number" id="calc-c-budget" class="input" step="0.01" placeholder="1200.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-c-currency" class="input">
+                                <option value="USD">USD</option>
+                                <option value="BRL">BRL</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-c-results" style="display:none">
+                        <div class="result-card">
+                            <label>Vendas Previstas</label>
+                            <span class="result-value" id="calc-c-sales">--</span>
+                        </div>
+                        <div class="result-card highlight">
+                            <label>Lucro Previsto</label>
+                            <span class="result-value" id="calc-c-profit">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>Receita Prevista</label>
+                            <span class="result-value" id="calc-c-revenue">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section D: Compare CPAs -->
+                <div class="calc-section">
+                    <h3>D — Comparar CPAs</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>CPA Alvo</label>
+                            <input type="number" id="calc-d-cpa-target" class="input" step="0.01" placeholder="12.00">
+                        </div>
+                        <div class="form-group">
+                            <label>CPA Real / Atual</label>
+                            <input type="number" id="calc-d-cpa-real" class="input" step="0.01" placeholder="18.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Meta de Lucro</label>
+                            <input type="number" id="calc-d-target-profit" class="input" step="0.01" placeholder="500.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-d-profit-currency" class="input">
+                                <option value="USD">USD</option>
+                                <option value="BRL">BRL</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-d-results" style="display:none">
+                        <table class="data-table compare-table">
+                            <thead>
+                                <tr>
+                                    <th>Métrica</th>
+                                    <th>CPA Alvo</th>
+                                    <th>CPA Real</th>
+                                    <th>Diferença</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calc-d-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== CRIATIVOS ==================== -->
+        <section id="tab-creatives" class="tab-panel">
+            <div class="section-header">
+                <h2>Criativos & Testes</h2>
+                <div>
+                    <button id="btn-compare-creatives" class="btn btn-secondary">Comparar</button>
+                    <button id="btn-add-creative" class="btn btn-primary">+ Novo Criativo</button>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Produto:</label>
+                    <select id="creative-product-filter" class="input">
+                        <option value="todos">Todos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <select id="creative-status-filter" class="input">
+                        <option value="todos">Todos</option>
+                        <option value="ativo">Ativo</option>
+                        <option value="teste">Em Teste</option>
+                        <option value="winner">Winner</option>
+                        <option value="pausado">Pausado</option>
+                        <option value="killed">Killed</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="creative-fatigue-summary"></div>
+            <div id="compare-panel" style="display:none"></div>
+
+            <div id="creatives-list">
+                <div class="empty-state"><p>Nenhum criativo cadastrado. Clique em "+ Novo Criativo".</p></div>
+            </div>
+
+            <!-- Creative Modal -->
+            <div id="creative-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content modal-lg">
+                    <div class="modal-header">
+                        <h3 id="creative-modal-title">Novo Criativo</h3>
+                        <button class="btn-close" onclick="closeModal('creative-modal')">&times;</button>
+                    </div>
+                    <form id="creative-form">
+                        <input type="hidden" id="creative-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Nome do Criativo *</label>
+                                <input type="text" id="creative-name" class="input" required placeholder="UGC Hook Dor - Video 1">
+                            </div>
+                            <div class="form-group">
+                                <label>Produto *</label>
+                                <select id="creative-product" class="input" required>
+                                    <option value="">Selecione</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tipo</label>
+                                <select id="creative-type" class="input">
+                                    <option value="UGC">UGC</option>
+                                    <option value="Demonstrativo">Demonstrativo</option>
+                                    <option value="POV">POV</option>
+                                    <option value="Imagem">Imagem</option>
+                                    <option value="Carrossel">Carrossel</option>
+                                    <option value="Before/After">Before/After</option>
+                                    <option value="Meme">Meme</option>
+                                    <option value="Review">Review</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Plataforma</label>
+                                <select id="creative-platform" class="input">
+                                    <option value="Meta Ads">Meta Ads</option>
+                                    <option value="Google Ads">Google Ads</option>
+                                    <option value="TikTok Ads">TikTok Ads</option>
+                                    <option value="Outra">Outra</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Angulo</label>
+                                <input type="text" id="creative-angle" class="input" placeholder="Ex: Dor nas costas, Presente ideal">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Hook</label>
+                                <select id="creative-hook-type" class="input">
+                                    <option value="">Selecione</option>
+                                    <option value="Pergunta">Pergunta</option>
+                                    <option value="Choque">Choque</option>
+                                    <option value="Curiosidade">Curiosidade</option>
+                                    <option value="POV">POV</option>
+                                    <option value="Antes/Depois">Antes/Depois</option>
+                                    <option value="Dor">Dor</option>
+                                    <option value="Desejo">Desejo</option>
+                                    <option value="Autoridade">Autoridade</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Texto do Hook</label>
+                            <input type="text" id="creative-hook-text" class="input" placeholder="Ex: Voce sabia que 80% das pessoas...">
+                        </div>
+
+                        <h4 style="margin:1rem 0 0.5rem;color:var(--text-muted)">Textos do Anuncio (Facebook)</h4>
+                        <div class="form-group">
+                            <label>Texto Principal (Primary Text)</label>
+                            <textarea id="creative-primary-text" class="input" rows="3" placeholder="Texto que aparece acima da imagem/video..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Titulo (Headline)</label>
+                                <input type="text" id="creative-headline" class="input" placeholder="Titulo do anuncio">
+                            </div>
+                            <div class="form-group">
+                                <label>Descricao</label>
+                                <input type="text" id="creative-description" class="input" placeholder="Descricao curta do anuncio">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Status</label>
+                                <select id="creative-status" class="input">
+                                    <option value="ativo">Ativo</option>
+                                    <option value="teste">Em Teste</option>
+                                    <option value="winner">Winner</option>
+                                    <option value="pausado">Pausado</option>
+                                    <option value="killed">Killed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Data de Lancamento</label>
+                                <input type="date" id="creative-launch-date" class="input">
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="creative-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Criativo</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Metric Entry Modal -->
+            <div id="metric-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Adicionar Metrica</h3>
+                        <button class="btn-close" onclick="closeModal('metric-modal')">&times;</button>
+                    </div>
+                    <p style="margin:0 0 1rem;color:var(--text-muted)">Criativo: <strong id="metric-creative-name">--</strong></p>
+                    <form id="metric-form">
+                        <input type="hidden" id="metric-creative-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Data</label>
+                                <input type="date" id="metric-date" class="input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Moeda</label>
+                                <select id="metric-currency" class="input">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Gasto (Spend)</label>
+                                <input type="number" id="metric-spend" class="input" step="0.01" placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label>Impressoes</label>
+                                <input type="number" id="metric-impressions" class="input" step="1" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Cliques</label>
+                                <input type="number" id="metric-clicks" class="input" step="1" placeholder="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Conversoes</label>
+                                <input type="number" id="metric-conversions" class="input" step="1" placeholder="0">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Receita</label>
+                            <input type="number" id="metric-revenue" class="input" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="metric-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Metrica</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Variation Test Modal -->
+            <div id="variation-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Novo Teste de Variacao</h3>
+                        <button class="btn-close" onclick="closeModal('variation-modal')">&times;</button>
+                    </div>
+                    <p style="margin:0 0 1rem;color:var(--text-muted)">Criativo: <strong id="variation-creative-name">--</strong></p>
+                    <form id="variation-form">
+                        <input type="hidden" id="variation-creative-id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Nome do Teste</label>
+                                <input type="text" id="variation-name" class="input" required placeholder="Ex: Teste Headline v2">
+                            </div>
+                            <div class="form-group">
+                                <label>Elemento Testado</label>
+                                <select id="variation-element" class="input" required>
+                                    <option value="primaryText">Texto Principal</option>
+                                    <option value="headline">Titulo (Headline)</option>
+                                    <option value="description">Descricao</option>
+                                    <option value="hookText">Hook</option>
+                                    <option value="creative">Criativo (Visual)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Valor Original (Controle)</label>
+                            <textarea id="variation-original" class="input" rows="2" placeholder="Texto/elemento original..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Valor do Teste (Variante)</label>
+                            <textarea id="variation-test" class="input" rows="2" placeholder="Novo texto/elemento a testar..."></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Data Inicio</label>
+                                <input type="date" id="variation-start-date" class="input" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Data Fim</label>
+                                <input type="date" id="variation-end-date" class="input">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Notas</label>
+                            <textarea id="variation-notes" class="input" rows="2" placeholder="Hipotese, contexto..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="variation-cancel">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Criar Teste</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== DIAGNÓSTICO DE CONVERSÃO ==================== -->
+        <section id="tab-diagnostico" class="tab-panel">
+            <div class="section-header">
+                <h2>Diagnóstico de Conversão</h2>
+                <span class="section-subtitle">Analise seu funil e simule cenários</span>
+            </div>
+
+            <!-- Controls -->
+            <div class="funnel-controls">
+                <div class="form-row" style="margin-bottom:0">
+                    <div class="form-group" style="flex:2">
+                        <label>Produto</label>
+                        <select id="funnel-product" class="input">
+                            <option value="">Selecione um produto</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto">
+                        <label>Período do diagnóstico</label>
+                        <div class="date-presets">
+                            <button type="button" class="date-preset-btn active" data-preset="today">Hoje</button>
+                            <button type="button" class="date-preset-btn" data-preset="yesterday">Ontem</button>
+                            <button type="button" class="date-preset-btn" data-preset="last7">7 dias</button>
+                            <button type="button" class="date-preset-btn" data-preset="last14">14 dias</button>
+                            <button type="button" class="date-preset-btn" data-preset="last30">30 dias</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                            <button type="button" id="funnel-date-prev" class="date-arrow-btn" title="Período anterior">&#8249;</button>
+                            <input type="date" id="funnel-date-start" class="input input-sm">
+                            <span style="color:var(--text-muted); font-size:0.8rem;">até</span>
+                            <input type="date" id="funnel-date-end" class="input input-sm">
+                            <button type="button" id="funnel-date-next" class="date-arrow-btn" title="Próximo período">&#8250;</button>
+                        </div>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto; align-self:flex-end">
+                        <button type="button" id="btn-compare-toggle" class="btn btn-secondary btn-sm" title="Comparar períodos">Comparar</button>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto; align-self:flex-end">
+                        <label>Moeda</label>
+                        <select id="funnel-currency" class="input input-sm">
+                            <option value="BRL">BRL (R$)</option>
+                            <option value="USD">USD ($)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto; align-self:flex-end">
+                        <button type="button" id="btn-funnel-save-state" class="btn btn-secondary">Salvar Diagnóstico</button>
+                    </div>
+                    <div class="form-group" style="flex:0 0 auto; align-self:flex-end">
+                        <button type="button" id="btn-funnel-save-diary" class="btn btn-primary">Salvar no Diário</button>
+                    </div>
+                </div>
+                <!-- Facebook Ads Controls -->
+                <div class="fb-controls-bar">
+                    <span class="fb-controls-label">Facebook Ads</span>
+                    <div class="funnel-help">
+                        <button type="button" class="funnel-help-btn" aria-label="Ajuda da importação do diagnóstico" title="Ajuda da importação">i</button>
+                        <div class="funnel-help-popover" role="tooltip">
+                            <h4>Como importar no Diagnóstico</h4>
+                            <p>1. O app usa a linha <strong>Resultados totais</strong>. Se não existir, usa a última linha válida de total.</p>
+                            <p>2. Se a coluna de <strong>%</strong> existir, ela tem prioridade. Se não existir, o app calcula pela quantidade.</p>
+                            <p><strong>Métricas obrigatórias (contagem):</strong> Impressões, Cliques no link (ou Cliques), Valor usado (USD/BRL), Visualizações da página de destino, Compras/Resultados.</p>
+                            <p><strong>Nomes de % recomendados:</strong></p>
+                            <p>• Taxa de Visualização: <code>PERDA DE CLIQUE</code></p>
+                            <p>• Taxa de Carrinho: <code>Visu. Página &gt; Add To Cart</code></p>
+                            <p>• Taxa de Checkout: <code>Carrinho &gt; Checkout</code></p>
+                            <p>• Taxa de Compra: <code>IC &gt; Compras</code></p>
+                            <p>• CTR: <code>CTR (taxa de cliques no link)</code></p>
+                            <p class="funnel-help-note">Se algum nome vier diferente, o app tenta mapear variações automaticamente.</p>
+                        </div>
+                    </div>
+                    <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm">⚙️ Configurar</button>
+                    <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm">🔗 Mapear Campanhas</button>
+                    <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm">📄 Importar CSV</button>
+                    <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
+                    <select id="fb-date-range" class="input input-sm" style="width:auto">
+                        <option value="today">Hoje</option>
+                        <option value="yesterday">Ontem</option>
+                        <option value="last_3d">Últimos 3 dias</option>
+                        <option value="last_7d">Últimos 7 dias</option>
+                        <option value="last_30d">Últimos 30 dias</option>
+                        <option value="custom">Personalizado (usar período acima)</option>
+                    </select>
+                    <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm">📥 Importar do Facebook</button>
+                    <span id="fb-status" class="status-badge status-disconnected">FB Desconectado</span>
+                </div>
+
+                <!-- Google Ads Sync Controls -->
+                <div class="gads-controls-bar">
+                    <span class="fb-controls-label">Google Ads</span>
+                    <button type="button" id="btn-gads-config" class="btn btn-secondary btn-sm">⚙️ Configurar Sync</button>
+                    <button type="button" id="btn-gads-sync-now" class="btn btn-primary btn-sm">🚀 Sincronizar agora</button>
+                    <span id="gads-status" class="status-badge status-disconnected">GAds Não Configurado</span>
+                </div>
+                <div class="gads-runs-panel">
+                    <h4>Últimas sincronizações</h4>
+                    <div id="gads-runs-list" class="gads-runs-list">
+                        <p class="text-muted">Nenhuma sincronização registrada.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compare Period B Selector -->
+            <div id="compare-period-panel" class="compare-period-panel" style="display:none;">
+                <div class="compare-period-header">
+                    <span class="compare-period-label">Período B (comparação)</span>
+                </div>
+                <div class="date-presets" id="compare-presets">
+                    <button type="button" class="date-preset-btn-b" data-preset-b="today">Hoje</button>
+                    <button type="button" class="date-preset-btn-b" data-preset-b="yesterday">Ontem</button>
+                    <button type="button" class="date-preset-btn-b" data-preset-b="last7">7 dias</button>
+                    <button type="button" class="date-preset-btn-b" data-preset-b="last14">14 dias</button>
+                    <button type="button" class="date-preset-btn-b" data-preset-b="last30">30 dias</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                    <button type="button" id="compare-date-prev" class="date-arrow-btn" title="Período anterior">&#8249;</button>
+                    <input type="date" id="compare-date-start" class="input input-sm">
+                    <span style="color:var(--text-muted); font-size:0.8rem;">até</span>
+                    <input type="date" id="compare-date-end" class="input input-sm">
+                    <button type="button" id="compare-date-next" class="date-arrow-btn" title="Próximo período">&#8250;</button>
+                </div>
+            </div>
+
+            <!-- Comparison Results -->
+            <div id="compare-results" style="display:none;"></div>
+
+            <!-- Spreadsheet Table -->
+            <div class="funnel-table-wrap">
+                <table class="funnel-table" id="funnel-table">
+                    <thead>
+                        <tr>
+                            <th class="funnel-col-label"></th>
+                            <th class="funnel-col-metric">Premissas, Números e Financeiro</th>
+                            <th class="funnel-col-realizado">Realizado</th>
+                            <th class="funnel-col-benchmark">Benchmarking</th>
+                            <th class="funnel-col-sim" colspan="5">Simulação</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th class="funnel-col-sim-sub">CTR</th>
+                            <th class="funnel-col-sim-sub">Visualização</th>
+                            <th class="funnel-col-sim-sub">Carrinho</th>
+                            <th class="funnel-col-sim-sub">Checkout</th>
+                            <th class="funnel-col-sim-sub">Compra</th>
+                        </tr>
+                    </thead>
+                    <tbody id="funnel-tbody">
+                        <!-- Rendered by FunnelModule -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile Layout (cards) -->
+            <div class="funnel-mobile" id="funnel-mobile"></div>
+
+            <!-- ===== GRÁFICO DO FUNIL ===== -->
+            <div class="funnel-chart-section">
+                <div class="funnel-chart-header">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+                        <h3>Gráfico do Funil</h3>
+                        <div style="display:flex; align-items:center; gap:0.3rem;">
+                            <select id="funnel-chart-metric-select" class="input input-sm" style="width:auto; min-width:150px;">
+                                <option value="faturamento">Faturamento</option>
+                                <option value="funnel">Funil (Volume)</option>
+                                <option value="rates">Taxas de Conversão</option>
+                                <option value="budget">Budget / CPA / ROAS</option>
+                            </select>
+                            <button type="button" class="funnel-chart-type-btn active" id="funnel-chart-bar-btn" data-chart-type="bar" title="Barras">&#9646;&#9646;&#9646;</button>
+                            <button type="button" class="funnel-chart-type-btn" id="funnel-chart-line-btn" data-chart-type="line" title="Linha">&#8600;</button>
+                        </div>
+                    </div>
+                    <div class="funnel-chart-toggles" id="funnel-chart-toggles"></div>
+                </div>
+                <div class="funnel-chart-container">
+                    <canvas id="funnel-chart-canvas"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ==================== PIPELINE KANBAN ==================== -->
+        <section id="tab-pipeline" class="tab-panel">
+            <div class="section-header">
+                <h2>Pipeline</h2>
+                <span id="pipeline-flow-summary" class="section-subtitle">Ideia → Validação → Pesquisa → Ângulos → Criativos → Página → Teste → Otimização → Escala → Kill</span>
+            </div>
+            <div class="kanban-board" id="kanban-board"></div>
+        </section>
+
+    </main>
+
+    <!-- Pipeline Card Modal -->
+    <div id="pipeline-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-container" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 id="pipeline-modal-title">Novo Card</h3>
+                <button class="btn-close" id="pipeline-modal-close">&times;</button>
+            </div>
+            <form id="pipeline-form" class="modal-body">
+                <div class="form-group">
+                    <label for="pipeline-card-name">Nome do Produto</label>
+                    <input type="text" id="pipeline-card-name" placeholder="Ex: Luminaria Solar LED" required>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-card-notes">Notas</label>
+                    <textarea id="pipeline-card-notes" rows="2" placeholder="Observações..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-end-date">Data de encerramento</label>
+                    <input type="date" id="pipeline-end-date" class="input">
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-supplier-link">Link fornecedor (AliExpress)</label>
+                    <div class="field-row field-row-supplier">
+                        <input type="url" id="pipeline-supplier-link" placeholder="https://www.aliexpress.com/item/...">
+                        <button
+                            type="button"
+                            class="field-row-open"
+                            data-action="open-input-link"
+                            data-input-id="pipeline-supplier-link"
+                            title="Abrir link do fornecedor">↗</button>
+                        <button type="button" class="field-row-autofill" id="pipeline-supplier-autofill" title="Auto preencher custo e funções">Auto</button>
+                    </div>
+                    <small class="pipeline-field-hint">Clique em Auto para preencher custo e funções do produto via link.</small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pipeline-supplier-cost">Preço de custo</label>
+                        <input type="number" id="pipeline-supplier-cost" class="input" min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="pipeline-supplier-currency">Moeda custo</label>
+                        <select id="pipeline-supplier-currency" class="input">
+                            <option value="USD">USD</option>
+                            <option value="BRL">BRL</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-product-functions">Funções do produto</label>
+                    <textarea id="pipeline-product-functions" rows="3" placeholder="1 função por linha"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-link-product">Link produto (Shopify / Landing Page)</label>
+                    <div class="field-row field-row-link">
+                        <input type="url" id="pipeline-link-product" class="input" placeholder="https://...">
+                        <button
+                            type="button"
+                            class="field-row-open"
+                            data-action="open-input-link"
+                            data-input-id="pipeline-link-product"
+                            title="Abrir link do produto">↗</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-link-final">Link final</label>
+                    <div class="field-row field-row-link">
+                        <input type="url" id="pipeline-link-final" class="input" placeholder="https://...">
+                        <button
+                            type="button"
+                            class="field-row-open"
+                            data-action="open-input-link"
+                            data-input-id="pipeline-link-final"
+                            title="Abrir link final">↗</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-link-copy">Link da copy</label>
+                    <div class="field-row field-row-link">
+                        <input type="url" id="pipeline-link-copy" class="input" placeholder="https://...">
+                        <button
+                            type="button"
+                            class="field-row-open"
+                            data-action="open-input-link"
+                            data-input-id="pipeline-link-copy"
+                            title="Abrir link da copy">↗</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-link-research">Link de pesquisa</label>
+                    <div class="field-row field-row-link">
+                        <input type="url" id="pipeline-link-research" class="input" placeholder="https://...">
+                        <button
+                            type="button"
+                            class="field-row-open"
+                            data-action="open-input-link"
+                            data-input-id="pipeline-link-research"
+                            title="Abrir link de pesquisa">↗</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Links extras</label>
+                    <div id="pipeline-extra-links-list"></div>
+                    <button type="button" class="btn-add-field" id="btn-add-extra-link">+ Adicionar link extra</button>
+                </div>
+                <div class="form-group">
+                    <label>Vídeos (URLs)</label>
+                    <div id="pipeline-videos-list"></div>
+                    <button type="button" class="btn-add-field" id="btn-add-video">+ Adicionar vídeo</button>
+                </div>
+                <div class="form-group">
+                    <label for="pipeline-photo-input">Fotos anexadas</label>
+                    <input type="file" id="pipeline-photo-input" class="input pipeline-photo-input" accept="image/*" multiple>
+                    <small class="pipeline-field-hint">Até 6 fotos por card. Formatos: JPG, PNG, WEBP.</small>
+                    <div id="pipeline-photo-list" class="pipeline-photo-list"></div>
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="pipeline-tag-selector" id="pipeline-tag-selector"></div>
+                    <div class="pipeline-tag-create">
+                        <input type="text" id="pipeline-new-tag" class="input" placeholder="Adicionar nova tag...">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-add-tag">+ Tag</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Registro</label>
+                    <div class="pipeline-card-meta-info">
+                        <span id="pipeline-created-at-text">Criado em: será registrado ao salvar.</span>
+                        <span id="pipeline-updated-at-text">Atualizado em: --</span>
+                    </div>
+                </div>
+                <div class="form-group" id="pipeline-csv-field" style="display:none;">
+                    <label>Integração</label>
+                    <button type="button" class="btn btn-outline" id="btn-pipeline-csv" style="width:100%;justify-content:center;">
+                        📋 Ir para Diário para registrar dados
+                    </button>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" id="pipeline-btn-delete" style="display:none;margin-right:auto;">Excluir</button>
+                    <button type="button" class="btn btn-outline" id="pipeline-btn-checklist" style="display:none;">📋 Ver Checklist</button>
+                    <button type="button" class="btn btn-secondary" id="pipeline-cancel">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="pipeline-btn-save">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Pipeline Checklist Modal -->
+    <div id="pipeline-checklist-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-container" style="max-width:600px;">
+            <div class="modal-header">
+                <h3 id="checklist-modal-title">Checklist</h3>
+                <button class="btn-close" id="checklist-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="checklist-modal-body" style="max-height:70vh;overflow-y:auto;">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" id="checklist-btn-done">Concluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline Deactivation Modal -->
+    <div id="pipeline-deactivate-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-container" style="max-width:420px;">
+            <div class="modal-header">
+                <h3>❌ Desativar Produto</h3>
+                <button class="btn-close" id="deactivate-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:0.75rem;color:var(--text-secondary);">
+                    Movendo <strong id="deactivate-card-name"></strong> para Desativados.
+                </p>
+                <div class="form-group">
+                    <label for="deactivate-reason">Motivo da desativação *</label>
+                    <select id="deactivate-reason" required>
+                        <option value="">Selecione o motivo...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="deactivate-notes">Observações (opcional)</label>
+                    <textarea id="deactivate-notes" rows="2" placeholder="Detalhes adicionais..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="deactivate-btn-cancel">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="deactivate-btn-confirm">Desativar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Store Management Modal -->
+    <div id="store-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Gerenciar Lojas</h3>
+                <button class="btn-close" id="store-modal-close">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Nova loja (máximo 5)</label>
+                <div class="form-row" style="margin-bottom:0">
+                    <input type="text" id="new-store-name" class="input" placeholder="Ex: Loja 2">
+                    <button type="button" id="btn-add-store" class="btn btn-primary">Adicionar</button>
+                </div>
+            </div>
+            <div id="store-list" class="store-list"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="store-cancel">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Modal (Google Cloud) -->
+    <div id="config-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Conectar Conta Google</h3>
+                <button class="btn-close" id="config-modal-close">&times;</button>
+            </div>
+            <form id="config-form">
+                <div class="form-group">
+                    <label>Spreadsheet ID (opcional)</label>
+                    <input type="text" id="config-sheet-id" class="input" placeholder="Deixe em branco para criar automaticamente">
+                    <small>Se ficar vazio, o app cria uma planilha automática na sua conta Google na primeira conexão.</small>
+                </div>
+                <div class="form-group">
+                    <label>Client ID (Google API)</label>
+                    <input type="text" id="config-client-id" class="input" required placeholder="Seu Client ID do Google Cloud Console">
+                    <small>Crie em console.cloud.google.com → APIs → Credentials</small>
+                </div>
+                <div class="form-group">
+                    <label>API Key (Google API)</label>
+                    <input type="text" id="config-api-key" class="input" required placeholder="Sua API Key">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="config-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Conectar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Exchange Rate Edit Modal -->
+    <div id="rate-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Editar Cotação USD/BRL</h3>
+                <button class="btn-close" id="rate-modal-close">&times;</button>
+            </div>
+            <form id="rate-form">
+                <div class="form-group">
+                    <label>Cotação (1 USD = ? BRL)</label>
+                    <input type="number" id="rate-value" class="input" step="0.01" required placeholder="5.05">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="rate-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Facebook Ads Config Modal -->
+    <div id="fb-config-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Configurar Facebook Ads</h3>
+                <button class="btn-close" id="fb-config-modal-close">&times;</button>
+            </div>
+            <form id="fb-config-form">
+                <div class="form-group">
+                    <label>Access Token (Long-Lived)</label>
+                    <input type="text" id="fb-access-token" class="input" required placeholder="Cole seu Access Token aqui">
+                    <small>Gere em <strong>developers.facebook.com</strong> → Tools → Access Token Tool (token de 60 dias)</small>
+                </div>
+                <div class="form-group">
+                    <label>Ad Account ID</label>
+                    <input type="text" id="fb-ad-account-id" class="input" required placeholder="123456789">
+                    <small>Sem o prefixo "act_". Encontre em Business Manager → Contas de Anúncio</small>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="fb-config-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Conectar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Facebook Campaign Mapper Modal -->
+    <div id="fb-campaigns-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fb-campaigns-title">Mapear Campanhas</h3>
+                <button class="btn-close" id="fb-campaigns-modal-close">&times;</button>
+            </div>
+            <div id="fb-campaigns-loading" class="text-center" style="padding:2rem; display:none;">
+                <p>Carregando campanhas da conta...</p>
+            </div>
+            <div id="fb-campaigns-list" class="fb-campaigns-list">
+                <!-- Renderizado por FacebookAds.openCampaignMapper() -->
+            </div>
+            <div class="form-actions" style="padding:0.75rem 1rem; border-top:1px solid var(--border)">
+                <button type="button" class="btn btn-secondary" id="fb-campaigns-cancel">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="fb-campaigns-save">Salvar Mapeamento</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Consultant Floating Button & Panel -->
+    <button id="ai-consultant-btn" class="ai-fab" title="Consultor IA de Ads">🤖</button>
+
+    <div id="ai-consultant-panel" class="ai-panel">
+        <div class="ai-panel-header">
+            <h3>🤖 Consultor IA de Ads</h3>
+            <div>
+                <button id="ai-config-btn" class="btn-icon" title="Configurar API Key">⚙️</button>
+                <button id="ai-panel-close" class="btn-icon" title="Fechar">&times;</button>
+            </div>
+        </div>
+        <div class="ai-panel-body">
+            <button id="ai-auto-analyze" class="btn btn-primary" style="width:100%;margin-bottom:0.75rem">📊 Analise Automatica Completa</button>
+            <div id="ai-messages" class="ai-messages">
+                <div class="ai-message ai-message-assistant">
+                    <div class="ai-message-content">Ola! Sou seu consultor de ads. Clique em <strong>Analise Automatica</strong> para um diagnostico completo, ou me faca uma pergunta sobre suas metricas.</div>
+                </div>
+            </div>
+            <div id="ai-loading" class="ai-loading" style="display:none">
+                <div class="ai-loading-dots"><span></span><span></span><span></span></div>
+                Analisando...
+            </div>
+        </div>
+        <div class="ai-panel-footer">
+            <textarea id="ai-input" class="input" rows="2" placeholder="Pergunte sobre seus ads..."></textarea>
+            <button id="ai-send-btn" class="btn btn-primary">Enviar</button>
+        </div>
+    </div>
+
+    <!-- Scripts (app first, then Google APIs) -->
+    <script src="js/app.js"></script>
+    <script src="js/currency.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="js/sheets.js"></script>
+    <script src="js/products.js"></script>
+    <script src="js/goals.js"></script>
+    <script src="js/diary.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/calculator.js"></script>
+    <script src="js/facebook.js"></script>
+    <script src="js/googleads.js"></script>
+    <script src="js/funnel.js"></script>
+    <script src="js/creatives.js"></script>
+    <script src="js/ai-consultant.js"></script>
+    <script src="js/pipeline.js"></script>
+
+    <!-- Full-Screen Login Page -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-card">
+            <div class="login-logo"><i data-lucide="bar-chart-3" style="width:48px;height:48px;color:var(--accent)"></i></div>
+            <h1 class="login-title">E-commerce Tracker</h1>
+            <p class="login-subtitle">Gerencie seus anúncios e métricas em um só lugar</p>
+
+            <form id="login-form" class="login-form" autocomplete="on">
+                <div class="login-field">
+                    <label for="sb-email">Email</label>
+                    <input type="email" id="sb-email" class="input" placeholder="seu@email.com" autocomplete="email" required>
+                </div>
+                <div class="login-field">
+                    <label for="sb-password">Senha</label>
+                    <input type="password" id="sb-password" class="input" placeholder="Mínimo 6 caracteres" autocomplete="current-password" required>
+                </div>
+                <div id="sb-error" class="login-error"></div>
+                <button type="submit" id="sb-btn-login" class="btn btn-primary login-btn-primary">Entrar</button>
+                <button type="button" id="sb-btn-signup" class="btn btn-secondary login-btn-secondary">Criar conta gratuita</button>
+            </form>
+
+            <div class="login-divider"><span>ou</span></div>
+            <button id="sb-btn-skip" class="login-skip">Continuar sem conta →</button>
+        </div>
+    </div>
+
+    <script src="js/supabase-sync.js"></script>
+
+    <!-- Google APIs loaded AFTER app scripts so gapiLoaded/gisLoaded exist -->
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
