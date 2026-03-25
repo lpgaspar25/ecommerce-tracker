@@ -232,7 +232,7 @@ function renderStoreSelector() {
 
     const allOpt = document.createElement('option');
     allOpt.value = STORE_ALL_ID;
-    allOpt.textContent = '[TODAS]';
+    allOpt.textContent = 'TODAS';
     select.appendChild(allOpt);
 
     AppState.stores.forEach(store => {
@@ -1004,6 +1004,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof GoogleAdsModule !== 'undefined' && GoogleAdsModule.init) {
         GoogleAdsModule.init();
     }
+    if (typeof SwipeModule !== 'undefined') SwipeModule.init();
+    if (typeof MiningModule !== 'undefined') MiningModule.init();
+    if (typeof LabTestsModule !== 'undefined') LabTestsModule.init();
 
     // Load stores from localStorage
     AppState.stores = JSON.parse(localStorage.getItem('etracker_stores') || '[]');

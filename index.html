@@ -30,7 +30,7 @@
             <div class="store-switcher">
                 <label for="store-selector">Loja:</label>
                 <select id="store-selector" class="input input-sm">
-                    <option value="__ALL__">[TODAS]</option>
+                    <option value="__ALL__">TODAS</option>
                 </select>
                 <button id="btn-manage-stores" class="btn btn-secondary btn-sm">Gerenciar</button>
             </div>
@@ -92,6 +92,7 @@
         <button class="tab-btn" data-tab="diary">Diário</button>
         <button class="tab-btn" data-tab="calculator">Simulador</button>
         <button class="tab-btn" data-tab="creatives">Criativos</button>
+        <button class="tab-btn" data-tab="mineracao">⛏️ Mineração</button>
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
     </nav>
@@ -197,7 +198,10 @@
                     <div id="dash-actions" class="dash-list"></div>
                 </div>
                 <div class="dash-card" id="dash-alerts-card">
-                    <h3>Produtos em Risco</h3>
+                    <h3 style="display:flex;align-items:center;justify-content:space-between">
+                        <span>Produtos em Risco</span>
+                        <button id="btn-risk-params" title="Configurar parâmetros" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;display:flex;align-items:center"><i data-lucide="settings-2" style="width:14px;height:14px"></i></button>
+                    </h3>
                     <div id="dash-alerts" class="dash-list"></div>
                 </div>
             </div>
@@ -217,7 +221,22 @@
             <!-- Row 3: Chart + Top Products -->
             <div class="dash-row-3">
                 <div class="dash-card dash-card-wide">
-                    <h3>Desempenho</h3>
+                    <div class="funnel-chart-header">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+                            <h3>Gráfico do Funil</h3>
+                            <div style="display:flex;align-items:center;gap:0.3rem;">
+                                <select id="dash-chart-metric-select" class="input input-sm" style="width:auto;min-width:150px;">
+                                    <option value="faturamento">Faturamento</option>
+                                    <option value="funnel" selected>Funil (Números)</option>
+                                    <option value="rates">Taxas (%)</option>
+                                    <option value="budget">Budget / CPA / ROAS</option>
+                                </select>
+                                <button type="button" class="funnel-chart-type-btn active" id="dash-chart-bar-btn" title="Barras">&#9646;&#9646;&#9646;</button>
+                                <button type="button" class="funnel-chart-type-btn" id="dash-chart-line-btn" title="Linha">&#8600;</button>
+                            </div>
+                        </div>
+                        <div class="funnel-chart-toggles" id="dash-chart-toggles"></div>
+                    </div>
                     <div class="dash-chart-container"><canvas id="dash-main-chart"></canvas></div>
                 </div>
                 <div class="dash-card">
@@ -228,6 +247,19 @@
                         <button class="dash-tab" data-top="cpa">CPA</button>
                     </div>
                     <div id="dash-top-products" class="dash-ranking"></div>
+                </div>
+            </div>
+
+            <!-- Metrics Calendar + Ecommerce Dates -->
+            <div class="dash-row-cal">
+                <div class="dash-card dash-card-cal">
+                    <h3><i data-lucide="calendar-range" style="width:15px;height:15px"></i> Calendário de Métricas</h3>
+                    <div id="dash-metrics-calendar"></div>
+                </div>
+                <div class="dash-card dash-card-dates">
+                    <h3><i data-lucide="flag" style="width:15px;height:15px"></i> Datas Importantes</h3>
+                    <div class="dash-dates-filters" id="dash-dates-filters"></div>
+                    <div id="dash-ecommerce-dates" class="dash-dates-list"></div>
                 </div>
             </div>
 
@@ -483,6 +515,11 @@
 
         <!-- ==================== DIÁRIO ==================== -->
         <section id="tab-diary" class="tab-panel">
+            <div class="creative-subtabs-row">
+                <button class="diary-subtab creative-subtab active" data-subtab="diary">📊 Diário</button>
+                <button class="diary-subtab creative-subtab" data-subtab="calendar">📅 Calendário</button>
+            </div>
+            <div id="diary-main-sub">
             <div class="section-header">
                 <h2>Diário de Métricas</h2>
                 <div class="diary-view-tabs">
@@ -556,6 +593,10 @@
                 <div class="summary-card">
                     <label>CPA Médio</label>
                     <span id="summary-cpa">--</span>
+                </div>
+                <div class="summary-card">
+                    <label>CPC Médio</label>
+                    <span id="summary-cpc">--</span>
                 </div>
                 <div class="summary-card">
                     <label>ROAS</label>
@@ -643,16 +684,14 @@
                         <button class="modal-close" onclick="closeModal('thresholds-modal')">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.6rem">
-                            Defina os limites para colorir as métricas no diário. Valores em %.
-                        </p>
-                        <div class="threshold-header">
-                            <span>Métrica</span>
-                            <span>🟢 Bom ≥</span>
-                            <span>🟡 Ok ≥</span>
-                            <span>🔴 Ruim &lt;</span>
-                        </div>
                         <form id="thresholds-form" class="thresholds-grid">
+                            <!-- Section: Taxas (higher = better) -->
+                            <div class="threshold-section-header" style="border-top:none;padding-top:0">
+                                <span>Taxas de Conversão</span>
+                                <span>🟢 Bom ≥</span>
+                                <span>🟡 Ok ≥</span>
+                                <span>🔴 Ruim &lt;</span>
+                            </div>
                             <div class="threshold-row">
                                 <label>Página &gt; Carrinho</label>
                                 <input type="number" step="0.1" id="th-atcRate-good" class="input input-sm" placeholder="8">
@@ -677,8 +716,96 @@
                                 <input type="number" step="0.1" id="th-convCheckout-avg" class="input input-sm" placeholder="30">
                                 <input type="number" step="0.1" id="th-convCheckout-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
                             </div>
-                            <div style="text-align:right;margin-top:0.5rem">
+                            <!-- Section: Custos em R$ (lower = better) -->
+                            <div class="threshold-section-header" style="margin-top:0.75rem">
+                                <span>Custos em R$ — menor é melhor</span>
+                                <span>🟢 Bom ≤</span>
+                                <span>🟡 Ok ≤</span>
+                                <span>🔴 Ruim &gt;</span>
+                            </div>
+                            <div class="threshold-row">
+                                <label>CPA</label>
+                                <input type="number" step="0.01" id="th-cpa-good" class="input input-sm" placeholder="30">
+                                <input type="number" step="0.01" id="th-cpa-avg" class="input input-sm" placeholder="60">
+                                <input type="number" step="0.01" id="th-cpa-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div class="threshold-row">
+                                <label>CPC Médio</label>
+                                <input type="number" step="0.01" id="th-cpc-good" class="input input-sm" placeholder="1.00">
+                                <input type="number" step="0.01" id="th-cpc-avg" class="input input-sm" placeholder="2.00">
+                                <input type="number" step="0.01" id="th-cpc-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div class="threshold-row">
+                                <label>CPM</label>
+                                <input type="number" step="0.01" id="th-cpm-good" class="input input-sm" placeholder="10">
+                                <input type="number" step="0.01" id="th-cpm-avg" class="input input-sm" placeholder="25">
+                                <input type="number" step="0.01" id="th-cpm-bad" class="input input-sm" readonly tabindex="-1" style="opacity:0.5">
+                            </div>
+                            <div style="text-align:right;margin-top:0.75rem">
                                 <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Parameters Modal -->
+            <div id="risk-params-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:400px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="settings-2" style="width:13px;height:13px"></i> Parâmetros — Produtos em Risco</h3>
+                        <button class="modal-close" onclick="closeModal('risk-params-modal')">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="risk-params-form">
+                            <div class="risk-param-group">
+                                <p class="risk-param-section">CPA</p>
+                                <div class="form-group">
+                                    <label>Alertar quando CPA estiver acima do alvo em (%)</label>
+                                    <div style="display:flex;align-items:center;gap:0.5rem">
+                                        <input type="number" id="rp-cpa-over" class="input input-sm" min="1" max="500" step="1" placeholder="50" style="max-width:80px">
+                                        <span style="font-size:0.8rem;color:var(--text-muted)">% acima do alvo</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="risk-param-group">
+                                <p class="risk-param-section">CPM / CPC</p>
+                                <div class="form-group">
+                                    <label>Alertar quando CPM aumentar (%)</label>
+                                    <div style="display:flex;align-items:center;gap:0.5rem">
+                                        <input type="number" id="rp-cpm-inc" class="input input-sm" min="1" max="500" step="1" placeholder="30" style="max-width:80px">
+                                        <span style="font-size:0.8rem;color:var(--text-muted)">% vs período anterior</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Alertar quando CPC aumentar (%)</label>
+                                    <div style="display:flex;align-items:center;gap:0.5rem">
+                                        <input type="number" id="rp-cpc-inc" class="input input-sm" min="1" max="500" step="1" placeholder="30" style="max-width:80px">
+                                        <span style="font-size:0.8rem;color:var(--text-muted)">% vs período anterior</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="risk-param-group">
+                                <p class="risk-param-section">Outros</p>
+                                <div class="form-group">
+                                    <label>Sem vendas com orçamento acima de (R$)</label>
+                                    <div style="display:flex;align-items:center;gap:0.5rem">
+                                        <input type="number" id="rp-no-sales" class="input input-sm" min="0" step="10" placeholder="250" style="max-width:80px">
+                                        <span style="font-size:0.8rem;color:var(--text-muted)">R$ gastos</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Conv. de página abaixo de (%)</label>
+                                    <div style="display:flex;align-items:center;gap:0.5rem">
+                                        <input type="number" id="rp-conv-min" class="input input-sm" min="0" max="100" step="0.1" placeholder="1" style="max-width:80px">
+                                        <span style="font-size:0.8rem;color:var(--text-muted)">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:0.5rem;margin-top:1rem">
+                                <button type="button" id="rp-reset" class="btn btn-secondary btn-sm">Restaurar padrões</button>
+                                <button type="submit" class="btn btn-primary btn-sm" style="margin-left:auto">Salvar</button>
                             </div>
                         </form>
                     </div>
@@ -824,6 +951,12 @@
                         </div>
                     </form>
                 </div>
+            </div>
+            </div><!-- end diary-main-sub -->
+
+            <!-- Calendar sub-tab -->
+            <div id="diary-calendar-sub" style="display:none">
+                <div id="diary-calendar-content" style="position:relative"></div>
             </div>
         </section>
 
@@ -1022,37 +1155,75 @@
         <section id="tab-creatives" class="tab-panel">
             <div class="section-header">
                 <h2>Criativos & Testes</h2>
-                <div>
+                <div id="creatives-actions">
                     <button id="btn-compare-creatives" class="btn btn-secondary">Comparar</button>
                     <button id="btn-add-creative" class="btn btn-primary">+ Novo Criativo</button>
                 </div>
-            </div>
-
-            <div class="filter-bar">
-                <div class="filter-group">
-                    <label>Produto:</label>
-                    <select id="creative-product-filter" class="input">
-                        <option value="todos">Todos</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Status:</label>
-                    <select id="creative-status-filter" class="input">
-                        <option value="todos">Todos</option>
-                        <option value="ativo">Ativo</option>
-                        <option value="teste">Em Teste</option>
-                        <option value="winner">Winner</option>
-                        <option value="pausado">Pausado</option>
-                        <option value="killed">Killed</option>
-                    </select>
+                <div id="swipe-actions" style="display:none">
+                    <button id="btn-swipe-settings" class="btn btn-secondary" title="Configurar API Keys">⚙️ Config.</button>
+                    <button id="btn-add-swipe" class="btn btn-primary">+ Adicionar Referência</button>
                 </div>
             </div>
+            <div class="creative-subtabs-row">
+                <button class="creative-subtab active" data-subtab="creatives">🎬 Criativos</button>
+                <button class="creative-subtab" data-subtab="swipe">💾 Swipe File</button>
+            </div>
 
-            <div id="creative-fatigue-summary"></div>
-            <div id="compare-panel" style="display:none"></div>
+            <!-- ── Criativos sub-section ── -->
+            <div id="creatives-sub">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Produto:</label>
+                        <select id="creative-product-filter" class="input">
+                            <option value="todos">Todos</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Status:</label>
+                        <select id="creative-status-filter" class="input">
+                            <option value="todos">Todos</option>
+                            <option value="ativo">Ativo</option>
+                            <option value="teste">Em Teste</option>
+                            <option value="winner">Winner</option>
+                            <option value="pausado">Pausado</option>
+                            <option value="killed">Killed</option>
+                        </select>
+                    </div>
+                </div>
 
-            <div id="creatives-list">
-                <div class="empty-state"><p>Nenhum criativo cadastrado. Clique em "+ Novo Criativo".</p></div>
+                <div id="creative-fatigue-summary"></div>
+                <div id="compare-panel" style="display:none"></div>
+
+                <div id="creatives-list">
+                    <div class="empty-state"><p>Nenhum criativo cadastrado. Clique em "+ Novo Criativo".</p></div>
+                </div>
+            </div>
+
+            <!-- ── Swipe File sub-section ── -->
+            <div id="swipe-sub" style="display:none">
+                <div class="swipe-filter-bar">
+                    <input type="text" id="swipe-search" class="input" placeholder="🔍 Buscar por texto, autor, tag..." style="flex:1;min-width:180px">
+                    <select id="swipe-filter-platform" class="input" style="min-width:130px">
+                        <option value="all">Todas plataformas</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="other">Outro</option>
+                    </select>
+                    <select id="swipe-filter-format" class="input" style="min-width:120px">
+                        <option value="all">Todos formatos</option>
+                        <option>Vídeo</option><option>Reels</option><option>Story</option>
+                        <option>Carrossel</option><option>Imagem</option><option>Live</option>
+                    </select>
+                    <select id="swipe-filter-type" class="input" style="min-width:130px">
+                        <option value="all">Todos tipos</option>
+                        <option>UGC</option><option>Demonstrativo</option><option>Depoimento</option>
+                        <option>POV</option><option>Antes/Depois</option><option>Tutorial</option>
+                        <option>Humor/Meme</option><option>Review</option><option>Challenge</option>
+                    </select>
+                </div>
+                <div id="swipe-grid" class="swipe-grid"></div>
             </div>
 
             <!-- Creative Modal -->
@@ -1223,6 +1394,198 @@
                 </div>
             </div>
 
+            <!-- ══════════════════════════════════════════════════════ -->
+            <!-- Swipe File: Add / Edit Modal -->
+            <div id="swipe-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:700px;max-height:90vh;overflow-y:auto">
+                    <div class="modal-header">
+                        <h3 id="swipe-modal-title">Adicionar Referência</h3>
+                        <button id="swipe-modal-close" class="btn-close">&times;</button>
+                    </div>
+                    <form id="swipe-form" style="padding:1rem">
+
+                        <!-- Step 1: URL -->
+                        <div class="swipe-form-section">
+                            <label class="swipe-form-label">🔗 Link do Vídeo</label>
+                            <div style="display:flex;gap:0.5rem">
+                                <input type="url" id="swipe-url-input" class="input" placeholder="https://www.tiktok.com/@... ou instagram.com/... ou youtube.com/..." style="flex:1">
+                                <button type="button" id="swipe-url-fetch-btn" class="btn btn-secondary">Buscar</button>
+                            </div>
+                            <p id="swipe-fetch-status" style="font-size:0.75rem;margin-top:0.35rem"></p>
+                        </div>
+
+                        <!-- Preview -->
+                        <div id="swipe-preview-section" style="display:none;margin-bottom:1rem">
+                            <video id="swipe-preview-video" controls style="display:none;width:100%;max-height:300px;border-radius:8px;background:#000"></video>
+                            <div id="swipe-preview-embed" style="display:none"></div>
+                            <img id="swipe-preview-thumb" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:8px" alt="thumbnail">
+                            <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap">
+                                <button type="button" id="swipe-open-original-btn" class="btn btn-secondary btn-sm" style="display:none">🔗 Ver na plataforma</button>
+                                <button type="button" id="swipe-drive-upload-btn" class="btn btn-secondary btn-sm" style="display:none">☁️ Salvar vídeo no Drive</button>
+                            </div>
+                            <p id="swipe-drive-status" style="font-size:0.75rem;margin-top:0.35rem"></p>
+                            <input type="hidden" id="swipe-drive-video-url" value="">
+                        </div>
+
+                        <!-- Step 2: Metadata -->
+                        <div class="swipe-form-section">
+                            <label class="swipe-form-label">📋 Informações</label>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Título / Descrição</label>
+                                    <input type="text" id="swipe-title" class="input" placeholder="Ex: UGC forte com prova social">
+                                </div>
+                                <div class="form-group">
+                                    <label>Autor / Criador</label>
+                                    <input type="text" id="swipe-author" class="input" placeholder="@nome">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Plataforma</label>
+                                    <select id="swipe-platform" class="input">
+                                        <option value="">Selecione</option>
+                                        <option value="tiktok">TikTok</option>
+                                        <option value="instagram">Instagram</option>
+                                        <option value="facebook">Facebook</option>
+                                        <option value="youtube">YouTube</option>
+                                        <option value="other">Outro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Formato</label>
+                                    <select id="swipe-format" class="input">
+                                        <option value="">Selecione</option>
+                                        <option>Vídeo</option><option>Reels</option><option>Story</option>
+                                        <option>Carrossel</option><option>Imagem</option><option>Live</option><option>Outro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Tipo</label>
+                                    <select id="swipe-type" class="input">
+                                        <option value="">Selecione</option>
+                                        <option>UGC</option><option>Demonstrativo</option><option>Depoimento</option>
+                                        <option>POV</option><option>Antes/Depois</option><option>Tutorial</option>
+                                        <option>Humor/Meme</option><option>Review</option><option>Challenge</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Data</label>
+                                    <input type="date" id="swipe-date" class="input">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Tags (separadas por vírgula)</label>
+                                <input type="text" id="swipe-tags" class="input" placeholder="Ex: gancho forte, prova social, urgência">
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Transcription -->
+                        <div class="swipe-form-section">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+                                <label class="swipe-form-label" style="margin:0">🎙️ Transcrição (idioma original)</label>
+                                <button type="button" id="swipe-transcribe-btn" class="btn btn-secondary btn-sm">🎙️ Transcrever com IA</button>
+                            </div>
+                            <textarea id="swipe-transcript-orig" class="input" rows="4" placeholder="Cole ou escreva aqui a transcrição do vídeo... (pode ser em qualquer idioma)"></textarea>
+                        </div>
+
+                        <!-- Step 4: AI Analysis -->
+                        <div class="swipe-form-section swipe-ai-section">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+                                <label class="swipe-form-label" style="margin:0">🤖 Análise com IA — Gancho / Corpo / CTA</label>
+                                <button type="button" id="swipe-analyze-btn" class="btn btn-primary btn-sm">🤖 Analisar com IA</button>
+                            </div>
+                            <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.75rem">A IA vai identificar as três partes do anúncio e traduzir para português automaticamente.</p>
+
+                            <div class="swipe-analysis-grid">
+                                <div>
+                                    <p class="swipe-ai-label swipe-ai-orig">🌐 Idioma Original</p>
+                                    <div class="form-group"><label>Gancho (Hook)</label>
+                                        <textarea id="swipe-hook-orig" class="input" rows="2" placeholder="Hook original..."></textarea></div>
+                                    <div class="form-group"><label>Corpo (Body)</label>
+                                        <textarea id="swipe-body-orig" class="input" rows="3" placeholder="Corpo original..."></textarea></div>
+                                    <div class="form-group"><label>CTA</label>
+                                        <textarea id="swipe-cta-orig" class="input" rows="2" placeholder="CTA original..."></textarea></div>
+                                </div>
+                                <div>
+                                    <p class="swipe-ai-label swipe-ai-pt">🇧🇷 Português</p>
+                                    <div class="form-group"><label>Gancho (Hook)</label>
+                                        <textarea id="swipe-hook-pt" class="input" rows="2" placeholder="Hook em português..."></textarea></div>
+                                    <div class="form-group"><label>Corpo (Body)</label>
+                                        <textarea id="swipe-body-pt" class="input" rows="3" placeholder="Corpo em português..."></textarea></div>
+                                    <div class="form-group"><label>CTA</label>
+                                        <textarea id="swipe-cta-pt" class="input" rows="2" placeholder="CTA em português..."></textarea></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-top:0.5rem">
+                                <label>Transcrição completa em PT (opcional)</label>
+                                <textarea id="swipe-transcript-pt" class="input" rows="2" placeholder="Tradução completa..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Step 5: Notes -->
+                        <div class="form-group">
+                            <label>📝 Notas pessoais</label>
+                            <textarea id="swipe-notes" class="input" rows="2" placeholder="O que você achou interessante neste criativo? Ângulo, técnica, gatilho..."></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="swipe-modal-cancel" onclick="SwipeModule._closeModal()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">💾 Salvar no Swipe File</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Swipe File: Detail Modal -->
+            <div id="swipe-detail-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:680px;max-height:92vh;overflow-y:auto">
+                    <div class="modal-header">
+                        <h3>Referência</h3>
+                        <button id="swipe-detail-close" class="btn-close">&times;</button>
+                    </div>
+                    <div id="swipe-detail-content" style="padding:1rem"></div>
+                </div>
+            </div>
+            <!-- ══════════════════════════════════════════════════════ -->
+
+            <!-- Swipe Settings Modal -->
+            <div id="swipe-settings-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:480px">
+                    <div class="modal-header">
+                        <h3>⚙️ Configurações — Swipe File</h3>
+                        <button id="swipe-settings-close" class="btn-close">&times;</button>
+                    </div>
+                    <div style="padding:1rem;display:flex;flex-direction:column;gap:1rem">
+
+                        <!-- Google Drive -->
+                        <div class="swipe-form-section">
+                            <div class="swipe-form-label">☁️ Google Drive</div>
+                            <p id="swipe-drive-status-text" style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.5rem">Verificando...</p>
+                            <button id="btn-swipe-reconnect-google" class="btn btn-primary btn-sm" style="width:100%">🔗 Conectar / Reconectar Google</button>
+                        </div>
+
+                        <!-- OpenAI Key -->
+                        <div class="swipe-form-section">
+                            <div class="swipe-form-label">🎙️ OpenAI API Key <span style="font-weight:normal;color:var(--text-muted)">(Whisper — transcrição)</span></div>
+                            <input type="password" id="swipe-cfg-openai-key" class="input" placeholder="sk-...">
+                        </div>
+
+                        <!-- Claude Key -->
+                        <div class="swipe-form-section">
+                            <div class="swipe-form-label">🤖 Claude API Key <span style="font-weight:normal;color:var(--text-muted)">(Análise de criativos)</span></div>
+                            <input type="password" id="swipe-cfg-claude-key" class="input" placeholder="sk-ant-...">
+                        </div>
+
+                        <button id="btn-swipe-settings-save" class="btn btn-primary" style="width:100%">💾 Salvar</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Variation Test Modal -->
             <div id="variation-modal" class="modal hidden">
                 <div class="modal-overlay"></div>
@@ -1279,6 +1642,173 @@
                     </form>
                 </div>
             </div>
+        </section>
+
+        <!-- ==================== MINERAÇÃO ==================== -->
+        <section id="tab-mineracao" class="tab-panel">
+            <div class="section-header">
+                <h2>⛏️ Mineração de Anúncios</h2>
+                <span class="section-subtitle">Busque e salve referências da Biblioteca de Anúncios do Facebook</span>
+            </div>
+
+            <!-- Filters -->
+            <div class="mining-filter-bar">
+                <div class="mining-field"><label>Palavra-chave</label><input type="text" id="mining-keyword" class="input" placeholder="ex: skincare, fitness..."></div>
+                <div class="mining-field"><label>País</label>
+                    <select id="mining-country" class="input">
+                        <option value="ALL">🌍 Todos</option>
+                        <optgroup label="América">
+                        <option value="BR">🇧🇷 Brasil</option>
+                        <option value="US">🇺🇸 EUA</option>
+                        <option value="CA">🇨🇦 Canadá</option>
+                        <option value="MX">🇲🇽 México</option>
+                        <option value="AR">🇦🇷 Argentina</option>
+                        <option value="CO">🇨🇴 Colômbia</option>
+                        <option value="CL">🇨🇱 Chile</option>
+                        <option value="PE">🇵🇪 Peru</option>
+                        <option value="EC">🇪🇨 Equador</option>
+                        <option value="UY">🇺🇾 Uruguai</option>
+                        <option value="PY">🇵🇾 Paraguai</option>
+                        <option value="BO">🇧🇴 Bolívia</option>
+                        <option value="VE">🇻🇪 Venezuela</option>
+                        <option value="CR">🇨🇷 Costa Rica</option>
+                        <option value="PA">🇵🇦 Panamá</option>
+                        <option value="DO">🇩🇴 Rep. Dominicana</option>
+                        <option value="GT">🇬🇹 Guatemala</option>
+                        <option value="PR">🇵🇷 Porto Rico</option>
+                        </optgroup>
+                        <optgroup label="Europa">
+                        <option value="GB">🇬🇧 Reino Unido</option>
+                        <option value="DE">🇩🇪 Alemanha</option>
+                        <option value="FR">🇫🇷 França</option>
+                        <option value="ES">🇪🇸 Espanha</option>
+                        <option value="IT">🇮🇹 Itália</option>
+                        <option value="PT">🇵🇹 Portugal</option>
+                        <option value="NL">🇳🇱 Holanda</option>
+                        <option value="BE">🇧🇪 Bélgica</option>
+                        <option value="AT">🇦🇹 Áustria</option>
+                        <option value="CH">🇨🇭 Suíça</option>
+                        <option value="SE">🇸🇪 Suécia</option>
+                        <option value="NO">🇳🇴 Noruega</option>
+                        <option value="DK">🇩🇰 Dinamarca</option>
+                        <option value="FI">🇫🇮 Finlândia</option>
+                        <option value="IE">🇮🇪 Irlanda</option>
+                        <option value="PL">🇵🇱 Polônia</option>
+                        <option value="CZ">🇨🇿 Tchéquia</option>
+                        <option value="RO">🇷🇴 Romênia</option>
+                        <option value="HU">🇭🇺 Hungria</option>
+                        <option value="GR">🇬🇷 Grécia</option>
+                        <option value="HR">🇭🇷 Croácia</option>
+                        <option value="BG">🇧🇬 Bulgária</option>
+                        <option value="SK">🇸🇰 Eslováquia</option>
+                        <option value="RS">🇷🇸 Sérvia</option>
+                        <option value="UA">🇺🇦 Ucrânia</option>
+                        <option value="RU">🇷🇺 Rússia</option>
+                        <option value="TR">🇹🇷 Turquia</option>
+                        </optgroup>
+                        <optgroup label="Ásia / Oceania">
+                        <option value="IN">🇮🇳 Índia</option>
+                        <option value="JP">🇯🇵 Japão</option>
+                        <option value="KR">🇰🇷 Coreia do Sul</option>
+                        <option value="CN">🇨🇳 China</option>
+                        <option value="TW">🇹🇼 Taiwan</option>
+                        <option value="HK">🇭🇰 Hong Kong</option>
+                        <option value="SG">🇸🇬 Singapura</option>
+                        <option value="MY">🇲🇾 Malásia</option>
+                        <option value="TH">🇹🇭 Tailândia</option>
+                        <option value="VN">🇻🇳 Vietnã</option>
+                        <option value="PH">🇵🇭 Filipinas</option>
+                        <option value="ID">🇮🇩 Indonésia</option>
+                        <option value="PK">🇵🇰 Paquistão</option>
+                        <option value="BD">🇧🇩 Bangladesh</option>
+                        <option value="AU">🇦🇺 Austrália</option>
+                        <option value="NZ">🇳🇿 Nova Zelândia</option>
+                        </optgroup>
+                        <optgroup label="Oriente Médio / África">
+                        <option value="AE">🇦🇪 Emirados Árabes</option>
+                        <option value="SA">🇸🇦 Arábia Saudita</option>
+                        <option value="IL">🇮🇱 Israel</option>
+                        <option value="EG">🇪🇬 Egito</option>
+                        <option value="NG">🇳🇬 Nigéria</option>
+                        <option value="ZA">🇿🇦 África do Sul</option>
+                        <option value="KE">🇰🇪 Quênia</option>
+                        <option value="MA">🇲🇦 Marrocos</option>
+                        <option value="GH">🇬🇭 Gana</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="mining-field"><label>Idioma</label>
+                    <select id="mining-language" class="input">
+                        <option value="">Todos</option>
+                        <option value="pt">Português</option>
+                        <option value="en">Inglês</option>
+                        <option value="es">Espanhol</option>
+                        <option value="fr">Francês</option>
+                        <option value="de">Alemão</option>
+                        <option value="it">Italiano</option>
+                        <option value="ja">Japonês</option>
+                        <option value="zh">Chinês</option>
+                        <option value="ko">Coreano</option>
+                        <option value="ar">Árabe</option>
+                        <option value="hi">Hindi</option>
+                        <option value="ru">Russo</option>
+                    </select>
+                </div>
+                <div class="mining-field"><label>Mídia</label>
+                    <select id="mining-media-type" class="input">
+                        <option value="all">Todos</option>
+                        <option value="video" selected>Vídeos</option>
+                        <option value="image">Imagens</option>
+                    </select>
+                </div>
+                <div class="mining-field"><label>Status</label>
+                    <select id="mining-status" class="input">
+                        <option value="active">Ativos</option>
+                        <option value="inactive">Inativos</option>
+                        <option value="all">Todos</option>
+                    </select>
+                </div>
+                <div class="mining-field"><label>Mín. anúncios</label><input type="number" id="mining-min-results" class="input" value="20" min="1" max="5000"></div>
+                <div class="mining-field"><label>Mín. conj. anúncio</label><input type="number" id="mining-min-sets" class="input" value="1" min="1" max="50" title="Mínimo de anúncios usando o mesmo criativo"></div>
+                <div class="mining-field"><label>Data de</label><input type="date" id="mining-date-from" class="input"></div>
+                <div class="mining-field"><label>Data até</label><input type="date" id="mining-date-to" class="input"></div>
+                <div class="mining-field"><label>Modo</label>
+                    <select id="mining-mode" class="input">
+                        <option value="variations">⚡ Rápido (variações)</option>
+                        <option value="pagination">📄 Por anunciante</option>
+                        <option value="scroll">🔄 Completo (variações + anunciantes)</option>
+                    </select>
+                </div>
+                <div class="mining-field" style="justify-content:flex-end"><label>&nbsp;</label><button id="btn-mine" class="btn btn-primary" style="width:100%">🔍 Minerar</button></div>
+            </div>
+
+            <!-- Cookie bar removed — FB blocks cookies from different IPs -->
+
+            <!-- Bulk actions -->
+            <div id="mining-bulk-bar" class="mining-bulk-bar" style="display:none">
+                <label class="mining-select-all-label">
+                    <input type="checkbox" id="mining-select-all"> Selecionar todos
+                </label>
+                <span id="mining-selected-count" class="mining-selected-count">0 selecionados</span>
+                <button id="btn-mine-save-bulk" class="btn btn-primary btn-sm" disabled>💾 Salvar selecionados no Swipe</button>
+            </div>
+
+            <!-- Status -->
+            <div id="mining-status-msg" class="mining-status-msg" style="display:none"></div>
+
+            <!-- Post-mining filters -->
+            <div id="mining-post-filters" class="mining-post-filters" style="display:none">
+                <select id="mining-filter-page" class="input input-sm"><option value="">Todas páginas</option></select>
+                <select id="mining-filter-type" class="input input-sm">
+                    <option value="">Todos tipos</option>
+                    <option value="video">🎬 Vídeos</option>
+                    <option value="image">🖼️ Imagens</option>
+                </select>
+                <span id="mining-filter-count" class="mining-filter-count"></span>
+            </div>
+
+            <!-- Results Grid -->
+            <div id="mining-grid" class="swipe-grid"></div>
         </section>
 
         <!-- ==================== DIAGNÓSTICO DE CONVERSÃO ==================== -->
@@ -1466,12 +1996,130 @@
         <section id="tab-pipeline" class="tab-panel">
             <div class="section-header">
                 <h2>Pipeline</h2>
-                <span id="pipeline-flow-summary" class="section-subtitle">Ideia → Validação → Pesquisa → Ângulos → Criativos → Página → Teste → Otimização → Escala → Kill</span>
             </div>
-            <div class="kanban-board" id="kanban-board"></div>
+            <div class="creative-subtabs-row">
+                <button class="pipeline-subtab creative-subtab active" data-subtab="offers">📦 Gestão de Ofertas</button>
+                <button class="pipeline-subtab creative-subtab" data-subtab="lab">🧪 Laboratório de Testes</button>
+            </div>
+
+            <!-- Offers sub-tab (existing kanban) -->
+            <div id="pipeline-offers-sub">
+                <p id="pipeline-flow-summary" class="section-subtitle" style="margin:0.5rem 0">Ideia → Validação → Pesquisa → Ângulos → Criativos → Página → Teste → Otimização → Escala → Kill</p>
+                <div class="kanban-board" id="kanban-board"></div>
+            </div>
+
+            <!-- Lab sub-tab -->
+            <div id="pipeline-lab-sub" style="display:none">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:0.75rem 0">
+                    <span class="section-subtitle">Registre alterações, gere hipóteses e acompanhe resultados</span>
+                    <button id="btn-add-lab-test" class="btn btn-primary">+ Novo Teste</button>
+                </div>
+                <div id="lab-cards-container"></div>
+            </div>
         </section>
 
     </main>
+
+    <!-- Lab Test Modal -->
+    <div id="lab-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:560px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>🧪 Teste / Alteração</h3>
+                <button class="btn-close" id="lab-modal-close">&times;</button>
+            </div>
+            <form id="lab-form" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">📋 Definição</div>
+                    <div class="form-row"><div class="form-group"><label>Título *</label><input type="text" id="lab-title" class="input" required placeholder="Ex: Trocar banner da home"></div></div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Categoria</label>
+                            <select id="lab-category" class="input">
+                                <option value="loja">🏪 Loja</option>
+                                <option value="redes_sociais">📱 Redes Sociais</option>
+                                <option value="trafego">📊 Tráfego</option>
+                                <option value="criativo">🎬 Criativo</option>
+                                <option value="oferta">💰 Oferta</option>
+                                <option value="outro">📌 Outro</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>Área/Local</label><input type="text" id="lab-area" class="input" placeholder="Ex: Banner principal, Bio Instagram"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Produto</label><select id="lab-product" class="input"><option value="">Nenhum</option></select></div>
+                        <div class="form-group"><label>Criativo</label><select id="lab-creative" class="input"><option value="">Nenhum</option></select></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Data início</label><input type="date" id="lab-date-start" class="input" required></div>
+                        <div class="form-group"><label>Data fim (avaliar até)</label><input type="date" id="lab-date-end" class="input" required></div>
+                    </div>
+                    <div class="form-group"><label>Hipótese</label><textarea id="lab-hypothesis" class="input" rows="4" placeholder="Ex: Trocar o banner com foco no desconto vai aumentar conversões em 20%. Espero que o CTR suba pelo menos 15% e o CPA diminua."></textarea></div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Objetivo</label>
+                            <select id="lab-expected-metric" class="input">
+                                <option value="validar_criativo">🎯 Validar criativo (CPA alvo)</option>
+                                <option value="vendas">↑ Aumentar Vendas</option>
+                                <option value="cpa">↓ Reduzir CPA</option>
+                                <option value="cpc">↓ Reduzir CPC</option>
+                                <option value="conv_page">↑ Conv. Página</option>
+                                <option value="atc_rate">↑ Add to Cart %</option>
+                                <option value="roas">↑ Aumentar ROAS</option>
+                                <option value="outro">📌 Outro</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label>CPA / Meta alvo</label><input type="text" id="lab-baseline" class="input" placeholder="Ex: R$30 ou 3%"></div>
+                    </div>
+                </div>
+
+                <!-- Metrics tracking (collapsible) -->
+                <div>
+                    <button type="button" id="btn-lab-toggle-metrics" class="btn btn-secondary btn-sm" style="width:100%">📈 Adicionar métricas</button>
+                    <div id="lab-metrics-section" class="swipe-form-section" style="display:none;margin-top:0.5rem">
+                        <div class="swipe-form-label">📈 Métricas</div>
+                        <div class="lab-metrics-grid">
+                            <div></div><div class="lab-metrics-header">Antes</div><div class="lab-metrics-header">Resultado</div>
+                            <label>CPC (R$)</label><input type="number" step="0.01" id="lab-m-cpc-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-cpc-after" class="input" placeholder="-">
+                            <label>CPA (R$)</label><input type="number" step="0.01" id="lab-m-cpa-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-cpa-after" class="input" placeholder="-">
+                            <label>CTR (%)</label><input type="number" step="0.01" id="lab-m-ctr-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-ctr-after" class="input" placeholder="-">
+                            <label>Vendas</label><input type="number" step="1" id="lab-m-sales-before" class="input" placeholder="-"><input type="number" step="1" id="lab-m-sales-after" class="input" placeholder="-">
+                            <label>ROAS</label><input type="number" step="0.01" id="lab-m-roas-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-roas-after" class="input" placeholder="-">
+                            <label>Orçamento (R$)</label><input type="number" step="0.01" id="lab-m-budget-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-budget-after" class="input" placeholder="-">
+                        </div>
+                        <p style="font-size:0.7rem;color:var(--text-muted);margin-top:0.3rem">Preencha apenas o que fizer sentido. Para testes de criativo novo, deixe "Antes" vazio.</p>
+                    </div>
+                </div>
+
+                <div class="form-row"><div class="form-group"><label>Status</label>
+                    <select id="lab-status" class="input"><option value="ativo">🔬 Ativo</option><option value="concluido">✅ Concluído</option><option value="cancelado">🚫 Cancelado</option></select>
+                </div></div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">👁️ Observações</div>
+                    <div id="lab-observations-list"></div>
+                    <div class="form-row" style="margin-top:0.5rem">
+                        <div class="form-group" style="flex:3"><input type="text" id="lab-obs-text" class="input" placeholder="Nova observação..."></div>
+                        <div class="form-group" style="flex:1">
+                            <select id="lab-obs-sentiment" class="input"><option value="positive">🟢 +</option><option value="neutral">🟡 ~</option><option value="negative">🔴 -</option></select>
+                        </div>
+                        <button type="button" id="btn-lab-add-obs" class="btn btn-secondary btn-sm" style="align-self:flex-end">+ Obs</button>
+                    </div>
+                </div>
+                <div id="lab-conclusion-section" class="swipe-form-section" style="display:none">
+                    <div class="swipe-form-label">📊 Conclusão</div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Resultado</label><select id="lab-result" class="input"><option value="positivo">✅ Positivo</option><option value="negativo">❌ Negativo</option><option value="neutro">➖ Neutro</option></select></div>
+                        <div class="form-group"><label>Valor final</label><input type="text" id="lab-final-value" class="input" placeholder="Ex: 2.35%"></div>
+                        <div class="form-group"><label>Manter?</label><select id="lab-keep-change" class="input"><option value="true">✅ Sim</option><option value="false">❌ Não</option></select></div>
+                    </div>
+                    <div class="form-group"><label>Conclusão</label><textarea id="lab-conclusion" class="input" rows="2" placeholder="O que aconteceu? Resultado geral..."></textarea></div>
+                    <div class="form-group"><label>Aprendizados</label><textarea id="lab-learnings" class="input" rows="2" placeholder="O que aprendi para o futuro..."></textarea></div>
+                </div>
+                <div class="form-row" style="justify-content:space-between">
+                    <button type="button" id="btn-lab-delete" class="btn btn-secondary" style="color:var(--red);display:none">🗑️ Excluir</button>
+                    <button type="submit" class="btn btn-primary" style="margin-left:auto">💾 Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Pipeline Card Modal -->
     <div id="pipeline-modal" class="modal hidden">
@@ -1839,6 +2487,9 @@
     <script src="js/creatives.js"></script>
     <script src="js/ai-consultant.js"></script>
     <script src="js/pipeline.js"></script>
+    <script src="js/swipe.js"></script>
+    <script src="js/mining.js"></script>
+    <script src="js/lab-tests.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">

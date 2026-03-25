@@ -25,6 +25,7 @@ const DiaryModule = {
         { id: 'revenue', label: 'Receita', default: false },
         { id: 'cpa', label: 'CPA', default: false },
         { id: 'cpc', label: 'CPC', default: false },
+        { id: 'cpm', label: 'CPM', default: false },
         { id: 'roas', label: 'ROAS', default: false },
         { id: 'impressions', label: 'Impressoes', default: false },
         { id: 'profit', label: 'Lucro', default: false },
@@ -153,8 +154,20 @@ const DiaryModule = {
             case 'convCheckout': return this._fmtMetricCell(checkout > 0 ? sales / checkout * 100 : 0, 'convCheckout');
             case 'budget': return `<td class="num">${entry.budget ? entry.budget.toFixed(2) : '--'}</td>`;
             case 'revenue': return `<td class="num">${entry.revenue ? entry.revenue.toFixed(2) : '--'}</td>`;
-            case 'cpa': return `<td class="num">${entry.cpa ? entry.cpa.toFixed(2) : '--'}</td>`;
-            case 'cpc': return `<td class="num">${entry.cpc ? entry.cpc.toFixed(2) : '--'}</td>`;
+            case 'cpa': {
+                const cpaBRL = convertToBRL(entry.cpa || 0, entry.budgetCurrency || 'BRL');
+                return this._fmtMetricCellBRL(cpaBRL, 'cpa');
+            }
+            case 'cpc': {
+                const cpcBRL = convertToBRL(entry.cpc || 0, entry.cpcCurrency || entry.budgetCurrency || 'BRL');
+                return this._fmtMetricCellBRL(cpcBRL, 'cpc');
+            }
+            case 'cpm': {
+                const imp = Number(entry.impressions || 0);
+                if (imp <= 0) return '<td class="num">--</td>';
+                const cpmBRL = (convertToBRL(entry.budget || 0, entry.budgetCurrency || 'BRL') / imp) * 1000;
+                return this._fmtMetricCellBRL(cpmBRL, 'cpm');
+            }
             case 'roas': {
                 const roas = entry.budget > 0 ? (entry.revenue / entry.budget) : 0;
                 return `<td class="num">${roas > 0 ? roas.toFixed(2) + 'x' : '--'}</td>`;
@@ -198,7 +211,7 @@ const DiaryModule = {
     },
 
     _getHeaderHtml(col) {
-        const numCols = ['pageViews','atcRate','addToCart','icRate','sales','convPage','convCheckout','budget','revenue','cpa','cpc','roas','impressions','profit'];
+        const numCols = ['pageViews','atcRate','addToCart','icRate','sales','convPage','convCheckout','budget','revenue','cpa','cpc','cpm','roas','impressions','profit'];
         const isNum = numCols.includes(col.id);
         return `<th${isNum ? ' class="num"' : ''}>${this._escapeHtml(col.label)}</th>`;
     },
@@ -219,10 +232,28 @@ const DiaryModule = {
             case 'budget': return `<td class="num">${totals.totalBudget > 0 ? (totals.totalBudget / n).toFixed(2) : '--'}</td>`;
             case 'revenue': return `<td class="num">${totals.totalRevenue > 0 ? (totals.totalRevenue / n).toFixed(2) : '--'}</td>`;
             case 'cpa': {
-                const avgCpa = totals.totalSales > 0 ? totals.totalBudget / totals.totalSales : 0;
-                return `<td class="num">${avgCpa > 0 ? avgCpa.toFixed(2) : '--'}</td>`;
+                const totalBudgetBRL = sortedEntries.reduce((s, e) => s + convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL'), 0);
+                const avgCpaBRL = totals.totalSales > 0 ? totalBudgetBRL / totals.totalSales : 0;
+                return this._fmtMetricCellBRL(avgCpaBRL, 'cpa');
             }
-            case 'cpc': return `<td class="num">--</td>`;
+            case 'cpc': {
+                let totalClicks = 0, totalCpcBudgetBRL = 0;
+                sortedEntries.forEach(e => {
+                    if ((e.cpc || 0) > 0) {
+                        const budBRL = convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL');
+                        const cpcBRL = convertToBRL(e.cpc || 0, e.cpcCurrency || e.budgetCurrency || 'BRL');
+                        totalClicks += budBRL / cpcBRL;
+                        totalCpcBudgetBRL += budBRL;
+                    }
+                });
+                const avgCpcBRL = totalClicks > 0 ? totalCpcBudgetBRL / totalClicks : 0;
+                return this._fmtMetricCellBRL(avgCpcBRL, 'cpc');
+            }
+            case 'cpm': {
+                const totalBudgetBRL = sortedEntries.reduce((s, e) => s + convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL'), 0);
+                const avgCpmBRL = totals.totalImpressions > 0 ? (totalBudgetBRL / totals.totalImpressions) * 1000 : 0;
+                return this._fmtMetricCellBRL(avgCpmBRL, 'cpm');
+            }
             case 'roas': {
                 const roas = totals.totalBudget > 0 ? totals.totalRevenue / totals.totalBudget : 0;
                 return `<td class="num">${roas > 0 ? roas.toFixed(2) + 'x' : '--'}</td>`;
@@ -251,7 +282,11 @@ const DiaryModule = {
         atcRate:       { good: 8,  avg: 4  },
         icRate:        { good: 50, avg: 30 },
         convPage:      { good: 3,  avg: 1.5 },
-        convCheckout:  { good: 50, avg: 30 }
+        convCheckout:  { good: 50, avg: 30 },
+        // lower-is-better (values in BRL)
+        cpa:           { good: 30, avg: 60  },
+        cpc:           { good: 1.0, avg: 2.0 },
+        cpm:           { good: 10, avg: 25  }
     },
 
     _loadThresholds() {
@@ -275,10 +310,27 @@ const DiaryModule = {
         return 'metric-bad';
     },
 
+    // Lower-is-better (CPA, CPC, CPM)
+    _metricClassInverse(value, metricKey) {
+        if (!value || value <= 0) return '';
+        const t = this._loadThresholds()[metricKey];
+        if (!t) return '';
+        if (value <= t.good) return 'metric-good';
+        if (value <= t.avg) return 'metric-avg';
+        return 'metric-bad';
+    },
+
     _fmtMetricCell(value, metricKey) {
         if (!value || value <= 0) return '<td class="num">--</td>';
         const cls = this._metricClass(value, metricKey);
         const txt = value.toFixed(1).replace('.', ',') + '%';
+        return `<td class="num ${cls}">${txt}</td>`;
+    },
+
+    _fmtMetricCellBRL(valueBRL, metricKey) {
+        if (!valueBRL || valueBRL <= 0) return '<td class="num">--</td>';
+        const cls = this._metricClassInverse(valueBRL, metricKey);
+        const txt = 'R$\u00a0' + valueBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return `<td class="num ${cls}">${txt}</td>`;
     },
 
@@ -298,13 +350,21 @@ const DiaryModule = {
                 if (avgEl) avgEl.value = t[key]?.avg ?? '';
                 if (badEl) badEl.value = `< ${t[key]?.avg ?? ''}`;
             });
+            ['cpa', 'cpc', 'cpm'].forEach(key => {
+                const goodEl = document.getElementById(`th-${key}-good`);
+                const avgEl = document.getElementById(`th-${key}-avg`);
+                const badEl = document.getElementById(`th-${key}-bad`);
+                if (goodEl) goodEl.value = t[key]?.good ?? '';
+                if (avgEl) avgEl.value = t[key]?.avg ?? '';
+                if (badEl) badEl.value = `> ${t[key]?.avg ?? ''}`;
+            });
             openModal('thresholds-modal');
         });
 
         document.getElementById('thresholds-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
             const t = {};
-            ['atcRate', 'icRate', 'convPage', 'convCheckout'].forEach(key => {
+            ['atcRate', 'icRate', 'convPage', 'convCheckout', 'cpa', 'cpc', 'cpm'].forEach(key => {
                 const good = parseFloat(document.getElementById(`th-${key}-good`)?.value) || 0;
                 const avg = parseFloat(document.getElementById(`th-${key}-avg`)?.value) || 0;
                 t[key] = { good, avg };
@@ -1481,6 +1541,7 @@ const DiaryModule = {
 
     renderSummary(entries) {
         let totalBudget = 0, totalSales = 0, totalRevenue = 0, totalProfit = 0;
+        let totalClicks = 0, totalCpcBudget = 0;
 
         entries.forEach(entry => {
             const budgetUSD = convertToUSD(entry.budget, entry.budgetCurrency);
@@ -1490,9 +1551,17 @@ const DiaryModule = {
             totalSales += entry.sales;
             totalRevenue += revenueUSD;
             totalProfit += this.getEntryProfit(entry);
+
+            // CPC: accumulate clicks and budget for weighted average
+            if ((entry.cpc || 0) > 0 && entry.budget > 0) {
+                const clicks = entry.budget / entry.cpc;
+                totalClicks += clicks;
+                totalCpcBudget += budgetUSD;
+            }
         });
 
         const avgCPA = totalSales > 0 ? totalBudget / totalSales : 0;
+        const avgCPC = totalClicks > 0 ? totalCpcBudget / totalClicks : 0;
         const roas = totalBudget > 0 ? totalRevenue / totalBudget : 0;
 
         document.getElementById('summary-budget').textContent = formatDualCurrency(totalBudget, 'USD');
@@ -1501,6 +1570,7 @@ const DiaryModule = {
         document.getElementById('summary-profit').textContent = formatDualCurrency(totalProfit, 'USD');
         document.getElementById('summary-profit').style.color = totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
         document.getElementById('summary-cpa').textContent = avgCPA > 0 ? formatCurrency(avgCPA, 'USD') : '--';
+        document.getElementById('summary-cpc').textContent = avgCPC > 0 ? formatCurrency(avgCPC, 'USD') : '--';
         document.getElementById('summary-roas').textContent = roas > 0 ? roas.toFixed(2) + 'x' : '--';
     },
 
@@ -1939,8 +2009,9 @@ const DiaryModule = {
                     case 'sales': html += `<td class="num">${sub.sales || '--'}</td>`; break;
                     case 'budget': html += `<td class="num">${sub.budget ? sub.budget.toFixed(2) : '--'}</td>`; break;
                     case 'revenue': html += `<td class="num">${sub.revenue ? sub.revenue.toFixed(2) : '--'}</td>`; break;
-                    case 'cpa': html += `<td class="num">${sub.cpa ? sub.cpa.toFixed(2) : '--'}</td>`; break;
-                    case 'cpc': html += `<td class="num">${sub.cpc ? sub.cpc.toFixed(2) : '--'}</td>`; break;
+                    case 'cpa': { const cpaBRL = convertToBRL(sub.cpa || 0, sub.budgetCurrency || 'BRL'); html += this._fmtMetricCellBRL(cpaBRL, 'cpa'); break; }
+                    case 'cpc': { const cpcBRL = convertToBRL(sub.cpc || 0, sub.cpcCurrency || sub.budgetCurrency || 'BRL'); html += this._fmtMetricCellBRL(cpcBRL, 'cpc'); break; }
+                    case 'cpm': { const imp2 = Number(sub.impressions || 0); if (imp2 > 0) { const cpmBRL = (convertToBRL(sub.budget || 0, sub.budgetCurrency || 'BRL') / imp2) * 1000; html += this._fmtMetricCellBRL(cpmBRL, 'cpm'); } else html += '<td class="num">--</td>'; break; }
                     case 'roas': {
                         const roas = sub.budget > 0 ? (sub.revenue / sub.budget) : 0;
                         html += `<td class="num">${roas > 0 ? roas.toFixed(2) + 'x' : '--'}</td>`;
