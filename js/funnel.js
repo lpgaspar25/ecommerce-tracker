@@ -1368,27 +1368,37 @@ const FunnelModule = {
         // Separate summary rows (Ad="All" or Level="campaign") from ad-level rows
         // to avoid double-counting when both are present
         const adNameIdx = this._findHeaderIndex(headerMap, ['nome do anuncio', 'ad name']);
+        const campNameIdx = this._findHeaderIndex(headerMap, ['nome da campanha', 'campaign name']);
         const levelIdx = this._findHeaderIndex(headerMap, ['nivel de veiculacao', 'delivery level']);
 
-        const summaryRows = [];
-        const adRows = [];
+        const topLevelRows = [];  // "All/All" — the true daily aggregate row
+        const campaignRows = [];  // campaign-level totals
+        const adRows = [];        // individual ad rows
 
         dayRows.forEach(row => {
             const adName = adNameIdx >= 0 ? String(row?.[adNameIdx] || '').trim().toLowerCase() : '';
+            const campName = campNameIdx >= 0 ? String(row?.[campNameIdx] || '').trim().toLowerCase() : '';
             const level = levelIdx >= 0 ? this._normalizeCsvKey(row?.[levelIdx] || '') : '';
 
-            const isSummary = adName === 'all' || adName === '' || level === 'campaign';
-            if (isSummary) {
-                summaryRows.push(row);
+            if ((adName === 'all' || adName === '') && (campName === 'all' || campName === '')) {
+                topLevelRows.push(row);
+            } else if (adName === 'all' || level === 'campaign') {
+                campaignRows.push(row);
             } else {
                 adRows.push(row);
             }
         });
 
-        // If we have both summary and ad rows, prefer summary rows (they already total the ads)
-        const rowsToUse = (summaryRows.length > 0 && adRows.length > 0)
-            ? summaryRows
-            : dayRows;
+        // Priority: top-level "All/All" row > campaign totals > individual ad rows
+        // Never sum rows from different levels together — that causes double-counting
+        let rowsToUse;
+        if (topLevelRows.length > 0) {
+            rowsToUse = topLevelRows;
+        } else if (campaignRows.length > 0 && adRows.length > 0) {
+            rowsToUse = campaignRows; // campaign rows already total the ads
+        } else {
+            rowsToUse = dayRows;
+        }
 
         const metricRows = rowsToUse.filter(row => {
             const metrics = this._extractCsvMetricsFromRow(row, headerMap);
