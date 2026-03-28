@@ -30,6 +30,13 @@ const CalculatorModule = {
         });
         document.getElementById('calc-d-profit-currency').addEventListener('change', () => this.calcSectionD());
 
+        // Section E — Break-Even
+        document.getElementById('calc-e-budget').addEventListener('input', () => this.calcSectionE());
+        document.getElementById('calc-e-currency').addEventListener('change', () => this.calcSectionE());
+
+        // Section F — Meta de Margem %
+        document.getElementById('calc-f-margin').addEventListener('input', () => this.calcSectionF());
+
         EventBus.on('dataLoaded', () => this.onProductChange());
         EventBus.on('productsChanged', () => this.onProductChange());
         EventBus.on('rateUpdated', () => {
@@ -138,7 +145,18 @@ const CalculatorModule = {
         this.calcSectionA();
         this.calcSectionB();
         this.calcSectionC();
+        this.calcSectionE();
+        this.calcSectionF();
         this.calcSectionD();
+    },
+
+    // Returns gross margin per sale (price - cost - tax - variableCosts), WITHOUT CPA
+    _getGrossMarginPerSale() {
+        const product = this._selectedProduct;
+        if (!product) return 0;
+        const priceUSD = convertToUSD(this._getEffectivePrice(), product.priceCurrency);
+        const costUSD = convertToUSD(product.cost, product.costCurrency);
+        return priceUSD - costUSD - (priceUSD * product.tax / 100) - (priceUSD * product.variableCosts / 100);
     },
 
     _getCurrentCalcData() {
@@ -298,6 +316,81 @@ const CalculatorModule = {
         document.getElementById('calc-c-profit').textContent = formatDualCurrency(profitPredicted, 'USD');
         document.getElementById('calc-c-profit').style.color = profitPredicted >= 0 ? 'var(--green)' : 'var(--red)';
         document.getElementById('calc-c-revenue').textContent = formatDualCurrency(revenuePredicted, 'USD');
+    },
+
+    // ---- Section E: Break-Even por Orçamento ----
+    calcSectionE() {
+        const data = this._getCurrentCalcData();
+        const budget = parseFloat(document.getElementById('calc-e-budget').value) || 0;
+        const budgetCurrency = document.getElementById('calc-e-currency').value;
+        const resultsEl = document.getElementById('calc-e-results');
+
+        if (!data || budget <= 0) {
+            resultsEl.style.display = 'none';
+            return;
+        }
+
+        const grossMargin = this._getGrossMarginPerSale();
+
+        if (grossMargin <= 0) {
+            resultsEl.style.display = 'none';
+            return;
+        }
+
+        resultsEl.style.display = 'grid';
+
+        const budgetUSD = convertToUSD(budget, budgetCurrency);
+        const breakEvenSales = Math.ceil(budgetUSD / grossMargin);
+        const breakEvenROAS = data.priceUSD / grossMargin;
+
+        document.getElementById('calc-e-sales').textContent = `${breakEvenSales} vendas`;
+        document.getElementById('calc-e-cpa-max').textContent = formatDualCurrency(grossMargin, 'USD');
+        document.getElementById('calc-e-roas-min').textContent = breakEvenROAS.toFixed(2) + 'x';
+    },
+
+    // ---- Section F: Meta de Margem % ----
+    calcSectionF() {
+        const data = this._getCurrentCalcData();
+        const marginPct = parseFloat(document.getElementById('calc-f-margin').value);
+        const resultsEl = document.getElementById('calc-f-results');
+
+        if (!data || isNaN(marginPct) || marginPct < 0) {
+            resultsEl.style.display = 'none';
+            return;
+        }
+
+        const grossMargin = this._getGrossMarginPerSale();
+        const targetProfitPerSale = data.priceUSD * (marginPct / 100);
+        const maxCPA = grossMargin - targetProfitPerSale;
+        const minROAS = maxCPA > 0 ? data.priceUSD / maxCPA : null;
+        const cpaDiff = data.cpaUSD - maxCPA;
+
+        resultsEl.style.display = 'grid';
+
+        document.getElementById('calc-f-profit-per-sale').textContent = formatDualCurrency(targetProfitPerSale, 'USD');
+
+        const cpaMaxEl = document.getElementById('calc-f-cpa-max');
+        if (maxCPA > 0) {
+            cpaMaxEl.textContent = formatDualCurrency(maxCPA, 'USD');
+            cpaMaxEl.style.color = '';
+        } else {
+            cpaMaxEl.textContent = 'Impossível com essa margem';
+            cpaMaxEl.style.color = 'var(--red)';
+        }
+
+        document.getElementById('calc-f-roas-min').textContent = minROAS ? minROAS.toFixed(2) + 'x' : '--';
+
+        const statusEl = document.getElementById('calc-f-cpa-status');
+        if (data.cpaUSD <= 0) {
+            statusEl.textContent = '--';
+            statusEl.style.color = '';
+        } else if (maxCPA > 0 && data.cpaUSD <= maxCPA) {
+            statusEl.textContent = `✓ Dentro da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} abaixo do máximo)`;
+            statusEl.style.color = 'var(--green)';
+        } else {
+            statusEl.textContent = `✗ Fora da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} acima do máximo)`;
+            statusEl.style.color = 'var(--red)';
+        }
     },
 
     // ---- Section D: Compare CPAs ----

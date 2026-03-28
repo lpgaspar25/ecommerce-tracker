@@ -1110,6 +1110,67 @@
                     </div>
                 </div>
 
+                <!-- Section E: Break-Even por Orçamento -->
+                <div class="calc-section">
+                    <h3>E — Break-Even: Mínimo de Vendas</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Orçamento Diário</label>
+                            <input type="number" id="calc-e-budget" class="input" step="0.01" placeholder="300.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-e-currency" class="input">
+                                <option value="USD">USD</option>
+                                <option value="BRL">BRL</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-e-results" style="display:none">
+                        <div class="result-card highlight">
+                            <label>Vendas Mínimas (Break-Even)</label>
+                            <span class="result-value" id="calc-e-sales">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>CPA Máximo (Break-Even)</label>
+                            <span class="result-value" id="calc-e-cpa-max">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>ROAS Mínimo (Break-Even)</label>
+                            <span class="result-value" id="calc-e-roas-min">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section F: Meta de Margem % -->
+                <div class="calc-section">
+                    <h3>F — Meta de Margem de Lucro (%)</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Meta de Margem Líquida (%)</label>
+                            <input type="number" id="calc-f-margin" class="input" step="0.1" min="0" max="100" placeholder="20">
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-f-results" style="display:none">
+                        <div class="result-card highlight">
+                            <label>Lucro Alvo por Venda</label>
+                            <span class="result-value" id="calc-f-profit-per-sale">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>CPA Máximo Permitido</label>
+                            <span class="result-value" id="calc-f-cpa-max">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>ROAS Mínimo</label>
+                            <span class="result-value" id="calc-f-roas-min">--</span>
+                        </div>
+                        <div class="result-card">
+                            <label>CPA Atual vs Meta</label>
+                            <span class="result-value" id="calc-f-cpa-status">--</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Section D: Compare CPAs -->
                 <div class="calc-section">
                     <h3>D — Comparar CPAs</h3>
