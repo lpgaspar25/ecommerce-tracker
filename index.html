@@ -95,6 +95,7 @@
         <button class="tab-btn" data-tab="mineracao">⛏️ Mineração</button>
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+        <button class="tab-btn" data-tab="projects">Projetos</button>
     </nav>
 
     <!-- Tab Content -->
@@ -518,6 +519,7 @@
             <div class="creative-subtabs-row">
                 <button class="diary-subtab creative-subtab active" data-subtab="diary">📊 Diário</button>
                 <button class="diary-subtab creative-subtab" data-subtab="calendar">📅 Calendário</button>
+                <button class="diary-subtab creative-subtab" data-subtab="crm">📞 CRM</button>
             </div>
             <div id="diary-main-sub">
             <div class="section-header">
@@ -957,6 +959,19 @@
             <!-- Calendar sub-tab -->
             <div id="diary-calendar-sub" style="display:none">
                 <div id="diary-calendar-content" style="position:relative"></div>
+            </div>
+
+            <!-- CRM sub-tab -->
+            <div id="diary-crm-sub" style="display:none">
+                <div class="section-header" style="margin-bottom:1rem">
+                    <h2>📞 CRM — Chargeback &amp; Atendimento</h2>
+                    <button id="btn-crm-new-month" class="btn btn-primary">+ Novo Mês</button>
+                </div>
+                <div id="crm-panel">
+                    <div id="crm-panel-content">
+                        <p style="color:var(--text-muted);text-align:center;padding:2rem">Carregando...</p>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -2056,6 +2071,16 @@
             </div>
         </section>
 
+        <!-- ==================== PROJETOS ==================== -->
+        <section id="tab-projects" class="tab-panel">
+            <div class="section-header">
+                <h2>📋 Projetos &amp; Planejamento</h2>
+                <button id="btn-add-project" class="btn btn-primary">+ Novo Projeto</button>
+            </div>
+            <div class="projects-stats" id="projects-stats"></div>
+            <div id="projects-list" class="projects-list"></div>
+        </section>
+
     </main>
 
     <!-- Lab Test Modal -->
@@ -2151,6 +2176,19 @@
                     <div class="form-group"><label>Conclusão</label><textarea id="lab-conclusion" class="input" rows="2" placeholder="O que aconteceu? Resultado geral..."></textarea></div>
                     <div class="form-group"><label>Aprendizados</label><textarea id="lab-learnings" class="input" rows="2" placeholder="O que aprendi para o futuro..."></textarea></div>
                 </div>
+                <!-- Multi-stage section -->
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">🔀 Fases do Teste</div>
+                    <div class="form-group" style="flex-direction:row;align-items:center;gap:0.5rem">
+                        <input type="checkbox" id="test-has-stages" style="width:auto">
+                        <label for="test-has-stages" style="margin:0;cursor:pointer">Teste multi-fase</label>
+                    </div>
+                    <div id="test-stages-container" style="display:none;margin-top:0.5rem">
+                        <div id="test-stages-list" style="display:flex;flex-direction:column;gap:0.25rem"></div>
+                        <button type="button" id="btn-add-stage" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;width:100%">+ Adicionar Fase</button>
+                    </div>
+                </div>
+
                 <div class="form-row" style="justify-content:space-between">
                     <button type="button" id="btn-lab-delete" class="btn btn-secondary" style="color:var(--red);display:none">🗑️ Excluir</button>
                     <button type="submit" class="btn btn-primary" style="margin-left:auto">💾 Salvar</button>
@@ -2480,6 +2518,195 @@
         </div>
     </div>
 
+    <!-- Project Modal -->
+    <div id="modal-project" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal('modal-project')"></div>
+        <div class="modal-content" style="max-width:560px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3 id="modal-project-title">Novo Projeto</h3>
+                <button class="btn-close" onclick="closeModal('modal-project')">&times;</button>
+            </div>
+            <form id="form-project" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem" onsubmit="return false">
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Nome do Projeto *</label>
+                        <input type="text" name="name" class="input" required placeholder="Ex: Lançar produto X">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select name="type" class="input">
+                            <option value="loja">🏪 Loja</option>
+                            <option value="saas">🤖 SaaS</option>
+                            <option value="estudo">📚 Estudo</option>
+                            <option value="financeiro">💰 Financeiro</option>
+                            <option value="outro">📦 Outro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select name="status" class="input">
+                            <option value="ativo">✅ Ativo</option>
+                            <option value="pausado">⏸️ Pausado</option>
+                            <option value="concluido">🏁 Concluído</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Descrição</label>
+                    <textarea name="description" class="input" rows="2" placeholder="Descreva o projeto..."></textarea>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">🎯 Meta Financeira</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Valor</label>
+                            <input type="number" name="goalAmount" class="input" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select name="goalCurrency" class="input">
+                                <option value="BRL">BRL</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Período</label>
+                            <select name="goalPeriod" class="input">
+                                <option value="mes">Mês</option>
+                                <option value="semana">Semana</option>
+                                <option value="dia">Dia</option>
+                                <option value="total">Total</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Métrica</label>
+                            <select name="goalLabel" class="input">
+                                <option value="lucro líquido">Lucro líquido</option>
+                                <option value="receita">Receita</option>
+                                <option value="vendas">Vendas</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">💸 Budget de Validação</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2">
+                            <label>Budget total</label>
+                            <input type="number" name="validationBudget" class="input" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select name="validationBudgetCurrency" class="input">
+                                <option value="BRL">BRL</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:2">
+                            <label>Já gasto</label>
+                            <input type="number" name="validationSpent" class="input" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Data início</label>
+                        <input type="date" name="startDate" class="input">
+                    </div>
+                    <div class="form-group">
+                        <label>Prazo</label>
+                        <input type="date" name="targetDate" class="input">
+                    </div>
+                </div>
+                <div class="form-row" style="justify-content:space-between">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-project')">Cancelar</button>
+                    <button type="button" id="btn-save-project" class="btn btn-primary">💾 Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- CRM Modal -->
+    <div id="crm-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:520px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3 id="crm-modal-title">Novo Mês CRM</h3>
+                <button class="btn-close" id="crm-modal-close">&times;</button>
+            </div>
+            <form id="crm-form" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem" onsubmit="return false">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Mês *</label>
+                        <input type="month" id="crm-month" class="input" required>
+                    </div>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">💰 Receita</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2">
+                            <label>Receita total</label>
+                            <input type="number" id="crm-revenue" class="input" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="crm-revenue-currency" class="input">
+                                <option value="BRL">BRL</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">↩️ Chargeback</div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2">
+                            <label>Valor chargeback</label>
+                            <input type="number" id="crm-chargeback-amount" class="input" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="crm-chargeback-currency" class="input">
+                                <option value="BRL">BRL</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>% Chargeback</label>
+                            <input type="number" id="crm-chargeback-pct" class="input" min="0" step="0.01" placeholder="auto" readonly style="background:var(--bg-secondary)">
+                        </div>
+                    </div>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label">🎧 Suporte</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tickets</label>
+                            <input type="number" id="crm-support-tickets" class="input" min="0" step="1" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label>T. Resp. Médio (h)</label>
+                            <input type="number" id="crm-avg-response" class="input" min="0" step="0.5" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Taxa Resolução (%)</label>
+                            <input type="number" id="crm-resolution-rate" class="input" min="0" max="100" step="0.1" placeholder="0">
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notas</label>
+                    <textarea id="crm-notes" class="input" rows="2" placeholder="Observações do mês..."></textarea>
+                </div>
+                <div class="form-row" style="justify-content:space-between">
+                    <button type="button" class="btn btn-secondary" id="crm-modal-cancel">Cancelar</button>
+                    <button type="button" id="btn-save-crm-entry" class="btn btn-primary">💾 Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- AI Consultant Floating Button & Panel -->
     <button id="ai-consultant-btn" class="ai-fab" title="Consultor IA de Ads">🤖</button>
 
@@ -2528,6 +2755,8 @@
     <script src="js/swipe.js"></script>
     <script src="js/mining.js"></script>
     <script src="js/lab-tests.js"></script>
+    <script src="js/projects.js"></script>
+    <script src="js/crm.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">

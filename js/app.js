@@ -32,6 +32,7 @@ const AppState = {
     allDiary: [],
     allCreatives: [],
     allCreativeMetrics: [],
+    allProjects: [],
 
     // Filtered by current store (these are used by all modules)
     products: [],
@@ -39,6 +40,7 @@ const AppState = {
     diary: [],
     creatives: [],
     creativeMetrics: [],
+    projects: [],
 
     exchangeRate: null,
     exchangeRateOverride: null,
@@ -131,12 +133,14 @@ function filterDataByStore() {
         AppState.diary = [...AppState.allDiary];
         AppState.creatives = [...(AppState.allCreatives || [])];
         AppState.creativeMetrics = [...(AppState.allCreativeMetrics || [])];
+        AppState.projects = [...(AppState.allProjects || [])];
     } else {
         AppState.products = AppState.allProducts.filter(p => p.storeId === storeId);
         AppState.goals = AppState.allGoals.filter(g => g.storeId === storeId);
         AppState.diary = AppState.allDiary.filter(d => d.storeId === storeId);
         AppState.creatives = (AppState.allCreatives || []).filter(c => c.storeId === storeId);
         AppState.creativeMetrics = (AppState.allCreativeMetrics || []).filter(m => m.storeId === storeId);
+        AppState.projects = (AppState.allProjects || []).filter(p => p.storeId === storeId);
     }
 }
 
@@ -1007,6 +1011,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof SwipeModule !== 'undefined') SwipeModule.init();
     if (typeof MiningModule !== 'undefined') MiningModule.init();
     if (typeof LabTestsModule !== 'undefined') LabTestsModule.init();
+    if (typeof ProjectsModule !== 'undefined') ProjectsModule.init();
+    if (typeof CRMModule !== 'undefined') CRMModule.init();
 
     // Load stores from localStorage
     AppState.stores = JSON.parse(localStorage.getItem('etracker_stores') || '[]');

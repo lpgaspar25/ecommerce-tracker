@@ -19,7 +19,8 @@ const SheetsAPI = {
         GOOGLE_ADS_QUEUE: 'GoogleAdsQueue',
         GOOGLE_ADS_RUNS: 'GoogleAdsRuns',
         CREATIVES: 'Criativos',
-        CREATIVE_METRICS: 'MetricasCriativos'
+        CREATIVE_METRICS: 'MetricasCriativos',
+        PROJECTS: 'Projetos'
     },
 
     async init(manual = false) {
@@ -1013,6 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
     AppState.allDiary = LocalStore.load('diary') || [];
     AppState.allCreatives = LocalStore.load('creatives') || [];
     AppState.allCreativeMetrics = LocalStore.load('creative_metrics') || [];
+    AppState.allProjects = LocalStore.load('projects') || [];
 
     // Migration v2: fix diary entries where BRL values were stored with budgetCurrency='USD'
     // (caused by import not detecting 'brl' in the spreadsheet header name)
@@ -1068,3 +1070,4 @@ EventBus.on('creativesChanged', () => {
     LocalStore.save('creatives', AppState.allCreatives);
     LocalStore.save('creative_metrics', AppState.allCreativeMetrics);
 });
+EventBus.on('projectsChanged', () => LocalStore.save('projects', AppState.allProjects));

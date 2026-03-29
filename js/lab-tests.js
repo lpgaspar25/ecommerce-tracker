@@ -64,9 +64,12 @@ const LabTestsModule = {
                 const tab = btn.dataset.subtab;
                 const mainEl = document.getElementById('diary-main-sub');
                 const calEl = document.getElementById('diary-calendar-sub');
+                const crmEl = document.getElementById('diary-crm-sub');
                 if (mainEl) mainEl.style.display = tab === 'diary' ? '' : 'none';
                 if (calEl) calEl.style.display = tab === 'calendar' ? '' : 'none';
+                if (crmEl) crmEl.style.display = tab === 'crm' ? '' : 'none';
                 if (tab === 'calendar') this._renderCalendar();
+                if (tab === 'crm' && typeof CRMModule !== 'undefined') CRMModule.render();
             });
         });
 
@@ -86,6 +89,17 @@ const LabTestsModule = {
                 section.style.display = show ? '' : 'none';
                 if (btn) btn.textContent = show ? '📈 Esconder métricas' : '📈 Adicionar métricas';
             }
+        });
+
+        // Stages toggle
+        document.getElementById('test-has-stages')?.addEventListener('change', (e) => {
+            const container = document.getElementById('test-stages-container');
+            if (container) container.style.display = e.target.checked ? '' : 'none';
+        });
+
+        document.getElementById('btn-add-stage')?.addEventListener('click', () => {
+            const list = document.getElementById('test-stages-list');
+            if (list) this._addStageRow(list, null, list.children.length);
         });
     },
 
@@ -171,7 +185,18 @@ const LabTestsModule = {
 
         // Bind card clicks
         container.querySelectorAll('.lab-card').forEach(card => {
-            card.addEventListener('click', () => this._openModal(card.dataset.id));
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.lab-stage-advance-btn')) return;
+                this._openModal(card.dataset.id);
+            });
+        });
+
+        // Bind stage advance buttons
+        container.querySelectorAll('.lab-stage-advance-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._advanceStage(btn.dataset.testId, btn.dataset.stageId);
+            });
         });
     },
 
@@ -230,6 +255,7 @@ const LabTestsModule = {
                 ${obsCount ? `<span>💬 ${obsCount}</span>` : ''}
             </div>` : ''}
             ${test.status === 'concluido' && test.conclusion ? `<p class="lab-card-conclusion">${this._esc(test.conclusion)}</p>` : ''}
+            ${test.stages && test.stages.length > 0 ? this._renderStagesProgress(test) : ''}
             <div class="lab-card-dates">${test.dateStart} → ${test.dateEnd}</div>
         </div>`;
     },
@@ -318,6 +344,21 @@ const LabTestsModule = {
             const s = get('lab-status').value;
             if (conclusionSection) conclusionSection.style.display = s === 'concluido' || s === 'cancelado' ? '' : 'none';
         };
+
+        // Stages
+        const stagesCheckbox = document.getElementById('test-has-stages');
+        const stagesContainer = document.getElementById('test-stages-container');
+        const stagesList = document.getElementById('test-stages-list');
+        const hasStages = test?.stages && test.stages.length > 0;
+        if (stagesCheckbox) stagesCheckbox.checked = hasStages;
+        if (stagesContainer) stagesContainer.style.display = hasStages ? '' : 'none';
+        if (stagesList) {
+            stagesList.innerHTML = '';
+            if (hasStages) {
+                const sorted = [...test.stages].sort((a, b) => a.order - b.order);
+                sorted.forEach((s, i) => this._addStageRow(stagesList, s, i));
+            }
+        }
 
         // Delete button
         const delBtn = document.getElementById('btn-lab-delete');
@@ -422,6 +463,11 @@ const LabTestsModule = {
             finalValue: get('lab-final-value'),
             keepChange: get('lab-keep-change') === 'true',
             learnings: get('lab-learnings'),
+            stages: (() => {
+                const hasStages = document.getElementById('test-has-stages')?.checked;
+                if (!hasStages) return [];
+                return this._buildStagesFromForm();
+            })(),
         };
 
         if (!data.title) { showToast('Preencha o título', 'error'); return; }
@@ -760,5 +806,110 @@ const LabTestsModule = {
         const d = document.createElement('div');
         d.textContent = str || '';
         return d.innerHTML;
+    },
+
+    // ── Multi-Stage support ───────────────────────────────────────────
+
+    _genStageId() {
+        return 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+    },
+
+    _renderStagesProgress(test) {
+        if (!test.stages || !test.stages.length) return '';
+        const stages = [...test.stages].sort((a, b) => a.order - b.order);
+        const statusIcon = { pendente: '⏳', em_andamento: '🔬', concluido: '✅' };
+        const statusColor = { pendente: '#9ca3af', em_andamento: 'var(--accent)', concluido: '#059669' };
+
+        const steps = stages.map((s, i) => {
+            const isActive = s.status === 'em_andamento';
+            const isDone = s.status === 'concluido';
+            return `<div class="lab-stage-step ${isActive ? 'lab-stage-active' : ''} ${isDone ? 'lab-stage-done' : ''}" data-stage-id="${s.id}" data-test-id="${test.id}">
+                <div class="lab-stage-circle" style="background:${statusColor[s.status] || '#9ca3af'}" title="${s.status}">${statusIcon[s.status] || '⏳'}</div>
+                <div class="lab-stage-label">
+                    <span>${this._esc(s.name || 'Fase ' + s.order)}</span>
+                    ${s.result !== null && s.result !== undefined ? `<small style="color:${s.result === 'positivo' ? '#059669' : s.result === 'negativo' ? '#dc2626' : '#6b7280'}">${s.result}</small>` : ''}
+                </div>
+                ${i < stages.length - 1 ? '<div class="lab-stage-arrow">→</div>' : ''}
+            </div>`;
+        }).join('');
+
+        const activeStage = stages.find(s => s.status === 'em_andamento');
+        const advanceBtn = activeStage
+            ? `<button class="btn btn-secondary btn-sm lab-stage-advance-btn" data-test-id="${test.id}" data-stage-id="${activeStage.id}" style="margin-top:0.5rem;font-size:0.75rem">
+                ▶ Avançar Fase: "${this._esc(activeStage.name || 'Fase ' + activeStage.order)}"
+               </button>` : '';
+
+        return `<div class="lab-stages-container">
+            <div class="lab-stages-track">${steps}</div>
+            ${advanceBtn}
+            ${activeStage?.observations ? `<p class="lab-stage-obs">${this._esc(activeStage.observations)}</p>` : ''}
+        </div>`;
+    },
+
+    _advanceStage(testId, stageId) {
+        const test = this._tests.find(t => t.id === testId);
+        if (!test || !test.stages) return;
+
+        const stages = [...test.stages].sort((a, b) => a.order - b.order);
+        const idx = stages.findIndex(s => s.id === stageId);
+        if (idx < 0) return;
+
+        const result = prompt('Resultado desta fase (positivo / negativo / neutro):') || 'neutro';
+        const obs = prompt('Observações desta fase (opcional):') || '';
+
+        stages[idx].status = 'concluido';
+        stages[idx].result = ['positivo','negativo','neutro'].includes(result) ? result : 'neutro';
+        stages[idx].observations = obs;
+
+        // Start next stage
+        if (idx + 1 < stages.length) {
+            stages[idx + 1].status = 'em_andamento';
+        }
+
+        test.stages = stages;
+        test.updatedAt = new Date().toISOString();
+        this._persist();
+        this._renderCards();
+        showToast('Fase avançada!', 'success');
+    },
+
+    _buildStagesFromForm() {
+        const rows = document.querySelectorAll('#test-stages-list .lab-stage-row');
+        const stages = [];
+        rows.forEach((row, i) => {
+            const name = row.querySelector('.lab-stage-name')?.value?.trim() || ('Fase ' + (i + 1));
+            const status = row.querySelector('.lab-stage-status')?.value || 'pendente';
+            const obs = row.querySelector('.lab-stage-obs-input')?.value?.trim() || '';
+            stages.push({
+                id: row.dataset.stageId || this._genStageId(),
+                order: i + 1,
+                name,
+                status: i === 0 && stages.length === 0 ? 'em_andamento' : status,
+                result: null,
+                observations: obs,
+            });
+        });
+        return stages;
+    },
+
+    _addStageRow(container, stage = null, index = 0) {
+        const stageId = stage?.id || this._genStageId();
+        const row = document.createElement('div');
+        row.className = 'lab-stage-row';
+        row.dataset.stageId = stageId;
+        row.style.cssText = 'display:flex;gap:0.5rem;align-items:center;margin-bottom:0.35rem';
+        row.innerHTML = `
+            <span style="color:var(--text-muted);font-size:0.75rem;min-width:50px">Fase ${index + 1}</span>
+            <input class="input lab-stage-name" type="text" placeholder="Nome da fase" value="${this._esc(stage?.name || '')}" style="flex:2">
+            <select class="input lab-stage-status" style="flex:1">
+                <option value="pendente" ${(!stage || stage.status === 'pendente') ? 'selected' : ''}>⏳ Pendente</option>
+                <option value="em_andamento" ${stage?.status === 'em_andamento' ? 'selected' : ''}>🔬 Em andamento</option>
+                <option value="concluido" ${stage?.status === 'concluido' ? 'selected' : ''}>✅ Concluído</option>
+            </select>
+            <input class="input lab-stage-obs-input" type="text" placeholder="Observações" value="${this._esc(stage?.observations || '')}" style="flex:2">
+            <button type="button" class="btn-icon lab-stage-del" style="color:var(--red)" title="Remover fase">×</button>
+        `;
+        row.querySelector('.lab-stage-del')?.addEventListener('click', () => row.remove());
+        container.appendChild(row);
     },
 };
