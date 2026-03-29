@@ -64,12 +64,9 @@ const LabTestsModule = {
                 const tab = btn.dataset.subtab;
                 const mainEl = document.getElementById('diary-main-sub');
                 const calEl = document.getElementById('diary-calendar-sub');
-                const crmEl = document.getElementById('diary-crm-sub');
                 if (mainEl) mainEl.style.display = tab === 'diary' ? '' : 'none';
                 if (calEl) calEl.style.display = tab === 'calendar' ? '' : 'none';
-                if (crmEl) crmEl.style.display = tab === 'crm' ? '' : 'none';
                 if (tab === 'calendar') this._renderCalendar();
-                if (tab === 'crm' && typeof CRMModule !== 'undefined') CRMModule.render();
             });
         });
 
