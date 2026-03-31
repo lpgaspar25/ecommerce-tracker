@@ -913,7 +913,9 @@ select.input {
 textarea.input {
     resize: vertical;
     height: auto;
-    min-height: 80px;
+    min-height: 120px;
+    line-height: 1.5;
+    field-sizing: content;
 }
 
 .form-group {
