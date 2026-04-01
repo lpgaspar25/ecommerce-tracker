@@ -426,19 +426,17 @@ const DashboardModule = {
 
     _fmtCurrency(valUSD) {
         // valUSD is always in USD from _aggregate. Convert to selected currency.
-        if (this._currency === 'BRL') {
-            const brl = typeof convertToBRL === 'function' ? convertToBRL(valUSD, 'USD') : valUSD * 5.25;
-            return 'R$' + Number(brl || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-        return '$' + Number(valUSD || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const converted = convertCurrency(valUSD, 'USD', this._currency);
+        return formatCurrency(converted, this._currency);
     },
 
     // Format currency using pre-computed BRL and USD values (avoids round-trip conversion)
     _fmtCurrencyDirect(valBRL, valUSD) {
-        if (this._currency === 'BRL') {
-            return 'R$' + Number(valBRL || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-        return '$' + Number(valUSD || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (this._currency === 'BRL') return formatCurrency(valBRL, 'BRL');
+        if (this._currency === 'USD') return formatCurrency(valUSD, 'USD');
+        // For GBP/EUR, convert from USD
+        const converted = convertCurrency(valUSD, 'USD', this._currency);
+        return formatCurrency(converted, this._currency);
     },
 
     // Row 2 Left: Centro de Decisão - action items

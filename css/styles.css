@@ -691,9 +691,19 @@ body {
     color: var(--text-secondary);
 }
 
-#exchange-rate {
+#exchange-rate, #exchange-rate-brl, #exchange-rate-gbp, #exchange-rate-eur {
     font-weight: 700;
     color: var(--green);
+}
+.currency-rates-compact {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.currency-rates-compact .currency-label {
+    margin-left: 0.3rem;
+    font-size: 0.72rem;
+    opacity: 0.7;
 }
 
 .status-badge {
@@ -3886,66 +3896,88 @@ thead:hover .diary-check-col input[type="checkbox"],
    AI CONSULTANT — Floating Panel
    =========================== */
 
-.ai-fab {
-    position: fixed;
-    bottom: 1.5rem;
-    right: 1.5rem;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: var(--blue);
-    color: #fff;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-    z-index: 1000;
-    transition: transform 0.2s, background 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.ai-fab:hover { transform: scale(1.1); background: var(--blue-hover, #2563eb); }
-
-.ai-panel {
-    position: fixed;
-    top: 0;
-    right: -420px;
-    width: 400px;
-    height: 100vh;
-    background: var(--card-bg);
-    border-left: 1px solid var(--border);
-    box-shadow: -4px 0 24px rgba(0,0,0,0.3);
-    z-index: 1001;
+/* AI Consultor — Embedded in Diário tab */
+.ai-tab-container {
     display: flex;
     flex-direction: column;
-    transition: right 0.3s ease;
+    height: calc(100vh - 160px);
+    min-height: 500px;
 }
-.ai-panel.ai-panel-open { right: 0; }
-
-.ai-panel-header {
+.ai-tab-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0 1rem 0;
 }
-.ai-panel-header h3 { margin: 0; font-size: 1rem; }
+.ai-tab-header h2 { margin: 0; font-size: 1.2rem; }
+.ai-tab-title .section-subtitle { display: block; margin-top: 0.2rem; }
 
-.ai-panel-body {
+/* Quick action cards */
+.ai-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.ai-action-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.9rem 0.75rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    text-align: center;
+}
+.ai-action-card:hover {
+    border-color: var(--blue);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59,130,246,0.15);
+}
+.ai-action-highlight {
+    border-color: var(--blue);
+    background: rgba(59,130,246,0.08);
+}
+.ai-action-highlight:hover {
+    background: rgba(59,130,246,0.15);
+    box-shadow: 0 4px 16px rgba(59,130,246,0.25);
+}
+.ai-action-icon { font-size: 1.5rem; }
+.ai-action-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+.ai-action-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+/* Chat area */
+.ai-chat-area {
     flex: 1;
     overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
     padding: 1rem;
+    margin-bottom: 0.75rem;
 }
-
-.ai-messages { display: flex; flex-direction: column; gap: 0.75rem; }
-
+.ai-messages-embedded {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
 .ai-message {
     border-radius: 10px;
-    padding: 0.75rem;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    max-width: 95%;
+    padding: 0.75rem 1rem;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    max-width: 85%;
 }
 .ai-message-user {
     background: var(--blue);
@@ -3954,10 +3986,11 @@ thead:hover .diary-check-col input[type="checkbox"],
     border-bottom-right-radius: 2px;
 }
 .ai-message-assistant {
-    background: var(--bg);
+    background: var(--card-bg);
     color: var(--text);
     align-self: flex-start;
     border-bottom-left-radius: 2px;
+    border: 1px solid var(--border);
 }
 .ai-message-content { word-wrap: break-word; }
 
@@ -3982,15 +4015,22 @@ thead:hover .diary-check-col input[type="checkbox"],
     40% { transform: scale(1); opacity: 1; }
 }
 
-.ai-panel-footer {
+/* Input area */
+.ai-input-area {
     display: flex;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid var(--border);
     align-items: flex-end;
 }
-.ai-panel-footer textarea { flex: 1; resize: none; }
-.ai-panel-footer .btn { height: auto; padding: 0.5rem 1rem; }
+.ai-input-area textarea {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+}
+.ai-input-area .btn {
+    height: auto;
+    padding: 0.6rem 1.2rem;
+    white-space: nowrap;
+}
 
 /* Date preset buttons */
 .date-presets {
@@ -4249,8 +4289,10 @@ thead:hover .diary-check-col input[type="checkbox"],
 
 @media (max-width: 768px) {
     .creative-cards-grid { grid-template-columns: 1fr; }
-    .ai-panel { width: 100%; right: -100%; }
-    .ai-fab { bottom: 1rem; right: 1rem; width: 48px; height: 48px; font-size: 1.2rem; }
+    .ai-quick-actions { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    .ai-action-card { padding: 0.7rem 0.5rem; }
+    .ai-tab-container { height: calc(100vh - 140px); }
+    .ai-message { max-width: 95%; }
 }
 
 /* ===== Metric Info Tooltips ===== */

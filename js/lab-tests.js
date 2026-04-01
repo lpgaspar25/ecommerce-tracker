@@ -64,8 +64,10 @@ const LabTestsModule = {
                 const tab = btn.dataset.subtab;
                 const mainEl = document.getElementById('diary-main-sub');
                 const calEl = document.getElementById('diary-calendar-sub');
+                const aiEl = document.getElementById('diary-ai-sub');
                 if (mainEl) mainEl.style.display = tab === 'diary' ? '' : 'none';
                 if (calEl) calEl.style.display = tab === 'calendar' ? '' : 'none';
+                if (aiEl) aiEl.style.display = tab === 'ai' ? '' : 'none';
                 if (tab === 'calendar') this._renderCalendar();
             });
         });

@@ -839,14 +839,11 @@ const FunnelModule = {
     _fmtCurrency(v, currency) {
         if (v == null || isNaN(v) || v === 0) return '--';
         currency = currency || this.state.actual.ticketCurrency || 'BRL';
-        if (currency === 'USD') {
-            return '$ ' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-        return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return currencySymbol(currency) + ' ' + v.toLocaleString(currency === 'BRL' ? 'pt-BR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
 
     _currencySymbol() {
-        return this.state.actual.ticketCurrency === 'USD' ? '$' : 'R$';
+        return currencySymbol(this.state.actual.ticketCurrency || 'BRL');
     },
 
     // ---- Shared Input Listener ----

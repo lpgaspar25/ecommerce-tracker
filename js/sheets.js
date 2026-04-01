@@ -409,15 +409,25 @@ const SheetsAPI = {
 
             // Parse config
             const configRows = ranges[3].values || [];
+            if (!AppState.exchangeRates) AppState.exchangeRates = { BRL: 5.20, GBP: 0.79, EUR: 0.92 };
             configRows.forEach(row => {
                 if (row[0] === 'cotacao_usd_brl' && row[1]) {
                     const rate = parseFloat(row[1]);
                     if (rate > 0 && !AppState.exchangeRate) {
                         AppState.exchangeRate = rate;
-                        document.getElementById('exchange-rate').textContent = rate.toFixed(2);
+                        AppState.exchangeRates.BRL = rate;
                     }
                 }
+                if (row[0] === 'cotacao_usd_gbp' && row[1]) {
+                    const rate = parseFloat(row[1]);
+                    if (rate > 0) AppState.exchangeRates.GBP = rate;
+                }
+                if (row[0] === 'cotacao_usd_eur' && row[1]) {
+                    const rate = parseFloat(row[1]);
+                    if (rate > 0) AppState.exchangeRates.EUR = rate;
+                }
             });
+            CurrencyModule._updateDisplay();
 
             LocalStore.save('stores', AppState.stores);
             LocalStore.save('products', AppState.allProducts);

@@ -44,6 +44,8 @@ const AppState = {
 
     exchangeRate: null,
     exchangeRateOverride: null,
+    exchangeRates: null,        // { BRL: 5.20, GBP: 0.79, EUR: 0.92 }
+    exchangeRatesOverride: null, // manual overrides per currency
     sheetsConnected: false,
     theme: localStorage.getItem('theme') || 'dark',
     config: {
@@ -734,70 +736,80 @@ function escapeHtml(raw) {
 function formatCurrency(value, currency = 'USD') {
     if (value == null || isNaN(value)) return '--';
     const opts = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-    if (currency === 'BRL') {
-        return `R$${Number(value).toLocaleString('pt-BR', opts)}`;
+    switch (currency) {
+        case 'BRL': return `R$${Number(value).toLocaleString('pt-BR', opts)}`;
+        case 'GBP': return `£${Number(value).toLocaleString('en-GB', opts)}`;
+        case 'EUR': return `€${Number(value).toLocaleString('de-DE', opts)}`;
+        default:    return `$${Number(value).toLocaleString('en-US', opts)}`;
     }
-    return `$${Number(value).toLocaleString('en-US', opts)}`;
+}
+
+function currencySymbol(currency) {
+    switch (currency) {
+        case 'BRL': return 'R$';
+        case 'GBP': return '£';
+        case 'EUR': return '€';
+        default:    return '$';
+    }
 }
 
 function formatDualCurrency(valueInBaseCurrency, baseCurrency) {
-    const rate = getExchangeRate();
-    if (!rate) return formatCurrency(valueInBaseCurrency, baseCurrency);
-
-    let usd, brl;
-    if (baseCurrency === 'USD') {
-        usd = valueInBaseCurrency;
-        brl = valueInBaseCurrency * rate;
-    } else {
-        brl = valueInBaseCurrency;
-        usd = valueInBaseCurrency / rate;
+    const usd = convertToUSD(valueInBaseCurrency, baseCurrency);
+    if (usd === valueInBaseCurrency && baseCurrency === 'USD') {
+        // Show USD + BRL
+        const brl = convertCurrency(usd, 'USD', 'BRL');
+        return `${formatCurrency(usd, 'USD')} | ${formatCurrency(brl, 'BRL')}`;
     }
-
-    return `${formatCurrency(usd, 'USD')} | ${formatCurrency(brl, 'BRL')}`;
+    // Show base currency + USD
+    return `${formatCurrency(valueInBaseCurrency, baseCurrency)} | ${formatCurrency(usd, 'USD')}`;
 }
 
 function formatDualCurrencyHTML(valueInBaseCurrency, baseCurrency) {
-    const rate = getExchangeRate();
-    if (!rate) return `<span class="dual-currency"><span class="primary">${formatCurrency(valueInBaseCurrency, baseCurrency)}</span></span>`;
-
-    let usd, brl;
+    const usd = convertToUSD(valueInBaseCurrency, baseCurrency);
     if (baseCurrency === 'USD') {
-        usd = valueInBaseCurrency;
-        brl = valueInBaseCurrency * rate;
-    } else {
-        brl = valueInBaseCurrency;
-        usd = valueInBaseCurrency / rate;
-    }
-
-    if (baseCurrency === 'USD') {
+        const brl = convertCurrency(usd, 'USD', 'BRL');
         return `<span class="dual-currency"><span class="primary">${formatCurrency(usd, 'USD')}</span><span class="secondary">${formatCurrency(brl, 'BRL')}</span></span>`;
-    } else {
-        return `<span class="dual-currency"><span class="primary">${formatCurrency(brl, 'BRL')}</span><span class="secondary">${formatCurrency(usd, 'USD')}</span></span>`;
     }
+    return `<span class="dual-currency"><span class="primary">${formatCurrency(valueInBaseCurrency, baseCurrency)}</span><span class="secondary">${formatCurrency(usd, 'USD')}</span></span>`;
 }
 
-function getExchangeRate() {
-    return AppState.exchangeRateOverride || AppState.exchangeRate;
+// Get rate: 1 USD = ? targetCurrency
+function getExchangeRate(targetCurrency) {
+    if (!targetCurrency || targetCurrency === 'BRL') {
+        // Legacy path: returns USD→BRL rate
+        const override = AppState.exchangeRatesOverride?.BRL;
+        return override || AppState.exchangeRateOverride || AppState.exchangeRates?.BRL || AppState.exchangeRate;
+    }
+    if (targetCurrency === 'USD') return 1;
+    const override = AppState.exchangeRatesOverride?.[targetCurrency];
+    if (override) return override;
+    return AppState.exchangeRates?.[targetCurrency] || null;
 }
 
 function convertToUSD(value, fromCurrency) {
-    if (fromCurrency === 'USD') return value;
-    const rate = getExchangeRate();
+    if (!fromCurrency || fromCurrency === 'USD') return value;
+    const rate = getExchangeRate(fromCurrency);
     if (!rate) return value;
     return value / rate;
 }
 
 function convertToBRL(value, fromCurrency) {
     if (fromCurrency === 'BRL') return value;
-    const rate = getExchangeRate();
-    if (!rate) return value;
-    return value * rate;
+    // Convert to USD first, then to BRL
+    const usd = convertToUSD(value, fromCurrency);
+    const brlRate = getExchangeRate('BRL');
+    if (!brlRate) return usd;
+    return usd * brlRate;
 }
 
 function convertCurrency(value, fromCurrency, toCurrency) {
     if (fromCurrency === toCurrency) return value;
-    if (toCurrency === 'USD') return convertToUSD(value, fromCurrency);
-    return convertToBRL(value, fromCurrency);
+    // Always go through USD as intermediate
+    const usd = convertToUSD(value, fromCurrency);
+    if (toCurrency === 'USD') return usd;
+    const rate = getExchangeRate(toCurrency);
+    if (!rate) return usd;
+    return usd * rate;
 }
 
 function calculateProfitPerSale(product, cpaCurrency, cpaValue) {
@@ -942,23 +954,36 @@ function initConfig() {
 // ---- Exchange Rate Modal ----
 function initRateModal() {
     document.getElementById('btn-edit-rate').addEventListener('click', () => {
-        document.getElementById('rate-value').value = getExchangeRate() || '';
+        document.getElementById('rate-value-brl').value = getExchangeRate('BRL') || '';
+        document.getElementById('rate-value-gbp').value = getExchangeRate('GBP') || '';
+        document.getElementById('rate-value-eur').value = getExchangeRate('EUR') || '';
         openModal('rate-modal');
     });
 
     document.getElementById('btn-refresh-rate').addEventListener('click', () => {
         AppState.exchangeRateOverride = null;
+        AppState.exchangeRatesOverride = null;
         CurrencyModule.fetchRate();
     });
 
     document.getElementById('rate-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const val = parseFloat(document.getElementById('rate-value').value);
-        if (val > 0) {
-            AppState.exchangeRateOverride = val;
-            document.getElementById('exchange-rate').textContent = val.toFixed(2);
-            showToast('Cotação manual aplicada', 'success');
-            EventBus.emit('rateUpdated', val);
+        const brl = parseFloat(document.getElementById('rate-value-brl').value);
+        const gbp = parseFloat(document.getElementById('rate-value-gbp').value);
+        const eur = parseFloat(document.getElementById('rate-value-eur').value);
+
+        const overrides = {};
+        if (brl > 0) overrides.BRL = brl;
+        if (gbp > 0) overrides.GBP = gbp;
+        if (eur > 0) overrides.EUR = eur;
+
+        if (Object.keys(overrides).length > 0) {
+            AppState.exchangeRatesOverride = overrides;
+            // Legacy compat
+            if (overrides.BRL) AppState.exchangeRateOverride = overrides.BRL;
+            CurrencyModule._updateDisplay();
+            showToast('Cotações manuais aplicadas', 'success');
+            EventBus.emit('rateUpdated', overrides);
         }
         closeModal('rate-modal');
     });

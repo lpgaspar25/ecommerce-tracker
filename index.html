@@ -37,8 +37,12 @@
         </div>
         <div class="top-bar-right">
             <div class="currency-display">
-                <span class="currency-label">USD/BRL:</span>
-                <span id="exchange-rate">--</span>
+                <span class="currency-rates-compact">
+                    <span class="currency-label">BRL:</span><span id="exchange-rate-brl">--</span>
+                    <span class="currency-label">GBP:</span><span id="exchange-rate-gbp">--</span>
+                    <span class="currency-label">EUR:</span><span id="exchange-rate-eur">--</span>
+                </span>
+                <span id="exchange-rate" style="display:none">--</span>
                 <button id="btn-edit-rate" class="btn-icon" title="Editar cotação"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
                 <button id="btn-refresh-rate" class="btn-icon" title="Atualizar cotação"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i></button>
             </div>
@@ -108,8 +112,10 @@
                 <div class="dash-date-controls">
                     <!-- Currency selector -->
                     <select id="dash-currency" class="input input-sm" style="min-width:70px;font-size:0.8rem;">
-                        <option value="USD">USD</option>
-                        <option value="BRL" selected>BRL</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="BRL" selected>BRL (R$)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="EUR">EUR (€)</option>
                     </select>
 
                     <!-- Product filter -->
@@ -380,8 +386,10 @@
                             <div class="form-group">
                                 <label>Moeda</label>
                                 <select id="product-price-currency" class="input">
-                                    <option value="USD">USD</option>
-                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -393,8 +401,10 @@
                             <div class="form-group">
                                 <label>Moeda</label>
                                 <select id="product-cost-currency" class="input">
-                                    <option value="USD">USD</option>
-                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -416,8 +426,10 @@
                             <div class="form-group">
                                 <label>Moeda CPA</label>
                                 <select id="product-cpa-currency" class="input">
-                                    <option value="USD">USD</option>
-                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -478,8 +490,10 @@
                             <div class="form-group">
                                 <label>Moeda</label>
                                 <select id="goal-currency" class="input">
-                                    <option value="BRL">BRL</option>
-                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -519,6 +533,7 @@
             <div class="creative-subtabs-row">
                 <button class="diary-subtab creative-subtab active" data-subtab="diary">📊 Diário</button>
                 <button class="diary-subtab creative-subtab" data-subtab="calendar">📅 Calendário</button>
+                <button class="diary-subtab creative-subtab" data-subtab="ai">🤖 IA Consultor</button>
             </div>
             <div id="diary-main-sub">
             <div class="section-header">
@@ -849,8 +864,10 @@
                             <div class="form-group">
                                 <label>Moeda</label>
                                 <select id="entry-currency" class="input">
-                                    <option value="USD">USD</option>
-                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -960,6 +977,80 @@
                 <div id="diary-calendar-content" style="position:relative"></div>
             </div>
 
+            <!-- AI Consultor sub-tab -->
+            <div id="diary-ai-sub" style="display:none">
+                <div class="ai-tab-container">
+                    <!-- Header with config -->
+                    <div class="ai-tab-header">
+                        <div class="ai-tab-title">
+                            <h2>🤖 IA Consultor de Ads</h2>
+                            <span class="section-subtitle">Analise campanhas, tome decisões e gere relatórios com IA</span>
+                        </div>
+                        <div class="ai-tab-actions">
+                            <button id="ai-config-btn" class="btn btn-secondary btn-sm" title="Configurar API Key">⚙️ API Key</button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="ai-quick-actions">
+                        <button id="ai-auto-analyze" class="ai-action-card">
+                            <span class="ai-action-icon">📊</span>
+                            <span class="ai-action-label">Análise Completa</span>
+                            <span class="ai-action-desc">Diagnóstico geral de todas as campanhas</span>
+                        </button>
+                        <button id="ai-report-daily" class="ai-action-card">
+                            <span class="ai-action-icon">📋</span>
+                            <span class="ai-action-label">Relatório Diário</span>
+                            <span class="ai-action-desc">Resumo do dia com métricas e decisões</span>
+                        </button>
+                        <button id="ai-report-weekly" class="ai-action-card">
+                            <span class="ai-action-icon">📈</span>
+                            <span class="ai-action-label">Relatório Semanal</span>
+                            <span class="ai-action-desc">Tendências e evolução da semana</span>
+                        </button>
+                        <button id="ai-kill-scale" class="ai-action-card">
+                            <span class="ai-action-icon">⚡</span>
+                            <span class="ai-action-label">Kill / Scale</span>
+                            <span class="ai-action-desc">O que pausar e o que escalar agora</span>
+                        </button>
+                        <button id="ai-budget-realloc" class="ai-action-card">
+                            <span class="ai-action-icon">💰</span>
+                            <span class="ai-action-label">Realocação de Budget</span>
+                            <span class="ai-action-desc">Onde investir mais e onde cortar</span>
+                        </button>
+                        <button id="ai-creative-fatigue" class="ai-action-card">
+                            <span class="ai-action-icon">🔥</span>
+                            <span class="ai-action-label">Fadiga Criativa</span>
+                            <span class="ai-action-desc">Criativos cansados e substituições</span>
+                        </button>
+                        <button id="ai-pattern-detect" class="ai-action-card ai-action-highlight">
+                            <span class="ai-action-icon">🔍</span>
+                            <span class="ai-action-label">Detectar Padrões</span>
+                            <span class="ai-action-desc">CPA, funil, interesses e gargalos</span>
+                        </button>
+                    </div>
+
+                    <!-- Chat Area -->
+                    <div class="ai-chat-area">
+                        <div id="ai-messages" class="ai-messages-embedded">
+                            <div class="ai-message ai-message-assistant">
+                                <div class="ai-message-content">Olá! Sou seu consultor de ads com IA. Use os botões acima para análises rápidas, ou me faça uma pergunta sobre suas campanhas e métricas.</div>
+                            </div>
+                        </div>
+                        <div id="ai-loading" class="ai-loading" style="display:none">
+                            <div class="ai-loading-dots"><span></span><span></span><span></span></div>
+                            Analisando...
+                        </div>
+                    </div>
+
+                    <!-- Input Area -->
+                    <div class="ai-input-area">
+                        <textarea id="ai-input" class="input" rows="2" placeholder="Pergunte sobre seus ads, peça relatórios, ou peça recomendações..."></textarea>
+                        <button id="ai-send-btn" class="btn btn-primary">Enviar</button>
+                    </div>
+                </div>
+            </div>
+
         </section>
 
         <!-- ==================== SIMULADOR ==================== -->
@@ -989,8 +1080,10 @@
                     <div class="form-group">
                         <label>Moeda</label>
                         <select id="calc-currency" class="input input-lg">
-                            <option value="USD">USD</option>
-                            <option value="BRL">BRL</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="BRL">BRL (R$)</option>
+                            <option value="GBP">GBP (£)</option>
+                            <option value="EUR">EUR (€)</option>
                         </select>
                     </div>
                 </div>
@@ -1059,8 +1152,10 @@
                         <div class="form-group">
                             <label>Moeda</label>
                             <select id="calc-b-currency" class="input">
-                                <option value="USD">USD</option>
-                                <option value="BRL">BRL</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
                     </div>
@@ -1091,8 +1186,10 @@
                         <div class="form-group">
                             <label>Moeda</label>
                             <select id="calc-c-currency" class="input">
-                                <option value="USD">USD</option>
-                                <option value="BRL">BRL</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1169,8 +1266,10 @@
                         <div class="form-group">
                             <label>Moeda</label>
                             <select id="calc-d-profit-currency" class="input">
-                                <option value="USD">USD</option>
-                                <option value="BRL">BRL</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
                     </div>
@@ -1397,8 +1496,10 @@
                             <div class="form-group">
                                 <label>Moeda</label>
                                 <select id="metric-currency" class="input">
-                                    <option value="USD">USD</option>
-                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD ($)</option>
+                                    <option value="BRL">BRL (R$)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="EUR">EUR (€)</option>
                                 </select>
                             </div>
                         </div>
@@ -1892,6 +1993,8 @@
                         <select id="funnel-currency" class="input input-sm">
                             <option value="BRL">BRL (R$)</option>
                             <option value="USD">USD ($)</option>
+                            <option value="GBP">GBP (£)</option>
+                            <option value="EUR">EUR (€)</option>
                         </select>
                     </div>
                     <div class="form-group" style="flex:0 0 auto; align-self:flex-end">
@@ -2227,10 +2330,10 @@
                     <div class="form-group">
                         <label for="pipeline-supplier-currency">Moeda custo</label>
                         <select id="pipeline-supplier-currency" class="input">
-                            <option value="USD">USD</option>
-                            <option value="BRL">BRL</option>
-                            <option value="EUR">EUR</option>
-                            <option value="GBP">GBP</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="BRL">BRL (R$)</option>
+                            <option value="GBP">GBP (£)</option>
+                            <option value="EUR">EUR (€)</option>
                         </select>
                     </div>
                 </div>
@@ -2441,13 +2544,21 @@
         <div class="modal-overlay"></div>
         <div class="modal-content modal-sm">
             <div class="modal-header">
-                <h3>Editar Cotação USD/BRL</h3>
+                <h3>Editar Cotações (base USD)</h3>
                 <button class="btn-close" id="rate-modal-close">&times;</button>
             </div>
             <form id="rate-form">
                 <div class="form-group">
-                    <label>Cotação (1 USD = ? BRL)</label>
-                    <input type="number" id="rate-value" class="input" step="0.01" required placeholder="5.05">
+                    <label>1 USD = ? BRL (Real)</label>
+                    <input type="number" id="rate-value-brl" class="input" step="0.01" required placeholder="5.20">
+                </div>
+                <div class="form-group">
+                    <label>1 USD = ? GBP (Libra)</label>
+                    <input type="number" id="rate-value-gbp" class="input" step="0.0001" required placeholder="0.79">
+                </div>
+                <div class="form-group">
+                    <label>1 USD = ? EUR (Euro)</label>
+                    <input type="number" id="rate-value-eur" class="input" step="0.0001" required placeholder="0.92">
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="rate-cancel">Cancelar</button>
@@ -2552,8 +2663,10 @@
                         <div class="form-group">
                             <label>Moeda</label>
                             <select name="goalCurrency" class="input">
-                                <option value="BRL">BRL</option>
-                                <option value="USD">USD</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -2586,8 +2699,10 @@
                         <div class="form-group">
                             <label>Moeda</label>
                             <select name="validationBudgetCurrency" class="input">
-                                <option value="BRL">BRL</option>
-                                <option value="USD">USD</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
                         <div class="form-group" style="flex:2">
@@ -2615,34 +2730,7 @@
     </div>
 
 
-    <!-- AI Consultant Floating Button & Panel -->
-    <button id="ai-consultant-btn" class="ai-fab" title="Consultor IA de Ads">🤖</button>
-
-    <div id="ai-consultant-panel" class="ai-panel">
-        <div class="ai-panel-header">
-            <h3>🤖 Consultor IA de Ads</h3>
-            <div>
-                <button id="ai-config-btn" class="btn-icon" title="Configurar API Key">⚙️</button>
-                <button id="ai-panel-close" class="btn-icon" title="Fechar">&times;</button>
-            </div>
-        </div>
-        <div class="ai-panel-body">
-            <button id="ai-auto-analyze" class="btn btn-primary" style="width:100%;margin-bottom:0.75rem">📊 Analise Automatica Completa</button>
-            <div id="ai-messages" class="ai-messages">
-                <div class="ai-message ai-message-assistant">
-                    <div class="ai-message-content">Ola! Sou seu consultor de ads. Clique em <strong>Analise Automatica</strong> para um diagnostico completo, ou me faca uma pergunta sobre suas metricas.</div>
-                </div>
-            </div>
-            <div id="ai-loading" class="ai-loading" style="display:none">
-                <div class="ai-loading-dots"><span></span><span></span><span></span></div>
-                Analisando...
-            </div>
-        </div>
-        <div class="ai-panel-footer">
-            <textarea id="ai-input" class="input" rows="2" placeholder="Pergunte sobre seus ads..."></textarea>
-            <button id="ai-send-btn" class="btn btn-primary">Enviar</button>
-        </div>
-    </div>
+    <!-- AI Consultant moved to Diário tab -->
 
     <!-- Scripts (app first, then Google APIs) -->
     <script src="js/app.js"></script>
