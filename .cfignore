@@ -1,0 +1,8 @@
+.tools
+.git
+.github
+.claude
+node_modules
+*.png
+*.jpeg
+*.jpg

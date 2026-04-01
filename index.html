@@ -987,7 +987,8 @@
                             <span class="section-subtitle">Analise campanhas, tome decisões e gere relatórios com IA</span>
                         </div>
                         <div class="ai-tab-actions">
-                            <button id="ai-config-btn" class="btn btn-secondary btn-sm" title="Configurar API Key">⚙️ API Key</button>
+                            <span id="ai-provider-badge" class="ai-provider-badge ai-badge-anthropic">Claude</span>
+                            <button id="ai-config-btn" class="btn btn-secondary btn-sm" title="Configurar IA">⚙️ Configurar</button>
                         </div>
                     </div>
 
@@ -2730,7 +2731,49 @@
     </div>
 
 
-    <!-- AI Consultant moved to Diário tab -->
+    <!-- AI Consultant Config Modal -->
+    <div id="ai-config-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Configurar IA Consultor</h3>
+                <button class="btn-close" onclick="closeModal('ai-config-modal')">&times;</button>
+            </div>
+            <div style="padding: 1rem;">
+                <div class="form-group">
+                    <label style="font-weight:600; margin-bottom:0.5rem; display:block;">Provedor de IA</label>
+                    <div class="ai-provider-options">
+                        <label class="ai-provider-option">
+                            <input type="radio" name="ai-provider" value="anthropic" checked>
+                            <span class="ai-provider-card">
+                                <strong>Claude (Anthropic)</strong>
+                                <small>claude-sonnet-4</small>
+                            </span>
+                        </label>
+                        <label class="ai-provider-option">
+                            <input type="radio" name="ai-provider" value="openai">
+                            <span class="ai-provider-card">
+                                <strong>GPT (OpenAI)</strong>
+                                <small>gpt-4o</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <div id="ai-anthropic-group" class="form-group">
+                    <label>API Key Anthropic</label>
+                    <input type="password" id="ai-key-anthropic" class="input" placeholder="sk-ant-...">
+                </div>
+                <div id="ai-openai-group" class="form-group" style="display:none">
+                    <label>API Key OpenAI</label>
+                    <input type="password" id="ai-key-openai" class="input" placeholder="sk-...">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="ai-config-cancel">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="ai-config-save">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts (app first, then Google APIs) -->
     <script src="js/app.js"></script>

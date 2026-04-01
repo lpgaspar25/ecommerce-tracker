@@ -7,6 +7,8 @@
 const AIConsultantModule = {
     _loading: false,
     _apiKey: '',
+    _openaiKey: '',
+    _provider: 'anthropic', // 'anthropic' or 'openai'
     _history: [],
 
     SYSTEM_PROMPT: `Voce e um gestor de trafego senior e consultor tecnico que ja rodou mais de 50 milhoes em e-commerce.
@@ -58,19 +60,66 @@ Sempre responda em portugues brasileiro.`,
 
         // Config button
         const configBtn = document.getElementById('ai-config-btn');
-        if (configBtn) configBtn.addEventListener('click', () => this.configureApiKey());
+        if (configBtn) configBtn.addEventListener('click', () => this.openConfigModal());
 
-        // Load API key
+        // Config modal save
+        document.getElementById('ai-config-save')?.addEventListener('click', () => this.saveConfig());
+        document.getElementById('ai-config-cancel')?.addEventListener('click', () => closeModal('ai-config-modal'));
+        document.getElementById('ai-config-modal')?.querySelector('.modal-overlay')?.addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal('ai-config-modal');
+        });
+
+        // Provider toggle in config
+        document.querySelectorAll('input[name="ai-provider"]').forEach(radio => {
+            radio.addEventListener('change', () => this._toggleProviderFields());
+        });
+
+        // Load saved config
         this._apiKey = localStorage.getItem('ai_consultant_api_key') || '';
+        this._openaiKey = localStorage.getItem('ai_consultant_openai_key') || '';
+        this._provider = localStorage.getItem('ai_consultant_provider') || 'anthropic';
+        this._updateProviderBadge();
     },
 
-    configureApiKey() {
-        const current = this._apiKey ? '(configurada)' : '(nao configurada)';
-        const key = prompt(`API Key da Anthropic ${current}:\n\nCole sua API key aqui:`);
-        if (key !== null) {
-            this._apiKey = key.trim();
-            localStorage.setItem('ai_consultant_api_key', this._apiKey);
-            showToast(this._apiKey ? 'API key salva!' : 'API key removida', 'success');
+    openConfigModal() {
+        const modal = document.getElementById('ai-config-modal');
+        if (!modal) return;
+        // Set values
+        document.getElementById('ai-key-anthropic').value = this._apiKey;
+        document.getElementById('ai-key-openai').value = this._openaiKey;
+        const radio = document.querySelector(`input[name="ai-provider"][value="${this._provider}"]`);
+        if (radio) radio.checked = true;
+        this._toggleProviderFields();
+        openModal('ai-config-modal');
+    },
+
+    _toggleProviderFields() {
+        const selected = document.querySelector('input[name="ai-provider"]:checked')?.value || 'anthropic';
+        const anthropicGroup = document.getElementById('ai-anthropic-group');
+        const openaiGroup = document.getElementById('ai-openai-group');
+        if (anthropicGroup) anthropicGroup.style.display = selected === 'anthropic' ? '' : 'none';
+        if (openaiGroup) openaiGroup.style.display = selected === 'openai' ? '' : 'none';
+    },
+
+    saveConfig() {
+        this._provider = document.querySelector('input[name="ai-provider"]:checked')?.value || 'anthropic';
+        this._apiKey = (document.getElementById('ai-key-anthropic')?.value || '').trim();
+        this._openaiKey = (document.getElementById('ai-key-openai')?.value || '').trim();
+
+        localStorage.setItem('ai_consultant_provider', this._provider);
+        localStorage.setItem('ai_consultant_api_key', this._apiKey);
+        localStorage.setItem('ai_consultant_openai_key', this._openaiKey);
+
+        this._updateProviderBadge();
+        closeModal('ai-config-modal');
+        showToast(`Configurado: ${this._provider === 'openai' ? 'OpenAI GPT' : 'Claude (Anthropic)'}`, 'success');
+    },
+
+    _updateProviderBadge() {
+        const badge = document.getElementById('ai-provider-badge');
+        if (badge) {
+            badge.textContent = this._provider === 'openai' ? 'GPT' : 'Claude';
+            badge.className = 'ai-provider-badge ' + (this._provider === 'openai' ? 'ai-badge-openai' : 'ai-badge-anthropic');
         }
     },
 
@@ -501,51 +550,87 @@ Pergunta: ${message}`;
     },
 
     async _sendToAPI(prompt) {
-        if (!this._apiKey) {
-            this._addMessage('assistant', '⚠️ Configure sua API key primeiro clicando no botão <strong>⚙️ API Key</strong> acima.');
+        const activeKey = this._provider === 'openai' ? this._openaiKey : this._apiKey;
+        if (!activeKey) {
+            this._addMessage('assistant', '⚠️ Configure sua API key primeiro clicando no botão <strong>⚙️ Configurar</strong> acima.');
             return;
         }
 
         this._loading = true;
         this._updateLoadingState();
 
+        const recentHistory = this._history
+            .filter(m => m.role === 'user' || m.role === 'assistant')
+            .slice(-6)
+            .map(m => ({
+                role: m.role,
+                content: m.role === 'user' ? m._fullPrompt || m.content : m.content
+            }));
+
         try {
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': this._apiKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true'
-                },
-                body: JSON.stringify({
-                    model: 'claude-sonnet-4-20250514',
-                    max_tokens: 4096,
-                    system: this.SYSTEM_PROMPT,
-                    messages: [
-                        ...this._history.filter(m => m.role === 'user' || m.role === 'assistant').slice(-6).map(m => ({
-                            role: m.role,
-                            content: m.role === 'user' ? m._fullPrompt || m.content : m.content
-                        })),
-                        { role: 'user', content: prompt }
-                    ]
-                })
-            });
-
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error?.message || `HTTP ${response.status}`);
+            let text;
+            if (this._provider === 'openai') {
+                text = await this._callOpenAI(prompt, recentHistory, activeKey);
+            } else {
+                text = await this._callAnthropic(prompt, recentHistory, activeKey);
             }
-
-            const data = await response.json();
-            const text = data.content?.[0]?.text || 'Sem resposta.';
             this._addMessage('assistant', text);
         } catch (err) {
-            this._addMessage('assistant', `❌ Erro: ${err.message}`);
+            this._addMessage('assistant', `❌ Erro (${this._provider}): ${err.message}`);
         } finally {
             this._loading = false;
             this._updateLoadingState();
         }
+    },
+
+    async _callAnthropic(prompt, history, apiKey) {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 4096,
+                system: this.SYSTEM_PROMPT,
+                messages: [...history, { role: 'user', content: prompt }]
+            })
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error?.message || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        return data.content?.[0]?.text || 'Sem resposta.';
+    },
+
+    async _callOpenAI(prompt, history, apiKey) {
+        const messages = [
+            { role: 'system', content: this.SYSTEM_PROMPT },
+            ...history,
+            { role: 'user', content: prompt }
+        ];
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                max_tokens: 4096,
+                messages: messages
+            })
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error?.message || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || 'Sem resposta.';
     },
 
     _addMessage(role, content, fullPrompt) {
