@@ -31,6 +31,27 @@ const CalculatorModule = {
         });
         document.getElementById('calc-d-profit-currency').addEventListener('change', () => this.calcSectionD());
 
+        // Section G — CPC Ideal
+        ['calc-g-cpa-target', 'calc-g-conv-rate', 'calc-g-ctr'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => this.calcSectionG());
+        });
+        document.getElementById('calc-g-currency').addEventListener('change', () => this.calcSectionG());
+
+        // Section H — CPA ↔ Vendas
+        ['calc-h-cpa', 'calc-h-budget', 'calc-h-sales-target'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => this.calcSectionH());
+        });
+        document.getElementById('calc-h-currency').addEventListener('change', () => this.calcSectionH());
+
+        // Section I — Campaign P&L
+        ['calc-i-sales', 'calc-i-cpa', 'calc-i-budget-spent', 'calc-i-price', 'calc-i-cost', 'calc-i-tax', 'calc-i-variable'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => this.calcSectionI());
+        });
+        ['calc-i-ads-currency', 'calc-i-price-currency', 'calc-i-cost-currency'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => this.calcSectionI());
+        });
+        document.getElementById('calc-i-sim-sales').addEventListener('input', () => this.calcSectionISim());
+
         EventBus.on('dataLoaded', () => this.onProductChange());
         EventBus.on('productsChanged', () => this.onProductChange());
         EventBus.on('rateUpdated', () => {
@@ -61,6 +82,20 @@ const CalculatorModule = {
 
         // Pre-fill Section D target CPA
         document.getElementById('calc-d-cpa-target').value = product.cpa;
+
+        // Pre-fill Section G CPA target
+        document.getElementById('calc-g-cpa-target').value = product.cpa;
+        document.getElementById('calc-g-currency').value = product.cpaCurrency;
+
+        // Pre-fill Section I from product
+        document.getElementById('calc-i-price').value = product.price;
+        document.getElementById('calc-i-price-currency').value = product.priceCurrency;
+        document.getElementById('calc-i-cost').value = product.cost;
+        document.getElementById('calc-i-cost-currency').value = product.costCurrency;
+        document.getElementById('calc-i-tax').value = product.tax;
+        document.getElementById('calc-i-variable').value = product.variableCosts;
+        document.getElementById('calc-i-ads-currency').value = product.cpaCurrency;
+        document.getElementById('calc-i-autofill-hint').style.display = 'block';
 
         this.updateProductInfo();
         this.recalcAll();
@@ -130,7 +165,8 @@ const CalculatorModule = {
     },
 
     hideAllResults() {
-        ['calc-a-results', 'calc-a-scenarios', 'calc-b-results', 'calc-c-results', 'calc-d-results'].forEach(id => {
+        ['calc-a-results', 'calc-a-scenarios', 'calc-b-results', 'calc-c-results', 'calc-d-results',
+         'calc-g-results', 'calc-g-scenarios', 'calc-h-results', 'calc-i-results', 'calc-i-simulate'].forEach(id => {
             document.getElementById(id).style.display = 'none';
         });
     },
@@ -140,6 +176,9 @@ const CalculatorModule = {
         this.calcSectionB();
         this.calcSectionCEF();
         this.calcSectionD();
+        this.calcSectionG();
+        this.calcSectionH();
+        this.calcSectionI();
     },
 
     // Returns gross margin per sale (price - cost - tax - variableCosts), WITHOUT CPA
@@ -362,6 +401,248 @@ const CalculatorModule = {
                 statusEl.style.color = 'var(--red)';
             }
         }
+    },
+
+    // ---- Section G: CPC Ideal ----
+    calcSectionG() {
+        const cpaTarget = parseFloat(document.getElementById('calc-g-cpa-target').value) || 0;
+        const currency = document.getElementById('calc-g-currency').value;
+        const convRate = parseFloat(document.getElementById('calc-g-conv-rate').value) || 0;
+        const ctr = parseFloat(document.getElementById('calc-g-ctr').value) || 0;
+        const resultsEl = document.getElementById('calc-g-results');
+        const scenariosEl = document.getElementById('calc-g-scenarios');
+
+        if (cpaTarget <= 0 || convRate <= 0) {
+            resultsEl.style.display = 'none';
+            scenariosEl.style.display = 'none';
+            return;
+        }
+
+        resultsEl.style.display = 'grid';
+
+        const cpaUSD = convertToUSD(cpaTarget, currency);
+        // CPC max = CPA * conversion rate (as decimal)
+        const convDecimal = convRate / 100;
+        const cpcMaxUSD = cpaUSD * convDecimal;
+        const clicksPerSale = Math.ceil(1 / convDecimal);
+
+        document.getElementById('calc-g-cpc-max').textContent = formatDualCurrency(cpcMaxUSD, 'USD');
+        document.getElementById('calc-g-clicks-per-sale').textContent = clicksPerSale;
+
+        if (ctr > 0) {
+            const ctrDecimal = ctr / 100;
+            const cpmMaxUSD = cpcMaxUSD * ctrDecimal * 1000;
+            const impressionsPerSale = Math.ceil(clicksPerSale / ctrDecimal);
+            document.getElementById('calc-g-cpm-max').textContent = formatDualCurrency(cpmMaxUSD, 'USD');
+            document.getElementById('calc-g-impressions-per-sale').textContent = impressionsPerSale.toLocaleString();
+        } else {
+            document.getElementById('calc-g-cpm-max').textContent = 'Informe o CTR';
+            document.getElementById('calc-g-impressions-per-sale').textContent = 'Informe o CTR';
+        }
+
+        // Scenarios: different CPC values and their resulting CPA
+        scenariosEl.style.display = 'block';
+        const cpcValues = [0.10, 0.20, 0.30, 0.50, 0.75, 1.00, 1.50, 2.00, 3.00, 5.00];
+        const data = this._getCurrentCalcData();
+
+        const tbody = document.getElementById('calc-g-scenarios-tbody');
+        tbody.innerHTML = cpcValues.map(cpc => {
+            const resultingCPA = cpc / convDecimal;
+            const withinTarget = resultingCPA <= cpaUSD;
+            const statusIcon = withinTarget ? '✅' : '❌';
+            const statusColor = withinTarget ? 'var(--green)' : 'var(--red)';
+
+            let profitText = '--';
+            if (data) {
+                const profitPerSale = this._calculateProfitWithTicket(currency, convertCurrency(resultingCPA, 'USD', currency));
+                profitText = formatDualCurrency(profitPerSale, 'USD');
+            }
+
+            return `<tr>
+                <td>${formatDualCurrency(cpc, 'USD')}</td>
+                <td>${formatDualCurrency(resultingCPA, 'USD')}</td>
+                <td style="color:${statusColor}">${statusIcon} ${withinTarget ? 'Dentro' : 'Acima'}</td>
+                <td>${profitText}</td>
+            </tr>`;
+        }).join('');
+    },
+
+    // ---- Section H: CPA Desejado / Vendas ----
+    calcSectionH() {
+        const cpa = parseFloat(document.getElementById('calc-h-cpa').value) || 0;
+        const currency = document.getElementById('calc-h-currency').value;
+        const budget = parseFloat(document.getElementById('calc-h-budget').value) || 0;
+        const salesTarget = parseInt(document.getElementById('calc-h-sales-target').value) || 0;
+        const resultsEl = document.getElementById('calc-h-results');
+
+        if (cpa <= 0 || (budget <= 0 && salesTarget <= 0)) {
+            resultsEl.style.display = 'none';
+            return;
+        }
+
+        resultsEl.style.display = 'grid';
+
+        const cpaUSD = convertToUSD(cpa, currency);
+        const data = this._getCurrentCalcData();
+        const priceUSD = data ? data.priceUSD : 0;
+
+        let salesPredicted, budgetNeeded;
+
+        if (budget > 0) {
+            const budgetUSD = convertToUSD(budget, currency);
+            salesPredicted = Math.floor(budgetUSD / cpaUSD);
+            budgetNeeded = budgetUSD;
+        } else {
+            salesPredicted = salesTarget;
+            budgetNeeded = salesTarget * cpaUSD;
+        }
+
+        // Profit per sale using the desired CPA
+        let profitPerSale = 0;
+        if (data) {
+            profitPerSale = this._calculateProfitWithTicket(currency, cpa);
+        }
+
+        const totalProfit = salesPredicted * profitPerSale;
+        const totalRevenue = salesPredicted * priceUSD;
+        const roas = budgetNeeded > 0 ? totalRevenue / budgetNeeded : 0;
+
+        document.getElementById('calc-h-sales-predicted').textContent = salesPredicted + ' vendas';
+        document.getElementById('calc-h-budget-needed').textContent = formatDualCurrency(budgetNeeded, 'USD');
+
+        const profitEl = document.getElementById('calc-h-profit-per-sale');
+        profitEl.textContent = formatDualCurrency(profitPerSale, 'USD');
+        profitEl.style.color = profitPerSale >= 0 ? 'var(--green)' : 'var(--red)';
+
+        const totalProfitEl = document.getElementById('calc-h-total-profit');
+        totalProfitEl.textContent = formatDualCurrency(totalProfit, 'USD');
+        totalProfitEl.style.color = totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+        document.getElementById('calc-h-total-revenue').textContent = priceUSD > 0 ? formatDualCurrency(totalRevenue, 'USD') : 'Selecione um produto';
+        document.getElementById('calc-h-roas').textContent = roas > 0 ? roas.toFixed(2) + 'x' : '--';
+    },
+
+    // ---- Section I: Campaign P&L ----
+    calcSectionI() {
+        const sales = parseInt(document.getElementById('calc-i-sales').value) || 0;
+        const cpa = parseFloat(document.getElementById('calc-i-cpa').value) || 0;
+        const adsCurrency = document.getElementById('calc-i-ads-currency').value;
+        const budgetSpent = parseFloat(document.getElementById('calc-i-budget-spent').value) || 0;
+        const price = parseFloat(document.getElementById('calc-i-price').value) || 0;
+        const priceCurrency = document.getElementById('calc-i-price-currency').value;
+        const cost = parseFloat(document.getElementById('calc-i-cost').value) || 0;
+        const costCurrency = document.getElementById('calc-i-cost-currency').value;
+        const taxPct = parseFloat(document.getElementById('calc-i-tax').value) || 0;
+        const variablePct = parseFloat(document.getElementById('calc-i-variable').value) || 0;
+        const resultsEl = document.getElementById('calc-i-results');
+        const simulateEl = document.getElementById('calc-i-simulate');
+
+        if (sales <= 0 || price <= 0) {
+            resultsEl.style.display = 'none';
+            simulateEl.style.display = 'none';
+            return;
+        }
+
+        // Calculate ad spend: either from budget input or CPA * sales
+        let adSpendUSD;
+        if (budgetSpent > 0) {
+            adSpendUSD = convertToUSD(budgetSpent, adsCurrency);
+        } else if (cpa > 0) {
+            adSpendUSD = convertToUSD(cpa, adsCurrency) * sales;
+        } else {
+            resultsEl.style.display = 'none';
+            simulateEl.style.display = 'none';
+            return;
+        }
+
+        resultsEl.style.display = 'grid';
+        simulateEl.style.display = 'block';
+
+        const priceUSD = convertToUSD(price, priceCurrency);
+        const costUSD = convertToUSD(cost, costCurrency);
+
+        const revenuePerSale = priceUSD;
+        const totalRevenue = revenuePerSale * sales;
+        const totalCost = costUSD * sales;
+        const totalTax = totalRevenue * (taxPct / 100);
+        const totalVariable = totalRevenue * (variablePct / 100);
+        const netProfit = totalRevenue - totalCost - totalTax - totalVariable - adSpendUSD;
+        const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+        const roas = adSpendUSD > 0 ? totalRevenue / adSpendUSD : 0;
+        const roi = adSpendUSD > 0 ? (netProfit / adSpendUSD) * 100 : 0;
+
+        // Build P&L table
+        const adSpendPerSale = adSpendUSD / sales;
+        const rows = [
+            { item: '💰 Receita', perSale: revenuePerSale, total: totalRevenue, pct: 100, color: '' },
+            { item: '📦 Custo do Produto', perSale: -costUSD, total: -totalCost, pct: totalRevenue > 0 ? -(totalCost / totalRevenue) * 100 : 0, color: 'var(--red)' },
+            { item: '🏛️ Impostos / Taxas (' + taxPct + '%)', perSale: -(revenuePerSale * taxPct / 100), total: -totalTax, pct: -taxPct, color: 'var(--red)' },
+            { item: '📊 Custos Variáveis (' + variablePct + '%)', perSale: -(revenuePerSale * variablePct / 100), total: -totalVariable, pct: -variablePct, color: 'var(--red)' },
+            { item: '📢 Ads (Investimento)', perSale: -adSpendPerSale, total: -adSpendUSD, pct: totalRevenue > 0 ? -(adSpendUSD / totalRevenue) * 100 : 0, color: 'var(--red)' },
+            { item: '<strong>✅ Lucro Líquido</strong>', perSale: netProfit / sales, total: netProfit, pct: netMargin, color: netProfit >= 0 ? 'var(--green)' : 'var(--red)', bold: true }
+        ];
+
+        const tbody = document.getElementById('calc-i-tbody');
+        tbody.innerHTML = rows.map(row => {
+            const style = row.color ? `style="color:${row.color}"` : '';
+            const borderStyle = row.bold ? 'style="border-top:2px solid var(--border); font-weight:bold"' : '';
+            return `<tr ${borderStyle}>
+                <td>${row.item}</td>
+                <td ${style}>${formatDualCurrency(Math.abs(row.perSale), 'USD')}${row.perSale < 0 ? ' (-)' : ''}</td>
+                <td ${style}>${formatDualCurrency(Math.abs(row.total), 'USD')}${row.total < 0 ? ' (-)' : ''}</td>
+                <td ${style}>${Math.abs(row.pct).toFixed(1)}%</td>
+            </tr>`;
+        }).join('');
+
+        // Summary cards
+        const profitEl = document.getElementById('calc-i-net-profit');
+        profitEl.textContent = formatDualCurrency(netProfit, 'USD');
+        profitEl.style.color = netProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+        const marginEl = document.getElementById('calc-i-net-margin');
+        marginEl.textContent = netMargin.toFixed(1) + '%';
+        marginEl.style.color = netMargin >= 0 ? 'var(--green)' : 'var(--red)';
+
+        document.getElementById('calc-i-roas').textContent = roas.toFixed(2) + 'x';
+
+        const roiEl = document.getElementById('calc-i-roi');
+        roiEl.textContent = roi.toFixed(1) + '%';
+        roiEl.style.color = roi >= 0 ? 'var(--green)' : 'var(--red)';
+
+        // Store for simulation
+        this._sectionIData = { cpa, adsCurrency, priceUSD, costUSD, taxPct, variablePct, adSpendUSD, sales, budgetSpent };
+        this.calcSectionISim();
+    },
+
+    calcSectionISim() {
+        const d = this._sectionIData;
+        if (!d) return;
+
+        const simSales = parseInt(document.getElementById('calc-i-sim-sales').value) || 0;
+        const simResults = document.getElementById('calc-i-sim-results');
+
+        if (simSales <= 0) {
+            simResults.style.display = 'none';
+            return;
+        }
+
+        simResults.style.display = 'grid';
+
+        const cpaUSD = d.adSpendUSD / d.sales; // actual CPA from the campaign
+        const simBudget = simSales * cpaUSD;
+        const simRevenue = simSales * d.priceUSD;
+        const simCost = simSales * d.costUSD;
+        const simTax = simRevenue * (d.taxPct / 100);
+        const simVariable = simRevenue * (d.variablePct / 100);
+        const simProfit = simRevenue - simCost - simTax - simVariable - simBudget;
+
+        document.getElementById('calc-i-sim-budget').textContent = formatDualCurrency(simBudget, 'USD');
+
+        const profitEl = document.getElementById('calc-i-sim-profit');
+        profitEl.textContent = formatDualCurrency(simProfit, 'USD');
+        profitEl.style.color = simProfit >= 0 ? 'var(--green)' : 'var(--red)';
+
+        document.getElementById('calc-i-sim-revenue').textContent = formatDualCurrency(simRevenue, 'USD');
     },
 
     // ---- Section D: Compare CPAs ----

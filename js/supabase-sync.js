@@ -505,6 +505,7 @@ const SupabaseSync = (() => {
         },
 
         async signUp(email, password) {
+            throw new Error('Registro desabilitado. Acesso restrito.');
             const client = _getClient();
             if (!client) throw new Error('Supabase não disponível.');
             const { data, error } = await client.auth.signUp({ email, password });

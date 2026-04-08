@@ -604,6 +604,10 @@ Pergunta: ${message}`;
             throw new Error(err.error?.message || `HTTP ${response.status}`);
         }
         const data = await response.json();
+        // Track token usage
+        if (data.usage) {
+            UsagePanelModule.trackAIUsage('anthropic', data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+        }
         return data.content?.[0]?.text || 'Sem resposta.';
     },
 
@@ -630,6 +634,10 @@ Pergunta: ${message}`;
             throw new Error(err.error?.message || `HTTP ${response.status}`);
         }
         const data = await response.json();
+        // Track token usage
+        if (data.usage) {
+            UsagePanelModule.trackAIUsage('openai', data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0);
+        }
         return data.choices?.[0]?.message?.content || 'Sem resposta.';
     },
 

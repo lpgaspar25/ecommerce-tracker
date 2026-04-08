@@ -78,6 +78,7 @@
                         </div>
                     </div>
                     <div class="profile-dropdown-divider"></div>
+                    <button id="btn-usage-panel" class="profile-dropdown-item"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Painel de Uso</button>
                     <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
                     <button id="btn-connect-sheets" class="profile-dropdown-item"><i data-lucide="table" style="width:14px;height:14px"></i> Google Sheets</button>
                     <span id="sheets-status" class="status-badge status-disconnected" style="font-size:0.65rem;margin-left:0.5rem">Desconectado</span>
@@ -431,6 +432,17 @@
                                     <option value="GBP">GBP (£)</option>
                                     <option value="EUR">EUR (€)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Country Prices -->
+                        <div class="form-group">
+                            <label style="display:flex;align-items:center;justify-content:space-between;">
+                                Preços por País
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="ProductsModule.addCountryPriceRow()">+ Adicionar País</button>
+                            </label>
+                            <div id="country-prices-list" style="margin-top:0.5rem;">
+                                <!-- rows added dynamically -->
                             </div>
                         </div>
 
@@ -1288,6 +1300,250 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Section G: CPC Ideal -->
+                <div class="calc-section">
+                    <h3>G — CPC Ideal</h3>
+                    <p class="section-hint">Calcule o CPC máximo que você pode pagar para manter o CPA dentro da meta</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>CPA Alvo</label>
+                            <input type="number" id="calc-g-cpa-target" class="input" step="0.01" placeholder="15.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-g-currency" class="input">
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Taxa de Conversão da Página (%)</label>
+                            <input type="number" id="calc-g-conv-rate" class="input" step="0.01" placeholder="2.5">
+                        </div>
+                        <div class="form-group">
+                            <label>CTR do Anúncio (%)</label>
+                            <input type="number" id="calc-g-ctr" class="input" step="0.01" placeholder="1.5">
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-g-results" style="display:none">
+                        <div class="result-card">
+                            <span class="result-label">CPC Máximo</span>
+                            <span class="result-value" id="calc-g-cpc-max">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">CPM Máximo (1000 impressões)</span>
+                            <span class="result-value" id="calc-g-cpm-max">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Cliques por Venda</span>
+                            <span class="result-value" id="calc-g-clicks-per-sale">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Impressões por Venda</span>
+                            <span class="result-value" id="calc-g-impressions-per-sale">--</span>
+                        </div>
+                    </div>
+                    <!-- CPC scenarios table -->
+                    <div id="calc-g-scenarios" style="display:none">
+                        <h4 style="margin-top:12px">Cenários de CPC vs CPA</h4>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>CPC</th>
+                                    <th>CPA Resultante</th>
+                                    <th>Status</th>
+                                    <th>Lucro/Venda</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calc-g-scenarios-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Section H: CPA Desejado / Vendas -->
+                <div class="calc-section">
+                    <h3>H — Simulador CPA ↔ Vendas</h3>
+                    <p class="section-hint">Simule: com um CPA desejado, quantas vendas consigo? Ou: para X vendas, quanto preciso gastar?</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>CPA Desejado</label>
+                            <input type="number" id="calc-h-cpa" class="input" step="0.01" placeholder="12.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda</label>
+                            <select id="calc-h-currency" class="input">
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Orçamento Disponível</label>
+                            <input type="number" id="calc-h-budget" class="input" step="0.01" placeholder="1000.00">
+                        </div>
+                        <div class="form-group">
+                            <label>OU Meta de Vendas</label>
+                            <input type="number" id="calc-h-sales-target" class="input" step="1" placeholder="50">
+                        </div>
+                    </div>
+                    <div class="calc-results" id="calc-h-results" style="display:none">
+                        <div class="result-card">
+                            <span class="result-label">Vendas Previstas</span>
+                            <span class="result-value" id="calc-h-sales-predicted">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Orçamento Necessário</span>
+                            <span class="result-value" id="calc-h-budget-needed">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Lucro/Venda com esse CPA</span>
+                            <span class="result-value" id="calc-h-profit-per-sale">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Lucro Total Previsto</span>
+                            <span class="result-value" id="calc-h-total-profit">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Receita Total</span>
+                            <span class="result-value" id="calc-h-total-revenue">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">ROAS Estimado</span>
+                            <span class="result-value" id="calc-h-roas">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section I: Campaign P&L -->
+                <div class="calc-section">
+                    <h3>I — Lucro da Campanha (P&L)</h3>
+                    <p class="section-hint">Calcule o lucro real de uma campanha com breakdown completo: Receita - Custo - Impostos - Ads</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Vendas Realizadas</label>
+                            <input type="number" id="calc-i-sales" class="input" step="1" placeholder="25">
+                        </div>
+                        <div class="form-group">
+                            <label>CPA Real</label>
+                            <input type="number" id="calc-i-cpa" class="input" step="0.01" placeholder="18.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda Ads</label>
+                            <select id="calc-i-ads-currency" class="input">
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>OU Orçamento Gasto Total</label>
+                            <input type="number" id="calc-i-budget-spent" class="input" step="0.01" placeholder="450.00">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Preço de Venda (Ticket)</label>
+                            <input type="number" id="calc-i-price" class="input" step="0.01" placeholder="59.90">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda Preço</label>
+                            <select id="calc-i-price-currency" class="input">
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Preço de Custo (unitário)</label>
+                            <input type="number" id="calc-i-cost" class="input" step="0.01" placeholder="15.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Moeda Custo</label>
+                            <select id="calc-i-cost-currency" class="input">
+                                <option value="USD">USD ($)</option>
+                                <option value="BRL">BRL (R$)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="EUR">EUR (€)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Impostos / Taxas (%)</label>
+                            <input type="number" id="calc-i-tax" class="input" step="0.01" placeholder="8.5">
+                        </div>
+                        <div class="form-group">
+                            <label>Custos Variáveis (%)</label>
+                            <input type="number" id="calc-i-variable" class="input" step="0.01" placeholder="5.0">
+                        </div>
+                    </div>
+                    <div id="calc-i-autofill-hint" style="display:none; margin-bottom:12px">
+                        <small style="color:var(--primary)">💡 Preço, custo, impostos e custos variáveis preenchidos pelo produto selecionado acima</small>
+                    </div>
+                    <div class="calc-results" id="calc-i-results" style="display:none">
+                        <!-- P&L Breakdown table -->
+                        <div style="grid-column: 1 / -1;">
+                            <table class="data-table" id="calc-i-pl-table">
+                                <thead>
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Por Venda</th>
+                                        <th>Total</th>
+                                        <th>% da Receita</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="calc-i-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Lucro Líquido</span>
+                            <span class="result-value" id="calc-i-net-profit" style="font-size:1.3em">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">Margem Líquida</span>
+                            <span class="result-value" id="calc-i-net-margin">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">ROAS</span>
+                            <span class="result-value" id="calc-i-roas">--</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">ROI</span>
+                            <span class="result-value" id="calc-i-roi">--</span>
+                        </div>
+                    </div>
+                    <!-- Simulate more sales -->
+                    <div id="calc-i-simulate" style="display:none; margin-top:16px">
+                        <h4>Simular Aumento de Vendas</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Se eu conseguisse X vendas...</label>
+                                <input type="number" id="calc-i-sim-sales" class="input" step="1" placeholder="50">
+                            </div>
+                        </div>
+                        <div class="calc-results" id="calc-i-sim-results" style="display:none">
+                            <div class="result-card">
+                                <span class="result-label">Orçamento Necessário</span>
+                                <span class="result-value" id="calc-i-sim-budget">--</span>
+                            </div>
+                            <div class="result-card">
+                                <span class="result-label">Lucro Previsto</span>
+                                <span class="result-value" id="calc-i-sim-profit">--</span>
+                            </div>
+                            <div class="result-card">
+                                <span class="result-label">Receita Total</span>
+                                <span class="result-value" id="calc-i-sim-revenue">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </section>
 
@@ -2731,6 +2987,23 @@
     </div>
 
 
+    <!-- Usage Panel Modal -->
+    <div id="usage-panel" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:680px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>Painel de Uso</h3>
+                <div style="display:flex;gap:0.5rem;align-items:center">
+                    <button id="btn-usage-reset" class="btn btn-secondary btn-sm" title="Resetar estatísticas">Resetar</button>
+                    <button id="usage-panel-close" class="btn-close">&times;</button>
+                </div>
+            </div>
+            <div id="usage-panel-content" style="padding:1rem">
+                <!-- Dynamic content rendered by JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- AI Consultant Config Modal -->
     <div id="ai-config-modal" class="modal hidden">
         <div class="modal-overlay"></div>
@@ -2794,6 +3067,7 @@
     <script src="js/swipe.js"></script>
     <script src="js/mining.js"></script>
     <script src="js/lab-tests.js"></script>
+    <script src="js/usage-panel.js"></script>
     <script src="js/projects.js"></script>
 
     <!-- Full-Screen Login Page -->

@@ -108,6 +108,22 @@ const LabTestsModule = {
         const container = document.getElementById('lab-cards-container');
         if (!container) return;
 
+        // Auto-conclude overdue tests (past end date)
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        let changed = false;
+        this._tests.forEach(t => {
+            if (t.status === 'ativo' && t.dateEnd) {
+                const end = new Date(t.dateEnd + 'T23:59:59');
+                if (now > end) {
+                    t.status = 'concluido';
+                    if (!t.result) t.result = 'neutro';
+                    changed = true;
+                }
+            }
+        });
+        if (changed) this._persist();
+
         const active = this._tests.filter(t => t.status === 'ativo');
         const concluded = this._tests.filter(t => t.status === 'concluido');
         const cancelled = this._tests.filter(t => t.status === 'cancelado');

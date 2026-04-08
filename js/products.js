@@ -3,6 +3,27 @@
    =========================== */
 
 const ProductsModule = {
+    COUNTRIES: [
+        { code: 'GB', label: 'GB — Reino Unido', currency: 'GBP' },
+        { code: 'DE', label: 'DE — Alemanha', currency: 'EUR' },
+        { code: 'AU', label: 'AU — Austrália', currency: 'USD' },
+        { code: 'IE', label: 'IE — Irlanda', currency: 'EUR' },
+        { code: 'CA', label: 'CA — Canadá', currency: 'USD' },
+        { code: 'AT', label: 'AT — Áustria', currency: 'EUR' },
+        { code: 'US', label: 'US — Estados Unidos', currency: 'USD' },
+        { code: 'FR', label: 'FR — França', currency: 'EUR' },
+        { code: 'IT', label: 'IT — Itália', currency: 'EUR' },
+        { code: 'ES', label: 'ES — Espanha', currency: 'EUR' },
+        { code: 'NL', label: 'NL — Holanda', currency: 'EUR' },
+        { code: 'BE', label: 'BE — Bélgica', currency: 'EUR' },
+        { code: 'SE', label: 'SE — Suécia', currency: 'USD' },
+        { code: 'NO', label: 'NO — Noruega', currency: 'USD' },
+        { code: 'DK', label: 'DK — Dinamarca', currency: 'USD' },
+        { code: 'PL', label: 'PL — Polônia', currency: 'USD' },
+        { code: 'CZ', label: 'CZ — Rep. Tcheca', currency: 'USD' },
+        { code: 'NZ', label: 'NZ — Nova Zelândia', currency: 'USD' },
+    ],
+
     init() {
         document.getElementById('btn-add-product').addEventListener('click', () => this.openForm());
         document.getElementById('product-form').addEventListener('submit', (e) => this.handleSubmit(e));
@@ -25,6 +46,9 @@ const ProductsModule = {
         const form = document.getElementById('product-form');
         form.reset();
 
+        // Clear country prices
+        document.getElementById('country-prices-list').innerHTML = '';
+
         if (product) {
             title.textContent = 'Editar Produto';
             document.getElementById('product-id').value = product.id;
@@ -38,6 +62,11 @@ const ProductsModule = {
             document.getElementById('product-variable-costs').value = product.variableCosts;
             document.getElementById('product-cpa').value = product.cpa;
             document.getElementById('product-cpa-currency').value = product.cpaCurrency;
+
+            // Load existing country prices
+            if (product.countryPrices && product.countryPrices.length > 0) {
+                product.countryPrices.forEach(cp => this.addCountryPriceRow(cp));
+            }
         } else {
             title.textContent = 'Adicionar Produto';
             document.getElementById('product-id').value = '';
@@ -45,6 +74,57 @@ const ProductsModule = {
 
         this.updateProfitPreview();
         openModal('product-modal');
+    },
+
+    addCountryPriceRow(data = null) {
+        const list = document.getElementById('country-prices-list');
+        const idx = list.children.length;
+
+        const countryOptions = this.COUNTRIES.map(c =>
+            `<option value="${c.code}" ${data && data.country === c.code ? 'selected' : ''}>${c.label}</option>`
+        ).join('');
+
+        const currencyOptions = ['USD', 'GBP', 'EUR'].map(cur =>
+            `<option value="${cur}" ${data && data.currency === cur ? 'selected' : cur === 'USD' && !data ? 'selected' : ''}>${cur}</option>`
+        ).join('');
+
+        const row = document.createElement('div');
+        row.className = 'country-price-row';
+        row.dataset.idx = idx;
+        row.innerHTML = `
+            <select class="input input-sm cp-country">
+                ${countryOptions}
+            </select>
+            <input type="number" class="input input-sm cp-price" step="0.01" placeholder="0.00" value="${data ? data.price : ''}">
+            <select class="input input-sm cp-currency">
+                ${currencyOptions}
+            </select>
+            <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()" title="Remover">&times;</button>
+        `;
+
+        // Auto-select currency based on country
+        const countrySelect = row.querySelector('.cp-country');
+        const currencySelect = row.querySelector('.cp-currency');
+        countrySelect.addEventListener('change', () => {
+            const found = this.COUNTRIES.find(c => c.code === countrySelect.value);
+            if (found) currencySelect.value = found.currency;
+        });
+
+        list.appendChild(row);
+    },
+
+    _getCountryPrices() {
+        const rows = document.querySelectorAll('#country-prices-list .country-price-row');
+        const result = [];
+        rows.forEach(row => {
+            const country = row.querySelector('.cp-country').value;
+            const price = parseFloat(row.querySelector('.cp-price').value) || 0;
+            const currency = row.querySelector('.cp-currency').value;
+            if (country && price > 0) {
+                result.push({ country, price, currency });
+            }
+        });
+        return result;
     },
 
     updateProfitPreview() {
@@ -71,6 +151,7 @@ const ProductsModule = {
             variableCosts: parseFloat(document.getElementById('product-variable-costs').value) || 0,
             cpa: parseFloat(document.getElementById('product-cpa').value) || 0,
             cpaCurrency: document.getElementById('product-cpa-currency').value,
+            countryPrices: this._getCountryPrices(),
             status: 'ativo',
             storeId: getWritableStoreId()
         };
@@ -147,8 +228,15 @@ const ProductsModule = {
                 ? `<span class="pipeline-stage-badge stage-${pipeCard.columnId}">${pipelineCols[pipeCard.columnId] || pipeCard.columnId}</span>`
                 : '<span class="pipeline-stage-badge stage-none">—</span>';
 
+            // Country prices badges
+            const countryBadges = (p.countryPrices && p.countryPrices.length > 0)
+                ? `<div class="country-prices-badges">${p.countryPrices.map(cp =>
+                    `<span class="country-price-badge" title="${cp.country}: ${cp.currency} ${cp.price}">${cp.country} <strong>${cp.currency} ${cp.price}</strong></span>`
+                  ).join('')}</div>`
+                : '';
+
             return `<tr>
-                <td><strong>${this._escapeHtml(p.name)}</strong><br>${stageBadge}</td>
+                <td><strong>${this._escapeHtml(p.name)}</strong><br>${stageBadge}${countryBadges}</td>
                 <td>${this._escapeHtml(p.language || p.country || 'Ingles')}</td>
                 <td>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</td>
                 <td>${formatDualCurrencyHTML(p.cost, p.costCurrency)}</td>
