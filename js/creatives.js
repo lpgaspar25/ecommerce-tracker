@@ -461,10 +461,10 @@ const CreativesModule = {
                 </div>
                 <div class="creative-card-badges">
                     <span class="creative-status-badge" style="background:${statusObj.color}">${statusObj.label}</span>
-                    ${fatigue.fatigued ? `<span class="creative-fatigue-badge" title="${this._escapeHtml(fatigue.reason)}">🔥 Fadiga</span>` : ''}
+                    ${fatigue.fatigued ? `<span class="creative-fatigue-badge" title="${this._escapeHtml(fatigue.reason)}"><i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i> Fadiga</span>` : ''}
                     <span class="creative-freshness-badge ${freshnessClass}">${freshness.days}d</span>
-                    ${activeTests.length > 0 ? `<span class="creative-test-badge">🧪 ${activeTests.length} teste(s)</span>` : ''}
-                    ${winners.length > 0 ? `<span class="creative-winner-badge">🏆 ${winners.length} validado(s)</span>` : ''}
+                    ${activeTests.length > 0 ? `<span class="creative-test-badge"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> ${activeTests.length} teste(s)</span>` : ''}
+                    ${winners.length > 0 ? `<span class="creative-winner-badge"><i data-lucide="trophy" style="width:14px;height:14px;vertical-align:-2px"></i> ${winners.length} validado(s)</span>` : ''}
                     ${compareCheckbox}
                 </div>
             </div>
@@ -493,7 +493,7 @@ const CreativesModule = {
             <div class="creative-card-actions">
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openForm(CreativesModule.getCreativeById('${creative.id}'))">Editar</button>
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openMetricForm('${creative.id}')">+ Metrica</button>
-                <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openVariationForm('${creative.id}')">🧪 Testar Variacao</button>
+                <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openVariationForm('${creative.id}')"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testar Variacao</button>
                 <button class="btn btn-danger btn-sm" onclick="CreativesModule.deleteCreative('${creative.id}')">Excluir</button>
             </div>
         </div>`;
@@ -504,13 +504,13 @@ const CreativesModule = {
 
         const rows = variations.map(v => {
             const statusClass = v.status === 'validado' ? 'var-validated' : (v.status === 'nao_validado' ? 'var-rejected' : 'var-pending');
-            const statusLabel = v.status === 'validado' ? '✅ Validado' : (v.status === 'nao_validado' ? '❌ Nao validado' : '⏳ Pendente');
+            const statusLabel = v.status === 'validado' ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Validado' : (v.status === 'nao_validado' ? '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Nao validado' : '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Pendente');
 
             return `<div class="variation-row ${statusClass}">
                 <div class="variation-info">
                     <strong>${this._escapeHtml(v.name || 'Teste')}</strong>
                     <span class="variation-element">${elementLabels[v.element] || v.element}</span>
-                    <span class="variation-dates">${v.startDate ? formatDate(v.startDate) : ''} ${v.endDate ? '→ ' + formatDate(v.endDate) : ''}</span>
+                    <span class="variation-dates">${v.startDate ? formatDate(v.startDate) : ''} ${v.endDate ? '<i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ' + formatDate(v.endDate) : ''}</span>
                 </div>
                 <div class="variation-values">
                     <div class="variation-original" title="Original">${this._escapeHtml((v.originalValue || '').substring(0, 50))}</div>
@@ -520,15 +520,15 @@ const CreativesModule = {
                 <div class="variation-status">
                     <span class="${statusClass}">${statusLabel}</span>
                     ${v.status === 'pendente' ? `
-                        <button class="btn btn-sm" style="background:var(--green);color:#fff" onclick="CreativesModule.validateVariation('${creativeId}','${v.id}','validado')">✓</button>
-                        <button class="btn btn-sm" style="background:var(--red);color:#fff" onclick="CreativesModule.validateVariation('${creativeId}','${v.id}','nao_validado')">✗</button>
+                        <button class="btn btn-sm" style="background:var(--green);color:#fff" onclick="CreativesModule.validateVariation('${creativeId}','${v.id}','validado')"><i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+                        <button class="btn btn-sm" style="background:var(--red);color:#fff" onclick="CreativesModule.validateVariation('${creativeId}','${v.id}','nao_validado')"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                     ` : ''}
                 </div>
             </div>`;
         }).join('');
 
         return `<div class="creative-variations">
-            <div class="variations-title">🧪 Testes de Variacao (${variations.length})</div>
+            <div class="variations-title"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testes de Variacao (${variations.length})</div>
             ${rows}
         </div>`;
     },
@@ -559,7 +559,7 @@ const CreativesModule = {
             ['Conv.', ...data.map(d => d.stats ? String(d.stats.totalConversions) : '--')],
             ['ROAS', ...data.map(d => d.stats ? d.stats.roas.toFixed(2) + 'x' : '--')],
             ['CPA', ...data.map(d => d.stats ? formatCurrency(d.stats.cpa, 'USD') : '--')],
-            ['Fadiga', ...data.map(d => d.fatigue.fatigued ? '🔥 ' + d.fatigue.reason : '✅ OK')],
+            ['Fadiga', ...data.map(d => d.fatigue.fatigued ? '<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i> ' + d.fatigue.reason : '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> OK')],
         ];
 
         // Highlight best value per row
@@ -600,7 +600,7 @@ const CreativesModule = {
         }
 
         summaryEl.innerHTML = `<div class="fatigue-alert">
-            <strong>⚠️ ${fatigued.length} criativo(s) com fadiga detectada:</strong>
+            <strong><i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${fatigued.length} criativo(s) com fadiga detectada:</strong>
             <ul>${fatigued.map(c => {
                 const f = this.detectFatigue(c.id);
                 return `<li><strong>${this._escapeHtml(c.name)}</strong>: ${this._escapeHtml(f.reason)}</li>`;

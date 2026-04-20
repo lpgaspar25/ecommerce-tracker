@@ -394,10 +394,10 @@ const CalculatorModule = {
                 statusEl.textContent = '--';
                 statusEl.style.color = '';
             } else if (maxCPA > 0 && data.cpaUSD <= maxCPA) {
-                statusEl.textContent = `✓ Dentro da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} abaixo do máximo)`;
+                statusEl.innerHTML = `<i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px"></i> Dentro da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} abaixo do máximo)`;
                 statusEl.style.color = 'var(--green)';
             } else {
-                statusEl.textContent = `✗ Fora da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} acima do máximo)`;
+                statusEl.innerHTML = `<i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i> Fora da meta (CPA ${formatDualCurrency(Math.abs(cpaDiff), 'USD')} acima do máximo)`;
                 statusEl.style.color = 'var(--red)';
             }
         }
@@ -449,7 +449,7 @@ const CalculatorModule = {
         tbody.innerHTML = cpcValues.map(cpc => {
             const resultingCPA = cpc / convDecimal;
             const withinTarget = resultingCPA <= cpaUSD;
-            const statusIcon = withinTarget ? '✅' : '❌';
+            const statusIcon = withinTarget ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>' : '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i>';
             const statusColor = withinTarget ? 'var(--green)' : 'var(--red)';
 
             let profitText = '--';
@@ -574,12 +574,12 @@ const CalculatorModule = {
         // Build P&L table
         const adSpendPerSale = adSpendUSD / sales;
         const rows = [
-            { item: '💰 Receita', perSale: revenuePerSale, total: totalRevenue, pct: 100, color: '' },
-            { item: '📦 Custo do Produto', perSale: -costUSD, total: -totalCost, pct: totalRevenue > 0 ? -(totalCost / totalRevenue) * 100 : 0, color: 'var(--red)' },
-            { item: '🏛️ Impostos / Taxas (' + taxPct + '%)', perSale: -(revenuePerSale * taxPct / 100), total: -totalTax, pct: -taxPct, color: 'var(--red)' },
-            { item: '📊 Custos Variáveis (' + variablePct + '%)', perSale: -(revenuePerSale * variablePct / 100), total: -totalVariable, pct: -variablePct, color: 'var(--red)' },
-            { item: '📢 Ads (Investimento)', perSale: -adSpendPerSale, total: -adSpendUSD, pct: totalRevenue > 0 ? -(adSpendUSD / totalRevenue) * 100 : 0, color: 'var(--red)' },
-            { item: '<strong>✅ Lucro Líquido</strong>', perSale: netProfit / sales, total: netProfit, pct: netMargin, color: netProfit >= 0 ? 'var(--green)' : 'var(--red)', bold: true }
+            { item: '<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> Receita', perSale: revenuePerSale, total: totalRevenue, pct: 100, color: '' },
+            { item: '<i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Custo do Produto', perSale: -costUSD, total: -totalCost, pct: totalRevenue > 0 ? -(totalCost / totalRevenue) * 100 : 0, color: 'var(--red)' },
+            { item: '<i data-lucide="landmark" style="width:14px;height:14px;vertical-align:-2px"></i>️ Impostos / Taxas (' + taxPct + '%)', perSale: -(revenuePerSale * taxPct / 100), total: -totalTax, pct: -taxPct, color: 'var(--red)' },
+            { item: '<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Custos Variáveis (' + variablePct + '%)', perSale: -(revenuePerSale * variablePct / 100), total: -totalVariable, pct: -variablePct, color: 'var(--red)' },
+            { item: '<i data-lucide="megaphone" style="width:14px;height:14px;vertical-align:-2px"></i> Ads (Investimento)', perSale: -adSpendPerSale, total: -adSpendUSD, pct: totalRevenue > 0 ? -(adSpendUSD / totalRevenue) * 100 : 0, color: 'var(--red)' },
+            { item: '<strong><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Lucro Líquido</strong>', perSale: netProfit / sales, total: netProfit, pct: netMargin, color: netProfit >= 0 ? 'var(--green)' : 'var(--red)', bold: true }
         ];
 
         const tbody = document.getElementById('calc-i-tbody');

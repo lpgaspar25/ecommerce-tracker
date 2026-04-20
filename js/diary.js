@@ -4,7 +4,10 @@
 
 const DiaryModule = {
     _activeView: 'all', // 'all' or 'tests'
+    _groupByCampaign: false,
     _compareMode: false,
+    _shopifyByDatePid: {}, // "YYYY-MM-DD|localProductId" → {sales, revenue, currency}
+    _shopifyRangeKey: null, // cache key for current preload
     _compareSlots: [],
     _compareColors: ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899'],
     _compareColorNames: ['Azul', 'Laranja', 'Verde', 'Roxo', 'Rosa'],
@@ -19,6 +22,8 @@ const DiaryModule = {
         { id: 'addToCart', label: 'Add to Cart', default: true },
         { id: 'icRate', label: 'Carrinho > IC', default: true },
         { id: 'sales', label: 'Vendas', default: true },
+        { id: 'shopifySales', label: 'Vendas Shopify', default: false },
+        { id: 'realCpa', label: 'CPA Real', default: false },
         { id: 'convPage', label: 'Conv. Pagina', default: true },
         { id: 'convCheckout', label: 'Conv. Checkout', default: true },
         { id: 'budget', label: 'Orcamento', default: false },
@@ -150,6 +155,22 @@ const DiaryModule = {
             case 'addToCart': return `<td class="num">${addToCart || '--'}</td>`;
             case 'icRate': return this._fmtMetricCell(addToCart > 0 ? checkout / addToCart * 100 : 0, 'icRate');
             case 'sales': return `<td class="num">${sales || '--'}</td>`;
+            case 'shopifySales': {
+                const data = this._getShopifyDataFor(entry.date, entry.productId);
+                if (!data) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                const fb = Number(entry.sales || 0);
+                const sh = Number(data.sales || 0);
+                const diff = sh - fb;
+                const diffLabel = (fb > 0 && diff !== 0) ? ` <span style="font-size:0.65rem;color:${diff > 0 ? 'var(--green)' : 'var(--red)'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
+                return `<td class="num" title="Shopify: ${sh} / Facebook: ${fb}">${sh}${diffLabel}</td>`;
+            }
+            case 'realCpa': {
+                const data = this._getShopifyDataFor(entry.date, entry.productId);
+                if (!data || !data.sales) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                const budgetBRL = convertToBRL(entry.budget || 0, entry.budgetCurrency || 'BRL');
+                const realCpaBRL = budgetBRL / data.sales;
+                return this._fmtMetricCellBRL(realCpaBRL, 'cpa');
+            }
             case 'convPage': return this._fmtMetricCell(pageViews > 0 ? sales / pageViews * 100 : 0, 'convPage');
             case 'convCheckout': return this._fmtMetricCell(checkout > 0 ? sales / checkout * 100 : 0, 'convCheckout');
             case 'budget': return `<td class="num">${entry.budget ? entry.budget.toFixed(2) : '--'}</td>`;
@@ -216,21 +237,68 @@ const DiaryModule = {
         return `<th${isNum ? ' class="num"' : ''}>${this._escapeHtml(col.label)}</th>`;
     },
 
+    // Footer cell values for the TOTAL/MEDIA row.
+    // Policy:
+    //   • Counts / absolute values (vendas, visitantes, gasto, receita, ATC, checkout, impressões, lucro)
+    //     → SUM (total across all entries)
+    //   • Rates / ratios / weighted averages (taxas %, CPA, CPC, CPM, ROAS)
+    //     → AVG (weighted — computed from totals, not arithmetic mean of rates)
+    // CPA/CPC/CPM/ROAS use weighted averages (total budget ÷ total sales, etc), which is
+    // the correct way to aggregate ratios across periods.
     _getAvgCellHtml(colId, sortedEntries, totals) {
         const n = sortedEntries.length;
         if (n === 0) return '<td>--</td>';
         switch (colId) {
             case 'date': return '';
             case 'product': return '';
-            case 'pageViews': return `<td class="num">${Math.round(totals.totalPageViews / n) || '--'}</td>`;
+            // ── SUM (absolute counts) ──
+            case 'pageViews':
+                return `<td class="num">${totals.totalPageViews > 0 ? Math.round(totals.totalPageViews).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'addToCart':
+                return `<td class="num">${totals.totalAddToCart > 0 ? Math.round(totals.totalAddToCart).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'sales':
+                return `<td class="num">${totals.totalSales > 0 ? Math.round(totals.totalSales).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'shopifySales': {
+                let totalShopify = 0, any = false;
+                sortedEntries.forEach(e => {
+                    const d = this._getShopifyDataFor(e.date, e.productId);
+                    if (d) { totalShopify += Number(d.sales || 0); any = true; }
+                });
+                if (!any) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                const diff = totalShopify - totals.totalSales;
+                const diffLabel = (totals.totalSales > 0 && diff !== 0) ? ` <span style="font-size:0.65rem;color:${diff > 0 ? 'var(--green)' : 'var(--red)'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
+                return `<td class="num">${totalShopify}${diffLabel}</td>`;
+            }
+            case 'realCpa': {
+                let totalShopify = 0, totalBudgetBRL = 0, any = false;
+                sortedEntries.forEach(e => {
+                    const d = this._getShopifyDataFor(e.date, e.productId);
+                    if (d) {
+                        totalShopify += Number(d.sales || 0);
+                        totalBudgetBRL += convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL');
+                        any = true;
+                    }
+                });
+                if (!any || totalShopify <= 0) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                return this._fmtMetricCellBRL(totalBudgetBRL / totalShopify, 'cpa');
+            }
+            case 'budget':
+                return `<td class="num">${totals.totalBudget > 0 ? totals.totalBudget.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            case 'revenue':
+                return `<td class="num">${totals.totalRevenue > 0 ? totals.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            case 'impressions':
+                return `<td class="num">${totals.totalImpressions > 0 ? Math.round(totals.totalImpressions).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'profit': {
+                let totalProfit = 0;
+                sortedEntries.forEach(e => { totalProfit += (typeof this.getEntryProfit === 'function' ? this.getEntryProfit(e) : 0); });
+                const cls = totalProfit >= 0 ? 'metric-good' : 'metric-bad';
+                return `<td class="num ${totalProfit !== 0 ? cls : ''}">${totalProfit !== 0 ? totalProfit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            }
+            // ── WEIGHTED AVG (ratios — correct formula is total/total, not avg of rates) ──
             case 'atcRate': return this._fmtMetricCell(totals.avgAtcRate, 'atcRate');
-            case 'addToCart': return `<td class="num">${Math.round(totals.totalAddToCart / n) || '--'}</td>`;
             case 'icRate': return this._fmtMetricCell(totals.avgIcRate, 'icRate');
-            case 'sales': return `<td class="num">${(totals.totalSales / n).toFixed(1).replace('.', ',')}</td>`;
             case 'convPage': return this._fmtMetricCell(totals.avgConvPage, 'convPage');
             case 'convCheckout': return this._fmtMetricCell(totals.avgConvCheckout, 'convCheckout');
-            case 'budget': return `<td class="num">${totals.totalBudget > 0 ? (totals.totalBudget / n).toFixed(2) : '--'}</td>`;
-            case 'revenue': return `<td class="num">${totals.totalRevenue > 0 ? (totals.totalRevenue / n).toFixed(2) : '--'}</td>`;
             case 'cpa': {
                 const totalBudgetBRL = sortedEntries.reduce((s, e) => s + convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL'), 0);
                 const avgCpaBRL = totals.totalSales > 0 ? totalBudgetBRL / totals.totalSales : 0;
@@ -257,17 +325,6 @@ const DiaryModule = {
             case 'roas': {
                 const roas = totals.totalBudget > 0 ? totals.totalRevenue / totals.totalBudget : 0;
                 return `<td class="num">${roas > 0 ? roas.toFixed(2) + 'x' : '--'}</td>`;
-            }
-            case 'impressions': {
-                const avg = totals.totalImpressions > 0 ? Math.round(totals.totalImpressions / n) : 0;
-                return `<td class="num">${avg > 0 ? avg.toLocaleString('pt-BR') : '--'}</td>`;
-            }
-            case 'profit': {
-                let totalProfit = 0;
-                sortedEntries.forEach(e => { totalProfit += (typeof this.getEntryProfit === 'function' ? this.getEntryProfit(e) : 0); });
-                const avg = totalProfit / n;
-                const cls = avg >= 0 ? 'metric-good' : 'metric-bad';
-                return `<td class="num ${avg !== 0 ? cls : ''}">${avg !== 0 ? avg.toFixed(2) : '--'}</td>`;
             }
             case 'platform': return `<td>--</td>`;
             case 'isTest': return `<td></td>`;
@@ -401,6 +458,18 @@ const DiaryModule = {
                 this.render();
             });
         });
+
+        // Group-by-campaign toggle (Facebook-style view)
+        const groupBtn = document.getElementById('btn-diary-group-campaign');
+        if (groupBtn) {
+            groupBtn.addEventListener('click', () => {
+                this._groupByCampaign = !this._groupByCampaign;
+                groupBtn.classList.toggle('active', this._groupByCampaign);
+                groupBtn.classList.toggle('btn-primary', this._groupByCampaign);
+                groupBtn.classList.toggle('btn-secondary', !this._groupByCampaign);
+                this.render();
+            });
+        }
 
         // Period filter
         document.getElementById('diary-period').addEventListener('change', (e) => {
@@ -1160,7 +1229,7 @@ const DiaryModule = {
         const endDateText = entry.testEndDate ? formatDate(entry.testEndDate) : 'Sem data final';
 
         return `<div class="diary-entry-statuses">
-            <span class="diary-test-chip diary-test-chip-test">🧪 Teste</span>
+            <span class="diary-test-chip diary-test-chip-test"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Teste</span>
             <span class="diary-test-chip">Fim: ${this._escapeHtml(endDateText)}</span>
             <span class="diary-test-chip diary-test-chip-${validationKey}">${this._escapeHtml(validationLabel)}</span>
         </div>`;
@@ -1181,6 +1250,36 @@ const DiaryModule = {
         this.renderNotionList(entries);
         this.renderSummary(entries);
         this._renderDiaryChart(entries);
+        // Async: preload Shopify data for visible period, then re-render
+        this._ensureShopifyData(entries);
+    },
+
+    _getShopifyDataFor(date, productId) {
+        if (!date || !productId) return null;
+        return this._shopifyByDatePid[`${date}|${productId}`] || null;
+    },
+
+    async _ensureShopifyData(entries) {
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured || !ShopifyModule.isConfigured()) return;
+        const dates = entries.map(e => e.date).filter(Boolean).sort();
+        if (!dates.length) return;
+        const from = dates[0], to = dates[dates.length - 1];
+        const key = `${from}|${to}`;
+        if (this._shopifyRangeKey === key) return; // already loaded
+        try {
+            const map = await ShopifyModule.getRealSalesMapByDate(from, to);
+            this._shopifyByDatePid = map || {};
+            this._shopifyRangeKey = key;
+            // Re-render with data now available (without kicking off another fetch)
+            if (this._groupByCampaign) {
+                const container = document.getElementById('diary-notion-list');
+                if (container) this._renderCampaignGroupedList(entries, container);
+            } else {
+                this.renderNotionList(entries);
+            }
+        } catch (err) {
+            console.warn('[Diary] Shopify preload failed:', err);
+        }
     },
 
     _fmtPctCell(num) {
@@ -1196,6 +1295,11 @@ const DiaryModule = {
     renderNotionList(entries) {
         const container = document.getElementById('diary-notion-list');
         if (!container) return;
+
+        if (this._groupByCampaign) {
+            this._renderCampaignGroupedList(entries, container);
+            return;
+        }
 
         if (entries.length === 0) {
             const msg = this._activeView === 'tests'
@@ -1789,7 +1893,7 @@ const DiaryModule = {
         slotData.forEach((sd) => {
             html += `<th style="border-bottom-color:${sd.color}; color:${sd.color}">${this._escapeHtml(sd.label)}</th>`;
         });
-        if (showDelta) html += '<th>Δ 1↔2</th>';
+        if (showDelta) html += '<th>Δ 1<i data-lucide="arrow-left-right" style="width:14px;height:14px;vertical-align:-2px"></i>2</th>';
         html += '</tr></thead><tbody>';
 
         rows.forEach(row => {
@@ -1974,6 +2078,315 @@ const DiaryModule = {
                 }
             }
         });
+    },
+
+    // ── Group-by-Campaign view (Facebook-style) ──────────────────────
+    _getFilteredCampaignEntries() {
+        // Apply same period/product/platform filters as getFilteredEntries,
+        // but to sub-entries (isCampaign=true with parentId)
+        const period = document.getElementById('diary-period').value;
+        const productFilter = document.getElementById('diary-product-filter').value;
+        const platformFilter = document.getElementById('diary-platform-filter').value;
+
+        const today = todayISO();
+        let startDate = '', endDate = '';
+        switch (period) {
+            case 'today': startDate = endDate = today; break;
+            case 'week': {
+                const d = new Date();
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(d.setDate(diff));
+                startDate = monday.toISOString().split('T')[0];
+                endDate = today;
+                break;
+            }
+            case 'month': {
+                const d = new Date();
+                startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+                endDate = today;
+                break;
+            }
+            case 'all': startDate = ''; endDate = ''; break;
+            case 'custom':
+                startDate = document.getElementById('diary-start').value;
+                endDate = document.getElementById('diary-end').value;
+                break;
+        }
+
+        return (AppState.diary || []).filter(entry => {
+            if (!entry.isCampaign && !entry.parentId) return false;
+            if (entry.parentId == null && !entry.isCampaign) return false;
+            if (startDate && entry.date < startDate) return false;
+            if (endDate && entry.date > endDate) return false;
+            if (productFilter === '__STORE__' && entry.productId && entry.testType !== 'store') return false;
+            if (productFilter !== 'todos' && productFilter !== '__STORE__' && entry.productId !== productFilter) return false;
+            if (platformFilter !== 'todos' && entry.platform !== platformFilter) return false;
+            return true;
+        });
+    },
+
+    _aggregateEntries(list) {
+        let totalPageViews = 0, totalAddToCart = 0, totalCheckout = 0, totalSales = 0;
+        let totalRevenue = 0, totalBudget = 0, totalImpressions = 0;
+        let totalBudgetBRL = 0, totalCpcBudgetBRL = 0, totalClicks = 0;
+        let totalShopifySales = 0, shopifySalesBudgetBRL = 0, hasShopifyData = false;
+        list.forEach(e => {
+            const sd = this._getShopifyDataFor(e.date, e.productId);
+            if (sd) {
+                hasShopifyData = true;
+                totalShopifySales += Number(sd.sales || 0);
+                shopifySalesBudgetBRL += convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL');
+            }
+        });
+        list.forEach(e => {
+            totalPageViews += e.pageViews || 0;
+            totalAddToCart += e.addToCart || 0;
+            totalCheckout += e.checkout || 0;
+            totalSales += e.sales || 0;
+            totalRevenue += Number(e.revenue || 0);
+            totalBudget += Number(e.budget || 0);
+            totalImpressions += Number(e.impressions || 0);
+            totalBudgetBRL += convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL');
+            if ((e.cpc || 0) > 0) {
+                const budBRL = convertToBRL(e.budget || 0, e.budgetCurrency || 'BRL');
+                const cpcBRL = convertToBRL(e.cpc || 0, e.cpcCurrency || e.budgetCurrency || 'BRL');
+                totalClicks += budBRL / cpcBRL;
+                totalCpcBudgetBRL += budBRL;
+            }
+        });
+        return {
+            totalPageViews, totalAddToCart, totalCheckout, totalSales,
+            totalRevenue, totalBudget, totalImpressions,
+            avgAtcRate: totalPageViews > 0 ? (totalAddToCart / totalPageViews * 100) : 0,
+            avgIcRate: totalAddToCart > 0 ? (totalCheckout / totalAddToCart * 100) : 0,
+            avgConvPage: totalPageViews > 0 ? (totalSales / totalPageViews * 100) : 0,
+            avgConvCheckout: totalCheckout > 0 ? (totalSales / totalCheckout * 100) : 0,
+            _cpaBRL: totalSales > 0 ? totalBudgetBRL / totalSales : 0,
+            _cpcBRL: totalClicks > 0 ? totalCpcBudgetBRL / totalClicks : 0,
+            _cpmBRL: totalImpressions > 0 ? (totalBudgetBRL / totalImpressions) * 1000 : 0,
+            _roas: totalBudget > 0 ? (totalRevenue / totalBudget) : 0,
+            totalShopifySales, hasShopifyData,
+            _realCpaBRL: totalShopifySales > 0 ? shopifySalesBudgetBRL / totalShopifySales : 0,
+        };
+    },
+
+    _renderCampaignGroupedList(parentEntries, container) {
+        const campaignEntries = this._getFilteredCampaignEntries();
+
+        if (campaignEntries.length === 0) {
+            container.innerHTML = `<div class="empty-state"><p>Nenhuma campanha encontrada no período selecionado. Importe dados com a coluna "Nome da campanha" para usar esta visão.</p></div>`;
+            return;
+        }
+
+        const visibleCols = this._getVisibleColumns();
+
+        // Group by campaignName
+        const byCampaign = {};
+        campaignEntries.forEach(e => {
+            const name = (e.campaignName || '(sem nome)').trim() || '(sem nome)';
+            if (!byCampaign[name]) byCampaign[name] = [];
+            byCampaign[name].push(e);
+        });
+
+        const names = Object.keys(byCampaign).sort((a, b) => a.localeCompare(b));
+
+        let headerHtml = '<th class="diary-check-col" style="width:28px"></th>';
+        visibleCols.forEach(col => { headerHtml += this._getHeaderHtml(col); });
+        headerHtml += '<th></th>';
+        const colCount = visibleCols.length + 2;
+
+        let html = '';
+        names.forEach((name, idx) => {
+            const list = byCampaign[name];
+            const totals = this._aggregateEntries(list);
+            const campaignKey = `camp_${idx}_${name.replace(/[^a-z0-9]/gi, '_').slice(0, 30)}`;
+
+            // Group by date within the campaign
+            const byDate = {};
+            list.forEach(e => {
+                if (!byDate[e.date]) byDate[e.date] = [];
+                byDate[e.date].push(e);
+            });
+            const dates = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+
+            // Master campaign row
+            let masterRow = `<td class="diary-check-col"><button class="diary-expand-btn diary-campaign-master-toggle" data-target="${campaignKey}"><i data-lucide="chevron-right" style="width:12px;height:12px" class="diary-expand-icon"></i></button></td>`;
+            masterRow += this._getCampaignMasterCellHtml(name, list.length, totals, visibleCols);
+            masterRow += '<td></td>';
+
+            html += `<div class="diary-notion-group diary-campaign-group">
+                <div class="diary-notion-table-wrap">
+                    <table class="diary-notion-table">
+                        <thead><tr>${headerHtml}</tr></thead>
+                        <tbody>
+                            <tr class="diary-notion-row diary-campaign-master-row" data-campaign-key="${campaignKey}">${masterRow}</tr>`;
+
+            // Per-day rows (level 1)
+            dates.forEach((date, dIdx) => {
+                const dayList = byDate[date];
+                const dayTotals = this._aggregateEntries(dayList);
+                const dayKey = `${campaignKey}_d${dIdx}`;
+                const hasMultipleAds = dayList.length > 1 || dayList.some(e => e.adName);
+
+                let dayRow = `<td class="diary-check-col">${hasMultipleAds ? `<button class="diary-expand-btn diary-day-toggle" data-target="${dayKey}"><i data-lucide="chevron-right" style="width:10px;height:10px" class="diary-expand-icon"></i></button>` : ''}</td>`;
+                visibleCols.forEach(col => { dayRow += this._getDayAggCellHtml(col.id, date, dayTotals, dayList); });
+                dayRow += '<td></td>';
+
+                html += `<tr class="diary-notion-row diary-campaign-day-row" data-parent-campaign="${campaignKey}" data-day-key="${dayKey}" style="display:none">${dayRow}</tr>`;
+
+                // Level 2: individual ads within this day
+                if (hasMultipleAds) {
+                    dayList.sort((a, b) => (a.adName || '').localeCompare(b.adName || ''));
+                    dayList.forEach(sub => {
+                        let adRow = `<td class="diary-check-col"></td>`;
+                        visibleCols.forEach(col => { adRow += this._getAdCellHtml(sub, col.id); });
+                        adRow += '<td></td>';
+                        html += `<tr class="diary-notion-row diary-campaign-ad-row" data-parent-day="${dayKey}" style="display:none">${adRow}</tr>`;
+                    });
+                }
+            });
+
+            html += `</tbody></table></div></div>`;
+        });
+
+        container.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Wire up master expand (campaign → days)
+        container.querySelectorAll('.diary-campaign-master-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const target = btn.dataset.target;
+                const rows = container.querySelectorAll(`tr[data-parent-campaign="${target}"]`);
+                const expanded = btn.classList.toggle('expanded');
+                rows.forEach(r => { r.style.display = expanded ? '' : 'none'; });
+                // Collapse nested day-expands when campaign collapses
+                if (!expanded) {
+                    container.querySelectorAll(`.diary-day-toggle`).forEach(dt => {
+                        if (dt.classList.contains('expanded')) {
+                            dt.classList.remove('expanded');
+                            const dk = dt.dataset.target;
+                            container.querySelectorAll(`tr[data-parent-day="${dk}"]`).forEach(ar => { ar.style.display = 'none'; });
+                        }
+                    });
+                }
+            });
+        });
+
+        // Wire up day expand (day → ads)
+        container.querySelectorAll('.diary-day-toggle').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const target = btn.dataset.target;
+                const rows = container.querySelectorAll(`tr[data-parent-day="${target}"]`);
+                const expanded = btn.classList.toggle('expanded');
+                rows.forEach(r => { r.style.display = expanded ? '' : 'none'; });
+            });
+        });
+    },
+
+    _getCampaignMasterCellHtml(name, entryCount, totals, visibleCols) {
+        let html = '';
+        visibleCols.forEach((col, idx) => {
+            if (idx === 0) {
+                // First visible col holds the campaign name
+                html += `<td class="diary-campaign-master-name"><span class="diary-campaign-name-strong"><i data-lucide="megaphone" style="width:12px;height:12px"></i> ${this._escapeHtml(name)}</span><span class="diary-campaign-subcount">${entryCount} registros</span></td>`;
+                return;
+            }
+            html += this._getMasterAggCellHtml(col.id, totals);
+        });
+        return html;
+    },
+
+    _getMasterAggCellHtml(colId, totals) {
+        switch (colId) {
+            case 'date': return '<td></td>';
+            case 'product': return '<td></td>';
+            case 'pageViews': return `<td class="num">${totals.totalPageViews > 0 ? Math.round(totals.totalPageViews).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'addToCart': return `<td class="num">${totals.totalAddToCart > 0 ? Math.round(totals.totalAddToCart).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'sales': return `<td class="num">${totals.totalSales > 0 ? Math.round(totals.totalSales).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'shopifySales': {
+                if (!totals.hasShopifyData) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                const diff = totals.totalShopifySales - totals.totalSales;
+                const diffLabel = (totals.totalSales > 0 && diff !== 0) ? ` <span style="font-size:0.65rem;color:${diff > 0 ? 'var(--green)' : 'var(--red)'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
+                return `<td class="num">${totals.totalShopifySales}${diffLabel}</td>`;
+            }
+            case 'realCpa':
+                return totals._realCpaBRL > 0 ? this._fmtMetricCellBRL(totals._realCpaBRL, 'cpa') : '<td class="num" style="color:var(--text-muted)">--</td>';
+            case 'budget': return `<td class="num">${totals.totalBudget > 0 ? totals.totalBudget.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            case 'revenue': return `<td class="num">${totals.totalRevenue > 0 ? totals.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            case 'impressions': return `<td class="num">${totals.totalImpressions > 0 ? Math.round(totals.totalImpressions).toLocaleString('pt-BR') : '--'}</td>`;
+            case 'profit': {
+                const profit = totals.totalRevenue - totals.totalBudget;
+                const cls = profit >= 0 ? 'metric-good' : 'metric-bad';
+                return `<td class="num ${profit !== 0 ? cls : ''}">${profit !== 0 ? profit.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            }
+            case 'atcRate': return this._fmtMetricCell(totals.avgAtcRate, 'atcRate');
+            case 'icRate': return this._fmtMetricCell(totals.avgIcRate, 'icRate');
+            case 'convPage': return this._fmtMetricCell(totals.avgConvPage, 'convPage');
+            case 'convCheckout': return this._fmtMetricCell(totals.avgConvCheckout, 'convCheckout');
+            case 'cpa': return this._fmtMetricCellBRL(totals._cpaBRL, 'cpa');
+            case 'cpc': return this._fmtMetricCellBRL(totals._cpcBRL, 'cpc');
+            case 'cpm': return this._fmtMetricCellBRL(totals._cpmBRL, 'cpm');
+            case 'roas': return `<td class="num">${totals._roas > 0 ? totals._roas.toFixed(2) + 'x' : '--'}</td>`;
+            case 'platform': return '<td>--</td>';
+            default: return '<td>--</td>';
+        }
+    },
+
+    _getDayAggCellHtml(colId, date, totals, list) {
+        if (colId === 'date') return `<td class="diary-notion-date" style="padding-left:1.5rem"><span style="color:var(--text-secondary)">${formatDate(date)}</span></td>`;
+        if (colId === 'product') {
+            const first = list[0] || {};
+            const isStoreTest = !first.productId || first.testType === 'store';
+            const name = isStoreTest ? '<i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Loja' : this._escapeHtml(getProductName(first.productId));
+            return `<td class="diary-notion-product" style="color:var(--text-muted);font-size:0.72rem">${name}</td>`;
+        }
+        if (colId === 'platform') {
+            const plats = [...new Set(list.map(e => e.platform).filter(Boolean))];
+            return `<td style="font-size:0.72rem;color:var(--text-muted)">${plats.join(', ') || '--'}</td>`;
+        }
+        return this._getMasterAggCellHtml(colId, totals);
+    },
+
+    _getAdCellHtml(sub, colId) {
+        switch (colId) {
+            case 'date': return `<td style="padding-left:3rem"><span class="diary-ad-name"><i data-lucide="image" style="width:10px;height:10px"></i> ${this._escapeHtml(sub.adName || '(sem anúncio)')}</span></td>`;
+            case 'product': {
+                const isStoreTest = !sub.productId || sub.testType === 'store';
+                return `<td class="diary-notion-product" style="font-size:0.7rem;color:var(--text-muted)">${isStoreTest ? '<i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i>' : this._escapeHtml(getProductName(sub.productId))}</td>`;
+            }
+            case 'pageViews': return `<td class="num">${sub.pageViews || '--'}</td>`;
+            case 'addToCart': return `<td class="num">${sub.addToCart || '--'}</td>`;
+            case 'sales': return `<td class="num">${sub.sales || '--'}</td>`;
+            case 'shopifySales': {
+                // Ads are within a campaign; shopify data is at product+date level, so we show parent's data at the ad level too for visibility
+                const data = this._getShopifyDataFor(sub.date, sub.productId);
+                if (!data) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                return `<td class="num" style="color:var(--text-muted);font-size:0.68rem" title="Total do dia para o produto">≈ ${data.sales}</td>`;
+            }
+            case 'realCpa': {
+                const data = this._getShopifyDataFor(sub.date, sub.productId);
+                if (!data || !data.sales) return '<td class="num" style="color:var(--text-muted)">--</td>';
+                const budgetBRL = convertToBRL(sub.budget || 0, sub.budgetCurrency || 'BRL');
+                return this._fmtMetricCellBRL(budgetBRL / data.sales, 'cpa');
+            }
+            case 'budget': return `<td class="num">${sub.budget ? sub.budget.toFixed(2) : '--'}</td>`;
+            case 'revenue': return `<td class="num">${sub.revenue ? sub.revenue.toFixed(2) : '--'}</td>`;
+            case 'impressions': return `<td class="num">${sub.impressions ? sub.impressions.toLocaleString('pt-BR') : '--'}</td>`;
+            case 'cpa': { const v = convertToBRL(sub.cpa || 0, sub.budgetCurrency || 'BRL'); return this._fmtMetricCellBRL(v, 'cpa'); }
+            case 'cpc': { const v = convertToBRL(sub.cpc || 0, sub.cpcCurrency || sub.budgetCurrency || 'BRL'); return this._fmtMetricCellBRL(v, 'cpc'); }
+            case 'cpm': { const imp = Number(sub.impressions || 0); if (imp <= 0) return '<td class="num">--</td>'; const v = (convertToBRL(sub.budget || 0, sub.budgetCurrency || 'BRL') / imp) * 1000; return this._fmtMetricCellBRL(v, 'cpm'); }
+            case 'roas': { const r = sub.budget > 0 ? (sub.revenue / sub.budget) : 0; return `<td class="num">${r > 0 ? r.toFixed(2) + 'x' : '--'}</td>`; }
+            case 'atcRate': { const pv = sub.pageViews || 0; const atc = sub.addToCart || 0; return this._fmtMetricCell(pv > 0 ? (atc / pv * 100) : 0, 'atcRate'); }
+            case 'icRate': { const atc = sub.addToCart || 0; const ck = sub.checkout || 0; return this._fmtMetricCell(atc > 0 ? (ck / atc * 100) : 0, 'icRate'); }
+            case 'convPage': { const pv = sub.pageViews || 0; const s = sub.sales || 0; return this._fmtMetricCell(pv > 0 ? (s / pv * 100) : 0, 'convPage'); }
+            case 'convCheckout': { const ck = sub.checkout || 0; const s = sub.sales || 0; return this._fmtMetricCell(ck > 0 ? (s / ck * 100) : 0, 'convCheckout'); }
+            case 'profit': { const p = Number(sub.revenue || 0) - Number(sub.budget || 0); const cls = p >= 0 ? 'metric-good' : 'metric-bad'; return `<td class="num ${p !== 0 ? cls : ''}">${p !== 0 ? p.toFixed(2) : '--'}</td>`; }
+            case 'platform': return `<td style="font-size:0.7rem">${sub.platform || '--'}</td>`;
+            default: return '<td>--</td>';
+        }
     },
 
     // ── Campaign drill-down helpers ──────────────────────────────────

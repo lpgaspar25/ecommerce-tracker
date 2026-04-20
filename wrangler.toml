@@ -1,0 +1,14 @@
+# Cloudflare Pages project config.
+# Binds the shared SHOPIFY_TOKENS KV (same namespace the worker uses) so that
+# Pages Functions (/oauth/start, /oauth/callback) can read/write tokens.
+
+name = "app-calculadora-lucas"
+compatibility_date = "2024-10-01"
+pages_build_output_dir = "."
+
+[vars]
+SCOPES = "read_orders,read_products,read_all_orders"
+
+[[kv_namespaces]]
+binding = "SHOPIFY_TOKENS"
+id = "7a0644d773434354ab55bda8ab047a58"

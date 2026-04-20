@@ -344,7 +344,7 @@ ${contextStr}
 
 Faça uma análise completa de padrões:
 
-🔍 PADRÕES DE CPA
+<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> PADRÕES DE CPA
 - CPA está subindo ou descendo? Em quais produtos/campanhas?
 - Se CPA subiu: o que causou? Analise nesta ordem:
   1. CPM subiu? (custo de impressão — problema de leilão/saturação)
@@ -354,38 +354,38 @@ Faça uma análise completa de padrões:
   5. Taxa de checkout caiu? (problema de frete/pagamento)
   6. Taxa de compra caiu? (problema de checkout/abandono)
 
-📊 ANÁLISE POR INTERESSE/PÚBLICO (baseado no nome da campanha)
+<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> ANÁLISE POR INTERESSE/PÚBLICO (baseado no nome da campanha)
 Para cada interesse/campanha, mostre em tabela:
 | Interesse | Gasto | Vendas | CPA | CPC | % Carrinho | % Checkout | % Compra | Veredicto |
 - Qual interesse está convertendo MELHOR?
 - Qual interesse tem o MELHOR funil (maiores taxas)?
 - Qual interesse está gastando sem resultado?
 
-🔬 GARGALOS DO FUNIL
+<i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i> GARGALOS DO FUNIL
 Para cada campanha/interesse, identifique:
 - Onde está a MAIOR PERDA no funil?
-- Clique → Page View: taxa esperada > 70%. Se menor = problema de velocidade/relevância da página
-- Page View → Carrinho: taxa esperada > 5-15%. Se menor = problema de preço/oferta/página
-- Carrinho → Checkout: taxa esperada > 50-70%. Se menor = problema de frete/opções
-- Checkout → Compra: taxa esperada > 60-80%. Se menor = problema de pagamento/confiança
+- Clique <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Page View: taxa esperada > 70%. Se menor = problema de velocidade/relevância da página
+- Page View <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Carrinho: taxa esperada > 5-15%. Se menor = problema de preço/oferta/página
+- Carrinho <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Checkout: taxa esperada > 50-70%. Se menor = problema de frete/opções
+- Checkout <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Compra: taxa esperada > 60-80%. Se menor = problema de pagamento/confiança
 
-📈 TENDÊNCIAS (dia a dia)
+<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> TENDÊNCIAS (dia a dia)
 - Quais métricas estão PIORANDO consistentemente? (3+ dias)
 - Quais métricas estão MELHORANDO?
 - Há padrão de dia da semana? (ex: final de semana melhor/pior)
 
-⚡ AÇÕES BASEADAS NOS PADRÕES
+<i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> AÇÕES BASEADAS NOS PADRÕES
 Para cada problema identificado, dê a AÇÃO CONCRETA:
-- Se CPM subindo → trocar público/expandir
-- Se CPC subindo → trocar criativo/hook
-- Se taxa de carrinho caindo → ajustar preço/oferta na página
-- Se taxa de checkout caindo → revisar frete/opções pagamento
-- Se taxa de compra caindo → simplificar checkout
+- Se CPM subindo <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> trocar público/expandir
+- Se CPC subindo <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> trocar criativo/hook
+- Se taxa de carrinho caindo <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ajustar preço/oferta na página
+- Se taxa de checkout caindo <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> revisar frete/opções pagamento
+- Se taxa de compra caindo <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> simplificar checkout
 
-🏆 RANKING DE INTERESSES
+<i data-lucide="trophy" style="width:14px;height:14px;vertical-align:-2px"></i> RANKING DE INTERESSES
 Ordene os interesses do melhor para o pior, com score baseado em CPA + volume + tendência.`;
 
-        this._addMessage('user', '🔍 Detectar Padrões');
+        this._addMessage('user', '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Detectar Padrões');
         await this._sendToAPI(prompt);
     },
 
@@ -402,53 +402,53 @@ Ordene os interesses do melhor para o pior, com score baseado em CPA + volume + 
 ${contextStr}
 
 O relatório deve conter:
-📅 DATA E RESUMO EXECUTIVO (2-3 linhas)
+<i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> DATA E RESUMO EXECUTIVO (2-3 linhas)
 
-📊 MÉTRICAS DO DIA
+<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> MÉTRICAS DO DIA
 - Tabela: Produto | Gasto | Vendas | CPA | CPC | ROAS
 - Comparação com dia anterior (se disponível)
 - Destaque para métricas fora do alvo
 
-🔍 FUNIL DO DIA
+<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> FUNIL DO DIA
 - Tabela por campanha/interesse: Campanha | Impressões | Cliques | PageView | Carrinho | Checkout | Vendas | %ATC | %Checkout | %Compra
 - Onde está o gargalo hoje?
 
-⚡ DECISÕES DO DIA
+<i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> DECISÕES DO DIA
 - O que pausar/escalar baseado nos números
 - Ajustes de budget recomendados
 
-🎯 PLANO PARA AMANHÃ`;
+<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> PLANO PARA AMANHÃ`;
         } else {
             prompt = `Gere um RELATÓRIO SEMANAL completo (últimos 7 dias). Nomes de campanha contêm o interesse/público.
 
 ${contextStr}
 
 O relatório deve conter:
-📅 RESUMO EXECUTIVO (3-5 linhas)
+<i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> RESUMO EXECUTIVO (3-5 linhas)
 
-📊 MÉTRICAS DA SEMANA
+<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> MÉTRICAS DA SEMANA
 - Totais: Gasto, Vendas, CPA médio, ROAS
 - Tabela por produto: Produto | Gasto | Vendas | CPA | CPC | ROAS
 - Evolução dia a dia (tendência)
 
-🔍 PERFORMANCE POR INTERESSE (baseado no nome da campanha)
+<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> PERFORMANCE POR INTERESSE (baseado no nome da campanha)
 - Tabela: Interesse | Gasto | Vendas | CPA | %ATC | %Checkout | %Compra | Veredicto
 - Ranking do melhor ao pior
 - Quais interesses manter, quais cortar
 
-📈 TENDÊNCIAS DA SEMANA
+<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> TENDÊNCIAS DA SEMANA
 - CPC/CPM: subindo ou descendo?
 - Taxas de funil: melhorando ou piorando?
 - Volume: crescendo ou caindo?
 
-🔥 CRIATIVOS — quais performaram, quais fadigaram
+<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i> CRIATIVOS — quais performaram, quais fadigaram
 
-💰 ANÁLISE FINANCEIRA — lucro, ROI, budget ideal
+<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> ANÁLISE FINANCEIRA — lucro, ROI, budget ideal
 
-🎯 PLANO PRÓXIMA SEMANA — 3 prioridades`;
+<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> PLANO PRÓXIMA SEMANA — 3 prioridades`;
         }
 
-        this._addMessage('user', type === 'daily' ? '📋 Gerar Relatório Diário' : '📈 Gerar Relatório Semanal');
+        this._addMessage('user', type === 'daily' ? '<i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar Relatório Diário' : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar Relatório Semanal');
         await this._sendToAPI(prompt);
     },
 
@@ -461,13 +461,13 @@ O relatório deve conter:
 ${contextStr}
 
 Para cada campanha/interesse E cada anúncio, classifique:
-🔴 KILL — e por quê (CPA alto? funil ruim? sem volume?)
-🟡 OBSERVAR — e o que monitorar
-🟢 SCALE — e quanto aumentar
+<i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i> KILL — e por quê (CPA alto? funil ruim? sem volume?)
+<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i> OBSERVAR — e o que monitorar
+<i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i> SCALE — e quanto aumentar
 
 Inclua análise de funil: não basta CPA alto para kill — se a taxa de checkout é boa mas página converte mal, o problema é a página, não o interesse.`;
 
-        this._addMessage('user', '⚡ Análise Kill / Scale');
+        this._addMessage('user', '<i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> Análise Kill / Scale');
         await this._sendToAPI(prompt);
     },
 
@@ -480,12 +480,12 @@ Inclua análise de funil: não basta CPA alto para kill — se a taxa de checkou
 ${contextStr}
 
 Mostre:
-💰 BUDGET ATUAL por campanha/interesse
-📊 PERFORMANCE vs GASTO (CPA, ROAS, taxas de funil)
-🔄 REALOCAÇÃO: budget atual → sugerido (com justificativa)
-📈 IMPACTO ESPERADO na melhoria de CPA e vendas`;
+<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> BUDGET ATUAL por campanha/interesse
+<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> PERFORMANCE vs GASTO (CPA, ROAS, taxas de funil)
+<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> REALOCAÇÃO: budget atual <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> sugerido (com justificativa)
+<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> IMPACTO ESPERADO na melhoria de CPA e vendas`;
 
-        this._addMessage('user', '💰 Realocação de Budget');
+        this._addMessage('user', '<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> Realocação de Budget');
         await this._sendToAPI(prompt);
     },
 
@@ -498,12 +498,12 @@ Mostre:
 ${contextStr}
 
 Para cada criativo/anúncio:
-🔥 NÍVEL: 🟢 Fresco | 🟡 Atenção | 🔴 Fadigado
-📊 SINAIS: CTR caindo? CPM subindo? CPC subindo? Conversão caindo?
-🎨 SUBSTITUIÇÃO: ângulo, hook, formato sugerido
-📅 CRONOGRAMA: trocar agora vs preparar vs ok`;
+<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i> NÍVEL: <i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i> Fresco | <i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i> Atenção | <i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i> Fadigado
+<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> SINAIS: CTR caindo? CPM subindo? CPC subindo? Conversão caindo?
+<i data-lucide="palette" style="width:14px;height:14px;vertical-align:-2px"></i> SUBSTITUIÇÃO: ângulo, hook, formato sugerido
+<i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> CRONOGRAMA: trocar agora vs preparar vs ok`;
 
-        this._addMessage('user', '🔥 Análise de Fadiga Criativa');
+        this._addMessage('user', '<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i> Análise de Fadiga Criativa');
         await this._sendToAPI(prompt);
     },
 
@@ -524,7 +524,7 @@ Analise:
 6. TENDÊNCIAS: O que está melhorando/piorando nos últimos dias?
 7. AÇÕES: Top 5 ações prioritárias AGORA`;
 
-        this._addMessage('user', '📊 Análise Automática Completa');
+        this._addMessage('user', '<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Análise Automática Completa');
         await this._sendToAPI(prompt);
     },
 
@@ -552,7 +552,7 @@ Pergunta: ${message}`;
     async _sendToAPI(prompt) {
         const activeKey = this._provider === 'openai' ? this._openaiKey : this._apiKey;
         if (!activeKey) {
-            this._addMessage('assistant', '⚠️ Configure sua API key primeiro clicando no botão <strong>⚙️ Configurar</strong> acima.');
+            this._addMessage('assistant', '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configure sua API key primeiro clicando no botão <strong><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar</strong> acima.');
             return;
         }
 
@@ -576,7 +576,7 @@ Pergunta: ${message}`;
             }
             this._addMessage('assistant', text);
         } catch (err) {
-            this._addMessage('assistant', `❌ Erro (${this._provider}): ${err.message}`);
+            this._addMessage('assistant', `<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Erro (${this._provider}): ${err.message}`);
         } finally {
             this._loading = false;
             this._updateLoadingState();
@@ -657,7 +657,7 @@ Pergunta: ${message}`;
             const escapedContent = this._escapeHtml(msg.content)
                 .replace(/\n/g, '<br>')
                 .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/📊|🔥|📈|⚡|💰|🎯|⚠️|❌|✅|🏆|🧪|📅|📋|🔴|🟡|🟢|🟣|🔵|🎨|🔄|🔍|🔬/g, match => `<span style="font-size:1.1em">${match}</span>`);
+                .replace(/<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️|<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="trophy" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i>|<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i>|<i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i>|<i data-lucide="circle" style="width:10px;height:10px;fill:#8b5cf6;color:#8b5cf6"></i>|<i data-lucide="circle" style="width:10px;height:10px;fill:#3b82f6;color:#3b82f6"></i>|<i data-lucide="palette" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i>|<i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i>/g, match => `<span style="font-size:1.1em">${match}</span>`);
 
             return `<div class="ai-message ${isUser ? 'ai-message-user' : 'ai-message-assistant'}">
                 <div class="ai-message-content">${escapedContent}</div>

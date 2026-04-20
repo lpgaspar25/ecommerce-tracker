@@ -101,7 +101,7 @@ const CRMModule = {
             </div>
 
             <div class="crm-projection-section">
-                <div class="crm-section-label">📈 Simulador de Impacto</div>
+                <div class="crm-section-label"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Simulador de Impacto</div>
                 <div class="crm-projection-row">
                     <div class="form-group" style="flex:1">
                         <label>Se vendas crescerem (%)</label>
@@ -147,7 +147,7 @@ const CRMModule = {
             <td>${(d.resolutionRate || 0).toFixed(1)}%</td>
             <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${this._esc(d.notes || '')}">${this._esc(d.notes || '')}</td>
             <td>
-                <button class="btn-crm-edit btn-icon" data-id="${d.id}" title="Editar">✏️</button>
+                <button class="btn-crm-edit btn-icon" data-id="${d.id}" title="Editar"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
                 <button class="btn-crm-del btn-icon" data-id="${d.id}" title="Excluir" style="color:var(--red)">×</button>
             </td>
         </tr>`;

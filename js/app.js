@@ -320,7 +320,7 @@ function renderStoreList() {
         const statusBadge = active
             ? '<span class="store-status-badge status-ativo">Ativa</span>'
             : '<span class="store-status-badge status-desativado">Desativada</span>';
-        const toggleIcon = active ? '⏸' : '▶';
+        const toggleIcon = active ? '<i data-lucide="pause" style="width:14px;height:14px;vertical-align:-2px"></i>' : '▶';
         const toggleTitle = active ? 'Desativar' : 'Ativar';
 
         return `<div class="store-list-item ${isCurrent ? 'active' : ''} ${!active ? 'disabled' : ''}">
@@ -331,7 +331,7 @@ function renderStoreList() {
             <div class="store-list-actions">
                 ${!isCurrent && active ? `<button class="btn btn-secondary btn-sm btn-select-store" data-store-id="${store.id}" title="Selecionar">Usar</button>` : ''}
                 <button class="btn-icon btn-toggle-store" data-store-id="${store.id}" title="${toggleTitle}">${toggleIcon}</button>
-                <button class="btn-icon btn-delete-store" data-store-id="${store.id}" title="Excluir">🗑️</button>
+                <button class="btn-icon btn-delete-store" data-store-id="${store.id}" title="Excluir"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
             </div>
         </div>`;
     }).join('');
@@ -392,6 +392,16 @@ function initTabs() {
             EventBus.emit('tabChanged', targetTab);
         });
     });
+
+    // Profile dropdown: Mineração entry (tab btn is hidden in the nav)
+    const btnProfileMineracao = document.getElementById('btn-profile-mineracao');
+    if (btnProfileMineracao) {
+        btnProfileMineracao.addEventListener('click', () => {
+            document.getElementById('profile-dropdown')?.classList.remove('open');
+            const miningTabBtn = document.querySelector('.tab-btn[data-tab="mineracao"]');
+            if (miningTabBtn) miningTabBtn.click();
+        });
+    }
 }
 
 // ---- Theme ----
@@ -454,6 +464,58 @@ function initTheme() {
         });
     }
 }
+
+// ---- Privacy Mode (hide sensitive names for screen recordings) ----
+const PRIVACY_KEY = 'etracker_privacy_mode';
+
+function applyPrivacyMode(enabled, options = {}) {
+    document.body.classList.toggle('privacy-mode', !!enabled);
+    if (options.persist !== false) {
+        try { localStorage.setItem(PRIVACY_KEY, enabled ? '1' : '0'); } catch {}
+    }
+    // Create / remove privacy banner as DOM so it can use Lucide icons
+    let banner = document.getElementById('privacy-banner');
+    if (enabled) {
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'privacy-banner';
+            banner.className = 'privacy-banner';
+            banner.innerHTML = '<i data-lucide="lock" style="width:11px;height:11px;vertical-align:-1px"></i> Modo privacidade ativo';
+            document.body.appendChild(banner);
+        }
+    } else if (banner) {
+        banner.remove();
+    }
+    const btn = document.getElementById('btn-privacy-toggle');
+    if (btn) {
+        btn.classList.toggle('active', !!enabled);
+        btn.classList.toggle('btn-primary', !!enabled);
+        btn.classList.toggle('btn-secondary', !enabled);
+        btn.innerHTML = enabled
+            ? '<i data-lucide="eye-off" style="width:14px;height:14px"></i>'
+            : '<i data-lucide="eye" style="width:14px;height:14px"></i>';
+        btn.title = enabled
+            ? 'Modo privacidade ATIVO — nomes ocultos. Clique para mostrar.'
+            : 'Modo privacidade (ocultar nomes de loja, produtos e campanhas)';
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function initPrivacyMode() {
+    let enabled = false;
+    try { enabled = localStorage.getItem(PRIVACY_KEY) === '1'; } catch {}
+    applyPrivacyMode(enabled, { persist: false });
+
+    const btn = document.getElementById('btn-privacy-toggle');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            const next = !document.body.classList.contains('privacy-mode');
+            applyPrivacyMode(next);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initPrivacyMode);
 
 // ---- Notifications (deadlines) ----
 const NotificationsModule = {
@@ -708,8 +770,11 @@ function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+    // Support embedded Lucide icon markup without allowing scripts
+    const safe = String(message || '').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    toast.innerHTML = safe;
     container.appendChild(toast);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 
     setTimeout(() => {
         toast.style.opacity = '0';
@@ -1038,6 +1103,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof LabTestsModule !== 'undefined') LabTestsModule.init();
     if (typeof ProjectsModule !== 'undefined') ProjectsModule.init();
     if (typeof CRMModule !== 'undefined') CRMModule.init();
+    if (typeof TeamModule !== 'undefined') TeamModule.init();
+    if (typeof ShopifyModule !== 'undefined') ShopifyModule.init();
+    if (typeof PageComparisonModule !== 'undefined') PageComparisonModule.init();
+    if (typeof ScaleSimModule !== 'undefined') ScaleSimModule.init();
 
     // Load stores from localStorage
     AppState.stores = JSON.parse(localStorage.getItem('etracker_stores') || '[]');

@@ -65,7 +65,7 @@ const MiningModule = {
         this._renderGrid();
 
         const btn = document.getElementById('btn-mine');
-        if (btn) { btn.disabled = false; btn.textContent = '⏹️ Parar'; btn.onclick = () => { this._stopRequested = true; }; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="square" style="width:14px;height:14px;vertical-align:-2px"></i>️ Parar'; btn.onclick = () => { this._stopRequested = true; }; }
 
         const seenIds = new Set();
         let totalAvailable = 0;
@@ -76,7 +76,7 @@ const MiningModule = {
         // ── SCROLL MODE: Direct GraphQL from user's browser (uses FB session) ──
         if (mode === 'scroll') {
             // Step 1: Open Facebook Ad Library in a hidden iframe to get session tokens
-            this._showStatus('🔄 Conectando ao Facebook... Você precisa estar logado no Facebook neste navegador.', 'loading');
+            this._showStatus('<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Conectando ao Facebook... Você precisa estar logado no Facebook neste navegador.', 'loading');
 
             const GQL_URL = 'https://www.facebook.com/api/graphql/';
             const QUERY_ID = '25788260324159216';
@@ -114,7 +114,7 @@ const MiningModule = {
                 if (filtered.length >= minResults && totalBatches > 0) break;
                 if (emptyBatches >= 5) break;
 
-                this._showStatus(`🔄 Scroll página ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Scroll página ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
 
                 try {
                     // Use different batch suffixes to get different results
@@ -162,7 +162,7 @@ const MiningModule = {
             if (!this._stopRequested) {
                 const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                 if (filtered.length < minResults) {
-                    this._showStatus(`🔄 Mineração profunda por anunciante... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+                    this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Mineração profunda por anunciante... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
 
                     // Collect unique page IDs
                     const pageMap = {};
@@ -199,13 +199,13 @@ const MiningModule = {
             const setsMsg = minSets > 1 ? ` com ≥ ${minSets}x anúncios por criativo` : '';
             const avMsg = totalAvailable > 0 ? ` (${totalAvailable.toLocaleString('pt-BR')} na biblioteca)` : '';
             if (this._results.length >= minResults) {
-                this._showStatus(`✅ ${this._results.length} criativos encontrados! ${this._allFetched.length} analisados em ${totalBatches} lotes${setsMsg}${avMsg}.`, 'ok');
+                this._showStatus(`<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._results.length} criativos encontrados! ${this._allFetched.length} analisados em ${totalBatches} lotes${setsMsg}${avMsg}.`, 'ok');
             } else {
-                this._showStatus(`⚠️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados em ${totalBatches} lotes${avMsg}.`, 'warn');
+                this._showStatus(`<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados em ${totalBatches} lotes${avMsg}.`, 'warn');
             }
             this._renderGrid(); this._updateBulkBar();
             this._isMining = false; this._stopRequested = false;
-            if (btn) { btn.disabled = false; btn.textContent = '🔍 Minerar'; btn.onclick = () => this._startMining(); }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar'; btn.onclick = () => this._startMining(); }
             this._updatePostFilters();
             return;
         }
@@ -213,7 +213,7 @@ const MiningModule = {
         // ── PAGINATION MODE: fetch by individual page_ids ──
         if (mode === 'pagination') {
             // Step 1: Initial keyword search to discover page_ids
-            this._showStatus(`⛏️ Descobrindo anunciantes para "${keyword}"...`, 'loading');
+            this._showStatus(`<i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Descobrindo anunciantes para "${keyword}"...`, 'loading');
             try {
                 const initParams = new URLSearchParams({
                     action: 'search', q: keyword, country, media_type: mediaType,
@@ -235,7 +235,7 @@ const MiningModule = {
                     this._allFetched.map(a => a.pageId).filter(Boolean)
                 ))];
 
-                this._showStatus(`⛏️ ${allPageIds.length} anunciantes encontrados. Buscando ads de cada um...`, 'loading');
+                this._showStatus(`<i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${allPageIds.length} anunciantes encontrados. Buscando ads de cada um...`, 'loading');
                 this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                 this._renderGrid();
                 this._updateBulkBar();
@@ -247,7 +247,7 @@ const MiningModule = {
                     const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                     if (filtered.length >= minResults) break;
 
-                    this._showStatus(`⛏️ Paginação ${Math.floor(i/6)+1}/${Math.ceil(allPageIds.length/6)} — ${this._allFetched.length} ads (${filtered.length} encontrados)`, 'loading');
+                    this._showStatus(`<i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Paginação ${Math.floor(i/6)+1}/${Math.ceil(allPageIds.length/6)} — ${this._allFetched.length} ads (${filtered.length} encontrados)`, 'loading');
 
                     try {
                         const pgParams = new URLSearchParams({
@@ -275,15 +275,15 @@ const MiningModule = {
             const setsMsg = minSets > 1 ? ` com ≥ ${minSets}x anúncios por criativo` : '';
             const avMsg = totalAvailable > 0 ? ` (${totalAvailable.toLocaleString('pt-BR')} na biblioteca)` : '';
             if (this._results.length >= minResults) {
-                this._showStatus(`✅ ${this._results.length} criativos encontrados${setsMsg}! ${this._allFetched.length} analisados via paginação${avMsg}.`, 'ok');
+                this._showStatus(`<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._results.length} criativos encontrados${setsMsg}! ${this._allFetched.length} analisados via paginação${avMsg}.`, 'ok');
             } else {
-                this._showStatus(`⚠️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados via paginação${avMsg}.`, 'warn');
+                this._showStatus(`<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados via paginação${avMsg}.`, 'warn');
             }
             this._renderGrid();
             this._updateBulkBar();
             this._isMining = false;
             this._stopRequested = false;
-            if (btn) { btn.disabled = false; btn.textContent = '🔍 Minerar'; btn.onclick = () => this._startMining(); }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar'; btn.onclick = () => this._startMining(); }
             this._updatePostFilters();
             return;
         }
@@ -296,7 +296,7 @@ const MiningModule = {
                 if (filtered.length >= minResults && totalBatches > 0) break;
                 if (emptyBatches >= 5) break;
 
-                this._showStatus(`⛏️ Minerando "${keyword}" — lote ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+                this._showStatus(`<i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Minerando "${keyword}" — lote ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
 
                 const params = new URLSearchParams({
                     action: 'search', q: keyword, country, media_type: mediaType,
@@ -345,20 +345,20 @@ const MiningModule = {
         const setsMsg = minSets > 1 ? ` com ≥ ${minSets}x anúncios por criativo` : '';
 
         if (this._results.length === 0 && this._allFetched.length > 0) {
-            this._showStatus(`⚠️ ${this._allFetched.length} criativos analisados em ${totalBatches} lotes${availableMsg}, nenhum${setsMsg}. Reduza o filtro.`, 'warn');
+            this._showStatus(`<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._allFetched.length} criativos analisados em ${totalBatches} lotes${availableMsg}, nenhum${setsMsg}. Reduza o filtro.`, 'warn');
         } else if (this._results.length === 0) {
-            this._showStatus('⚠️ Nenhum anúncio encontrado. Tente outra palavra-chave ou país.', 'warn');
+            this._showStatus('<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Nenhum anúncio encontrado. Tente outra palavra-chave ou país.', 'warn');
         } else if (this._results.length < minResults) {
-            this._showStatus(`⚠️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados em ${totalBatches} lotes${availableMsg}.`, 'warn');
+            this._showStatus(`<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._results.length} de ${minResults} desejados${setsMsg}. ${this._allFetched.length} analisados em ${totalBatches} lotes${availableMsg}.`, 'warn');
         } else {
-            this._showStatus(`✅ ${this._results.length} criativos encontrados${setsMsg}! ${this._allFetched.length} analisados em ${totalBatches} lotes${availableMsg}.`, 'ok');
+            this._showStatus(`<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._results.length} criativos encontrados${setsMsg}! ${this._allFetched.length} analisados em ${totalBatches} lotes${availableMsg}.`, 'ok');
         }
 
         this._renderGrid();
         this._updateBulkBar();
         this._isMining = false;
         this._stopRequested = false;
-        if (btn) { btn.disabled = false; btn.textContent = '🔍 Minerar'; btn.onclick = () => this._startMining(); }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar'; btn.onclick = () => this._startMining(); }
         this._updatePostFilters();
     },
 
@@ -446,6 +446,21 @@ const MiningModule = {
         });
     },
 
+    _calcDaysRunning(startDate) {
+        if (!startDate) return null;
+        const start = new Date(startDate);
+        const now = new Date();
+        const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff : null;
+    },
+
+    _getPageStats(pageId) {
+        if (!pageId || !this._allFetched) return null;
+        const pageAds = this._allFetched.filter(a => a.pageId === pageId);
+        const activeCount = pageAds.filter(a => a.isActive).length;
+        return { totalAds: pageAds.length, activeAds: activeCount };
+    },
+
     _renderCard(ad, idx) {
         const thumb = ad.thumbnail || '';
         const pageName = ad.pageName || `Ad #${ad.adId}`;
@@ -453,9 +468,32 @@ const MiningModule = {
         const body = (ad.bodyTexts && ad.bodyTexts[0]) ? ad.bodyTexts[0] : '';
         const bodySnippet = body.length > 100 ? body.slice(0, 100) + '...' : body;
         const isSelected = this._selected.has(idx);
-        const mediaIcon = ad.mediaType === 'video' ? '🎬' : '🖼️';
+        const mediaIcon = ad.mediaType === 'video' ? '<i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i>' : '<i data-lucide="image" style="width:14px;height:14px;vertical-align:-2px"></i>️';
         const date = ad.startDate || '';
         const alreadySaved = this._isAlreadySaved(ad.adId);
+
+        // Extra metrics
+        const daysRunning = this._calcDaysRunning(ad.startDate);
+        const pageStats = this._getPageStats(ad.pageId);
+        const adSets = ad.collationCount || 1;
+
+        // Days badge with color coding
+        let daysBadge = '';
+        if (daysRunning !== null) {
+            const daysColor = daysRunning >= 90 ? '#059669' : daysRunning >= 30 ? '#2563eb' : daysRunning >= 7 ? '#d97706' : '#6b7280';
+            daysBadge = `<span class="mining-days-badge" style="background:${daysColor}">${daysRunning}D</span>`;
+        }
+
+        // Adsets info
+        const adsetText = adSets > 1 ? `${adSets} Adset${adSets > 1 ? 's' : ''} usam esse criativo` : '';
+
+        // Page stats line
+        let pageStatsHtml = '';
+        if (pageStats && pageStats.totalAds > 1) {
+            pageStatsHtml = `<div class="mining-page-stats">
+                <span title="Ads encontrados desta página">${pageStats.activeAds} Active Ads</span>
+            </div>`;
+        }
 
         return `
         <div class="mining-card swipe-card ${isSelected ? 'mining-card-selected' : ''}" data-idx="${idx}">
@@ -466,19 +504,22 @@ const MiningModule = {
                 <div class="swipe-card-badges">
                     <span class="swipe-format-chip">${mediaIcon} ${ad.mediaType || '?'}</span>
                     ${ad.isActive ? '<span class="swipe-platform-chip" style="background:#059669">Ativo</span>' : ''}
-                    ${ad.collationCount > 1 ? `<span class="swipe-platform-chip" style="background:#7c3aed">${ad.collationCount}x anúncios</span>` : ''}
+                    ${adSets > 1 ? `<span class="swipe-platform-chip" style="background:#7c3aed">${adSets}x anúncios</span>` : ''}
                 </div>
+                ${daysBadge ? `<div class="mining-days-wrap">${daysBadge}</div>` : ''}
             </div>
             <div class="swipe-card-body">
+                ${adsetText ? `<p class="mining-adset-info">${adsetText}</p>` : ''}
                 <p class="swipe-card-author">${this._esc(pageName)}</p>
                 ${linkTitle ? `<p class="mining-card-title">${this._esc(linkTitle)}</p>` : ''}
                 ${bodySnippet ? `<p class="swipe-card-hook">${this._esc(bodySnippet)}</p>` : ''}
+                ${pageStatsHtml}
                 <div class="swipe-card-footer">
                     <span class="swipe-card-date">${date || 'Sem data'}</span>
                     <div class="swipe-card-actions">
                         ${alreadySaved
-                            ? '<span class="swipe-action-btn" style="border-color:var(--success);color:var(--success)" title="Já salvo">✅</span>'
-                            : `<button class="swipe-action-btn mining-save-one" data-idx="${idx}" title="Salvar no Swipe File">💾</button>`
+                            ? '<span class="swipe-action-btn" style="border-color:var(--success);color:var(--success)" title="Já salvo"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i></span>'
+                            : `<button class="swipe-action-btn mining-save-one" data-idx="${idx}" title="Salvar no Swipe File"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i></button>`
                         }
                     </div>
                 </div>
@@ -524,7 +565,7 @@ const MiningModule = {
         if (countEl) countEl.textContent = `${this._selected.size} selecionados`;
         if (saveBtn) {
             saveBtn.disabled = this._selected.size === 0;
-            saveBtn.textContent = `💾 Salvar ${this._selected.size} no Swipe`;
+            saveBtn.innerHTML = `<i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar ${this._selected.size} no Swipe`;
         }
         if (selectAllCb) selectAllCb.checked = this._selected.size === this._results.length && this._results.length > 0;
     },
@@ -635,10 +676,10 @@ const MiningModule = {
                     ${mediaHtml}
                     ${linkTitle ? `<p style="margin-top:0.75rem;font-weight:700;font-size:0.9rem;color:var(--text-primary)">${this._esc(linkTitle)}</p>` : ''}
                     ${body ? `<p style="margin-top:0.4rem;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;white-space:pre-wrap">${this._esc(body)}</p>` : ''}
-                    ${ad.collationCount > 1 ? `<p style="margin-top:0.5rem;font-size:0.78rem;font-weight:600;color:#7c3aed">📊 ${ad.collationCount}x anúncios usam este criativo</p>` : ''}
+                    ${ad.collationCount > 1 ? `<p style="margin-top:0.5rem;font-size:0.78rem;font-weight:600;color:#7c3aed"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> ${ad.collationCount}x anúncios usam este criativo</p>` : ''}
                     <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
-                        <a href="${ad.url}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">🔗 Ver na Biblioteca</a>
-                        <button class="btn btn-primary btn-sm" id="mining-preview-save">💾 Salvar no Swipe</button>
+                        <a href="${ad.url}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Ver na Biblioteca</a>
+                        <button class="btn btn-primary btn-sm" id="mining-preview-save"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar no Swipe</button>
                     </div>
                     ${ad.startDate ? `<p style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-muted)">Início: ${ad.startDate} · ${(ad.platforms||[]).join(', ') || 'Facebook'}</p>` : ''}
                 </div>

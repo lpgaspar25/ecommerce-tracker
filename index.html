@@ -61,6 +61,9 @@
                     </div>
                 </div>
             </div>
+            <button id="btn-privacy-toggle" type="button" class="btn btn-secondary btn-sm" title="Modo privacidade (ocultar nomes de loja, produtos e campanhas)">
+                <i data-lucide="eye" style="width:14px;height:14px"></i>
+            </button>
             <button id="btn-theme-toggle" type="button" class="btn btn-secondary btn-sm" title="Alternar tema">
                 <i data-lucide="moon" style="width:14px;height:14px"></i>
             </button>
@@ -79,9 +82,15 @@
                     </div>
                     <div class="profile-dropdown-divider"></div>
                     <button id="btn-usage-panel" class="profile-dropdown-item"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Painel de Uso</button>
+                    <button id="btn-team-panel" class="profile-dropdown-item"><i data-lucide="users" style="width:14px;height:14px"></i> Equipe</button>
+                    <button id="btn-profile-mineracao" class="profile-dropdown-item"><i data-lucide="pickaxe" style="width:14px;height:14px"></i> Mineração</button>
+                    <button id="btn-shopify-config" class="profile-dropdown-item"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Shopify</button>
                     <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
-                    <button id="btn-connect-sheets" class="profile-dropdown-item"><i data-lucide="table" style="width:14px;height:14px"></i> Google Sheets</button>
-                    <span id="sheets-status" class="status-badge status-disconnected" style="font-size:0.65rem;margin-left:0.5rem">Desconectado</span>
+                    <button id="btn-connect-sheets" class="profile-dropdown-item">
+                        <i data-lucide="table" style="width:14px;height:14px"></i>
+                        <span>Google Sheets</span>
+                        <span id="sheets-status" class="status-badge status-disconnected profile-dropdown-badge">Desconectado</span>
+                    </button>
                     <div class="profile-dropdown-divider"></div>
                     <button id="btn-supabase-logout" class="profile-dropdown-item profile-dropdown-danger"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sair da conta</button>
                 </div>
@@ -96,8 +105,9 @@
         <button class="tab-btn" data-tab="goals">Metas</button>
         <button class="tab-btn" data-tab="diary">Diário</button>
         <button class="tab-btn" data-tab="calculator">Simulador</button>
+        <button class="tab-btn" data-tab="scale-sim">Escala</button>
         <button class="tab-btn" data-tab="creatives">Criativos</button>
-        <button class="tab-btn" data-tab="mineracao">⛏️ Mineração</button>
+        <button class="tab-btn tab-btn-hidden" data-tab="mineracao" hidden><i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Mineração</button>
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
@@ -144,16 +154,24 @@
                                 <button class="dash-date-preset" data-preset="custom">Personalizado</button>
                             </div>
                             <div class="dash-date-dd-right">
-                                <div class="dash-date-inputs">
-                                    <div class="dash-date-field">
-                                        <label>De</label>
-                                        <input type="date" id="dash-date-start" class="input input-sm">
+                                <!-- Range-picker calendar: single visual calendar, click two dates -->
+                                <div class="dash-range-cal" id="dash-date-cal">
+                                    <div class="dash-range-cal-header">
+                                        <button type="button" class="dash-range-cal-nav" id="dash-date-cal-prev" aria-label="Mês anterior">‹</button>
+                                        <span class="dash-range-cal-title" id="dash-date-cal-title">—</span>
+                                        <button type="button" class="dash-range-cal-nav" id="dash-date-cal-next" aria-label="Próximo mês">›</button>
                                     </div>
-                                    <div class="dash-date-field">
-                                        <label>Até</label>
-                                        <input type="date" id="dash-date-end" class="input input-sm">
+                                    <div class="dash-range-cal-weekdays">
+                                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                    </div>
+                                    <div class="dash-range-cal-grid" id="dash-date-cal-grid"></div>
+                                    <div class="dash-range-cal-summary" id="dash-date-cal-summary">
+                                        Clique uma data para começar.
                                     </div>
                                 </div>
+                                <!-- Hidden inputs preserve IDs used elsewhere for reading current range -->
+                                <input type="hidden" id="dash-date-start">
+                                <input type="hidden" id="dash-date-end">
                                 <div class="dash-date-actions">
                                     <button id="dash-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
                                     <button id="dash-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
@@ -176,16 +194,22 @@
                                 <button class="dash-compare-preset" data-cmp="none">Sem comparação</button>
                             </div>
                             <div class="dash-date-dd-right">
-                                <div class="dash-date-inputs">
-                                    <div class="dash-date-field">
-                                        <label>De</label>
-                                        <input type="date" id="dash-compare-start" class="input input-sm">
+                                <div class="dash-range-cal" id="dash-compare-cal">
+                                    <div class="dash-range-cal-header">
+                                        <button type="button" class="dash-range-cal-nav" id="dash-compare-cal-prev" aria-label="Mês anterior">‹</button>
+                                        <span class="dash-range-cal-title" id="dash-compare-cal-title">—</span>
+                                        <button type="button" class="dash-range-cal-nav" id="dash-compare-cal-next" aria-label="Próximo mês">›</button>
                                     </div>
-                                    <div class="dash-date-field">
-                                        <label>Até</label>
-                                        <input type="date" id="dash-compare-end" class="input input-sm">
+                                    <div class="dash-range-cal-weekdays">
+                                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                    </div>
+                                    <div class="dash-range-cal-grid" id="dash-compare-cal-grid"></div>
+                                    <div class="dash-range-cal-summary" id="dash-compare-cal-summary">
+                                        Clique uma data para começar.
                                     </div>
                                 </div>
+                                <input type="hidden" id="dash-compare-start">
+                                <input type="hidden" id="dash-compare-end">
                                 <div class="dash-date-actions">
                                     <button id="dash-compare-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
                                     <button id="dash-compare-apply" class="btn btn-primary btn-sm">Aplicar</button>
@@ -198,6 +222,19 @@
 
             <!-- Row 1: KPIs -->
             <div class="dash-kpi-bar" id="dash-kpis"></div>
+
+            <!-- Quick Actions Row -->
+            <div class="dash-quick-actions">
+                <button id="btn-page-comparison" class="btn btn-secondary btn-sm">
+                    <i data-lucide="git-compare" style="width:14px;height:14px"></i>
+                    Comparar Páginas
+                </button>
+            </div>
+
+            <!-- Shopify Integration Widget -->
+            <div class="dash-card shopify-widget" id="shopify-widget">
+                <!-- Rendered by ShopifyModule.renderDashboardWidget() -->
+            </div>
 
             <!-- Row 2: Actions + Alerts -->
             <div class="dash-row-2">
@@ -325,6 +362,7 @@
         <section id="tab-products" class="tab-panel">
             <div class="section-header">
                 <h2>Produtos</h2>
+                <button id="btn-import-shopify" class="btn btn-secondary" title="Importar produtos da Shopify"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Importar da Shopify</button>
                 <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
             </div>
 
@@ -463,6 +501,32 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Shopify Import Modal -->
+            <div id="shopify-import-modal" class="modal hidden">
+                <div class="modal-overlay"></div>
+                <div class="modal-content" style="max-width:720px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="shopping-bag" style="width:16px;height:16px"></i> Importar produtos da Shopify</h3>
+                        <button class="btn-close" onclick="closeModal('shopify-import-modal')">&times;</button>
+                    </div>
+                    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+                        <div id="shopify-import-status" class="shopify-import-status">Carregando produtos...</div>
+                        <div id="shopify-import-controls" style="display:none;gap:0.5rem;align-items:center;margin:0.5rem 0;flex-wrap:wrap">
+                            <input type="text" id="shopify-import-search" class="input input-sm" placeholder="Buscar..." style="flex:1;min-width:160px">
+                            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.8rem">
+                                <input type="checkbox" id="shopify-import-select-all"> Selecionar todos
+                            </label>
+                            <span id="shopify-import-selected-count" style="font-size:0.75rem;color:var(--text-muted)">0 selecionados</span>
+                        </div>
+                        <div id="shopify-import-list" class="shopify-import-list"></div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('shopify-import-modal')">Cancelar</button>
+                        <button type="button" id="btn-shopify-import-confirm" class="btn btn-primary" disabled>Importar selecionados</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ==================== METAS ==================== -->
@@ -543,9 +607,9 @@
         <!-- ==================== DIÁRIO ==================== -->
         <section id="tab-diary" class="tab-panel">
             <div class="creative-subtabs-row">
-                <button class="diary-subtab creative-subtab active" data-subtab="diary">📊 Diário</button>
-                <button class="diary-subtab creative-subtab" data-subtab="calendar">📅 Calendário</button>
-                <button class="diary-subtab creative-subtab" data-subtab="ai">🤖 IA Consultor</button>
+                <button class="diary-subtab creative-subtab active" data-subtab="diary"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Diário</button>
+                <button class="diary-subtab creative-subtab" data-subtab="calendar"><i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                <button class="diary-subtab creative-subtab" data-subtab="ai"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> IA Consultor</button>
             </div>
             <div id="diary-main-sub">
             <div class="section-header">
@@ -554,6 +618,7 @@
                     <button class="diary-view-tab active" data-diary-view="all"><i data-lucide="layout-list" style="width:14px;height:14px"></i> Todos</button>
                     <button class="diary-view-tab" data-diary-view="tests"><i data-lucide="flask-conical" style="width:14px;height:14px"></i> Testes</button>
                 </div>
+                <button id="btn-diary-group-campaign" class="btn btn-secondary btn-sm" title="Agrupar por campanha (estilo Facebook Ads)"><i data-lucide="megaphone" style="width:13px;height:13px"></i> Por Campanha</button>
                 <button id="btn-add-entry" class="btn btn-primary">+ Nova Entrada</button>
                 <button id="btn-diary-thresholds" class="diary-thresholds-btn" title="Configurar métricas alvo"><i data-lucide="target" style="width:13px;height:13px"></i> Métricas Alvo</button>
                 <div class="diary-columns-wrap">
@@ -585,7 +650,7 @@
                     <label>Produto:</label>
                     <select id="diary-product-filter" class="input">
                         <option value="todos">Todos</option>
-                        <option value="__STORE__">🏪 Teste de Loja</option>
+                        <option value="__STORE__"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Teste de Loja</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -636,7 +701,7 @@
             <div id="diary-compare-panel" class="diary-compare-panel" style="display:none">
                 <div class="diary-compare-header">
                     <h3>Comparação</h3>
-                    <button id="btn-diary-compare-close" class="btn-icon" title="Fechar">✕</button>
+                    <button id="btn-diary-compare-close" class="btn-icon" title="Fechar"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                 </div>
                 <div id="diary-compare-slots"></div>
                 <button id="btn-add-compare-slot" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">+ Adicionar comparação</button>
@@ -647,7 +712,7 @@
             <div id="diary-bulk-bar" class="diary-bulk-bar" style="display:none">
                 <label><input type="checkbox" id="diary-select-all-cb"> Selecionar todos</label>
                 <span id="diary-selected-count" class="diary-bulk-count">0 selecionados</span>
-                <button id="btn-diary-bulk-delete" class="btn btn-danger btn-sm">🗑️ Excluir selecionados</button>
+                <button id="btn-diary-bulk-delete" class="btn btn-danger btn-sm"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️ Excluir selecionados</button>
             </div>
 
             <!-- Diary Notion View -->
@@ -716,9 +781,9 @@
                             <!-- Section: Taxas (higher = better) -->
                             <div class="threshold-section-header" style="border-top:none;padding-top:0">
                                 <span>Taxas de Conversão</span>
-                                <span>🟢 Bom ≥</span>
-                                <span>🟡 Ok ≥</span>
-                                <span>🔴 Ruim &lt;</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i> Bom ≥</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i> Ok ≥</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i> Ruim &lt;</span>
                             </div>
                             <div class="threshold-row">
                                 <label>Página &gt; Carrinho</label>
@@ -747,9 +812,9 @@
                             <!-- Section: Custos em R$ (lower = better) -->
                             <div class="threshold-section-header" style="margin-top:0.75rem">
                                 <span>Custos em R$ — menor é melhor</span>
-                                <span>🟢 Bom ≤</span>
-                                <span>🟡 Ok ≤</span>
-                                <span>🔴 Ruim &gt;</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i> Bom ≤</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i> Ok ≤</span>
+                                <span><i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i> Ruim &gt;</span>
                             </div>
                             <div class="threshold-row">
                                 <label>CPA</label>
@@ -859,7 +924,7 @@
                                 <label>Produto</label>
                                 <select id="entry-product" class="input">
                                     <option value="">Selecione</option>
-                                    <option value="__STORE__">🏪 Teste de Loja</option>
+                                    <option value="__STORE__"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Teste de Loja</option>
                                 </select>
                             </div>
                         </div>
@@ -995,49 +1060,49 @@
                     <!-- Header with config -->
                     <div class="ai-tab-header">
                         <div class="ai-tab-title">
-                            <h2>🤖 IA Consultor de Ads</h2>
+                            <h2><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> IA Consultor de Ads</h2>
                             <span class="section-subtitle">Analise campanhas, tome decisões e gere relatórios com IA</span>
                         </div>
                         <div class="ai-tab-actions">
                             <span id="ai-provider-badge" class="ai-provider-badge ai-badge-anthropic">Claude</span>
-                            <button id="ai-config-btn" class="btn btn-secondary btn-sm" title="Configurar IA">⚙️ Configurar</button>
+                            <button id="ai-config-btn" class="btn btn-secondary btn-sm" title="Configurar IA"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar</button>
                         </div>
                     </div>
 
                     <!-- Quick Actions -->
                     <div class="ai-quick-actions">
                         <button id="ai-auto-analyze" class="ai-action-card">
-                            <span class="ai-action-icon">📊</span>
+                            <span class="ai-action-icon"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Análise Completa</span>
                             <span class="ai-action-desc">Diagnóstico geral de todas as campanhas</span>
                         </button>
                         <button id="ai-report-daily" class="ai-action-card">
-                            <span class="ai-action-icon">📋</span>
+                            <span class="ai-action-icon"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Relatório Diário</span>
                             <span class="ai-action-desc">Resumo do dia com métricas e decisões</span>
                         </button>
                         <button id="ai-report-weekly" class="ai-action-card">
-                            <span class="ai-action-icon">📈</span>
+                            <span class="ai-action-icon"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Relatório Semanal</span>
                             <span class="ai-action-desc">Tendências e evolução da semana</span>
                         </button>
                         <button id="ai-kill-scale" class="ai-action-card">
-                            <span class="ai-action-icon">⚡</span>
+                            <span class="ai-action-icon"><i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Kill / Scale</span>
                             <span class="ai-action-desc">O que pausar e o que escalar agora</span>
                         </button>
                         <button id="ai-budget-realloc" class="ai-action-card">
-                            <span class="ai-action-icon">💰</span>
+                            <span class="ai-action-icon"><i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Realocação de Budget</span>
                             <span class="ai-action-desc">Onde investir mais e onde cortar</span>
                         </button>
                         <button id="ai-creative-fatigue" class="ai-action-card">
-                            <span class="ai-action-icon">🔥</span>
+                            <span class="ai-action-icon"><i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Fadiga Criativa</span>
                             <span class="ai-action-desc">Criativos cansados e substituições</span>
                         </button>
                         <button id="ai-pattern-detect" class="ai-action-card ai-action-highlight">
-                            <span class="ai-action-icon">🔍</span>
+                            <span class="ai-action-icon"><i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                             <span class="ai-action-label">Detectar Padrões</span>
                             <span class="ai-action-desc">CPA, funil, interesses e gargalos</span>
                         </button>
@@ -1154,9 +1219,9 @@
                     </div>
                 </div>
 
-                <!-- Section B: Profit Target → Budget -->
+                <!-- Section B: Profit Target <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Budget -->
                 <div class="calc-section">
-                    <h3>B — Meta de Lucro → Orçamento Necessário</h3>
+                    <h3>B — Meta de Lucro <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Orçamento Necessário</h3>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Lucro Desejado no Dia</label>
@@ -1190,7 +1255,7 @@
 
                 <!-- Section C+E+F: Orçamento + Break-Even + Margem (unified) -->
                 <div class="calc-section">
-                    <h3>C — Orçamento do Dia → Previsão & Break-Even</h3>
+                    <h3>C — Orçamento do Dia <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Previsão & Break-Even</h3>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Orçamento que vai Investir</label>
@@ -1365,7 +1430,7 @@
 
                 <!-- Section H: CPA Desejado / Vendas -->
                 <div class="calc-section">
-                    <h3>H — Simulador CPA ↔ Vendas</h3>
+                    <h3>H — Simulador CPA <i data-lucide="arrow-left-right" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas</h3>
                     <p class="section-hint">Simule: com um CPA desejado, quantas vendas consigo? Ou: para X vendas, quanto preciso gastar?</p>
                     <div class="form-row">
                         <div class="form-group">
@@ -1484,7 +1549,7 @@
                         </div>
                     </div>
                     <div id="calc-i-autofill-hint" style="display:none; margin-bottom:12px">
-                        <small style="color:var(--primary)">💡 Preço, custo, impostos e custos variáveis preenchidos pelo produto selecionado acima</small>
+                        <small style="color:var(--primary)"><i data-lucide="lightbulb" style="width:14px;height:14px;vertical-align:-2px"></i> Preço, custo, impostos e custos variáveis preenchidos pelo produto selecionado acima</small>
                     </div>
                     <div class="calc-results" id="calc-i-results" style="display:none">
                         <!-- P&L Breakdown table -->
@@ -1547,6 +1612,162 @@
             </div>
         </section>
 
+        <!-- ==================== SIMULADOR DE ESCALA ==================== -->
+        <section id="tab-scale-sim" class="tab-panel">
+            <div class="section-header">
+                <h2>Simulador de Escala</h2>
+                <span class="section-subtitle">Decida quando escalar, manter, otimizar ou pausar uma campanha em andamento</span>
+            </div>
+
+            <!-- Bloco 1: Diagnóstico -->
+            <div class="calc-section">
+                <h3 class="calc-section-title">1. Diagnóstico da campanha</h3>
+                <p class="section-hint">Selecione o produto — gasto e vendas vêm do último lançamento do diário. Edite à vontade.</p>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Produto</label>
+                        <select id="sim-product" class="input input-lg">
+                            <option value="">Selecione um produto</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Gasto atual</label>
+                        <input type="number" id="sim-spend" class="input input-lg" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Vendas atuais</label>
+                        <input type="number" id="sim-sales" class="input input-lg" step="1" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Meta margem (%)</label>
+                        <input type="number" id="sim-target-margin" class="input input-lg" step="1" value="50">
+                    </div>
+                </div>
+
+                <div id="sim-diagnostic-results" class="calc-results" style="display:none">
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">Lucro / unidade</span>
+                        <span class="calc-result-value" id="sim-profit-unit">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">CPA atual</span>
+                        <span class="calc-result-value" id="sim-cpa-current">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">CPA alvo</span>
+                        <span class="calc-result-value" id="sim-cpa-target">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">CPA breakeven</span>
+                        <span class="calc-result-value" id="sim-cpa-break">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">Lucro acumulado</span>
+                        <span class="calc-result-value" id="sim-profit-accum">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">Status</span>
+                        <span class="calc-result-value" id="sim-status">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 2: Cenários de escala -->
+            <div class="calc-section">
+                <h3 class="calc-section-title">2. Simulador de escala — 3 cenários</h3>
+                <p class="section-hint">Informe um novo orçamento. Ajuste os fatores se seu histórico indicar outra realidade.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Novo orçamento</label>
+                        <input type="number" id="sim-new-budget" class="input input-lg" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Fator realista (%)</label>
+                        <input type="number" id="sim-factor-realistic" class="input input-lg" step="1" value="30">
+                    </div>
+                    <div class="form-group">
+                        <label>Fator pessimista (%)</label>
+                        <input type="number" id="sim-factor-pessimist" class="input input-lg" step="1" value="100">
+                    </div>
+                </div>
+
+                <div id="sim-scenarios-wrap" style="display:none">
+                    <div class="shopify-products-table" style="margin-top:0.75rem">
+                        <div class="shopify-products-table-header" style="grid-template-columns:1.3fr 1fr 1fr 1.2fr 1.2fr 0.9fr">
+                            <span>Cenário</span>
+                            <span>CPA</span>
+                            <span>Vendas</span>
+                            <span>Receita</span>
+                            <span>Lucro</span>
+                            <span>Margem</span>
+                        </div>
+                        <div id="sim-scenarios-rows"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 4: Limite da escala -->
+            <div class="calc-section">
+                <h3 class="calc-section-title">4. Até onde vale escalar?</h3>
+                <p class="section-hint">Descobre o orçamento ótimo (lucro máximo) e o teto antes do prejuízo, assumindo que o CPA piora conforme o orçamento cresce.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Elasticidade (% piora do CPA ao dobrar orçamento)</label>
+                        <input type="number" id="sim-elasticity" class="input input-lg" step="1" value="30">
+                    </div>
+                </div>
+
+                <div id="sim-limit-results" class="calc-results" style="display:none">
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">Manter atual (ref)</span>
+                        <span class="calc-result-value" id="sim-keep-profit">—</span>
+                        <span class="calc-result-sub" id="sim-keep-detail">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Orçamento ótimo</span>
+                        <span class="calc-result-value" id="sim-opt-budget">—</span>
+                        <span class="calc-result-sub" id="sim-opt-detail">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label"><i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Breakeven de escala</span>
+                        <span class="calc-result-value" id="sim-be-budget">—</span>
+                        <span class="calc-result-sub" id="sim-be-detail">—</span>
+                    </div>
+                    <div class="calc-result-card">
+                        <span class="calc-result-label">CPA limite</span>
+                        <span class="calc-result-value" id="sim-cpa-limit">—</span>
+                        <span class="calc-result-sub">acima disso = prejuízo</span>
+                    </div>
+                </div>
+
+                <div id="sim-scan-wrap" style="display:none;margin-top:0.75rem">
+                    <div class="shopify-products-table">
+                        <div class="shopify-products-table-header" style="grid-template-columns:1.2fr 1fr 1fr 1.2fr 1.2fr">
+                            <span>Orçamento</span>
+                            <span>CPA projetado</span>
+                            <span>Vendas</span>
+                            <span>Lucro</span>
+                            <span>Δ vs manter</span>
+                        </div>
+                        <div id="sim-scan-rows"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloco 3: Recomendação -->
+            <div class="calc-section">
+                <h3 class="calc-section-title">3. Recomendação</h3>
+                <div id="sim-recommendation" class="shopify-widget-empty" style="text-align:left;padding:1rem 1.25rem">
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin:0">
+                        Preencha os dados acima para ver a recomendação.
+                    </p>
+                </div>
+            </div>
+        </section>
+
         <!-- ==================== CRIATIVOS ==================== -->
         <section id="tab-creatives" class="tab-panel">
             <div class="section-header">
@@ -1556,13 +1777,13 @@
                     <button id="btn-add-creative" class="btn btn-primary">+ Novo Criativo</button>
                 </div>
                 <div id="swipe-actions" style="display:none">
-                    <button id="btn-swipe-settings" class="btn btn-secondary" title="Configurar API Keys">⚙️ Config.</button>
+                    <button id="btn-swipe-settings" class="btn btn-secondary" title="Configurar API Keys"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Config.</button>
                     <button id="btn-add-swipe" class="btn btn-primary">+ Adicionar Referência</button>
                 </div>
             </div>
             <div class="creative-subtabs-row">
-                <button class="creative-subtab active" data-subtab="creatives">🎬 Criativos</button>
-                <button class="creative-subtab" data-subtab="swipe">💾 Swipe File</button>
+                <button class="creative-subtab active" data-subtab="creatives"><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> Criativos</button>
+                <button class="creative-subtab" data-subtab="swipe"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Swipe File</button>
             </div>
 
             <!-- ── Criativos sub-section ── -->
@@ -1598,7 +1819,7 @@
             <!-- ── Swipe File sub-section ── -->
             <div id="swipe-sub" style="display:none">
                 <div class="swipe-filter-bar">
-                    <input type="text" id="swipe-search" class="input" placeholder="🔍 Buscar por texto, autor, tag..." style="flex:1;min-width:180px">
+                    <input type="text" id="swipe-search" class="input" placeholder="Buscar por texto, autor, tag..." style="flex:1;min-width:180px">
                     <select id="swipe-filter-platform" class="input" style="min-width:130px">
                         <option value="all">Todas plataformas</option>
                         <option value="tiktok">TikTok</option>
@@ -1805,7 +2026,7 @@
 
                         <!-- Step 1: URL -->
                         <div class="swipe-form-section">
-                            <label class="swipe-form-label">🔗 Link do Vídeo</label>
+                            <label class="swipe-form-label"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Link do Vídeo</label>
                             <div style="display:flex;gap:0.5rem">
                                 <input type="url" id="swipe-url-input" class="input" placeholder="https://www.tiktok.com/@... ou instagram.com/... ou youtube.com/..." style="flex:1">
                                 <button type="button" id="swipe-url-fetch-btn" class="btn btn-secondary">Buscar</button>
@@ -1819,8 +2040,8 @@
                             <div id="swipe-preview-embed" style="display:none"></div>
                             <img id="swipe-preview-thumb" style="display:none;width:100%;max-height:220px;object-fit:cover;border-radius:8px" alt="thumbnail">
                             <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap">
-                                <button type="button" id="swipe-open-original-btn" class="btn btn-secondary btn-sm" style="display:none">🔗 Ver na plataforma</button>
-                                <button type="button" id="swipe-drive-upload-btn" class="btn btn-secondary btn-sm" style="display:none">☁️ Salvar vídeo no Drive</button>
+                                <button type="button" id="swipe-open-original-btn" class="btn btn-secondary btn-sm" style="display:none"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Ver na plataforma</button>
+                                <button type="button" id="swipe-drive-upload-btn" class="btn btn-secondary btn-sm" style="display:none"><i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Salvar vídeo no Drive</button>
                             </div>
                             <p id="swipe-drive-status" style="font-size:0.75rem;margin-top:0.35rem"></p>
                             <input type="hidden" id="swipe-drive-video-url" value="">
@@ -1828,7 +2049,7 @@
 
                         <!-- Step 2: Metadata -->
                         <div class="swipe-form-section">
-                            <label class="swipe-form-label">📋 Informações</label>
+                            <label class="swipe-form-label"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Informações</label>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label>Título / Descrição</label>
@@ -1882,8 +2103,8 @@
                         <!-- Step 3: Transcription -->
                         <div class="swipe-form-section">
                             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-                                <label class="swipe-form-label" style="margin:0">🎙️ Transcrição (idioma original)</label>
-                                <button type="button" id="swipe-transcribe-btn" class="btn btn-secondary btn-sm">🎙️ Transcrever com IA</button>
+                                <label class="swipe-form-label" style="margin:0"><i data-lucide="mic" style="width:14px;height:14px;vertical-align:-2px"></i>️ Transcrição (idioma original)</label>
+                                <button type="button" id="swipe-transcribe-btn" class="btn btn-secondary btn-sm"><i data-lucide="mic" style="width:14px;height:14px;vertical-align:-2px"></i>️ Transcrever com IA</button>
                             </div>
                             <textarea id="swipe-transcript-orig" class="input" rows="4" placeholder="Cole ou escreva aqui a transcrição do vídeo... (pode ser em qualquer idioma)"></textarea>
                         </div>
@@ -1891,14 +2112,14 @@
                         <!-- Step 4: AI Analysis -->
                         <div class="swipe-form-section swipe-ai-section">
                             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
-                                <label class="swipe-form-label" style="margin:0">🤖 Análise com IA — Gancho / Corpo / CTA</label>
-                                <button type="button" id="swipe-analyze-btn" class="btn btn-primary btn-sm">🤖 Analisar com IA</button>
+                                <label class="swipe-form-label" style="margin:0"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Análise com IA — Gancho / Corpo / CTA</label>
+                                <button type="button" id="swipe-analyze-btn" class="btn btn-primary btn-sm"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Analisar com IA</button>
                             </div>
                             <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.75rem">A IA vai identificar as três partes do anúncio e traduzir para português automaticamente.</p>
 
                             <div class="swipe-analysis-grid">
                                 <div>
-                                    <p class="swipe-ai-label swipe-ai-orig">🌐 Idioma Original</p>
+                                    <p class="swipe-ai-label swipe-ai-orig"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Idioma Original</p>
                                     <div class="form-group"><label>Gancho (Hook)</label>
                                         <textarea id="swipe-hook-orig" class="input" rows="2" placeholder="Hook original..."></textarea></div>
                                     <div class="form-group"><label>Corpo (Body)</label>
@@ -1925,13 +2146,13 @@
 
                         <!-- Step 5: Notes -->
                         <div class="form-group">
-                            <label>📝 Notas pessoais</label>
+                            <label><i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i> Notas pessoais</label>
                             <textarea id="swipe-notes" class="input" rows="2" placeholder="O que você achou interessante neste criativo? Ângulo, técnica, gatilho..."></textarea>
                         </div>
 
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" id="swipe-modal-cancel" onclick="SwipeModule._closeModal()">Cancelar</button>
-                            <button type="submit" class="btn btn-primary">💾 Salvar no Swipe File</button>
+                            <button type="submit" class="btn btn-primary"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar no Swipe File</button>
                         </div>
                     </form>
                 </div>
@@ -1955,31 +2176,31 @@
                 <div class="modal-overlay"></div>
                 <div class="modal-content" style="max-width:480px">
                     <div class="modal-header">
-                        <h3>⚙️ Configurações — Swipe File</h3>
+                        <h3><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurações — Swipe File</h3>
                         <button id="swipe-settings-close" class="btn-close">&times;</button>
                     </div>
                     <div style="padding:1rem;display:flex;flex-direction:column;gap:1rem">
 
                         <!-- Google Drive -->
                         <div class="swipe-form-section">
-                            <div class="swipe-form-label">☁️ Google Drive</div>
+                            <div class="swipe-form-label"><i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Google Drive</div>
                             <p id="swipe-drive-status-text" style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.5rem">Verificando...</p>
-                            <button id="btn-swipe-reconnect-google" class="btn btn-primary btn-sm" style="width:100%">🔗 Conectar / Reconectar Google</button>
+                            <button id="btn-swipe-reconnect-google" class="btn btn-primary btn-sm" style="width:100%"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Conectar / Reconectar Google</button>
                         </div>
 
                         <!-- OpenAI Key -->
                         <div class="swipe-form-section">
-                            <div class="swipe-form-label">🎙️ OpenAI API Key <span style="font-weight:normal;color:var(--text-muted)">(Whisper — transcrição)</span></div>
+                            <div class="swipe-form-label"><i data-lucide="mic" style="width:14px;height:14px;vertical-align:-2px"></i>️ OpenAI API Key <span style="font-weight:normal;color:var(--text-muted)">(Whisper — transcrição)</span></div>
                             <input type="password" id="swipe-cfg-openai-key" class="input" placeholder="sk-...">
                         </div>
 
                         <!-- Claude Key -->
                         <div class="swipe-form-section">
-                            <div class="swipe-form-label">🤖 Claude API Key <span style="font-weight:normal;color:var(--text-muted)">(Análise de criativos)</span></div>
+                            <div class="swipe-form-label"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Claude API Key <span style="font-weight:normal;color:var(--text-muted)">(Análise de criativos)</span></div>
                             <input type="password" id="swipe-cfg-claude-key" class="input" placeholder="sk-ant-...">
                         </div>
 
-                        <button id="btn-swipe-settings-save" class="btn btn-primary" style="width:100%">💾 Salvar</button>
+                        <button id="btn-swipe-settings-save" class="btn btn-primary" style="width:100%"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar</button>
                     </div>
                 </div>
             </div>
@@ -2045,7 +2266,7 @@
         <!-- ==================== MINERAÇÃO ==================== -->
         <section id="tab-mineracao" class="tab-panel">
             <div class="section-header">
-                <h2>⛏️ Mineração de Anúncios</h2>
+                <h2><i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Mineração de Anúncios</h2>
                 <span class="section-subtitle">Busque e salve referências da Biblioteca de Anúncios do Facebook</span>
             </div>
 
@@ -2054,7 +2275,7 @@
                 <div class="mining-field"><label>Palavra-chave</label><input type="text" id="mining-keyword" class="input" placeholder="ex: skincare, fitness..."></div>
                 <div class="mining-field"><label>País</label>
                     <select id="mining-country" class="input">
-                        <option value="ALL">🌍 Todos</option>
+                        <option value="ALL"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Todos</option>
                         <optgroup label="América">
                         <option value="BR">🇧🇷 Brasil</option>
                         <option value="US">🇺🇸 EUA</option>
@@ -2172,12 +2393,12 @@
                 <div class="mining-field"><label>Data até</label><input type="date" id="mining-date-to" class="input"></div>
                 <div class="mining-field"><label>Modo</label>
                     <select id="mining-mode" class="input">
-                        <option value="variations">⚡ Rápido (variações)</option>
-                        <option value="pagination">📄 Por anunciante</option>
-                        <option value="scroll">🔄 Completo (variações + anunciantes)</option>
+                        <option value="variations"><i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> Rápido (variações)</option>
+                        <option value="pagination"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Por anunciante</option>
+                        <option value="scroll"><i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Completo (variações + anunciantes)</option>
                     </select>
                 </div>
-                <div class="mining-field" style="justify-content:flex-end"><label>&nbsp;</label><button id="btn-mine" class="btn btn-primary" style="width:100%">🔍 Minerar</button></div>
+                <div class="mining-field" style="justify-content:flex-end"><label>&nbsp;</label><button id="btn-mine" class="btn btn-primary" style="width:100%"><i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar</button></div>
             </div>
 
             <!-- Cookie bar removed — FB blocks cookies from different IPs -->
@@ -2188,7 +2409,7 @@
                     <input type="checkbox" id="mining-select-all"> Selecionar todos
                 </label>
                 <span id="mining-selected-count" class="mining-selected-count">0 selecionados</span>
-                <button id="btn-mine-save-bulk" class="btn btn-primary btn-sm" disabled>💾 Salvar selecionados no Swipe</button>
+                <button id="btn-mine-save-bulk" class="btn btn-primary btn-sm" disabled><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar selecionados no Swipe</button>
             </div>
 
             <!-- Status -->
@@ -2199,8 +2420,8 @@
                 <select id="mining-filter-page" class="input input-sm"><option value="">Todas páginas</option></select>
                 <select id="mining-filter-type" class="input input-sm">
                     <option value="">Todos tipos</option>
-                    <option value="video">🎬 Vídeos</option>
-                    <option value="image">🖼️ Imagens</option>
+                    <option value="video"><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> Vídeos</option>
+                    <option value="image"><i data-lucide="image" style="width:14px;height:14px;vertical-align:-2px"></i>️ Imagens</option>
                 </select>
                 <span id="mining-filter-count" class="mining-filter-count"></span>
             </div>
@@ -2280,9 +2501,9 @@
                             <p class="funnel-help-note">Se algum nome vier diferente, o app tenta mapear variações automaticamente.</p>
                         </div>
                     </div>
-                    <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm">⚙️ Configurar</button>
-                    <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm">🔗 Mapear Campanhas</button>
-                    <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm">📄 Importar CSV</button>
+                    <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar</button>
+                    <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Mapear Campanhas</button>
+                    <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV</button>
                     <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
                     <select id="fb-date-range" class="input input-sm" style="width:auto">
                         <option value="today">Hoje</option>
@@ -2292,15 +2513,15 @@
                         <option value="last_30d">Últimos 30 dias</option>
                         <option value="custom">Personalizado (usar período acima)</option>
                     </select>
-                    <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm">📥 Importar do Facebook</button>
+                    <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar do Facebook</button>
                     <span id="fb-status" class="status-badge status-disconnected">FB Desconectado</span>
                 </div>
 
                 <!-- Google Ads Sync Controls -->
                 <div class="gads-controls-bar">
                     <span class="fb-controls-label">Google Ads</span>
-                    <button type="button" id="btn-gads-config" class="btn btn-secondary btn-sm">⚙️ Configurar Sync</button>
-                    <button type="button" id="btn-gads-sync-now" class="btn btn-primary btn-sm">🚀 Sincronizar agora</button>
+                    <button type="button" id="btn-gads-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar Sync</button>
+                    <button type="button" id="btn-gads-sync-now" class="btn btn-primary btn-sm"><i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> Sincronizar agora</button>
                     <span id="gads-status" class="status-badge status-disconnected">GAds Não Configurado</span>
                 </div>
                 <div class="gads-runs-panel">
@@ -2398,13 +2619,13 @@
                 <h2>Pipeline</h2>
             </div>
             <div class="creative-subtabs-row">
-                <button class="pipeline-subtab creative-subtab active" data-subtab="offers">📦 Gestão de Ofertas</button>
-                <button class="pipeline-subtab creative-subtab" data-subtab="lab">🧪 Laboratório de Testes</button>
+                <button class="pipeline-subtab creative-subtab active" data-subtab="offers"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Gestão de Ofertas</button>
+                <button class="pipeline-subtab creative-subtab" data-subtab="lab"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório de Testes</button>
             </div>
 
             <!-- Offers sub-tab (existing kanban) -->
             <div id="pipeline-offers-sub">
-                <p id="pipeline-flow-summary" class="section-subtitle" style="margin:0.5rem 0">Ideia → Validação → Pesquisa → Ângulos → Criativos → Página → Teste → Otimização → Escala → Kill</p>
+                <p id="pipeline-flow-summary" class="section-subtitle" style="margin:0.5rem 0">Ideia <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Validação <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Pesquisa <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Ângulos <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Criativos <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Página <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Teste <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Otimização <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Escala <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Kill</p>
                 <div class="kanban-board" id="kanban-board"></div>
             </div>
 
@@ -2421,7 +2642,7 @@
         <!-- ==================== PROJETOS ==================== -->
         <section id="tab-projects" class="tab-panel">
             <div class="section-header">
-                <h2>📋 Projetos &amp; Planejamento</h2>
+                <h2><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Projetos &amp; Planejamento</h2>
                 <button id="btn-add-project" class="btn btn-primary">+ Novo Projeto</button>
             </div>
             <div class="projects-stats" id="projects-stats"></div>
@@ -2435,22 +2656,22 @@
         <div class="modal-overlay"></div>
         <div class="modal-content" style="max-width:560px;max-height:92vh;overflow-y:auto">
             <div class="modal-header">
-                <h3>🧪 Teste / Alteração</h3>
+                <h3><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Teste / Alteração</h3>
                 <button class="btn-close" id="lab-modal-close">&times;</button>
             </div>
             <form id="lab-form" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label">📋 Definição</div>
+                    <div class="swipe-form-label"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Definição</div>
                     <div class="form-row"><div class="form-group"><label>Título *</label><textarea id="lab-title" class="input" rows="2" required placeholder="Ex: Trocar banner da home"></textarea></div></div>
                     <div class="form-row">
                         <div class="form-group"><label>Categoria</label>
                             <select id="lab-category" class="input">
-                                <option value="loja">🏪 Loja</option>
-                                <option value="redes_sociais">📱 Redes Sociais</option>
-                                <option value="trafego">📊 Tráfego</option>
-                                <option value="criativo">🎬 Criativo</option>
-                                <option value="oferta">💰 Oferta</option>
-                                <option value="outro">📌 Outro</option>
+                                <option value="loja"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Loja</option>
+                                <option value="redes_sociais"><i data-lucide="smartphone" style="width:14px;height:14px;vertical-align:-2px"></i> Redes Sociais</option>
+                                <option value="trafego"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Tráfego</option>
+                                <option value="criativo"><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> Criativo</option>
+                                <option value="oferta"><i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> Oferta</option>
+                                <option value="outro"><i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i> Outro</option>
                             </select>
                         </div>
                         <div class="form-group"><label>Área/Local</label><input type="text" id="lab-area" class="input" placeholder="Ex: Banner principal, Bio Instagram"></div>
@@ -2467,14 +2688,14 @@
                     <div class="form-row">
                         <div class="form-group"><label>Objetivo</label>
                             <select id="lab-expected-metric" class="input">
-                                <option value="validar_criativo">🎯 Validar criativo (CPA alvo)</option>
-                                <option value="vendas">↑ Aumentar Vendas</option>
-                                <option value="cpa">↓ Reduzir CPA</option>
-                                <option value="cpc">↓ Reduzir CPC</option>
-                                <option value="conv_page">↑ Conv. Página</option>
-                                <option value="atc_rate">↑ Add to Cart %</option>
-                                <option value="roas">↑ Aumentar ROAS</option>
-                                <option value="outro">📌 Outro</option>
+                                <option value="validar_criativo"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Validar criativo (CPA alvo)</option>
+                                <option value="vendas"><i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Aumentar Vendas</option>
+                                <option value="cpa"><i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i> Reduzir CPA</option>
+                                <option value="cpc"><i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i> Reduzir CPC</option>
+                                <option value="conv_page"><i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Conv. Página</option>
+                                <option value="atc_rate"><i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Add to Cart %</option>
+                                <option value="roas"><i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Aumentar ROAS</option>
+                                <option value="outro"><i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i> Outro</option>
                             </select>
                         </div>
                         <div class="form-group"><label>CPA / Meta alvo</label><input type="text" id="lab-baseline" class="input" placeholder="Ex: R$30 ou 3%"></div>
@@ -2483,9 +2704,9 @@
 
                 <!-- Metrics tracking (collapsible) -->
                 <div>
-                    <button type="button" id="btn-lab-toggle-metrics" class="btn btn-secondary btn-sm" style="width:100%">📈 Adicionar métricas</button>
+                    <button type="button" id="btn-lab-toggle-metrics" class="btn btn-secondary btn-sm" style="width:100%"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas</button>
                     <div id="lab-metrics-section" class="swipe-form-section" style="display:none;margin-top:0.5rem">
-                        <div class="swipe-form-label">📈 Métricas</div>
+                        <div class="swipe-form-label"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Métricas</div>
                         <div class="lab-metrics-grid">
                             <div></div><div class="lab-metrics-header">Antes</div><div class="lab-metrics-header">Resultado</div>
                             <label>CPC (R$)</label><input type="number" step="0.01" id="lab-m-cpc-before" class="input" placeholder="-"><input type="number" step="0.01" id="lab-m-cpc-after" class="input" placeholder="-">
@@ -2500,32 +2721,32 @@
                 </div>
 
                 <div class="form-row"><div class="form-group"><label>Status</label>
-                    <select id="lab-status" class="input"><option value="ativo">🔬 Ativo</option><option value="concluido">✅ Concluído</option><option value="cancelado">🚫 Cancelado</option></select>
+                    <select id="lab-status" class="input"><option value="ativo"><i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i> Ativo</option><option value="concluido"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Concluído</option><option value="cancelado"><i data-lucide="ban" style="width:14px;height:14px;vertical-align:-2px"></i> Cancelado</option></select>
                 </div></div>
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label">👁️ Observações</div>
+                    <div class="swipe-form-label"><i data-lucide="eye" style="width:14px;height:14px;vertical-align:-2px"></i>️ Observações</div>
                     <div id="lab-observations-list"></div>
                     <div class="form-row" style="margin-top:0.5rem">
                         <div class="form-group" style="flex:3"><input type="text" id="lab-obs-text" class="input" placeholder="Nova observação..."></div>
                         <div class="form-group" style="flex:1">
-                            <select id="lab-obs-sentiment" class="input"><option value="positive">🟢 +</option><option value="neutral">🟡 ~</option><option value="negative">🔴 -</option></select>
+                            <select id="lab-obs-sentiment" class="input"><option value="positive"><i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i> +</option><option value="neutral"><i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i> ~</option><option value="negative"><i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i> -</option></select>
                         </div>
                         <button type="button" id="btn-lab-add-obs" class="btn btn-secondary btn-sm" style="align-self:flex-end">+ Obs</button>
                     </div>
                 </div>
                 <div id="lab-conclusion-section" class="swipe-form-section" style="display:none">
-                    <div class="swipe-form-label">📊 Conclusão</div>
+                    <div class="swipe-form-label"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Conclusão</div>
                     <div class="form-row">
-                        <div class="form-group"><label>Resultado</label><select id="lab-result" class="input"><option value="positivo">✅ Positivo</option><option value="negativo">❌ Negativo</option><option value="neutro">➖ Neutro</option></select></div>
+                        <div class="form-group"><label>Resultado</label><select id="lab-result" class="input"><option value="positivo"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Positivo</option><option value="negativo"><i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Negativo</option><option value="neutro"><i data-lucide="minus" style="width:14px;height:14px;vertical-align:-2px"></i> Neutro</option></select></div>
                         <div class="form-group"><label>Valor final</label><input type="text" id="lab-final-value" class="input" placeholder="Ex: 2.35%"></div>
-                        <div class="form-group"><label>Manter?</label><select id="lab-keep-change" class="input"><option value="true">✅ Sim</option><option value="false">❌ Não</option></select></div>
+                        <div class="form-group"><label>Manter?</label><select id="lab-keep-change" class="input"><option value="true"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Sim</option><option value="false"><i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Não</option></select></div>
                     </div>
                     <div class="form-group"><label>Conclusão</label><textarea id="lab-conclusion" class="input" rows="4" placeholder="O que aconteceu? Resultado geral..."></textarea></div>
                     <div class="form-group"><label>Aprendizados</label><textarea id="lab-learnings" class="input" rows="4" placeholder="O que aprendi para o futuro..."></textarea></div>
                 </div>
                 <!-- Multi-stage section -->
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label">🔀 Fases do Teste</div>
+                    <div class="swipe-form-label"><i data-lucide="shuffle" style="width:14px;height:14px;vertical-align:-2px"></i> Fases do Teste</div>
                     <div class="form-group" style="flex-direction:row;align-items:center;gap:0.5rem">
                         <input type="checkbox" id="test-has-stages" style="width:auto">
                         <label for="test-has-stages" style="margin:0;cursor:pointer">Teste multi-fase</label>
@@ -2537,8 +2758,8 @@
                 </div>
 
                 <div class="form-row" style="justify-content:space-between">
-                    <button type="button" id="btn-lab-delete" class="btn btn-secondary" style="color:var(--red);display:none">🗑️ Excluir</button>
-                    <button type="submit" class="btn btn-primary" style="margin-left:auto">💾 Salvar</button>
+                    <button type="button" id="btn-lab-delete" class="btn btn-secondary" style="color:var(--red);display:none"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️ Excluir</button>
+                    <button type="submit" class="btn btn-primary" style="margin-left:auto"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar</button>
                 </div>
             </form>
         </div>
@@ -2574,7 +2795,7 @@
                             class="field-row-open"
                             data-action="open-input-link"
                             data-input-id="pipeline-supplier-link"
-                            title="Abrir link do fornecedor">↗</button>
+                            title="Abrir link do fornecedor"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                         <button type="button" class="field-row-autofill" id="pipeline-supplier-autofill" title="Auto preencher custo e funções">Auto</button>
                     </div>
                     <small class="pipeline-field-hint">Clique em Auto para preencher custo e funções do produto via link.</small>
@@ -2607,7 +2828,7 @@
                             class="field-row-open"
                             data-action="open-input-link"
                             data-input-id="pipeline-link-product"
-                            title="Abrir link do produto">↗</button>
+                            title="Abrir link do produto"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -2619,7 +2840,7 @@
                             class="field-row-open"
                             data-action="open-input-link"
                             data-input-id="pipeline-link-final"
-                            title="Abrir link final">↗</button>
+                            title="Abrir link final"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -2631,7 +2852,7 @@
                             class="field-row-open"
                             data-action="open-input-link"
                             data-input-id="pipeline-link-copy"
-                            title="Abrir link da copy">↗</button>
+                            title="Abrir link da copy"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -2643,7 +2864,7 @@
                             class="field-row-open"
                             data-action="open-input-link"
                             data-input-id="pipeline-link-research"
-                            title="Abrir link de pesquisa">↗</button>
+                            title="Abrir link de pesquisa"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                     </div>
                 </div>
                 <div class="form-group">
@@ -2680,12 +2901,12 @@
                 <div class="form-group" id="pipeline-csv-field" style="display:none;">
                     <label>Integração</label>
                     <button type="button" class="btn btn-outline" id="btn-pipeline-csv" style="width:100%;justify-content:center;">
-                        📋 Ir para Diário para registrar dados
+                        <i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Ir para Diário para registrar dados
                     </button>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-danger" id="pipeline-btn-delete" style="display:none;margin-right:auto;">Excluir</button>
-                    <button type="button" class="btn btn-outline" id="pipeline-btn-checklist" style="display:none;">📋 Ver Checklist</button>
+                    <button type="button" class="btn btn-outline" id="pipeline-btn-checklist" style="display:none;"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Ver Checklist</button>
                     <button type="button" class="btn btn-secondary" id="pipeline-cancel">Cancelar</button>
                     <button type="button" class="btn btn-primary" id="pipeline-btn-save">Salvar</button>
                 </div>
@@ -2715,7 +2936,7 @@
         <div class="modal-overlay"></div>
         <div class="modal-container" style="max-width:420px;">
             <div class="modal-header">
-                <h3>❌ Desativar Produto</h3>
+                <h3><i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Desativar Produto</h3>
                 <button class="btn-close" id="deactivate-modal-close">&times;</button>
             </div>
             <div class="modal-body">
@@ -2782,7 +3003,7 @@
                 <div class="form-group">
                     <label>Client ID (Google API)</label>
                     <input type="text" id="config-client-id" class="input" required placeholder="Seu Client ID do Google Cloud Console">
-                    <small>Crie em console.cloud.google.com → APIs → Credentials</small>
+                    <small>Crie em console.cloud.google.com <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> APIs <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Credentials</small>
                 </div>
                 <div class="form-group">
                     <label>API Key (Google API)</label>
@@ -2837,12 +3058,12 @@
                 <div class="form-group">
                     <label>Access Token (Long-Lived)</label>
                     <input type="text" id="fb-access-token" class="input" required placeholder="Cole seu Access Token aqui">
-                    <small>Gere em <strong>developers.facebook.com</strong> → Tools → Access Token Tool (token de 60 dias)</small>
+                    <small>Gere em <strong>developers.facebook.com</strong> <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Tools <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Access Token Tool (token de 60 dias)</small>
                 </div>
                 <div class="form-group">
                     <label>Ad Account ID</label>
                     <input type="text" id="fb-ad-account-id" class="input" required placeholder="123456789">
-                    <small>Sem o prefixo "act_". Encontre em Business Manager → Contas de Anúncio</small>
+                    <small>Sem o prefixo "act_". Encontre em Business Manager <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Contas de Anúncio</small>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="fb-config-cancel">Cancelar</button>
@@ -2890,19 +3111,19 @@
                     <div class="form-group">
                         <label>Tipo</label>
                         <select name="type" class="input">
-                            <option value="loja">🏪 Loja</option>
-                            <option value="saas">🤖 SaaS</option>
-                            <option value="estudo">📚 Estudo</option>
-                            <option value="financeiro">💰 Financeiro</option>
-                            <option value="outro">📦 Outro</option>
+                            <option value="loja"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Loja</option>
+                            <option value="saas"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> SaaS</option>
+                            <option value="estudo"><i data-lucide="book" style="width:14px;height:14px;vertical-align:-2px"></i> Estudo</option>
+                            <option value="financeiro"><i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i> Financeiro</option>
+                            <option value="outro"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Outro</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Status</label>
                         <select name="status" class="input">
-                            <option value="ativo">✅ Ativo</option>
-                            <option value="pausado">⏸️ Pausado</option>
-                            <option value="concluido">🏁 Concluído</option>
+                            <option value="ativo"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Ativo</option>
+                            <option value="pausado"><i data-lucide="pause" style="width:14px;height:14px;vertical-align:-2px"></i>️ Pausado</option>
+                            <option value="concluido"><i data-lucide="flag" style="width:14px;height:14px;vertical-align:-2px"></i> Concluído</option>
                         </select>
                     </div>
                 </div>
@@ -2911,7 +3132,7 @@
                     <textarea name="description" class="input" rows="2" placeholder="Descreva o projeto..."></textarea>
                 </div>
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label">🎯 Meta Financeira</div>
+                    <div class="swipe-form-label"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Meta Financeira</div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Valor</label>
@@ -2947,7 +3168,7 @@
                     </div>
                 </div>
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label">💸 Budget de Validação</div>
+                    <div class="swipe-form-label"><i data-lucide="banknote" style="width:14px;height:14px;vertical-align:-2px"></i> Budget de Validação</div>
                     <div class="form-row">
                         <div class="form-group" style="flex:2">
                             <label>Budget total</label>
@@ -2980,7 +3201,7 @@
                 </div>
                 <div class="form-row" style="justify-content:space-between">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('modal-project')">Cancelar</button>
-                    <button type="button" id="btn-save-project" class="btn btn-primary">💾 Salvar</button>
+                    <button type="button" id="btn-save-project" class="btn btn-primary"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar</button>
                 </div>
             </form>
         </div>
@@ -2999,6 +3220,20 @@
                 </div>
             </div>
             <div id="usage-panel-content" style="padding:1rem">
+                <!-- Dynamic content rendered by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Team Panel Modal -->
+    <div id="team-panel" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width:600px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3><i data-lucide="users" style="width:18px;height:18px"></i> Equipe</h3>
+                <button id="team-panel-close" class="btn-close">&times;</button>
+            </div>
+            <div id="team-panel-content" style="padding:1rem">
                 <!-- Dynamic content rendered by JS -->
             </div>
         </div>
@@ -3058,6 +3293,7 @@
     <script src="js/diary.js"></script>
     <script src="js/dashboard.js"></script>
     <script src="js/calculator.js"></script>
+    <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>
     <script src="js/googleads.js"></script>
     <script src="js/funnel.js"></script>
@@ -3068,6 +3304,9 @@
     <script src="js/mining.js"></script>
     <script src="js/lab-tests.js"></script>
     <script src="js/usage-panel.js"></script>
+    <script src="js/team.js"></script>
+    <script src="js/shopify.js"></script>
+    <script src="js/page-comparison.js"></script>
     <script src="js/projects.js"></script>
 
     <!-- Full-Screen Login Page -->
@@ -3092,7 +3331,7 @@
             </form>
 
             <div class="login-divider"><span>ou</span></div>
-            <button id="sb-btn-skip" class="login-skip">Continuar sem conta →</button>
+            <button id="sb-btn-skip" class="login-skip">Continuar sem conta <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></button>
         </div>
     </div>
 

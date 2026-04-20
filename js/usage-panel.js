@@ -206,33 +206,33 @@ const UsagePanelModule = {
                 <div class="usage-section-title">Dados Salvos</div>
                 <div class="usage-stats-grid">
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">📦</div>
+                        <div class="usage-stat-icon"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${products}</div>
                         <div class="usage-stat-lbl">Produtos</div>
                         <div class="usage-stat-sub">${activeProducts} ativos</div>
                     </div>
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">📓</div>
+                        <div class="usage-stat-icon"><i data-lucide="notebook" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${diaryEntries}</div>
                         <div class="usage-stat-lbl">Entradas Diário</div>
                     </div>
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">🎯</div>
+                        <div class="usage-stat-icon"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${goals}</div>
                         <div class="usage-stat-lbl">Metas</div>
                     </div>
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">🎬</div>
+                        <div class="usage-stat-icon"><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${creatives}</div>
                         <div class="usage-stat-lbl">Criativos</div>
                     </div>
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">📋</div>
+                        <div class="usage-stat-icon"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${projects}</div>
                         <div class="usage-stat-lbl">Projetos</div>
                     </div>
                     <div class="usage-stat-card">
-                        <div class="usage-stat-icon">🧪</div>
+                        <div class="usage-stat-icon"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i></div>
                         <div class="usage-stat-val">${labTests}</div>
                         <div class="usage-stat-lbl">Testes</div>
                     </div>

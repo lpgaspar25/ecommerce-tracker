@@ -196,7 +196,7 @@ const ProjectsModule = {
     },
 
     _typeIcon(type) {
-        return { loja: '🏪', saas: '🤖', estudo: '📚', financeiro: '💰', outro: '📦' }[type] || '📦';
+        return { loja: '<i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i>', saas: '<i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i>', estudo: '<i data-lucide="book" style="width:14px;height:14px;vertical-align:-2px"></i>', financeiro: '<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i>', outro: '<i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i>' }[type] || '<i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i>';
     },
 
     _statusBadge(status) {
@@ -289,7 +289,7 @@ const ProjectsModule = {
 
         // History HTML (timeline)
         const historyHtml = history.map(h => {
-            const icon = h.type === 'auto' ? '🔄' : '📝';
+            const icon = h.type === 'auto' ? '<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i>' : '<i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i>';
             return `<div class="proj-history-entry ${h.type === 'auto' ? 'proj-history-auto' : ''}">
                 <span class="proj-history-icon">${icon}</span>
                 <div class="proj-history-content">
@@ -309,13 +309,13 @@ const ProjectsModule = {
                     <div class="proj-card-meta-row">
                         ${this._statusBadge(p.status)}
                         ${progress.total > 0 ? `<span class="proj-task-count">${progress.done}/${progress.total} tarefas</span>` : ''}
-                        ${goalStr ? `<span class="proj-goal-tag">🎯 ${goalStr}</span>` : ''}
+                        ${goalStr ? `<span class="proj-goal-tag"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> ${goalStr}</span>` : ''}
                     </div>
                     ${progressBar}
                 </div>
                 <div class="proj-card-actions">
-                    <button class="btn-proj-edit proj-icon-btn" data-id="${p.id}" title="Editar">✏️</button>
-                    <button class="btn-proj-delete proj-icon-btn proj-del-btn" data-id="${p.id}" title="Excluir">🗑️</button>
+                    <button class="btn-proj-edit proj-icon-btn" data-id="${p.id}" title="Editar"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
+                    <button class="btn-proj-delete proj-icon-btn proj-del-btn" data-id="${p.id}" title="Excluir"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
                     <span class="proj-toggle-arrow">${isOpen ? '▲' : '▼'}</span>
                 </div>
             </div>
@@ -323,8 +323,8 @@ const ProjectsModule = {
                 ${p.description ? `<p class="proj-description">${this._esc(p.description)}</p>` : ''}
                 ${budgetBar}
                 ${(p.startDate || p.targetDate) ? `<div class="proj-dates">
-                    ${p.startDate ? `<span>📅 Início: ${p.startDate}</span>` : ''}
-                    ${p.targetDate ? `<span>🏁 Prazo: ${p.targetDate}</span>` : ''}
+                    ${p.startDate ? `<span><i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> Início: ${p.startDate}</span>` : ''}
+                    ${p.targetDate ? `<span><i data-lucide="flag" style="width:14px;height:14px;vertical-align:-2px"></i> Prazo: ${p.targetDate}</span>` : ''}
                 </div>` : ''}
 
                 <!-- Tasks Section -->
@@ -497,7 +497,7 @@ const ProjectsModule = {
                 // Auto-log status change
                 const newStatus = formData.status || 'ativo';
                 if (oldStatus !== newStatus) {
-                    this._addAutoHistory(AppState.allProjects[idx], `Status alterado: ${oldStatus} → ${newStatus}`);
+                    this._addAutoHistory(AppState.allProjects[idx], `Status alterado: ${oldStatus} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${newStatus}`);
                 }
                 showToast('Projeto atualizado!', 'success');
             }
@@ -552,11 +552,11 @@ const ProjectsModule = {
             const sub = (task.subitems || []).find(s => s.id === subtaskId);
             if (sub) {
                 sub.done = !sub.done;
-                this._addAutoHistory(proj, `Sub-tarefa "${sub.text}" ${sub.done ? 'concluída ✅' : 'reaberta'}`);
+                this._addAutoHistory(proj, `Sub-tarefa "${sub.text}" ${sub.done ? 'concluída <i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>' : 'reaberta'}`);
             }
         } else {
             task.done = !task.done;
-            this._addAutoHistory(proj, `Tarefa "${task.text}" ${task.done ? 'concluída ✅' : 'reaberta'}`);
+            this._addAutoHistory(proj, `Tarefa "${task.text}" ${task.done ? 'concluída <i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>' : 'reaberta'}`);
             // When parent task is done, mark all subtasks done
             if (task.done && task.subitems) {
                 task.subitems.forEach(s => s.done = true);
@@ -566,7 +566,7 @@ const ProjectsModule = {
         // Check if all tasks done → auto-conclude
         const progress = this._calcProgress(proj.tasks);
         if (progress.pct === 100 && proj.status === 'ativo') {
-            this._addAutoHistory(proj, 'Todas as tarefas concluídas! Projeto 100% completo 🎉');
+            this._addAutoHistory(proj, 'Todas as tarefas concluídas! Projeto 100% completo <i data-lucide="party-popper" style="width:14px;height:14px;vertical-align:-2px"></i>');
         }
 
         proj.updatedAt = new Date().toISOString();

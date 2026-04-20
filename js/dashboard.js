@@ -32,6 +32,10 @@ const DashboardModule = {
             const cdd = document.getElementById('dash-compare-dropdown');
             if (cdd) cdd.style.display = 'none';
             dd.style.display = dd.style.display === 'none' ? 'flex' : 'none';
+            if (dd.style.display !== 'none') {
+                this._initRangeCalendar('dash-date', 'dash-date-start', 'dash-date-end', 'dash-date-apply');
+                this._syncRangeCalendar('dash-date');
+            }
         });
 
         // Date presets
@@ -71,6 +75,10 @@ const DashboardModule = {
             const pdd = document.getElementById('dash-date-dropdown');
             if (pdd) pdd.style.display = 'none';
             dd.style.display = dd.style.display === 'none' ? 'flex' : 'none';
+            if (dd.style.display !== 'none') {
+                this._initRangeCalendar('dash-compare', 'dash-compare-start', 'dash-compare-end', 'dash-compare-apply');
+                this._syncRangeCalendar('dash-compare');
+            }
         });
 
         // Compare presets
@@ -143,6 +151,144 @@ const DashboardModule = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
+    // ── Range-picker calendar state (one per calendar instance) ──
+    _rangeCalState: {
+        'dash-date':    { viewYear: 0, viewMonth: 0, start: '', end: '', initialized: false },
+        'dash-compare': { viewYear: 0, viewMonth: 0, start: '', end: '', initialized: false },
+    },
+
+    _initRangeCalendar(prefix, hiddenStartId, hiddenEndId, applyBtnId) {
+        const grid = document.getElementById(prefix + '-cal-grid');
+        if (!grid) return;
+        const state = this._rangeCalState[prefix];
+        if (state.initialized) return;
+        state.initialized = true;
+
+        // Seed view from existing hidden inputs or today
+        const seedStart = document.getElementById(hiddenStartId)?.value || '';
+        const seedEnd = document.getElementById(hiddenEndId)?.value || '';
+        state.start = seedStart;
+        state.end = seedEnd;
+        const seed = seedEnd || seedStart || new Date().toISOString().slice(0, 10);
+        const [sy, sm] = seed.split('-').map(Number);
+        state.viewYear = sy || new Date().getFullYear();
+        state.viewMonth = (sm || new Date().getMonth() + 1) - 1;
+
+        document.getElementById(prefix + '-cal-prev')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.viewMonth--;
+            if (state.viewMonth < 0) { state.viewMonth = 11; state.viewYear--; }
+            this._renderRangeCalendar(prefix);
+        });
+        document.getElementById(prefix + '-cal-next')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.viewMonth++;
+            if (state.viewMonth > 11) { state.viewMonth = 0; state.viewYear++; }
+            this._renderRangeCalendar(prefix);
+        });
+
+        this._renderRangeCalendar(prefix);
+    },
+
+    _renderRangeCalendar(prefix) {
+        const state = this._rangeCalState[prefix];
+        const grid = document.getElementById(prefix + '-cal-grid');
+        const title = document.getElementById(prefix + '-cal-title');
+        const summary = document.getElementById(prefix + '-cal-summary');
+        if (!grid) return;
+
+        const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        if (title) title.textContent = `${monthNames[state.viewMonth]} ${state.viewYear}`;
+
+        const firstDay = new Date(state.viewYear, state.viewMonth, 1);
+        const lastDay = new Date(state.viewYear, state.viewMonth + 1, 0);
+        const startDow = firstDay.getDay(); // 0 = Sunday
+        const daysInMonth = lastDay.getDate();
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        let html = '';
+        // Leading blanks
+        for (let i = 0; i < startDow; i++) html += '<span class="dash-range-cal-day dash-range-cal-empty"></span>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const ds = `${state.viewYear}-${String(state.viewMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const classes = ['dash-range-cal-day'];
+            if (state.start && ds === state.start) classes.push('dash-range-cal-start');
+            if (state.end && ds === state.end) classes.push('dash-range-cal-end');
+            if (state.start && state.end && ds > state.start && ds < state.end) classes.push('dash-range-cal-inrange');
+            if (ds === todayStr) classes.push('dash-range-cal-today');
+            html += `<button type="button" class="${classes.join(' ')}" data-date="${ds}">${d}</button>`;
+        }
+        grid.innerHTML = html;
+
+        // Summary
+        if (summary) {
+            if (state.start && state.end) {
+                const days = Math.round((new Date(state.end) - new Date(state.start)) / 86400000) + 1;
+                summary.innerHTML = `${this._formatBr(state.start)} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._formatBr(state.end)} · ${days} dia${days > 1 ? 's' : ''}`;
+            } else if (state.start) {
+                summary.textContent = `Início: ${this._formatBr(state.start)} · clique outra data para fim`;
+            } else {
+                summary.textContent = 'Clique uma data para começar.';
+            }
+        }
+
+        // Bind day clicks
+        grid.querySelectorAll('.dash-range-cal-day[data-date]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const ds = btn.dataset.date;
+                if (!state.start || (state.start && state.end)) {
+                    // Start new selection
+                    state.start = ds;
+                    state.end = '';
+                } else {
+                    // Completing range
+                    if (ds < state.start) {
+                        state.end = state.start;
+                        state.start = ds;
+                    } else if (ds === state.start) {
+                        state.end = ds; // single-day range
+                    } else {
+                        state.end = ds;
+                    }
+                }
+                // Sync hidden inputs for the rest of the app
+                const hiddenStartId = prefix === 'dash-date' ? 'dash-date-start' : 'dash-compare-start';
+                const hiddenEndId = prefix === 'dash-date' ? 'dash-date-end' : 'dash-compare-end';
+                const sEl = document.getElementById(hiddenStartId);
+                const eEl = document.getElementById(hiddenEndId);
+                if (sEl) sEl.value = state.start;
+                if (eEl) eEl.value = state.end || state.start;
+                this._renderRangeCalendar(prefix);
+            });
+        });
+    },
+
+    // Sync calendar state when presets change dates from outside
+    _syncRangeCalendar(prefix) {
+        const state = this._rangeCalState[prefix];
+        if (!state.initialized) return;
+        const hiddenStartId = prefix === 'dash-date' ? 'dash-date-start' : 'dash-compare-start';
+        const hiddenEndId = prefix === 'dash-date' ? 'dash-date-end' : 'dash-compare-end';
+        const newStart = document.getElementById(hiddenStartId)?.value || '';
+        const newEnd = document.getElementById(hiddenEndId)?.value || '';
+        if (newStart === state.start && newEnd === state.end) return;
+        state.start = newStart;
+        state.end = newEnd;
+        if (newStart) {
+            const [y, m] = newStart.split('-').map(Number);
+            state.viewYear = y;
+            state.viewMonth = m - 1;
+        }
+        this._renderRangeCalendar(prefix);
+    },
+
+    _formatBr(iso) {
+        if (!iso) return '';
+        const [y, m, d] = iso.split('-');
+        return `${d}/${m}/${y}`;
+    },
+
     _applyPreset(preset) {
         const today = todayISO();
         const d = new Date();
@@ -180,6 +326,9 @@ const DashboardModule = {
 
         const labelEl = document.getElementById('dash-date-label');
         if (labelEl) labelEl.textContent = label;
+
+        // Keep range-calendar in sync with preset changes
+        this._syncRangeCalendar('dash-date');
 
         this._updateCompare();
     },
@@ -306,6 +455,13 @@ const DashboardModule = {
         this._renderWidgets();
         this._renderCalendar();
         this._renderBudgetByProduct();
+
+        // Keep the Shopify widget in sync with the dashboard's current period.
+        // renderDashboardWidget() reads #dash-date-start / #dash-date-end when called
+        // without arguments, so passing the current values is explicit and safe.
+        if (typeof ShopifyModule !== 'undefined' && typeof ShopifyModule.renderDashboardWidget === 'function') {
+            try { ShopifyModule.renderDashboardWidget(this._startDate, this._endDate); } catch (e) {}
+        }
     },
 
     _populateProductFilter() {
@@ -406,7 +562,7 @@ const DashboardModule = {
         if (!container) return;
         container.innerHTML = kpis.map(k => {
             const deltaClass = k.delta > 0 ? 'dash-delta-up' : k.delta < 0 ? 'dash-delta-down' : '';
-            const deltaIcon = k.delta > 0 ? '↑' : k.delta < 0 ? '↓' : '';
+            const deltaIcon = k.delta > 0 ? '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i>' : k.delta < 0 ? '<i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i>' : '';
             const deltaText = k.delta !== 0 ? `${deltaIcon} ${Math.abs(k.delta).toFixed(0)}%` : '';
             const valueColor = k.color ? `color:var(--${k.color})` : '';
             return `<div class="dash-kpi">
@@ -932,7 +1088,7 @@ const DashboardModule = {
                 <span class="dash-funnel-value">${s.value > 0 ? s.fmt(s.value) : '--'}</span>
                 ${isBottleneck ? '<span class="dash-funnel-badge">Gargalo</span>' : ''}
             </div>`;
-        }).join('<div class="dash-funnel-arrow">→</div>');
+        }).join('<div class="dash-funnel-arrow"><i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></div>');
 
         container.innerHTML = `<div class="dash-funnel-inner">${convHtml}</div>`;
     },
@@ -965,14 +1121,14 @@ const DashboardModule = {
 
         return [
             // ── Global ─────────────────────────────────────────
-            { cc:'global', flag:'🌍', name:"Ano Novo",           date: fixed(1,1) },
-            { cc:'global', flag:'🌍', name:"Dia dos Namorados",  date: fixed(2,14) },
-            { cc:'global', flag:'🌍', name:"Páscoa",             date: easterDate },
-            { cc:'global', flag:'🌍', name:"Dia das Mães",       date: nth(year,5,0,2) },
-            { cc:'global', flag:'🌍', name:"Singles' Day",       date: fixed(11,11) },
-            { cc:'global', flag:'🌍', name:"Black Friday",       date: add(thanksgiving, 1) },
-            { cc:'global', flag:'🌍', name:"Cyber Monday",       date: add(thanksgiving, 4) },
-            { cc:'global', flag:'🌍', name:"Natal",              date: fixed(12,25) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Ano Novo",           date: fixed(1,1) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Dia dos Namorados",  date: fixed(2,14) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Páscoa",             date: easterDate },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Dia das Mães",       date: nth(year,5,0,2) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Singles' Day",       date: fixed(11,11) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Black Friday",       date: add(thanksgiving, 1) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Cyber Monday",       date: add(thanksgiving, 4) },
+            { cc:'global', flag:'<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i>', name:"Natal",              date: fixed(12,25) },
             // ── EUA ────────────────────────────────────────────
             { cc:'eua', flag:'🇺🇸', name:"Dia dos Pais (EUA)",   date: nth(year,6,0,3) },
             { cc:'eua', flag:'🇺🇸', name:"Independence Day",     date: fixed(7,4) },
@@ -1020,7 +1176,7 @@ const DashboardModule = {
         // Build filter buttons
         const filters = [
             { key: 'all', label: 'Todas' },
-            { key: 'global', label: '🌍 Global' },
+            { key: 'global', label: '<i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Global' },
             { key: 'eua',    label: '🇺🇸 EUA' },
             { key: 'aus',    label: '🇦🇺 AUS' },
             { key: 'eur',    label: '🇪🇺 EUR' },

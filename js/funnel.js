@@ -1261,6 +1261,12 @@ const FunnelModule = {
             const handled = await this._importFacebookPeriodByDay(dataRows, headerMap, sourceLabel, dailyGroups);
             if (handled) return;
         }
+
+        // NEW: Handle multi-day period summaries (all rows share the same date range).
+        // Without this, the fallback below would save everything as "today".
+        const splitHandled = await this._importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel);
+        if (splitHandled) return;
+
         const totalsRow = this._findTotalsRow(dataRows, headerMap);
         let imported;
         if (totalsRow) {
@@ -1276,6 +1282,234 @@ const FunnelModule = {
         if (missing.length > 0) {
             showToast(`Importação parcial: não encontrei ${missing.join(', ')} neste relatório.`, 'info');
         }
+    },
+
+    /**
+     * When a Facebook export aggregates metrics across a date range (every row has the
+     * same startDate → endDate spanning multiple days), split the aggregated totals
+     * proportionally across each day in the range and create one diary entry per day.
+     *
+     * Rates (CTR, CPA, CPC, %) are kept as-is since they are already ratios.
+     * Absolute metrics (spend, clicks, sales, revenue, impressions, views, addToCart,
+     * checkout, purchases) are divided by the number of days.
+     *
+     * Returns true if it handled the import, false to let the caller use the generic fallback.
+     */
+    async _importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel) {
+        const overall = this._inferReportOverallRange(dataRows, headerMap);
+        if (!overall || overall.startDate === overall.endDate) return false;
+        const days = this._daysBetweenInclusive(overall.startDate, overall.endDate);
+        if (days <= 1) return false;
+
+        // Only act when the file is truly a period summary: every row with a date range
+        // must share the same range as the overall window. Mixed ranges → bail out.
+        const rowsWithRange = dataRows.map(row => ({
+            row,
+            range: this._extractReportDateRangeFromRow(row, headerMap),
+        })).filter(x => !!x.range);
+        if (rowsWithRange.length === 0) return false;
+        const allSame = rowsWithRange.every(x =>
+            x.range.startDate === overall.startDate && x.range.endDate === overall.endDate
+        );
+        if (!allSame) return false;
+
+        const productId = this.state.productId;
+        const storeId = typeof getWritableStoreId === 'function' ? getWritableStoreId(productId) : null;
+        if (!storeId) {
+            showToast('Selecione uma loja específica para importar o período no diário.', 'error');
+            return true;
+        }
+
+        // Pick the "All/All" top-level row if present; otherwise campaign-level totals;
+        // otherwise aggregate all rows. Same priority used elsewhere in this module.
+        const adNameIdx   = this._findHeaderIndex(headerMap, ['nome do anuncio', 'ad name']);
+        const campNameIdx = this._findHeaderIndex(headerMap, ['nome da campanha', 'campaign name']);
+        const levelIdx    = this._findHeaderIndex(headerMap, ['nivel de veiculacao', 'delivery level']);
+
+        const topLevelRows = [];
+        const campaignRows = [];
+        const adRows = [];
+        dataRows.forEach(row => {
+            const adName = adNameIdx >= 0 ? String(row?.[adNameIdx] || '').trim().toLowerCase() : '';
+            const campName = campNameIdx >= 0 ? String(row?.[campNameIdx] || '').trim().toLowerCase() : '';
+            const level = levelIdx >= 0 ? this._normalizeCsvKey(row?.[levelIdx] || '') : '';
+            if ((adName === 'all' || adName === '') && (campName === 'all' || campName === '')) {
+                topLevelRows.push(row);
+            } else if (adName === 'all' || level === 'campaign') {
+                campaignRows.push(row);
+            } else {
+                adRows.push(row);
+            }
+        });
+
+        let aggregated;
+        const totalsRow = this._findTotalsRow(dataRows, headerMap);
+        if (totalsRow) {
+            aggregated = this._extractCsvMetricsFromRow(totalsRow, headerMap);
+        } else if (topLevelRows.length > 0) {
+            aggregated = this._aggregateCsvMetrics(topLevelRows, headerMap);
+        } else if (campaignRows.length > 0) {
+            aggregated = this._aggregateCsvMetrics(campaignRows, headerMap);
+        } else {
+            aggregated = this._aggregateCsvMetrics(dataRows, headerMap);
+        }
+        if (!aggregated) return false;
+
+        // Build the list of ISO dates between start and end (inclusive).
+        const dates = [];
+        const startMs = new Date(overall.startDate + 'T00:00:00Z').getTime();
+        for (let i = 0; i < days; i++) {
+            dates.push(new Date(startMs + i * 86400000).toISOString().slice(0, 10));
+        }
+
+        // Divide absolute metrics per day. Rates/ratios stay as-is.
+        const absoluteKeys = ['impressions', 'clicks', 'spend', 'viewContent', 'addToCart', 'checkout', 'purchase', 'purchaseValue'];
+        const perDay = { ...aggregated };
+        absoluteKeys.forEach(k => {
+            if (typeof perDay[k] === 'number' && isFinite(perDay[k])) {
+                perDay[k] = perDay[k] / days;
+            }
+        });
+
+        // Create/update one diary entry per day (main product-level entry).
+        const dailyMetricsByDate = {};
+        const noteLabel = `${sourceLabel} (período ${overall.startDate}<i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i>${overall.endDate}, dividido por ${days} dias)`;
+        let created = 0, updated = 0;
+        for (const date of dates) {
+            const metrics = { ...perDay };
+            dailyMetricsByDate[date] = metrics;
+            try {
+                const status = await this._upsertDiaryEntryFromImportedDay(productId, storeId, date, metrics, noteLabel);
+                if (status === 'created') created++;
+                if (status === 'updated') updated++;
+            } catch (dayErr) {
+                console.warn(`[Import] Erro ao processar dia ${date}:`, dayErr);
+            }
+        }
+
+        // Create ad-level sub-entries: divide each ad's metrics per day as well.
+        if (adNameIdx >= 0 && adRows.length > 0) {
+            const adAggregates = {}; // "campaign|ad" → aggregated metrics across all matching rows
+            adRows.forEach(row => {
+                const levelVal = levelIdx >= 0 ? this._normalizeCsvKey(row?.[levelIdx] || '') : '';
+                if (levelIdx >= 0 && levelVal !== 'ad') return;
+                const adNameVal = String(row?.[adNameIdx] || '').trim();
+                if (!adNameVal || adNameVal.toLowerCase() === 'all') return;
+                const campaignVal = campNameIdx >= 0 ? String(row?.[campNameIdx] || '').trim() : '';
+                const m = this._extractCsvMetricsFromRow(row, headerMap);
+                if (!m) return;
+                const key = `${campaignVal}|${adNameVal}`;
+                if (!adAggregates[key]) {
+                    adAggregates[key] = {
+                        campaignVal, adNameVal,
+                        spend: 0, purchase: 0, purchaseValue: 0, impressions: 0,
+                        viewContent: 0, addToCart: 0, checkout: 0, clicks: 0,
+                        valueCurrency: m.valueCurrency || 'BRL',
+                    };
+                }
+                const a = adAggregates[key];
+                a.spend         += Number(m.spend || 0);
+                a.purchase      += Number(m.purchase || 0);
+                a.purchaseValue += Number(m.purchaseValue || 0);
+                a.impressions   += Number(m.impressions || 0);
+                a.viewContent   += Number(m.viewContent || 0);
+                a.addToCart     += Number(m.addToCart || 0);
+                a.checkout      += Number(m.checkout || 0);
+                a.clicks        += Number(m.clicks || 0);
+            });
+
+            let subCreated = 0;
+            for (const agg of Object.values(adAggregates)) {
+                for (const date of dates) {
+                    const parentEntry = AppState.allDiary.find(d =>
+                        d.date === date && d.productId === productId && !d.isCampaign
+                    );
+                    if (!parentEntry) continue;
+
+                    const spendPerDay   = agg.spend / days;
+                    const salesPerDay   = agg.purchase / days;
+                    const clicksPerDay  = agg.clicks / days;
+
+                    const subEntry = {
+                        id: typeof generateId === 'function' ? generateId('camp') : ('camp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
+                        parentId: parentEntry.id,
+                        date,
+                        periodStart: date,
+                        periodEnd: date,
+                        productId, storeId,
+                        campaignName: agg.campaignVal,
+                        adName: agg.adNameVal,
+                        isCampaign: true,
+                        budget: parseFloat(spendPerDay.toFixed(2)),
+                        budgetCurrency: agg.valueCurrency,
+                        sales: Math.round(salesPerDay),
+                        revenue: parseFloat((agg.purchaseValue / days).toFixed(2)),
+                        revenueCurrency: agg.valueCurrency,
+                        impressions: Math.round(agg.impressions / days),
+                        pageViews:   Math.round(agg.viewContent / days),
+                        addToCart:   Math.round(agg.addToCart   / days),
+                        checkout:    Math.round(agg.checkout    / days),
+                        cpc: clicksPerDay > 0 ? parseFloat((spendPerDay / clicksPerDay).toFixed(2)) : 0,
+                        cpa: salesPerDay  > 0 ? parseFloat((spendPerDay / salesPerDay).toFixed(2))  : 0,
+                        platform: 'Meta Ads',
+                        notes: `${sourceLabel} (dividido por ${days} dias)`,
+                        isTest: false, testEndDate: '', testValidation: '', testGoal: '', creativeId: '',
+                    };
+
+                    const existIdx = AppState.allDiary.findIndex(d =>
+                        d.parentId === parentEntry.id && d.adName === agg.adNameVal &&
+                        d.campaignName === agg.campaignVal && d.date === date
+                    );
+                    if (existIdx >= 0) {
+                        subEntry.id = AppState.allDiary[existIdx].id;
+                        Object.assign(AppState.allDiary[existIdx], subEntry);
+                    } else {
+                        AppState.allDiary.push(subEntry);
+                        subCreated++;
+                    }
+
+                    if (typeof this._autoCreateCreative === 'function') {
+                        try { this._autoCreateCreative(agg.adNameVal, agg.campaignVal, productId, storeId); } catch {}
+                    }
+                }
+            }
+            if (subCreated > 0) {
+                if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
+                showToast(`${subCreated} entradas de anúncio criadas (divididas por ${days} dias)`, 'info');
+            }
+        }
+
+        // Snapshots + UI
+        const aggregatedForSnapshot = this._aggregateImportedMetricsByDay(dailyMetricsByDate);
+        if (aggregatedForSnapshot) {
+            try {
+                let snapshots = this._saveImportedDaySnapshots(productId, dailyMetricsByDate);
+                snapshots = this._saveImportedRangeSnapshot(productId, overall.startDate, overall.endDate, aggregatedForSnapshot, snapshots);
+                this._saveSnapshots(snapshots);
+            } catch (e) { console.warn('[Import] snapshot save failed:', e); }
+        }
+
+        // NOTE: intentionally do NOT modify funnel-date-start/end here —
+        // those inputs can be shared with the Diary period filter and changing them
+        // would make all older diary entries disappear from the user's view.
+        // The user's chosen period stays as-is.
+
+        if (aggregatedForSnapshot) {
+            this._applyImportedFunnelData(aggregatedForSnapshot, { preserveMissing: true });
+        } else {
+            this._applyImportedFunnelData(aggregated, { preserveMissing: true });
+        }
+
+        if (typeof DiaryModule !== 'undefined' && typeof DiaryModule.render === 'function') {
+            try { DiaryModule.render(); } catch {}
+        }
+
+        showToast(
+            `${created} dias criados${updated ? ', ' + updated + ' atualizados' : ''} (${overall.startDate} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${overall.endDate}). ` +
+            `Valores divididos por ${days} dias — para valores reais por dia, reexporte com "Detalhamento: Por dia" no FB Ads Manager.`,
+            'success'
+        );
+        return true;
     },
 
     _normalizeReportDateValue(value) {

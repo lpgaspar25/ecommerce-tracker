@@ -339,6 +339,14 @@
 }
 .profile-dropdown-danger { color: #ef4444; }
 .profile-dropdown-danger:hover { background: rgba(239,68,68,0.08); }
+.profile-dropdown-badge {
+    margin-left: auto;
+    font-size: 0.62rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    line-height: 1.2;
+    white-space: nowrap;
+}
 
 :root {
     --bg-primary: #1d2125;
@@ -764,6 +772,10 @@ body {
     border-bottom-color: var(--accent);
 }
 
+.tab-btn.tab-btn-hidden {
+    display: none !important;
+}
+
 /* ===========================
    Tab Content
    =========================== */
@@ -948,8 +960,13 @@ textarea.input {
 
 .form-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     margin-bottom: 1rem;
+}
+.form-row > .form-group {
+    flex: 1 1 180px;
+    min-width: 0;
 }
 
 .form-actions {
@@ -3930,6 +3947,56 @@ thead:hover .diary-check-col input[type="checkbox"],
 /* Store Test Badge in Diary */
 .diary-entry-card.diary-store-test { border-left: 3px solid var(--orange, #fb923c); }
 
+/* Country Price blocks with tiers (Product Modal v2) */
+.country-price-block {
+    display: flex; flex-direction: column; gap: 0.35rem;
+    padding: 0.5rem; margin-bottom: 0.5rem;
+    background: var(--bg-input, rgba(99,102,241,0.05));
+    border: 1px solid var(--border); border-radius: var(--radius);
+}
+.country-price-header { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.cp-tiers-list { display: flex; flex-direction: column; gap: 0.25rem; margin-left: 0.75rem; }
+.cp-tier-row { display: flex; gap: 0.35rem; align-items: center; }
+.cp-tier-label { font-size: 0.72rem; color: var(--text-muted); min-width: 26px; }
+.cp-tier-pill {
+    font-size: 0.58rem; padding: 1px 4px; margin-left: 3px;
+    background: rgba(99,102,241,0.18); color: #6366f1;
+    border-radius: 4px; font-weight: 600;
+}
+[data-theme="light"] .cp-tier-pill { background: rgba(99,102,241,0.15); color: #4f46e5; }
+
+/* Actions cell with icon buttons */
+.products-actions-cell { white-space: nowrap; display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap; }
+.products-actions-cell .btn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg-input, transparent); color: var(--text-secondary);
+    cursor: pointer; text-decoration: none;
+}
+.products-actions-cell .btn-icon:hover { background: var(--accent, #6366f1); color: #fff; border-color: var(--accent, #6366f1); }
+
+/* Shopify Import Modal */
+.shopify-import-status { font-size: 0.85rem; padding: 0.6rem 0; }
+.shopify-import-list { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem; }
+.shopify-import-item {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius);
+    cursor: pointer; transition: background 0.15s;
+}
+.shopify-import-item:hover:not(.shopify-import-item-disabled) { background: var(--bg-input, rgba(99,102,241,0.05)); }
+.shopify-import-item-disabled { opacity: 0.55; cursor: not-allowed; }
+.shopify-import-thumb {
+    width: 42px; height: 42px; object-fit: cover;
+    border-radius: 5px; background: var(--border); flex-shrink: 0;
+}
+.shopify-import-thumb-empty { display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.shopify-import-info { flex: 1; min-width: 0; }
+.shopify-import-title { font-weight: 600; font-size: 0.85rem; }
+.shopify-import-meta { font-size: 0.7rem; color: var(--text-muted); display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 2px; }
+.shopify-import-status-badge { text-transform: uppercase; background: var(--bg-input); padding: 1px 5px; border-radius: 3px; font-size: 0.6rem; font-weight: 700; }
+.shopify-import-already { color: var(--green, #10b981); font-weight: 600; }
+
 /* ===========================
    AI CONSULTANT — Floating Panel
    =========================== */
@@ -4557,12 +4624,20 @@ thead:hover .diary-check-col input[type="checkbox"],
     border-color: var(--accent); color: var(--accent);
 }
 
-/* Date dropdown */
+/* Date dropdown — anchored to the right edge of the trigger button so it
+   never extends past the viewport when the button is on the right of the page. */
 .dash-date-dropdown {
-    position: absolute; top: calc(100% + 0.4rem); left: 0; z-index: 200;
+    position: absolute; top: calc(100% + 0.4rem); right: 0; left: auto; z-index: 200;
     background: var(--bg-modal); border: 1px solid var(--border);
     border-radius: var(--radius-lg); box-shadow: 0 8px 30px rgba(0,0,0,0.25);
-    display: flex; min-width: 420px; overflow: hidden;
+    display: flex; min-width: 420px;
+    max-width: calc(100vw - 2rem);
+    overflow: hidden;
+}
+@media (max-width: 640px) {
+    .dash-date-dropdown { flex-direction: column; min-width: min(420px, calc(100vw - 2rem)); }
+    .dash-date-dd-left { border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; padding: 0.3rem; }
+    .dash-date-preset, .dash-compare-preset { padding: 0.35rem 0.6rem; }
 }
 .dash-date-dd-left {
     display: flex; flex-direction: column; gap: 0; padding: 0.5rem 0;
@@ -4586,6 +4661,74 @@ thead:hover .diary-check-col input[type="checkbox"],
 .dash-date-field label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
 .dash-date-field .input { font-size: 0.78rem; }
 .dash-date-actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
+
+/* Range-picker calendar: one visual calendar, click two dates to define range */
+.dash-range-cal {
+    display: flex; flex-direction: column; gap: 0.5rem; min-width: 260px;
+}
+.dash-range-cal-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
+.dash-range-cal-title {
+    font-size: 0.85rem; font-weight: 700; color: var(--text-primary);
+    text-transform: capitalize;
+}
+.dash-range-cal-nav {
+    width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-primary);
+    font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+.dash-range-cal-nav:hover { border-color: var(--accent); color: var(--accent); }
+.dash-range-cal-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+    font-size: 0.68rem; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; text-align: center;
+}
+.dash-range-cal-weekdays > span {
+    padding: 0.25rem 0;
+}
+.dash-range-cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.dash-range-cal-day {
+    border: 1px solid transparent; background: transparent;
+    padding: 0.4rem 0; font-size: 0.8rem; color: var(--text-primary);
+    border-radius: 6px; cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    font-variant-numeric: tabular-nums;
+}
+.dash-range-cal-day:hover {
+    background: var(--bg-input); border-color: var(--border);
+}
+.dash-range-cal-empty {
+    cursor: default; pointer-events: none;
+}
+.dash-range-cal-today {
+    border-color: var(--accent);
+    font-weight: 700;
+}
+.dash-range-cal-inrange {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-radius: 0;
+}
+.dash-range-cal-start,
+.dash-range-cal-end {
+    background: var(--accent) !important;
+    color: #fff !important;
+    border-color: var(--accent) !important;
+    font-weight: 700;
+}
+.dash-range-cal-start { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.dash-range-cal-end { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.dash-range-cal-start.dash-range-cal-end {
+    border-radius: 6px; /* single-day range */
+}
+.dash-range-cal-summary {
+    font-size: 0.72rem; color: var(--text-muted);
+    text-align: center; padding: 0.35rem 0; min-height: 1.2em;
+}
 
 /* KPI Bar */
 .dash-kpi-bar {
@@ -4713,6 +4856,48 @@ thead:hover .diary-check-col input[type="checkbox"],
     font-size: 0.72rem; font-weight: 600; color: var(--accent);
     display: flex; align-items: center; gap: 0.3rem;
 }
+
+/* ── Group-by-Campaign view (Facebook-style) ─────────────────── */
+.diary-campaign-group { margin-bottom: 1rem; }
+.diary-campaign-master-row {
+    background: var(--bg-input, rgba(99,102,241,0.06));
+    font-weight: 600;
+    border-top: 2px solid var(--accent, #6366f1);
+}
+.diary-campaign-master-row td { padding-top: 0.65rem; padding-bottom: 0.65rem; }
+.diary-campaign-master-name {
+    display: flex; flex-direction: column; gap: 0.15rem;
+    padding-left: 0.5rem;
+}
+.diary-campaign-name-strong {
+    display: flex; align-items: center; gap: 0.35rem;
+    font-weight: 700; color: var(--accent, #6366f1);
+    font-size: 0.82rem;
+}
+.diary-campaign-subcount {
+    font-size: 0.65rem; color: var(--text-muted);
+    font-weight: 500; letter-spacing: 0.02em;
+}
+.diary-campaign-day-row { background: transparent; }
+.diary-campaign-day-row td { font-size: 0.78rem; }
+.diary-campaign-ad-row {
+    background: var(--bg-hover, rgba(0,0,0,0.02));
+}
+.diary-campaign-ad-row td {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    padding-top: 0.3rem; padding-bottom: 0.3rem;
+}
+.diary-campaign-master-toggle,
+.diary-day-toggle {
+    background: transparent; border: none; cursor: pointer;
+    color: var(--text-muted); padding: 0.15rem;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.diary-campaign-master-toggle.expanded .diary-expand-icon,
+.diary-day-toggle.expanded .diary-expand-icon { transform: rotate(90deg); }
+.diary-campaign-master-toggle:hover,
+.diary-day-toggle:hover { color: var(--accent); }
 .diary-ad-name {
     font-size: 0.68rem; color: var(--text-muted);
     background: var(--surface-muted, rgba(0,0,0,0.05)); padding: 0.1rem 0.35rem;
@@ -5228,6 +5413,46 @@ thead:hover .diary-check-col input[type="checkbox"],
     overflow: hidden;
 }
 
+.mining-days-wrap {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+}
+
+.mining-days-badge {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+
+.mining-adset-info {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 0.15rem;
+}
+
+.mining-page-stats {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--border);
+}
+
+.mining-page-stats span {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
 .mining-post-filters {
     display: flex;
     gap: 0.5rem;
@@ -5367,6 +5592,12 @@ thead:hover .diary-check-col input[type="checkbox"],
 .cal-day-metrics { display: flex; flex-direction: column; gap: 1px; margin-top: 0.2rem; }
 .cal-metric-sales { font-size: 0.65rem; font-weight: 700; color: var(--green); }
 .cal-metric-budget { font-size: 0.6rem; color: var(--text-muted); }
+.cal-metric-shopify {
+    font-size: 0.6rem; font-weight: 700;
+    color: var(--accent, #6366f1);
+    background: rgba(99,102,241,0.12);
+    padding: 1px 4px; border-radius: 3px;
+}
 
 .cal-markers { display: flex; gap: 2px; margin-top: 0.15rem; flex-wrap: wrap; }
 .cal-marker { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
@@ -6154,4 +6385,873 @@ thead:hover .diary-check-col input[type="checkbox"],
 @media (max-width: 600px) {
     .proj-card-header { flex-wrap: wrap; }
     .lab-stages-track { flex-direction: column; align-items: flex-start; }
+}
+
+/* ===========================
+   Quick Actions Bar
+   =========================== */
+.dash-quick-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
+/* ===========================
+   Shopify Widget
+   =========================== */
+
+.shopify-widget {
+    padding: 1rem;
+}
+
+.shopify-widget-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.shopify-widget-empty p {
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.shopify-widget-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.shopify-widget-header h4 {
+    font-size: 0.9rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.shopify-widget-shop {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 0.15rem;
+}
+
+.shopify-widget-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.shopify-metric {
+    padding: 0.6rem;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.shopify-metric-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.shopify-metric-value {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.shopify-metric-compare {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+}
+
+.shopify-metric-warn {
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.08);
+}
+
+.shopify-warnings {
+    padding: 0.75rem;
+    background: rgba(217, 119, 6, 0.08);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+}
+
+.shopify-warnings-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #d97706;
+    margin-bottom: 0.4rem;
+}
+
+.shopify-warnings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.shopify-warning-row {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.shopify-warnings-ok {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.5rem 0.75rem;
+    background: rgba(16, 185, 129, 0.05);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+}
+
+.shopify-widget-products {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+}
+
+/* Proper table layout with header + rows for the Shopify widget.
+   4 columns by default: Product | FB | Shopify | CPA. Use the -3col modifier for 3-column tables. */
+.shopify-products-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.5rem;
+}
+.shopify-products-table-header,
+.shopify-products-table-row {
+    display: grid;
+    grid-template-columns: 2fr 0.9fr 1fr 1fr;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+}
+.shopify-products-table-header-3col,
+.shopify-products-table-row-3col {
+    grid-template-columns: 2fr 1fr 1.1fr;
+}
+.shopify-products-table-header {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+}
+.shopify-products-table-header > span:not(:first-child),
+.shopify-products-table-row > .shopify-product-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.shopify-products-table-row {
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 0.82rem;
+}
+.shopify-products-table-row:hover {
+    border-color: var(--accent);
+}
+.shopify-product-num {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.shopify-product-num-mismatch {
+    color: #d97706;
+}
+.shopify-tag-unlinked {
+    font-size: 0.65rem;
+    color: #d97706;
+    background: rgba(217,119,6,0.15);
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 0.4rem;
+    font-weight: 500;
+}
+
+/* Legacy row class (kept for backward compat if still used elsewhere) */
+.shopify-product-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    background: var(--bg-input);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    align-items: center;
+}
+
+.shopify-product-warn {
+    border-color: #d97706;
+    background: rgba(217,119,6,0.05);
+}
+
+.shopify-product-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.shopify-widget-error {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.shopify-connected-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 0.5rem 0.75rem;
+    background: rgba(16, 185, 129, 0.08);
+    border-radius: 6px;
+}
+
+.shopify-help ol {
+    list-style: decimal;
+}
+
+.shopify-help code {
+    background: var(--bg-input);
+    padding: 0.1rem 0.25rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+}
+
+/* Shopify Link Modal */
+.shopify-link-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.shopify-link-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.shopify-link-local {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+}
+
+.shopify-link-arrow {
+    color: var(--text-muted);
+}
+
+.shopify-link-ok {
+    color: var(--success);
+    font-weight: 700;
+}
+
+/* ===========================
+   Page Comparison Styles
+   =========================== */
+
+.pagecomp-controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.pagecomp-control {
+    flex: 1;
+    min-width: 150px;
+}
+
+.pagecomp-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.pagecomp-stat {
+    padding: 0.6rem;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.pagecomp-stat-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.pagecomp-stat-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.pagecomp-stat-up .pagecomp-stat-value {
+    color: var(--success);
+}
+
+.pagecomp-stat-down .pagecomp-stat-value {
+    color: var(--red);
+}
+
+.pagecomp-warning {
+    padding: 0.75rem;
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.pagecomp-warning-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--red);
+    margin-bottom: 0.6rem;
+}
+
+.pagecomp-warning-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.pagecomp-cannib-pair {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    padding: 0.5rem;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border-left: 3px solid;
+}
+
+.pagecomp-cannib-high {
+    border-left-color: #ef4444;
+}
+
+.pagecomp-cannib-medium {
+    border-left-color: #f59e0b;
+}
+
+.pagecomp-cannib-low {
+    border-left-color: #eab308;
+}
+
+.pagecomp-cannib-severity {
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.pagecomp-cannib-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    flex: 1;
+}
+
+.pagecomp-cannib-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.pagecomp-cannib-verdict {
+    margin-top: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.pagecomp-cannib-ok {
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.pagecomp-ok {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 0.75rem;
+    background: rgba(16, 185, 129, 0.08);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.pagecomp-chart {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.pagecomp-chart h4 {
+    font-size: 0.85rem;
+    margin: 0 0 0.5rem;
+    color: var(--text-secondary);
+}
+
+.pagecomp-pages h4 {
+    font-size: 0.85rem;
+    margin: 0 0 0.5rem;
+    color: var(--text-secondary);
+}
+
+.pagecomp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.pagecomp-table th {
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.pagecomp-table td {
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.pagecomp-table .trend-up {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.pagecomp-table .trend-down {
+    color: var(--red);
+    font-weight: 600;
+}
+
+.pagecomp-unassigned {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+}
+
+.pagecomp-unassigned h4 {
+    font-size: 0.85rem;
+    margin: 0 0 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.pagecomp-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.pagecomp-unassigned-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.pagecomp-unassigned-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 1.5fr;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.35rem 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.pagecomp-un-date {
+    color: var(--text-muted);
+    font-family: monospace;
+}
+
+.pagecomp-un-sales {
+    color: var(--text-secondary);
+}
+
+.pagecomp-un-input {
+    font-size: 0.75rem;
+}
+
+@media (max-width: 600px) {
+    .pagecomp-unassigned-row {
+        grid-template-columns: 1fr;
+    }
+    .shopify-product-row {
+        grid-template-columns: 1fr;
+        gap: 0.2rem;
+    }
+}
+
+/* ===========================
+   Team Module Styles
+   =========================== */
+
+.team-owner-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    margin-bottom: 1rem;
+}
+
+.team-member-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+.team-member-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.team-member-email {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.team-member-meta {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.team-role-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.team-role-admin {
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+}
+
+.team-role-editor {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.team-role-viewer {
+    background: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+}
+
+.team-add-section {
+    margin-bottom: 1rem;
+}
+
+.team-add-section h4 {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.team-add-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.team-add-form .input {
+    font-size: 0.8rem;
+}
+
+.team-sections-picker {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.team-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.team-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.3rem;
+}
+
+.team-section-check {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.2rem 0;
+}
+
+.team-section-check input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.team-members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.team-member-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-input);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    transition: border-color 0.15s;
+}
+
+.team-member-card:hover {
+    border-color: var(--accent);
+}
+
+.team-member-sections {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.team-member-actions {
+    display: flex;
+    gap: 0.3rem;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.team-empty {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-muted);
+}
+
+.team-empty p:first-child {
+    font-size: 0.9rem;
+    margin-bottom: 0.3rem;
+}
+
+/* Viewer mode — hide edit buttons */
+.team-viewer-mode .btn-primary,
+.team-viewer-mode .btn[onclick*="save"],
+.team-viewer-mode .btn[onclick*="delete"],
+.team-viewer-mode .diary-entry-actions .btn:not(.btn-secondary),
+.team-viewer-mode #btn-add-product,
+.team-viewer-mode #btn-add-goal,
+.team-viewer-mode #btn-save-entry {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+@media (max-width: 600px) {
+    .team-add-form {
+        flex-direction: column;
+    }
+    .team-add-form .input,
+    .team-add-form .btn {
+        width: 100%;
+    }
+    .team-member-sections {
+        display: none;
+    }
+}
+
+/* ===========================
+   PRIVACY MODE — hide sensitive names for screen recording
+   Activated by eye toggle in top bar (body.privacy-mode).
+   Metrics stay visible; only brand/store/product/campaign/ad names are blurred.
+   Hover any blurred element to temporarily reveal it (for the user, not the camera).
+   =========================== */
+
+/* Blur utility */
+body.privacy-mode .privacy-sensitive,
+body.privacy-mode #store-selector,
+body.privacy-mode .store-switcher label,
+body.privacy-mode #profile-dropdown-email,
+body.privacy-mode #profile-initial,
+body.privacy-mode #profile-dropdown-initial,
+body.privacy-mode .diary-notion-product,
+body.privacy-mode .diary-notion-group-name,
+body.privacy-mode .diary-campaign-name,
+body.privacy-mode .diary-campaign-name-strong,
+body.privacy-mode .diary-ad-name,
+body.privacy-mode .country-price-badge,
+body.privacy-mode .shopify-widget-shop,
+body.privacy-mode .shopify-import-title,
+body.privacy-mode .shopify-import-thumb,
+body.privacy-mode #products-tbody td:first-child strong,
+body.privacy-mode #products-tbody .products-actions-cell a[title*="Shopify"],
+body.privacy-mode #products-tbody .products-actions-cell a[title*="p\u00e1gina"],
+body.privacy-mode .diary-test-notes,
+body.privacy-mode .test-goal-badge,
+body.privacy-mode .pipeline-stage-badge,
+body.privacy-mode .creative-card-name,
+body.privacy-mode .creative-card-title,
+body.privacy-mode .dash-portfolio-label,
+body.privacy-mode .product-option,
+body.privacy-mode select option,
+body.privacy-mode .product-name,
+body.privacy-mode .shopify-product-name {
+    filter: blur(5px);
+    transition: filter 0.15s ease;
+    user-select: none;
+}
+
+/* Hover reveals for the user (recording still captures blur most of the time) */
+body.privacy-mode .privacy-sensitive:hover,
+body.privacy-mode .diary-notion-product:hover,
+body.privacy-mode .diary-notion-group-name:hover,
+body.privacy-mode .diary-campaign-name-strong:hover,
+body.privacy-mode #products-tbody td:first-child strong:hover,
+body.privacy-mode .shopify-import-title:hover {
+    filter: blur(0);
+}
+
+/* Hide shop domain completely (not just blur — URLs are still copy-able) */
+body.privacy-mode .shopify-widget-shop,
+body.privacy-mode #profile-dropdown-email {
+    color: transparent !important;
+    text-shadow: 0 0 8px rgba(128,128,128,0.8);
+}
+
+/* Blur product dropdowns' selected text without hiding the dropdown itself */
+body.privacy-mode #diary-product-filter,
+body.privacy-mode #dash-product-select,
+body.privacy-mode #product-select,
+body.privacy-mode select[name="productId"] {
+    color: transparent;
+    text-shadow: 0 0 5px var(--text-primary, #e5e5e5);
+}
+
+/* Store selector: blur the select text visually */
+body.privacy-mode #store-selector {
+    color: transparent;
+    text-shadow: 0 0 5px var(--text-primary, #e5e5e5);
+}
+
+/* Privacy toggle button ACTIVE state — subtle glow */
+#btn-privacy-toggle.active {
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.35);
+}
+
+/* Privacy banner (DOM element created by JS when privacy mode is ON) */
+.privacy-banner {
+    position: fixed;
+    top: 4px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    background: rgba(99,102,241,0.9);
+    color: #fff;
+    border-radius: 0 0 8px 8px;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Also blur thumbnails in Shopify import and creative cards (brand imagery) */
+body.privacy-mode .shopify-import-thumb,
+body.privacy-mode .creative-card-image,
+body.privacy-mode .pipeline-card-image,
+body.privacy-mode img.product-thumb {
+    filter: blur(8px);
 }

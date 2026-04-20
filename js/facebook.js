@@ -251,8 +251,8 @@ const FacebookAds = {
             return;
         }
 
-        document.getElementById('fb-campaigns-title').textContent =
-            `Mapear Campanhas → ${getProductName(productId)}`;
+        document.getElementById('fb-campaigns-title').innerHTML =
+            `Mapear Campanhas <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${getProductName(productId)}`;
         document.getElementById('fb-campaigns-loading').style.display = 'block';
         document.getElementById('fb-campaigns-list').innerHTML = '';
         openModal('fb-campaigns-modal');

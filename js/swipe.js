@@ -13,11 +13,11 @@ const SwipeModule = {
     _fetchedData: null,
 
     PLATFORMS: {
-        tiktok:    { label: 'TikTok',    color: '#010101', badge: '🎵' },
-        instagram: { label: 'Instagram', color: '#e1306c', badge: '📸' },
-        facebook:  { label: 'Facebook',  color: '#1877f2', badge: '👍' },
+        tiktok:    { label: 'TikTok',    color: '#010101', badge: '<i data-lucide="music" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        instagram: { label: 'Instagram', color: '#e1306c', badge: '<i data-lucide="camera" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        facebook:  { label: 'Facebook',  color: '#1877f2', badge: '<i data-lucide="thumbs-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
         youtube:   { label: 'YouTube',   color: '#ff0000', badge: '▶️' },
-        other:     { label: 'Outro',     color: '#6b7280', badge: '🔗' },
+        other:     { label: 'Outro',     color: '#6b7280', badge: '<i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i>' },
     },
 
     FORMATS: ['Vídeo', 'Reels', 'Story', 'Carrossel', 'Imagem', 'Live', 'Outro'],
@@ -158,22 +158,22 @@ const SwipeModule = {
                 <div class="swipe-card-badges">
                     <span class="swipe-platform-chip" style="background:${p.color}">${p.badge} ${p.label}</span>
                     ${entry.format ? `<span class="swipe-format-chip">${entry.format}</span>` : ''}
-                    ${entry.driveVideoUrl ? '<span class="swipe-format-chip" style="background:#1a73e8" title="Salvo no Drive">☁️</span>' : ''}
+                    ${entry.driveVideoUrl ? '<span class="swipe-format-chip" style="background:#1a73e8" title="Salvo no Drive"><i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️</span>' : ''}
                 </div>
                 ${hasPT ? '<span class="swipe-pt-chip">🇧🇷</span>' : ''}
             </div>
             <div class="swipe-card-body">
                 <div class="swipe-card-tags">
                     ${entry.type ? `<span class="swipe-tag swipe-tag-type">${entry.type}</span>` : ''}
-                    ${hasAnalysis ? '<span class="swipe-tag swipe-tag-analyzed">🤖 Analisado</span>' : ''}
+                    ${hasAnalysis ? '<span class="swipe-tag swipe-tag-analyzed"><i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Analisado</span>' : ''}
                 </div>
                 ${entry.author ? `<p class="swipe-card-author">@${entry.author}</p>` : ''}
                 ${preview ? `<p class="swipe-card-hook">${preview}</p>` : '<p class="swipe-card-hook" style="color:var(--text-muted);font-style:italic">Sem transcrição</p>'}
                 <div class="swipe-card-footer">
                     <span class="swipe-card-date">${date}</span>
                     <div class="swipe-card-actions">
-                        <button class="swipe-action-btn" data-swipe-edit="${entry.id}" title="Editar">✏️</button>
-                        <button class="swipe-action-btn swipe-action-del" data-swipe-delete="${entry.id}" title="Deletar">🗑️</button>
+                        <button class="swipe-action-btn" data-swipe-edit="${entry.id}" title="Editar"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
+                        <button class="swipe-action-btn swipe-action-del" data-swipe-delete="${entry.id}" title="Deletar"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️</button>
                     </div>
                 </div>
             </div>
@@ -272,7 +272,7 @@ const SwipeModule = {
             if (driveUrlEl) driveUrlEl.value = entry.driveVideoUrl;
             const driveStatus = document.getElementById('swipe-drive-status');
             if (driveStatus) {
-                driveStatus.textContent = '✅ Vídeo já salvo no Drive';
+                driveStatus.innerHTML = '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Vídeo já salvo no Drive';
                 driveStatus.className = 'swipe-status-ok';
             }
         }
@@ -288,7 +288,7 @@ const SwipeModule = {
         const statusEl = document.getElementById('swipe-fetch-status');
         const fetchBtn = document.getElementById('swipe-url-fetch-btn');
 
-        if (statusEl) { statusEl.textContent = '⏳ Buscando dados...'; statusEl.className = 'swipe-status-loading'; }
+        if (statusEl) { statusEl.innerHTML = '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Buscando dados...'; statusEl.className = 'swipe-status-loading'; }
         if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.textContent = '...'; }
 
         try {
@@ -309,28 +309,28 @@ const SwipeModule = {
                     const tEl = document.getElementById('swipe-transcript-orig');
                     if (tEl && !tEl.value) tEl.value = data.transcript;
                     if (statusEl) {
-                        statusEl.textContent = '✅ Transcrição encontrada automaticamente! Clique em "🤖 Analisar com IA" para identificar Gancho/Corpo/CTA.';
+                        statusEl.innerHTML = '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Transcrição encontrada automaticamente! Clique em "<i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Analisar com IA" para identificar Gancho/Corpo/CTA.';
                         statusEl.className = 'swipe-status-ok';
                     }
                 } else {
                     if (statusEl) {
                         const hasVid = !!data.videoUrl;
                         const msgs = {
-                            tiktok:    hasVid ? '✅ Vídeo carregado! Use "🎙️ Transcrever com IA" ou "☁️ Salvar no Drive".' : '✅ TikTok carregado!',
-                            youtube:   hasVid ? '✅ YouTube com vídeo direto! Pode salvar no Drive.' : '✅ YouTube carregado! Player embed disponível.',
-                            instagram: hasVid ? '✅ Instagram carregado com vídeo! Pode salvar no Drive.' : '✅ Instagram carregado!',
-                            facebook:  hasVid ? '✅ Facebook carregado com vídeo! Pode salvar no Drive.' : '✅ Facebook carregado!',
+                            tiktok:    hasVid ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Vídeo carregado! Use "<i data-lucide="mic" style="width:14px;height:14px;vertical-align:-2px"></i>️ Transcrever com IA" ou "<i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Salvar no Drive".' : '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> TikTok carregado!',
+                            youtube:   hasVid ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> YouTube com vídeo direto! Pode salvar no Drive.' : '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> YouTube carregado! Player embed disponível.',
+                            instagram: hasVid ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Instagram carregado com vídeo! Pode salvar no Drive.' : '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Instagram carregado!',
+                            facebook:  hasVid ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Facebook carregado com vídeo! Pode salvar no Drive.' : '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Facebook carregado!',
                         };
-                        statusEl.textContent = msgs[platform] || '✅ Dados carregados!';
+                        statusEl.textContent = msgs[platform] || '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Dados carregados!';
                         statusEl.className = 'swipe-status-ok';
                     }
                 }
             } else {
-                if (statusEl) { statusEl.textContent = '⚠️ Não foi possível buscar dados. Preencha manualmente.'; statusEl.className = 'swipe-status-warn'; }
+                if (statusEl) { statusEl.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Não foi possível buscar dados. Preencha manualmente.'; statusEl.className = 'swipe-status-warn'; }
             }
         } catch (err) {
             console.warn('SwipeModule._fetchURL:', err.message);
-            if (statusEl) { statusEl.textContent = '❌ ' + err.message + '. Preencha manualmente.'; statusEl.className = 'swipe-status-error'; }
+            if (statusEl) { statusEl.innerHTML = '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> ' + err.message + '. Preencha manualmente.'; statusEl.className = 'swipe-status-error'; }
         } finally {
             if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.textContent = 'Buscar'; }
         }
@@ -565,24 +565,24 @@ const SwipeModule = {
         const isVideo = !!this._fetchedData?.videoUrl;
 
         if (!mediaUrl) {
-            if (driveStatus) { driveStatus.textContent = '⚠️ Nenhuma mídia disponível para download.'; driveStatus.className = 'swipe-status-warn'; }
+            if (driveStatus) { driveStatus.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Nenhuma mídia disponível para download.'; driveStatus.className = 'swipe-status-warn'; }
             return;
         }
 
         // Check Google auth
         if (typeof SheetsAPI === 'undefined' || !SheetsAPI._driveRequest) {
-            if (driveStatus) { driveStatus.textContent = '⚠️ Conecte o Google Drive primeiro (aba Metas → Google Sheets).'; driveStatus.className = 'swipe-status-warn'; }
+            if (driveStatus) { driveStatus.innerHTML = '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Conecte o Google Drive primeiro (aba Metas <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Google Sheets).'; driveStatus.className = 'swipe-status-warn'; }
             return;
         }
 
-        if (driveBtn) { driveBtn.disabled = true; driveBtn.textContent = isVideo ? '⏳ Baixando vídeo...' : '⏳ Baixando imagem...'; }
-        if (driveStatus) { driveStatus.textContent = isVideo ? '⏳ Baixando vídeo...' : '⏳ Baixando imagem...'; driveStatus.className = 'swipe-status-loading'; }
+        if (driveBtn) { driveBtn.disabled = true; driveBtn.textContent = isVideo ? '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Baixando vídeo...' : '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Baixando imagem...'; }
+        if (driveStatus) { driveStatus.textContent = isVideo ? '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Baixando vídeo...' : '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Baixando imagem...'; driveStatus.className = 'swipe-status-loading'; }
 
         try {
             // Download media
             const blob = await this._downloadVideoBlob(mediaUrl);
 
-            if (driveStatus) { driveStatus.textContent = '⏳ Enviando para o Drive...'; }
+            if (driveStatus) { driveStatus.innerHTML = '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Enviando para o Drive...'; }
 
             // Ensure folder exists
             const folderId = await this._ensureSwipeDriveFolder();
@@ -630,16 +630,16 @@ const SwipeModule = {
 
             if (driveUrlEl) driveUrlEl.value = viewUrl;
             if (driveStatus) {
-                driveStatus.innerHTML = `✅ Salvo no Drive! <a href="${viewUrl}" target="_blank" rel="noopener" style="color:var(--accent)">Abrir no Drive ↗</a>`;
+                driveStatus.innerHTML = `<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Salvo no Drive! <a href="${viewUrl}" target="_blank" rel="noopener" style="color:var(--accent)">Abrir no Drive <i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></a>`;
                 driveStatus.className = 'swipe-status-ok';
             }
             showToast(isVideo ? 'Vídeo salvo no Drive!' : 'Imagem salva no Drive!', 'success');
 
         } catch (err) {
             console.warn('Drive upload error:', err.message);
-            if (driveStatus) { driveStatus.textContent = '❌ ' + err.message; driveStatus.className = 'swipe-status-error'; }
+            if (driveStatus) { driveStatus.innerHTML = '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> ' + err.message; driveStatus.className = 'swipe-status-error'; }
         } finally {
-            if (driveBtn) { driveBtn.disabled = false; driveBtn.textContent = '☁️ Salvar vídeo no Drive'; }
+            if (driveBtn) { driveBtn.disabled = false; driveBtn.innerHTML = '<i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Salvar vídeo no Drive'; }
         }
     },
 
@@ -672,7 +672,7 @@ const SwipeModule = {
         if (driveBtn) {
             const hasMedia = data.videoUrl || data.thumbnail;
             driveBtn.style.display = hasMedia ? 'inline-flex' : 'none';
-            driveBtn.textContent = data.videoUrl ? '☁️ Salvar vídeo no Drive' : '☁️ Salvar imagem no Drive';
+            driveBtn.textContent = data.videoUrl ? '<i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Salvar vídeo no Drive' : '<i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Salvar imagem no Drive';
         }
 
         // Show "open original" button if we have a URL
@@ -686,7 +686,7 @@ const SwipeModule = {
     // ── Auto-Transcribe with OpenAI Whisper ──────────────────────────────────
     async _autoTranscribe() {
         const btn = document.getElementById('swipe-transcribe-btn');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Transcrevendo...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Transcrevendo...'; }
 
         try {
             let openaiKey = this._getOpenAIKey();
@@ -703,7 +703,7 @@ const SwipeModule = {
                 return;
             }
 
-            showToast('⏳ Baixando áudio do vídeo...', 'info');
+            showToast('<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Baixando áudio do vídeo...', 'info');
             // Use our Worker proxy for reliable download
             let resp;
             try {
@@ -716,7 +716,7 @@ const SwipeModule = {
             const blob = await resp.blob();
             const videoBlob = new Blob([blob], { type: 'video/mp4' });
 
-            showToast('⏳ Transcrevendo com Whisper AI...', 'info');
+            showToast('<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Transcrevendo com Whisper AI...', 'info');
             const formData = new FormData();
             formData.append('file', videoBlob, 'video.mp4');
             formData.append('model', 'whisper-1');
@@ -732,13 +732,13 @@ const SwipeModule = {
             if (result.text) {
                 const el = document.getElementById('swipe-transcript-orig');
                 if (el) el.value = result.text;
-                showToast('✅ Transcrição concluída! Clique em "Analisar com IA" para identificar Gancho/Corpo/CTA.', 'success');
+                showToast('<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Transcrição concluída! Clique em "Analisar com IA" para identificar Gancho/Corpo/CTA.', 'success');
             }
         } catch (err) {
             console.error('SwipeModule._autoTranscribe:', err);
             showToast('Erro na transcrição: ' + err.message + '. Cole o texto manualmente.', 'error');
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = '🎙️ Transcrever com IA'; }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="mic" style="width:14px;height:14px;vertical-align:-2px"></i>️ Transcrever com IA'; }
         }
     },
 
@@ -746,7 +746,7 @@ const SwipeModule = {
     async _analyzeWithClaude() {
         const claudeKey = this._getClaudeKey();
         if (!claudeKey) {
-            showToast('Configure sua API key do Claude (via ícone ⚙️ no Consultor de IA)', 'error');
+            showToast('Configure sua API key do Claude (via ícone <i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ no Consultor de IA)', 'error');
             return;
         }
 
@@ -757,7 +757,7 @@ const SwipeModule = {
         }
 
         const btn = document.getElementById('swipe-analyze-btn');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Analisando...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Analisando...'; }
 
         try {
             const prompt = `Você é especialista em copywriting para anúncios de vídeo no e-commerce.
@@ -824,12 +824,12 @@ Responda APENAS em JSON válido (sem markdown):
                 if (ptEl && !ptEl.value) ptEl.value = ptText;
             }
 
-            showToast('✅ Gancho, Corpo e CTA identificados' + (result.language !== 'pt' ? ' e traduzidos para PT!' : '!'), 'success');
+            showToast('<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Gancho, Corpo e CTA identificados' + (result.language !== 'pt' ? ' e traduzidos para PT!' : '!'), 'success');
         } catch (err) {
             console.error('SwipeModule._analyzeWithClaude:', err);
             showToast('Erro na análise: ' + err.message, 'error');
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = '🤖 Analisar com IA'; }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="bot" style="width:14px;height:14px;vertical-align:-2px"></i> Analisar com IA'; }
         }
     },
 
@@ -916,7 +916,7 @@ Responda APENAS em JSON válido (sem markdown):
         const langToggle = hasBothLangs ? `
             <div class="swipe-lang-toggle">
                 <button class="swipe-lang-btn ${lang === 'pt' ? 'active' : ''}" onclick="SwipeModule._switchDetailLang('${entry.id}','pt',this)">🇧🇷 Português</button>
-                <button class="swipe-lang-btn ${lang === 'orig' ? 'active' : ''}" onclick="SwipeModule._switchDetailLang('${entry.id}','orig',this)">🌐 Original</button>
+                <button class="swipe-lang-btn ${lang === 'orig' ? 'active' : ''}" onclick="SwipeModule._switchDetailLang('${entry.id}','orig',this)"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Original</button>
             </div>` : '';
 
         let mediaHtml = '';
@@ -950,13 +950,13 @@ Responda APENAS em JSON válido (sem markdown):
             ${langToggle}
             <div id="swipe-detail-sections">${this._buildSections(entry, lang)}</div>
             <div class="swipe-detail-links">
-                ${entry.driveVideoUrl ? `<a href="${entry.driveVideoUrl}" target="_blank" rel="noopener noreferrer" class="swipe-detail-link-btn swipe-link-drive">☁️ Abrir no Drive</a>` : ''}
-                ${entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener noreferrer" class="swipe-detail-link-btn swipe-link-orig">🔗 Ver na plataforma original</a>` : ''}
+                ${entry.driveVideoUrl ? `<a href="${entry.driveVideoUrl}" target="_blank" rel="noopener noreferrer" class="swipe-detail-link-btn swipe-link-drive"><i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i>️ Abrir no Drive</a>` : ''}
+                ${entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener noreferrer" class="swipe-detail-link-btn swipe-link-orig"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Ver na plataforma original</a>` : ''}
             </div>
-            ${entry.notes ? `<div class="swipe-detail-notes">📝 <strong>Notas:</strong> ${entry.notes}</div>` : ''}
+            ${entry.notes ? `<div class="swipe-detail-notes"><i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i> <strong>Notas:</strong> ${entry.notes}</div>` : ''}
             <div class="swipe-detail-actions">
-                <button class="btn btn-secondary btn-sm" onclick="SwipeModule._copyAll('${entry.id}')">📋 Copiar tudo</button>
-                <button class="btn btn-primary btn-sm" onclick="SwipeModule._closeDetail(); SwipeModule._openModal('${entry.id}')">✏️ Editar</button>
+                <button class="btn btn-secondary btn-sm" onclick="SwipeModule._copyAll('${entry.id}')"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Copiar tudo</button>
+                <button class="btn btn-primary btn-sm" onclick="SwipeModule._closeDetail(); SwipeModule._openModal('${entry.id}')"><i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i>️ Editar</button>
             </div>
         `;
     },
@@ -968,7 +968,7 @@ Responda APENAS em JSON válido (sem markdown):
         const transcript = lang === 'pt' ? (entry.transcript_pt || entry.transcript_orig) : (entry.transcript_orig || entry.transcript_pt);
 
         const copyBtn = (text) =>
-            `<button class="swipe-copy-btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(text)}')).then(()=>showToast('Copiado!','success'))">📋 Copiar</button>`;
+            `<button class="swipe-copy-btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(text)}')).then(()=>showToast('Copiado!','success'))"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Copiar</button>`;
 
         if (hook || body || cta) {
             const section = (label, cls, text) => text ? `
@@ -977,14 +977,14 @@ Responda APENAS em JSON válido (sem markdown):
                     <p class="swipe-section-text">${text}</p>
                     ${copyBtn(text)}
                 </div>` : '';
-            return section('🎯 Gancho (Hook)', 'swipe-label-hook', hook)
-                 + section('📝 Corpo (Body)',  'swipe-label-body', body)
-                 + section('🚀 CTA',           'swipe-label-cta',  cta);
+            return section('<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Gancho (Hook)', 'swipe-label-hook', hook)
+                 + section('<i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i> Corpo (Body)',  'swipe-label-body', body)
+                 + section('<i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> CTA',           'swipe-label-cta',  cta);
         }
 
         if (transcript) {
             return `<div class="swipe-section">
-                <div class="swipe-section-label">📄 Transcrição</div>
+                <div class="swipe-section-label"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Transcrição</div>
                 <p class="swipe-section-text">${transcript}</p>
                 ${copyBtn(transcript)}
             </div>`;
@@ -1006,9 +1006,9 @@ Responda APENAS em JSON válido (sem markdown):
         const entry = this._entries.find(e => e.id === id);
         if (!entry) return;
         const parts = [
-            entry.hook_pt ? `🎯 GANCHO:\n${entry.hook_pt}` : '',
-            entry.body_pt ? `\n📝 CORPO:\n${entry.body_pt}` : '',
-            entry.cta_pt  ? `\n🚀 CTA:\n${entry.cta_pt}`   : '',
+            entry.hook_pt ? `<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> GANCHO:\n${entry.hook_pt}` : '',
+            entry.body_pt ? `\n<i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i> CORPO:\n${entry.body_pt}` : '',
+            entry.cta_pt  ? `\n<i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> CTA:\n${entry.cta_pt}`   : '',
             (!entry.hook_pt && entry.transcript_pt) ? entry.transcript_pt : '',
         ].filter(Boolean).join('\n');
         navigator.clipboard.writeText(parts)
@@ -1031,7 +1031,7 @@ Responda APENAS em JSON válido (sem markdown):
         const statusEl = document.getElementById('swipe-drive-status-text');
         if (statusEl) {
             const connected = typeof SheetsAPI !== 'undefined' && AppState?.sheetsConnected;
-            statusEl.textContent = connected ? '✅ Google Drive conectado' : '❌ Google Drive não conectado';
+            statusEl.textContent = connected ? '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Google Drive conectado' : '<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Google Drive não conectado';
             statusEl.style.color = connected ? 'var(--success)' : 'var(--danger)';
         }
 

@@ -6,25 +6,27 @@
 const LabTestsModule = {
     _storageKey: 'etracker_lab_tests',
     _tests: [],
+    _shopifyByDate: {}, // "YYYY-MM-DD" → { sales, revenue, currency }
+    _shopifyMonthKey: null,
 
     CATEGORIES: {
-        loja:          { label: 'Loja',          icon: '🏪', color: '#059669', bg: '#d1fae5' },
-        redes_sociais: { label: 'Redes Sociais', icon: '📱', color: '#2563eb', bg: '#dbeafe' },
-        trafego:       { label: 'Tráfego',       icon: '📊', color: '#7c3aed', bg: '#ede9fe' },
-        criativo:      { label: 'Criativo',      icon: '🎬', color: '#db2777', bg: '#fce7f3' },
-        oferta:        { label: 'Oferta',        icon: '💰', color: '#d97706', bg: '#fef3c7' },
-        outro:         { label: 'Outro',         icon: '📌', color: '#6b7280', bg: '#f3f4f6' },
+        loja:          { label: 'Loja',          icon: '<i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#059669', bg: '#d1fae5' },
+        redes_sociais: { label: 'Redes Sociais', icon: '<i data-lucide="smartphone" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#2563eb', bg: '#dbeafe' },
+        trafego:       { label: 'Tráfego',       icon: '<i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#7c3aed', bg: '#ede9fe' },
+        criativo:      { label: 'Criativo',      icon: '<i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#db2777', bg: '#fce7f3' },
+        oferta:        { label: 'Oferta',        icon: '<i data-lucide="dollar-sign" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#d97706', bg: '#fef3c7' },
+        outro:         { label: 'Outro',         icon: '<i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i>', color: '#6b7280', bg: '#f3f4f6' },
     },
 
     METRICS: {
-        validar_criativo: { label: '🎯 Validar Criativo', icon: '🎯' },
-        vendas:    { label: '↑ Vendas',      icon: '↑' },
-        cpa:       { label: '↓ CPA',         icon: '↓' },
-        cpc:       { label: '↓ CPC',         icon: '↓' },
-        conv_page: { label: '↑ Conv. Página', icon: '↑' },
-        atc_rate:  { label: '↑ Add to Cart', icon: '↑' },
-        roas:      { label: '↑ ROAS',        icon: '↑' },
-        outro:     { label: 'Outro',         icon: '📌' },
+        validar_criativo: { label: '<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Validar Criativo', icon: '<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        vendas:    { label: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas',      icon: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        cpa:       { label: '<i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i> CPA',         icon: '<i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        cpc:       { label: '<i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i> CPC',         icon: '<i data-lucide="arrow-down" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        conv_page: { label: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Conv. Página', icon: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        atc_rate:  { label: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> Add to Cart', icon: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        roas:      { label: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i> ROAS',        icon: '<i data-lucide="arrow-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        outro:     { label: 'Outro',         icon: '<i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i>' },
     },
 
     init() {
@@ -86,7 +88,7 @@ const LabTestsModule = {
             if (section) {
                 const show = section.style.display === 'none';
                 section.style.display = show ? '' : 'none';
-                if (btn) btn.textContent = show ? '📈 Esconder métricas' : '📈 Adicionar métricas';
+                if (btn) btn.textContent = show ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas' : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
             }
         });
 
@@ -151,15 +153,15 @@ const LabTestsModule = {
                 </div>
                 <div class="lab-stat">
                     <span class="lab-stat-value" style="color:#059669">${positivos}</span>
-                    <span class="lab-stat-label">✅ Validados</span>
+                    <span class="lab-stat-label"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Validados</span>
                 </div>
                 <div class="lab-stat">
                     <span class="lab-stat-value" style="color:#dc2626">${negativos}</span>
-                    <span class="lab-stat-label">❌ Falharam</span>
+                    <span class="lab-stat-label"><i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Falharam</span>
                 </div>
                 <div class="lab-stat">
                     <span class="lab-stat-value" style="color:#6b7280">${neutros}</span>
-                    <span class="lab-stat-label">➖ Neutros</span>
+                    <span class="lab-stat-label"><i data-lucide="minus" style="width:14px;height:14px;vertical-align:-2px"></i> Neutros</span>
                 </div>
                 <div class="lab-stat lab-stat-highlight">
                     <span class="lab-stat-value" style="color:#059669">${pctPositivo}%</span>
@@ -178,17 +180,17 @@ const LabTestsModule = {
         }
 
         if (active.length) {
-            html += `<h3 class="lab-section-title">🔬 Ativos (${active.length})</h3>`;
+            html += `<h3 class="lab-section-title"><i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i> Ativos (${active.length})</h3>`;
             html += `<div class="lab-cards-grid">${active.map(t => this._renderCard(t)).join('')}</div>`;
         }
 
         if (concluded.length) {
-            html += `<h3 class="lab-section-title" style="margin-top:1.5rem">✅ Concluídos (${concluded.length})</h3>`;
+            html += `<h3 class="lab-section-title" style="margin-top:1.5rem"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Concluídos (${concluded.length})</h3>`;
             html += `<div class="lab-cards-grid">${concluded.map(t => this._renderCard(t)).join('')}</div>`;
         }
 
         if (cancelled.length) {
-            html += `<details style="margin-top:1rem"><summary class="lab-section-title" style="cursor:pointer">🚫 Cancelados (${cancelled.length})</summary>`;
+            html += `<details style="margin-top:1rem"><summary class="lab-section-title" style="cursor:pointer"><i data-lucide="ban" style="width:14px;height:14px;vertical-align:-2px"></i> Cancelados (${cancelled.length})</summary>`;
             html += `<div class="lab-cards-grid" style="margin-top:0.5rem">${cancelled.map(t => this._renderCard(t)).join('')}</div></details>`;
         }
 
@@ -228,7 +230,7 @@ const LabTestsModule = {
 
         let resultBadge = '';
         if (test.status === 'concluido') {
-            const rc = { positivo: ['✅ Positivo', '#059669', '#d1fae5'], negativo: ['❌ Negativo', '#dc2626', '#fee2e2'], neutro: ['➖ Neutro', '#6b7280', '#f3f4f6'] };
+            const rc = { positivo: ['<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Positivo', '#059669', '#d1fae5'], negativo: ['<i data-lucide="x-circle" style="width:14px;height:14px;vertical-align:-2px"></i> Negativo', '#dc2626', '#fee2e2'], neutro: ['<i data-lucide="minus" style="width:14px;height:14px;vertical-align:-2px"></i> Neutro', '#6b7280', '#f3f4f6'] };
             const [label, color, bg] = rc[test.result] || rc.neutro;
             resultBadge = `<span class="lab-result-badge" style="color:${color};background:${bg}">${label}</span>`;
         }
@@ -254,10 +256,10 @@ const LabTestsModule = {
             <div class="lab-card-header">
                 <span class="lab-category-badge" style="background:${cat.bg};color:${cat.color}">${cat.icon} ${cat.label}</span>
                 ${resultBadge}
-                ${isOverdue ? '<span class="lab-overdue-badge">⏰ Vencido</span>' : ''}
+                ${isOverdue ? '<span class="lab-overdue-badge"><i data-lucide="alarm-clock" style="width:14px;height:14px;vertical-align:-2px"></i> Vencido</span>' : ''}
             </div>
             <h4 class="lab-card-title">${this._esc(test.title)}</h4>
-            ${productName || creativeName ? `<p class="lab-card-area">${productName ? `🏷️ ${this._esc(productName)}` : ''}${productName && creativeName ? ' · ' : ''}${creativeName ? `🎬 ${this._esc(creativeName)}` : ''}</p>` : ''}
+            ${productName || creativeName ? `<p class="lab-card-area">${productName ? `<i data-lucide="tag" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._esc(productName)}` : ''}${productName && creativeName ? ' · ' : ''}${creativeName ? `<i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._esc(creativeName)}` : ''}</p>` : ''}
             ${test.area ? `<p class="lab-card-area">${this._esc(test.area)}</p>` : ''}
             <p class="lab-card-hypothesis">${this._esc(test.hypothesis || '')}</p>
             ${test.status === 'ativo' ? `
@@ -267,11 +269,11 @@ const LabTestsModule = {
             <div class="lab-card-meta">
                 <span>Dia ${elapsed}/${totalDays}</span>
                 ${metric ? `<span>${metric.icon} ${metric.label}${test.baselineValue ? ': ' + this._esc(test.baselineValue) : ''}</span>` : ''}
-                ${obsCount ? `<span>💬 ${obsCount}</span>` : ''}
+                ${obsCount ? `<span><i data-lucide="message-circle" style="width:14px;height:14px;vertical-align:-2px"></i> ${obsCount}</span>` : ''}
             </div>` : ''}
             ${test.status === 'concluido' && test.conclusion ? `<p class="lab-card-conclusion">${this._esc(test.conclusion)}</p>` : ''}
             ${test.stages && test.stages.length > 0 ? this._renderStagesProgress(test) : ''}
-            <div class="lab-card-dates">${test.dateStart} → ${test.dateEnd}</div>
+            <div class="lab-card-dates">${test.dateStart} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${test.dateEnd}</div>
         </div>`;
     },
 
@@ -308,7 +310,7 @@ const LabTestsModule = {
         const metricsSection = document.getElementById('lab-metrics-section');
         const metricsBtn = document.getElementById('btn-lab-toggle-metrics');
         if (metricsSection) metricsSection.style.display = hasMetrics ? '' : 'none';
-        if (metricsBtn) metricsBtn.textContent = hasMetrics ? '📈 Esconder métricas' : '📈 Adicionar métricas';
+        if (metricsBtn) metricsBtn.textContent = hasMetrics ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas' : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
 
         // Populate product dropdown from AppState
         const prodSelect = get('lab-product');
@@ -400,12 +402,12 @@ const LabTestsModule = {
         }
 
         container.innerHTML = observations.map((obs, i) => {
-            const sentimentIcon = { positive: '🟢', negative: '🔴', neutral: '🟡' }[obs.sentiment] || '🟡';
+            const sentimentIcon = { positive: '<i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i>', negative: '<i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i>', neutral: '<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i>' }[obs.sentiment] || '<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i>';
             return `<div class="lab-obs-item">
                 <span class="lab-obs-date">${obs.date}</span>
                 <span class="lab-obs-sentiment">${sentimentIcon}</span>
                 <span class="lab-obs-text">${this._esc(obs.text)}</span>
-                <button class="lab-obs-del" data-idx="${i}" title="Remover">✕</button>
+                <button class="lab-obs-del" data-idx="${i}" title="Remover"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
             </div>`;
         }).join('');
 
@@ -586,12 +588,18 @@ const LabTestsModule = {
                 totalRevenue += e.revenue || 0;
             }
             const cpa = totalSales > 0 ? (totalBudget / totalSales) : 0;
+            // Shopify data for this day (preloaded async)
+            const shopifyData = this._shopifyByDate[dateStr] || null;
+            const shopifySales = shopifyData ? Number(shopifyData.sales || 0) : 0;
+            const realCpa = shopifySales > 0 ? (totalBudget / shopifySales) : 0;
 
-            // Day color based on performance
+            // Day color based on performance (prefer CPA Real when Shopify data available)
             let dayClass = '';
             if (entries.length > 0) {
-                if (totalSales > 0 && cpa <= 30) dayClass = 'cal-day-green';
-                else if (totalSales > 0 && cpa <= 60) dayClass = 'cal-day-yellow';
+                const cpaForColor = shopifySales > 0 ? realCpa : cpa;
+                const salesForColor = shopifySales > 0 ? shopifySales : totalSales;
+                if (salesForColor > 0 && cpaForColor <= 30) dayClass = 'cal-day-green';
+                else if (salesForColor > 0 && cpaForColor <= 60) dayClass = 'cal-day-yellow';
                 else if (totalBudget > 0) dayClass = 'cal-day-red';
                 else dayClass = 'cal-day-neutral';
             }
@@ -606,11 +614,16 @@ const LabTestsModule = {
                 ? `<span class="cal-marker" style="background:#f59e0b" title="${activeDiaryTests.length} teste(s) de produto"></span>`
                 : '';
 
+            const shopifyCell = shopifyData
+                ? `<span class="cal-metric-shopify" title="Vendas Shopify: ${shopifySales}${realCpa > 0 ? ' / CPA Real: R$' + realCpa.toFixed(2) : ''}"><i data-lucide="shopping-cart" style="width:14px;height:14px;vertical-align:-2px"></i>${shopifySales}${realCpa > 0 ? ' · R$' + Math.round(realCpa) : ''}</span>`
+                : '';
+
             html += `
             <div class="cal-day ${dayClass} ${isToday ? 'cal-day-today' : ''}" data-date="${dateStr}">
                 <span class="cal-day-num">${day}</span>
-                ${entries.length > 0 ? `<div class="cal-day-metrics">
-                    ${totalSales > 0 ? `<span class="cal-metric-sales">${totalSales}v</span>` : ''}
+                ${entries.length > 0 || shopifyData ? `<div class="cal-day-metrics">
+                    ${totalSales > 0 ? `<span class="cal-metric-sales" title="Vendas Facebook">${totalSales}v</span>` : ''}
+                    ${shopifyCell}
                     ${totalBudget > 0 ? `<span class="cal-metric-budget">R$${Math.round(totalBudget)}</span>` : ''}
                 </div>` : ''}
                 <div class="cal-markers">${markers}${diaryTestMarkers}</div>
@@ -619,11 +632,14 @@ const LabTestsModule = {
 
         html += '</div>';
 
+        // Kick off Shopify preload for this month (re-renders when done)
+        this._ensureShopifyMonthData(year, month);
+
         // Active tests summary
         const activeTests = labTests.filter(t => t.status === 'ativo');
         if (activeTests.length > 0 || diaryTests.length > 0) {
             html += `<div class="cal-tests-summary">
-                <h4>🧪 Testes Ativos</h4>`;
+                <h4><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testes Ativos</h4>`;
 
             for (const t of activeTests) {
                 const cat = this.CATEGORIES[t.category] || this.CATEGORIES.outro;
@@ -633,7 +649,7 @@ const LabTestsModule = {
                     <span class="lab-category-badge" style="background:${cat.bg};color:${cat.color}">${cat.icon}</span>
                     <div class="cal-test-info">
                         <strong>${this._esc(t.title)}</strong>
-                        <span>${t.dateStart} → ${t.dateEnd} (dia ${elapsed}/${total})</span>
+                        <span>${t.dateStart} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${t.dateEnd} (dia ${elapsed}/${total})</span>
                     </div>
                 </div>`;
             }
@@ -642,7 +658,7 @@ const LabTestsModule = {
             const uniqueDiaryTests = [...new Set(diaryTests.map(e => e.testGoal || e.testNotes).filter(Boolean))];
             for (const goal of uniqueDiaryTests.slice(0, 5)) {
                 html += `<div class="cal-test-item">
-                    <span class="lab-category-badge" style="background:#fef3c7;color:#d97706">📊</span>
+                    <span class="lab-category-badge" style="background:#fef3c7;color:#d97706"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                     <div class="cal-test-info">
                         <strong>${this._esc(goal)}</strong>
                         <span>Teste de produto (diário)</span>
@@ -739,11 +755,16 @@ const LabTestsModule = {
             let totalSales = 0, totalBudget = 0;
             for (const e of entries) { totalSales += e.sales || 0; totalBudget += e.budget || 0; }
             const cpa = totalSales > 0 ? totalBudget / totalSales : 0;
+            const shopifyData = this._shopifyByDate[dateStr] || null;
+            const shopifySales = shopifyData ? Number(shopifyData.sales || 0) : 0;
+            const realCpa = shopifySales > 0 ? (totalBudget / shopifySales) : 0;
 
             let dayClass = '';
             if (entries.length) {
-                if (totalSales > 0 && cpa <= 30) dayClass = 'cal-day-green';
-                else if (totalSales > 0 && cpa <= 60) dayClass = 'cal-day-yellow';
+                const cpaForColor = shopifySales > 0 ? realCpa : cpa;
+                const salesForColor = shopifySales > 0 ? shopifySales : totalSales;
+                if (salesForColor > 0 && cpaForColor <= 30) dayClass = 'cal-day-green';
+                else if (salesForColor > 0 && cpaForColor <= 60) dayClass = 'cal-day-yellow';
                 else if (totalBudget > 0) dayClass = 'cal-day-red';
                 else dayClass = 'cal-day-neutral';
             }
@@ -753,9 +774,13 @@ const LabTestsModule = {
                 return `<span class="cal-marker" style="background:${cat.color}" title="${this._esc(t.title)}"></span>`;
             }).join('') + (activeDiaryTests.length ? `<span class="cal-marker" style="background:#f59e0b"></span>` : '');
 
+            const shopifyCell = shopifyData
+                ? `<span class="cal-metric-shopify" title="Shopify: ${shopifySales}${realCpa > 0 ? ' / CPA Real: R$' + realCpa.toFixed(2) : ''}"><i data-lucide="shopping-cart" style="width:14px;height:14px;vertical-align:-2px"></i>${shopifySales}${realCpa > 0 ? ' · R$' + Math.round(realCpa) : ''}</span>`
+                : '';
+
             html += `<div class="cal-day ${dayClass} ${isToday ? 'cal-day-today' : ''}" data-date="${dateStr}">
                 <span class="cal-day-num">${day}</span>
-                ${entries.length ? `<div class="cal-day-metrics">${totalSales ? `<span class="cal-metric-sales">${totalSales}v</span>` : ''}${totalBudget ? `<span class="cal-metric-budget">R$${Math.round(totalBudget)}</span>` : ''}</div>` : ''}
+                ${entries.length || shopifyData ? `<div class="cal-day-metrics">${totalSales ? `<span class="cal-metric-sales" title="Vendas Facebook">${totalSales}v</span>` : ''}${shopifyCell}${totalBudget ? `<span class="cal-metric-budget">R$${Math.round(totalBudget)}</span>` : ''}</div>` : ''}
                 <div class="cal-markers">${markers}</div>
             </div>`;
         }
@@ -768,6 +793,31 @@ const LabTestsModule = {
         });
         document.getElementById('cal-prev-month')?.addEventListener('click', () => this._navigateMonth(-1));
         document.getElementById('cal-next-month')?.addEventListener('click', () => this._navigateMonth(1));
+
+        // Kick off Shopify preload (re-renders when loaded)
+        this._ensureShopifyMonthData(year, month);
+    },
+
+    async _ensureShopifyMonthData(year, month) {
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured || !ShopifyModule.isConfigured()) return;
+        const key = `${year}-${month}`;
+        if (this._shopifyMonthKey === key) return;
+        const first = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const last = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        try {
+            const map = await ShopifyModule.getSalesMapByDate(first, last);
+            this._shopifyByDate = map || {};
+            this._shopifyMonthKey = key;
+            // Re-render current month (avoid recursive fetch via key guard above)
+            if (this._calYear != null && this._calMonth != null) {
+                this._renderCalendarMonth(this._calYear, this._calMonth);
+            } else {
+                this._renderCalendar();
+            }
+        } catch (err) {
+            console.warn('[Calendar] Shopify preload failed:', err);
+        }
     },
 
     _showDayPopup(dateStr, byDate, labTests, diaryTests) {
@@ -788,29 +838,37 @@ const LabTestsModule = {
         }
         const cpa = totalSales > 0 ? totalBudget / totalSales : 0;
         const avgCpc = cpcCount > 0 ? totalCpc / cpcCount : 0;
+        const shopifyData = this._shopifyByDate[dateStr] || null;
+        const shopifySales = shopifyData ? Number(shopifyData.sales || 0) : 0;
+        const shopifyRevenue = shopifyData ? Number(shopifyData.revenue || 0) : 0;
+        const realCpa = shopifySales > 0 ? totalBudget / shopifySales : 0;
+        const diff = shopifyData && totalSales > 0 ? (shopifySales - totalSales) : 0;
 
         const popup = document.createElement('div');
         popup.id = 'cal-day-popup';
         popup.className = 'cal-popup';
         popup.innerHTML = `
             <div class="cal-popup-header">
-                <strong>📅 ${dateStr}</strong>
-                <button class="btn-close" onclick="document.getElementById('cal-day-popup').remove()">✕</button>
+                <strong><i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> ${dateStr}</strong>
+                <button class="btn-close" onclick="document.getElementById('cal-day-popup').remove()"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
             </div>
             ${entries.length ? `
             <div class="cal-popup-metrics">
-                <div class="cal-popup-metric"><span>Vendas</span><strong>${totalSales}</strong></div>
+                <div class="cal-popup-metric"><span>Vendas FB</span><strong>${totalSales}</strong></div>
+                <div class="cal-popup-metric"><span>Vendas Shopify</span><strong>${shopifyData ? shopifySales + (diff !== 0 && totalSales > 0 ? ` <small style="color:${diff > 0 ? 'var(--green)' : 'var(--red)'}">(${diff > 0 ? '+' : ''}${diff})</small>` : '') : '-'}</strong></div>
                 <div class="cal-popup-metric"><span>Orçamento</span><strong>R$${totalBudget.toFixed(2)}</strong></div>
                 <div class="cal-popup-metric"><span>CPA</span><strong>${cpa > 0 ? 'R$' + cpa.toFixed(2) : '-'}</strong></div>
+                <div class="cal-popup-metric"><span>CPA Real</span><strong>${realCpa > 0 ? 'R$' + realCpa.toFixed(2) : '-'}</strong></div>
                 <div class="cal-popup-metric"><span>CPC</span><strong>${avgCpc > 0 ? 'R$' + avgCpc.toFixed(2) : '-'}</strong></div>
-            </div>` : '<p style="color:var(--text-muted);font-size:0.8rem;margin:0.5rem 0">Sem dados do diário</p>'}
+                ${shopifyRevenue > 0 ? `<div class="cal-popup-metric"><span>Receita Shopify</span><strong>${shopifyData.currency || ''} ${shopifyRevenue.toFixed(2)}</strong></div>` : ''}
+            </div>` : (shopifyData ? `<div class="cal-popup-metrics"><div class="cal-popup-metric"><span>Vendas Shopify</span><strong>${shopifySales}</strong></div>${shopifyRevenue > 0 ? `<div class="cal-popup-metric"><span>Receita</span><strong>${shopifyData.currency || ''} ${shopifyRevenue.toFixed(2)}</strong></div>` : ''}</div>` : '<p style="color:var(--text-muted);font-size:0.8rem;margin:0.5rem 0">Sem dados do diário</p>')}
             ${activeTests.length ? `<div class="cal-popup-tests">
-                <strong>🧪 Testes Lab:</strong>
-                ${activeTests.map(t => `<div class="cal-popup-test">${this.CATEGORIES[t.category]?.icon || '📌'} ${this._esc(t.title)}</div>`).join('')}
+                <strong><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testes Lab:</strong>
+                ${activeTests.map(t => `<div class="cal-popup-test">${this.CATEGORIES[t.category]?.icon || '<i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i>'} ${this._esc(t.title)}</div>`).join('')}
             </div>` : ''}
             ${dayDiaryTests.length ? `<div class="cal-popup-tests">
-                <strong>📊 Testes Produto:</strong>
-                ${dayDiaryTests.map(e => `<div class="cal-popup-test">🏷️ ${this._esc(e.testGoal || e.testNotes || 'Teste')}</div>`).join('')}
+                <strong><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Testes Produto:</strong>
+                ${dayDiaryTests.map(e => `<div class="cal-popup-test"><i data-lucide="tag" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._esc(e.testGoal || e.testNotes || 'Teste')}</div>`).join('')}
             </div>` : ''}
         `;
 
@@ -832,19 +890,19 @@ const LabTestsModule = {
     _renderStagesProgress(test) {
         if (!test.stages || !test.stages.length) return '';
         const stages = [...test.stages].sort((a, b) => a.order - b.order);
-        const statusIcon = { pendente: '⏳', em_andamento: '🔬', concluido: '✅' };
+        const statusIcon = { pendente: '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i>', em_andamento: '<i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i>', concluido: '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>' };
         const statusColor = { pendente: '#9ca3af', em_andamento: 'var(--accent)', concluido: '#059669' };
 
         const steps = stages.map((s, i) => {
             const isActive = s.status === 'em_andamento';
             const isDone = s.status === 'concluido';
             return `<div class="lab-stage-step ${isActive ? 'lab-stage-active' : ''} ${isDone ? 'lab-stage-done' : ''}" data-stage-id="${s.id}" data-test-id="${test.id}">
-                <div class="lab-stage-circle" style="background:${statusColor[s.status] || '#9ca3af'}" title="${s.status}">${statusIcon[s.status] || '⏳'}</div>
+                <div class="lab-stage-circle" style="background:${statusColor[s.status] || '#9ca3af'}" title="${s.status}">${statusIcon[s.status] || '<i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i>'}</div>
                 <div class="lab-stage-label">
                     <span>${this._esc(s.name || 'Fase ' + s.order)}</span>
                     ${s.result !== null && s.result !== undefined ? `<small style="color:${s.result === 'positivo' ? '#059669' : s.result === 'negativo' ? '#dc2626' : '#6b7280'}">${s.result}</small>` : ''}
                 </div>
-                ${i < stages.length - 1 ? '<div class="lab-stage-arrow">→</div>' : ''}
+                ${i < stages.length - 1 ? '<div class="lab-stage-arrow"><i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></div>' : ''}
             </div>`;
         }).join('');
 
@@ -917,9 +975,9 @@ const LabTestsModule = {
             <span style="color:var(--text-muted);font-size:0.75rem;min-width:50px">Fase ${index + 1}</span>
             <input class="input lab-stage-name" type="text" placeholder="Nome da fase" value="${this._esc(stage?.name || '')}" style="flex:2">
             <select class="input lab-stage-status" style="flex:1">
-                <option value="pendente" ${(!stage || stage.status === 'pendente') ? 'selected' : ''}>⏳ Pendente</option>
-                <option value="em_andamento" ${stage?.status === 'em_andamento' ? 'selected' : ''}>🔬 Em andamento</option>
-                <option value="concluido" ${stage?.status === 'concluido' ? 'selected' : ''}>✅ Concluído</option>
+                <option value="pendente" ${(!stage || stage.status === 'pendente') ? 'selected' : ''}><i data-lucide="hourglass" style="width:14px;height:14px;vertical-align:-2px"></i> Pendente</option>
+                <option value="em_andamento" ${stage?.status === 'em_andamento' ? 'selected' : ''}><i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i> Em andamento</option>
+                <option value="concluido" ${stage?.status === 'concluido' ? 'selected' : ''}><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Concluído</option>
             </select>
             <input class="input lab-stage-obs-input" type="text" placeholder="Observações" value="${this._esc(stage?.observations || '')}" style="flex:2">
             <button type="button" class="btn-icon lab-stage-del" style="color:var(--red)" title="Remover fase">×</button>

@@ -8,16 +8,16 @@ const PipelineModule = {
     STORAGE_KEY: 'pipeline_cards',
 
     COLUMNS: [
-        { id: 'ideia', title: '1. Ideia', icon: '💡' },
-        { id: 'validacao', title: '2. Validação', icon: '✅' },
-        { id: 'pesquisa', title: '3. Pesquisa', icon: '🔎' },
-        { id: 'angulos', title: '4. Ângulos & Hooks', icon: '🧠' },
-        { id: 'criativos', title: '5. Criativos', icon: '🎬' },
-        { id: 'pagina', title: '6. Página', icon: '🛒' },
-        { id: 'teste_ads', title: '7. Teste Ads', icon: '📣' },
-        { id: 'otimizacao', title: '8. Otimização', icon: '⚙️' },
-        { id: 'escala', title: '9. Escala', icon: '📈' },
-        { id: 'kill', title: '10. Kill', icon: '🪦' }
+        { id: 'ideia', title: '1. Ideia', icon: '<i data-lucide="lightbulb" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'validacao', title: '2. Validação', icon: '<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'pesquisa', title: '3. Pesquisa', icon: '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'angulos', title: '4. Ângulos & Hooks', icon: '<i data-lucide="brain" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'criativos', title: '5. Criativos', icon: '<i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'pagina', title: '6. Página', icon: '<i data-lucide="shopping-cart" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'teste_ads', title: '7. Teste Ads', icon: '<i data-lucide="megaphone" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'otimizacao', title: '8. Otimização', icon: '<i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️' },
+        { id: 'escala', title: '9. Escala', icon: '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i>' },
+        { id: 'kill', title: '10. Kill', icon: '<i data-lucide="skull" style="width:14px;height:14px;vertical-align:-2px"></i>' }
     ],
     FLOW_LABELS: {
         ideia: 'Ideia',
@@ -88,7 +88,7 @@ const PipelineModule = {
                         { id: 'margem_possivel', label: 'Margem possível', type: 'text', placeholder: 'Ex: 68%' },
                         { id: 'potencial_viral', label: 'Score potencial viral (0-10)', type: 'number', placeholder: 'Ex: 7' }
                     ],
-                    warn: '⚠️ Regra: se o score ficar abaixo de 6, considerar mover para Kill.'
+                    warn: '<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i>️ Regra: se o score ficar abaixo de 6, considerar mover para Kill.'
                 }
             ]
         },
@@ -142,7 +142,7 @@ const PipelineModule = {
                     fields: [
                         { id: 'tipo_criativo', label: 'Tipo criativo', type: 'text', placeholder: 'Ex: UGC, Demonstrativo, POV' },
                         { id: 'hook_principal', label: 'Hook principal', type: 'text', placeholder: 'Abertura principal' },
-                        { id: 'estrutura', label: 'Estrutura', type: 'textarea', rows: 3, placeholder: 'Hook → Problema → Solução → CTA' },
+                        { id: 'estrutura', label: 'Estrutura', type: 'textarea', rows: 3, placeholder: 'Hook <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Problema <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Solução <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> CTA' },
                         { id: 'video', label: 'Vídeo (link ou referência)', type: 'textarea', rows: 2, placeholder: 'Links de vídeo ou nomes de arquivo' },
                         { id: 'qtd_criativos', label: 'Quantidade de criativos', type: 'number', placeholder: 'Meta 5-10' },
                         { id: 'hook_status', label: 'Status do hook', type: 'select', options: ['Hook forte', 'Hook fraco', 'Neutro'] }
@@ -225,7 +225,7 @@ const PipelineModule = {
             ]
         },
         kill: {
-            title: '🔟 Kill',
+            title: '<i data-lucide="list-ordered" style="width:14px;height:14px;vertical-align:-2px"></i> Kill',
             sections: [
                 {
                     title: 'Post-mortem',
@@ -615,11 +615,14 @@ const PipelineModule = {
     updateFlowSummary(parts) {
         const flowEl = document.getElementById('pipeline-flow-summary');
         if (!flowEl) return;
+        const arrow = '<i data-lucide="arrow-right" style="width:12px;height:12px;vertical-align:-2px;color:var(--text-muted)"></i>';
         if (!Array.isArray(parts) || parts.length === 0) {
-            flowEl.textContent = 'Ideia → Validação → Pesquisa → Ângulos → Criativos → Página → Teste → Otimização → Escala → Kill';
-            return;
+            const defaults = ['Ideia','Validação','Pesquisa','Ângulos','Criativos','Página','Teste','Otimização','Escala','Kill'];
+            flowEl.innerHTML = defaults.join(' ' + arrow + ' ');
+        } else {
+            flowEl.innerHTML = parts.map(p => String(p).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))).join(' ' + arrow + ' ');
         }
-        flowEl.textContent = parts.join(' → ');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     renderCard(card, columnId) {
@@ -663,16 +666,16 @@ const PipelineModule = {
         const supplierCost = Number(card?.supplier?.cost);
         const hasSupplierCost = Number.isFinite(supplierCost) && supplierCost > 0;
         let meta = '';
-        if (linkCount) meta += `<span>🔗 ${linkCount}</span>`;
-        if (videoCount) meta += `<span>🎬 ${videoCount}</span>`;
-        if (photoCount) meta += `<span>🖼️ ${photoCount}</span>`;
+        if (linkCount) meta += `<span><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> ${linkCount}</span>`;
+        if (videoCount) meta += `<span><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> ${videoCount}</span>`;
+        if (photoCount) meta += `<span><i data-lucide="image" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${photoCount}</span>`;
         if (hasSupplierCost) {
-            meta += `<span>💸 ${this.escapeHtml(formatCurrency(supplierCost, this.normalizeCurrency(card?.supplier?.costCurrency || 'USD')))}</span>`;
+            meta += `<span><i data-lucide="banknote" style="width:14px;height:14px;vertical-align:-2px"></i> ${this.escapeHtml(formatCurrency(supplierCost, this.normalizeCurrency(card?.supplier?.costCurrency || 'USD')))}</span>`;
         }
-        if (functionsCount) meta += `<span>⚙️ ${functionsCount}</span>`;
+        if (functionsCount) meta += `<span><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${functionsCount}</span>`;
         if (String(card?.endDate || '').trim()) {
             const overdue = this.isOverdueDate(card.endDate);
-            meta += `<span class="kanban-meta-due${overdue ? ' overdue' : ''}">📅 ${this.escapeHtml(formatDate(card.endDate))}</span>`;
+            meta += `<span class="kanban-meta-due${overdue ? ' overdue' : ''}"><i data-lucide="calendar" style="width:14px;height:14px;vertical-align:-2px"></i> ${this.escapeHtml(formatDate(card.endDate))}</span>`;
         }
 
         let killBadge = '';
@@ -688,30 +691,30 @@ const PipelineModule = {
                 <div class="kanban-card-progress-wrap">
                     <div class="kanban-card-progress-bar" style="width:${pct}%"></div>
                 </div>
-                <div class="kanban-card-progress-text">✓ ${progress.checked}/${progress.total}</div>
+                <div class="kanban-card-progress-text"><i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px"></i> ${progress.checked}/${progress.total}</div>
             `;
         }
 
         let csvBtn = '';
         if (columnId === 'teste_ads') {
-            csvBtn = '<button class="kanban-csv-link" data-action="csv">📋 Diário</button>';
+            csvBtn = '<button class="kanban-csv-link" data-action="csv"><i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:-2px"></i> Diário</button>';
         }
 
         const linkActions = [];
-        const addLinkAction = (label, url, icon = '🔗') => {
+        const addLinkAction = (label, url, icon = '<i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i>') => {
             const safeUrl = this._safeOpenUrl(url);
             if (!safeUrl) return;
             linkActions.push(
                 `<a class="kanban-link-btn" data-action="open-link" data-link="${this.escapeHtml(safeUrl)}" href="${this.escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" title="${this.escapeHtml(label)}">${icon} ${this.escapeHtml(label)}</a>`
             );
         };
-        addLinkAction('Produto', card?.typedLinks?.product || '', '🛒');
-        addLinkAction('Final', card?.typedLinks?.final || '', '🎯');
-        addLinkAction('Copy', card?.typedLinks?.copy || '', '✍️');
-        addLinkAction('Pesquisa', card?.typedLinks?.research || '', '🔎');
+        addLinkAction('Produto', card?.typedLinks?.product || '', '<i data-lucide="shopping-cart" style="width:14px;height:14px;vertical-align:-2px"></i>');
+        addLinkAction('Final', card?.typedLinks?.final || '', '<i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i>');
+        addLinkAction('Copy', card?.typedLinks?.copy || '', '<i data-lucide="pencil" style="width:14px;height:14px;vertical-align:-2px"></i>️');
+        addLinkAction('Pesquisa', card?.typedLinks?.research || '', '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i>');
         (Array.isArray(card?.extraLinks) ? card.extraLinks : []).forEach((item, idx) => {
             const label = String(item?.label || `Extra ${idx + 1}`).trim() || `Extra ${idx + 1}`;
-            addLinkAction(label, item?.url || '', '🔗');
+            addLinkAction(label, item?.url || '', '<i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i>');
         });
 
         el.innerHTML = `
@@ -919,7 +922,7 @@ const PipelineModule = {
                     <div class="checklist-import-title">Importar métricas iniciais</div>
                     <div class="checklist-import-subtitle">Use o mesmo importador CSV/XLSX do Diagnóstico para preencher automaticamente.</div>
                     <div class="checklist-import-actions">
-                        <button type="button" class="btn btn-secondary btn-sm" id="checklist-import-facebook-btn">📥 Importar CSV/XLSX</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="checklist-import-facebook-btn"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV/XLSX</button>
                         <input type="file" id="checklist-import-facebook-input" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
                 </div>
@@ -972,12 +975,12 @@ const PipelineModule = {
             if (section.aiActions && section.aiActions.length > 0) {
                 html += '<div class="checklist-ai-actions">';
                 section.aiActions.forEach(action => {
-                    html += `<button type="button" class="btn btn-secondary btn-sm checklist-ai-btn" data-ai-action="${action.id}" data-target-field="${action.targetField}">✨ ${this.escapeHtml(action.label)}</button>`;
+                    html += `<button type="button" class="btn btn-secondary btn-sm checklist-ai-btn" data-ai-action="${action.id}" data-target-field="${action.targetField}"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> ${this.escapeHtml(action.label)}</button>`;
                 });
                 html += '</div>';
             }
 
-            if (section.hint) html += `<div class="checklist-hint">💡 ${this.escapeHtml(section.hint)}</div>`;
+            if (section.hint) html += `<div class="checklist-hint"><i data-lucide="lightbulb" style="width:14px;height:14px;vertical-align:-2px"></i> ${this.escapeHtml(section.hint)}</div>`;
 
             secEl.innerHTML = html;
             body.appendChild(secEl);
@@ -1116,7 +1119,7 @@ const PipelineModule = {
         } finally {
             if (buttonEl) {
                 buttonEl.disabled = false;
-                buttonEl.textContent = previousLabel || '📥 Importar CSV/XLSX';
+                buttonEl.textContent = previousLabel || '<i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV/XLSX';
             }
         }
     },
@@ -1492,7 +1495,7 @@ const PipelineModule = {
             row.innerHTML = `
                 <input type="text" class="field-row-label" placeholder="Rótulo (ex: Concorrente)" value="${this.escapeHtml(opts.label || '')}">
                 <input type="url" class="field-row-url" placeholder="https://..." value="${this.escapeHtml(opts.url || '')}">
-                <button type="button" class="field-row-open" data-action="open-row-link" title="Abrir link">↗</button>
+                <button type="button" class="field-row-open" data-action="open-row-link" title="Abrir link"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i></button>
                 <button type="button" class="field-row-remove" title="Remover">&times;</button>
             `;
             row.querySelector('.field-row-remove').addEventListener('click', () => row.remove());
@@ -1829,7 +1832,7 @@ const PipelineModule = {
             name.textContent = photo.name || 'Foto';
             name.title = photo.name || 'Foto';
             if (photo.storage === 'drive') {
-                name.textContent = `☁ ${name.textContent}`;
+                name.innerHTML = `<i data-lucide="cloud" style="width:14px;height:14px;vertical-align:-2px"></i> ${name.textContent}`;
             }
 
             const removeBtn = document.createElement('button');
