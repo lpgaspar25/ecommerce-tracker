@@ -7186,7 +7186,12 @@ body.privacy-mode .dash-portfolio-label,
 body.privacy-mode .product-option,
 body.privacy-mode select option,
 body.privacy-mode .product-name,
-body.privacy-mode .shopify-product-name {
+body.privacy-mode .shopify-product-name,
+body.privacy-mode .dash-rank-name,
+body.privacy-mode .dash-goal-name,
+body.privacy-mode .shopify-warning-row strong,
+body.privacy-mode .shopify-products-table-row > span:first-child,
+body.privacy-mode .shopify-metric-compare {
     filter: blur(5px);
     transition: filter 0.15s ease;
     user-select: none;
@@ -7198,7 +7203,11 @@ body.privacy-mode .diary-notion-product:hover,
 body.privacy-mode .diary-notion-group-name:hover,
 body.privacy-mode .diary-campaign-name-strong:hover,
 body.privacy-mode #products-tbody td:first-child strong:hover,
-body.privacy-mode .shopify-import-title:hover {
+body.privacy-mode .shopify-import-title:hover,
+body.privacy-mode .dash-rank-name:hover,
+body.privacy-mode .dash-goal-name:hover,
+body.privacy-mode .shopify-warning-row strong:hover,
+body.privacy-mode .shopify-products-table-row > span:first-child:hover {
     filter: blur(0);
 }
 
@@ -7212,7 +7221,9 @@ body.privacy-mode #profile-dropdown-email {
 /* Blur product dropdowns' selected text without hiding the dropdown itself */
 body.privacy-mode #diary-product-filter,
 body.privacy-mode #dash-product-select,
+body.privacy-mode #dash-product-filter,
 body.privacy-mode #product-select,
+body.privacy-mode .mcal-product-select,
 body.privacy-mode select[name="productId"] {
     color: transparent;
     text-shadow: 0 0 5px var(--text-primary, #e5e5e5);

@@ -1195,7 +1195,7 @@ const ShopifyModule = (() => {
         const isTodayLabel = period.isToday || (period.start === _todayInShopTz() && period.end === _todayInShopTz());
         const rangeLabel = isSingleDay
             ? (isTodayLabel ? `Hoje (${period.start})` : period.start)
-            : `${period.start} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${period.end}`;
+            : `${period.start} → ${period.end}`;
 
         container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Carregando dados Shopify...</p>';
 

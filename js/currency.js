@@ -5,11 +5,13 @@
 
 const CurrencyModule = {
     _cacheTime: null,
-    _cacheDuration: 60 * 60 * 1000, // 1 hour
+    _cacheDuration: 30 * 60 * 1000, // 30 minutes
+    _autoRefreshTimer: null,
+    _autoRefreshInterval: 30 * 60 * 1000, // 30 minutes
 
-    async fetchRate() {
-        // Check cache
-        if (this._cacheTime && (Date.now() - this._cacheTime) < this._cacheDuration && AppState.exchangeRates) {
+    async fetchRate(force = false) {
+        // Check cache (skipped when force=true)
+        if (!force && this._cacheTime && (Date.now() - this._cacheTime) < this._cacheDuration && AppState.exchangeRates) {
             this._updateDisplay();
             return;
         }
@@ -90,6 +92,20 @@ const CurrencyModule = {
             // Legacy compat
             localStorage.setItem('exchangeRate', AppState.exchangeRates.BRL.toString());
         }
+    },
+
+    // Start auto-refresh: revalidate on interval + when tab regains focus
+    startAutoRefresh() {
+        if (this._autoRefreshTimer) clearInterval(this._autoRefreshTimer);
+        this._autoRefreshTimer = setInterval(() => this.fetchRate(), this._autoRefreshInterval);
+
+        // Refresh when the tab becomes visible again (stale cache after sleep/background)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') this.fetchRate();
+        });
+
+        // Refresh when the browser regains network connectivity
+        window.addEventListener('online', () => this.fetchRate(true));
     }
 };
 

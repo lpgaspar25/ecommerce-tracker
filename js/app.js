@@ -1028,7 +1028,8 @@ function initRateModal() {
     document.getElementById('btn-refresh-rate').addEventListener('click', () => {
         AppState.exchangeRateOverride = null;
         AppState.exchangeRatesOverride = null;
-        CurrencyModule.fetchRate();
+        CurrencyModule.fetchRate(true);
+        if (typeof showToast === 'function') showToast('Cotações atualizadas', 'success');
     });
 
     document.getElementById('rate-form').addEventListener('submit', (e) => {
@@ -1094,6 +1095,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initRateModal();
     initStoreManagement();
     CurrencyModule.fetchRate();
+    CurrencyModule.startAutoRefresh();
     FacebookAds.initUI();
     if (typeof GoogleAdsModule !== 'undefined' && GoogleAdsModule.init) {
         GoogleAdsModule.init();

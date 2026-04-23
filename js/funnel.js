@@ -1552,7 +1552,10 @@ const FunnelModule = {
 
     _extractReportDateRangeFromRow(row, headerMap) {
         const startRaw = this._pickCsvValue(row, headerMap, ['inicio dos relatorios', 'reporting starts', 'start date', 'date start']);
-        const endRaw = this._pickCsvValue(row, headerMap, ['termino dos relatorios', 'reporting ends', 'end date', 'date end']);
+        // Facebook pt-BR sometimes exports "Encerramento dos relatórios" instead of "Término dos relatórios".
+        // Missing this synonym made period-total rows (start=17, end=23) fall back to startDate, which
+        // made them look like single-day rows for day 17 and poisoned the day-17 aggregation.
+        const endRaw = this._pickCsvValue(row, headerMap, ['termino dos relatorios', 'encerramento dos relatorios', 'reporting ends', 'end date', 'date end']);
         const startDate = this._normalizeReportDateValue(startRaw);
         let endDate = this._normalizeReportDateValue(endRaw || startRaw);
         if (!startDate || !endDate) return null;
