@@ -1925,8 +1925,13 @@ const FunnelModule = {
 
     async _upsertDiaryEntryFromImportedDay(productId, storeId, date, importedMetrics, sourceLabel) {
         const spendCurrency = importedMetrics.valueCurrency || this.state.actual.ticketCurrency || 'BRL';
+        // Must exclude campaign sub-entries (isCampaign: true) — if the user deleted only
+        // the main day entry but left leftover sub-entries, matching a sub-entry here would
+        // cause us to "update" a sub-entry instead of creating the main day entry, making
+        // the day disappear from the main diary view.
         const existing = AppState.allDiary.find(d => {
             if (d.productId !== productId) return false;
+            if (d.isCampaign) return false;
             const period = this._getDiaryEntryPeriod(d);
             return period.startDate === date && period.endDate === date;
         });
@@ -2130,9 +2135,15 @@ const FunnelModule = {
                     isTest: false, testEndDate: '', testValidation: '', testGoal: '', creativeId: '',
                 };
 
-                // Dedup: check if entry for same parent+ad+campaign+date exists
+                // Dedup: match by product+date+campaign+ad (NOT parentId) so that if the
+                // user deleted the parent entry, leftover sub-entries from that old parent
+                // get re-linked to the new parent instead of creating duplicates.
                 const existIdx = AppState.allDiary.findIndex(d =>
-                    d.parentId === parentEntry.id && d.adName === agg.adNameVal && d.campaignName === agg.campaignVal && d.date === agg.date
+                    d.isCampaign === true &&
+                    d.productId === productId &&
+                    d.date === agg.date &&
+                    d.adName === agg.adNameVal &&
+                    d.campaignName === agg.campaignVal
                 );
                 if (existIdx >= 0) {
                     subEntry.id = AppState.allDiary[existIdx].id;
