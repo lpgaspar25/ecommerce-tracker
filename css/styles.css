@@ -4745,6 +4745,36 @@ thead:hover .diary-check-col input[type="checkbox"],
 .dash-kpi-delta { font-size: 0.68rem; font-weight: 600; }
 .dash-delta-up { color: var(--green); }
 .dash-delta-down { color: var(--red); }
+.dash-delta-muted { color: var(--text-muted); }
+
+/* Inline delta badge next to Top 5 values */
+.dash-rank-value .dash-delta {
+    display: inline-block;
+    margin-left: 0.4rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: var(--bg-input, rgba(0,0,0,0.04));
+}
+.dash-rank-value .dash-delta-up   { background: rgba(34,197,94,0.12); }
+.dash-rank-value .dash-delta-down { background: rgba(239,68,68,0.12); }
+
+/* Metrics calendar summary footer */
+.mcal-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.6rem 0.4rem 0.2rem;
+    margin-top: 0.4rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.78rem;
+}
+.mcal-summary-label { color: var(--text-muted); font-weight: 600; }
+.mcal-summary-value { font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; }
+.mcal-summary-compare { color: var(--text-muted); font-size: 0.7rem; }
 
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }

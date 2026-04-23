@@ -10,6 +10,12 @@ const DashboardModule = {
     _calMonth: new Date().getMonth(), // 0-based
     _calProduct: 'todos',
 
+    // Shopify real-sales cache (keyed by "start|end")
+    _realSalesMap: null,
+    _realSalesPrevMap: null,
+    _realSalesCacheKey: '',
+    _realSalesPrevCacheKey: '',
+
     // Date state
     _startDate: '',
     _endDate: '',
@@ -437,6 +443,18 @@ const DashboardModule = {
     },
 
     refresh() {
+        // Invalidate real-sales cache when period or compare changes
+        const curKey = `${this._startDate}|${this._endDate}`;
+        const prevKey = `${this._compareStart}|${this._compareEnd}`;
+        if (this._realSalesCacheKey && this._realSalesCacheKey !== curKey) {
+            this._realSalesMap = null;
+            this._realSalesCacheKey = '';
+        }
+        if (this._realSalesPrevCacheKey && this._realSalesPrevCacheKey !== prevKey) {
+            this._realSalesPrevMap = null;
+            this._realSalesPrevCacheKey = '';
+        }
+
         this._populateProductFilter();
         this._renderKPIs();
         this._renderActions();
@@ -870,23 +888,123 @@ const DashboardModule = {
         });
     },
 
+    // ── Shopify real-sales loaders (cache per period + compare period) ──
+    async _loadRealSalesMaps() {
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        if (!hasShopify) {
+            this._realSalesMap = {};
+            this._realSalesPrevMap = {};
+            return;
+        }
+        const curKey = `${this._startDate}|${this._endDate}`;
+        if (this._realSalesCacheKey !== curKey) {
+            try {
+                this._realSalesMap = await ShopifyModule.getRealSalesMapByDate(this._startDate, this._endDate);
+                this._realSalesCacheKey = curKey;
+            } catch (e) {
+                console.warn('[Dashboard] Shopify real sales fetch failed:', e);
+                this._realSalesMap = {};
+            }
+        }
+        if (this._compareMode !== 'none' && this._compareStart && this._compareEnd) {
+            const prevKey = `${this._compareStart}|${this._compareEnd}`;
+            if (this._realSalesPrevCacheKey !== prevKey) {
+                try {
+                    this._realSalesPrevMap = await ShopifyModule.getRealSalesMapByDate(this._compareStart, this._compareEnd);
+                    this._realSalesPrevCacheKey = prevKey;
+                } catch (e) {
+                    console.warn('[Dashboard] Shopify prev sales fetch failed:', e);
+                    this._realSalesPrevMap = {};
+                }
+            }
+        } else {
+            this._realSalesPrevMap = {};
+        }
+    },
+
+    // Sum real sales from a realSalesMap for a given productId (or all if pid='todos')
+    // across a date range [start, end].
+    _sumRealSales(realMap, pid, start, end) {
+        if (!realMap) return { sales: 0, revenue: 0 };
+        let sales = 0, revenue = 0;
+        for (const [key, data] of Object.entries(realMap)) {
+            const [date, productId] = key.split('|');
+            if (date < start || date > end) continue;
+            if (pid && pid !== 'todos' && productId !== pid) continue;
+            sales += Number(data.sales || 0);
+            revenue += Number(data.revenue || 0);
+        }
+        return { sales, revenue };
+    },
+
+    // Format period-over-period delta as "±X%" (or absolute for integer metrics)
+    _fmtDelta(curr, prev, { percent = true, inverse = false, currency = false } = {}) {
+        if (this._compareMode === 'none' || !prev) return '';
+        if (!isFinite(curr) || !isFinite(prev)) return '';
+        if (prev === 0 && curr === 0) return '';
+        let text, cls;
+        if (percent) {
+            if (prev === 0) { text = '—'; cls = 'dash-delta-muted'; }
+            else {
+                const pct = ((curr - prev) / Math.abs(prev)) * 100;
+                const sign = pct > 0 ? '+' : '';
+                text = `${sign}${pct.toFixed(0)}%`;
+                const good = inverse ? pct < 0 : pct > 0;
+                cls = Math.abs(pct) < 0.5 ? 'dash-delta-muted' : (good ? 'dash-delta-up' : 'dash-delta-down');
+            }
+        } else {
+            const diff = curr - prev;
+            const sign = diff > 0 ? '+' : '';
+            text = currency ? `${sign}${this._fmtCurrency(diff)}` : `${sign}${diff}`;
+            const good = inverse ? diff < 0 : diff > 0;
+            cls = diff === 0 ? 'dash-delta-muted' : (good ? 'dash-delta-up' : 'dash-delta-down');
+        }
+        return `<span class="dash-delta ${cls}">${text}</span>`;
+    },
+
     // Row 3 Right: Top 5 products
     _renderTopProducts() {
         const container = document.getElementById('dash-top-products');
         if (!container) return;
 
+        const needsReal = this._topMode === 'cpaReal' || this._topMode === 'salesReal';
+        if (needsReal && this._realSalesMap === null) {
+            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
+            this._loadRealSalesMaps().then(() => this._renderTopProducts());
+            return;
+        }
+
         const entries = this._getPeriodEntries();
+        const prevEntries = this._getPrevPeriodEntries();
         const byProduct = this._groupByProduct(entries);
+        const byProductPrev = this._groupByProduct(prevEntries);
 
         let ranked = Object.entries(byProduct).map(([pid, pEntries]) => {
             const agg = this._aggregate(pEntries);
-            return { pid, name: getProductName(pid), ...agg };
+            const prevAgg = this._aggregate(byProductPrev[pid] || []);
+            const real = this._sumRealSales(this._realSalesMap, pid, this._startDate, this._endDate);
+            const realPrev = this._sumRealSales(this._realSalesPrevMap, pid, this._compareStart, this._compareEnd);
+            const cpaReal = real.sales > 0 ? agg.budget / real.sales : 0;
+            const cpaRealBRL = real.sales > 0 ? agg.budgetBRL / real.sales : 0;
+            const cpaRealPrev = realPrev.sales > 0 ? prevAgg.budget / realPrev.sales : 0;
+            return {
+                pid, name: getProductName(pid),
+                ...agg,
+                prevAgg,
+                realSales: real.sales,
+                realSalesPrev: realPrev.sales,
+                cpaReal, cpaRealBRL, cpaRealPrev,
+            };
         });
 
         // Sort by selected mode
-        if (this._topMode === 'profit') ranked.sort((a, b) => b.profit - a.profit);
-        else if (this._topMode === 'roas') ranked.sort((a, b) => b.roas - a.roas);
-        else if (this._topMode === 'cpa') ranked = ranked.filter(p => p.cpa > 0).sort((a, b) => a.cpa - b.cpa); // lowest CPA first
+        const mode = this._topMode;
+        if (mode === 'profit') ranked.sort((a, b) => b.profit - a.profit);
+        else if (mode === 'roas') ranked.sort((a, b) => b.roas - a.roas);
+        else if (mode === 'cpa') ranked = ranked.filter(p => p.cpa > 0).sort((a, b) => a.cpa - b.cpa);
+        else if (mode === 'cpaReal') ranked = ranked.filter(p => p.cpaReal > 0).sort((a, b) => a.cpaReal - b.cpaReal);
+        else if (mode === 'salesReal') ranked.sort((a, b) => b.realSales - a.realSales);
+        else if (mode === 'budget') ranked.sort((a, b) => b.budget - a.budget);
         else ranked.sort((a, b) => b.revenue - a.revenue);
 
         ranked = ranked.slice(0, 5);
@@ -897,16 +1015,34 @@ const DashboardModule = {
         }
 
         container.innerHTML = ranked.map((p, i) => {
-            let mainVal;
-            if (this._topMode === 'profit') mainVal = this._fmtCurrency(p.profit);
-            else if (this._topMode === 'roas') mainVal = p.roas.toFixed(2) + 'x';
-            else if (this._topMode === 'cpa') mainVal = this._fmtCurrency(p.cpa);
-            else mainVal = this._fmtCurrency(p.revenue);
+            let mainVal, delta = '';
+            if (mode === 'profit') {
+                mainVal = this._fmtCurrency(p.profit);
+                delta = this._fmtDelta(p.profit, p.prevAgg.profit);
+            } else if (mode === 'roas') {
+                mainVal = p.roas.toFixed(2) + 'x';
+                delta = this._fmtDelta(p.roas, p.prevAgg.roas);
+            } else if (mode === 'cpa') {
+                mainVal = this._fmtCurrency(p.cpa);
+                delta = this._fmtDelta(p.cpa, p.prevAgg.cpa, { inverse: true });
+            } else if (mode === 'cpaReal') {
+                mainVal = this._fmtCurrency(p.cpaReal);
+                delta = this._fmtDelta(p.cpaReal, p.cpaRealPrev, { inverse: true });
+            } else if (mode === 'salesReal') {
+                mainVal = p.realSales + (p.realSales === 1 ? ' venda' : ' vendas');
+                delta = this._fmtDelta(p.realSales, p.realSalesPrev, { percent: false });
+            } else if (mode === 'budget') {
+                mainVal = this._fmtCurrency(p.budget);
+                delta = this._fmtDelta(p.budget, p.prevAgg.budget);
+            } else {
+                mainVal = this._fmtCurrency(p.revenue);
+                delta = this._fmtDelta(p.revenue, p.prevAgg.revenue);
+            }
             const profitColor = p.profit >= 0 ? 'var(--green)' : 'var(--red)';
             return `<div class="dash-rank-item">
                 <span class="dash-rank-pos">${i + 1}</span>
                 <span class="dash-rank-name">${escapeHtml(p.name)}</span>
-                <span class="dash-rank-value" style="color:${this._topMode === 'profit' ? profitColor : ''}">${mainVal}</span>
+                <span class="dash-rank-value" style="color:${mode === 'profit' ? profitColor : ''}">${mainVal}${delta}</span>
             </div>`;
         }).join('');
     },
@@ -1415,6 +1551,14 @@ const DashboardModule = {
         const container = document.getElementById('dash-metrics-calendar');
         if (!container) return;
 
+        // Trigger async Shopify fetch for real-metric tabs
+        const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal';
+        if (needsReal && this._realSalesMap === null) {
+            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
+            this._loadRealSalesMaps().then(() => this._renderMetricsCalendar());
+            return;
+        }
+
         // Use calendar's own product filter
         const calFilter = this._calProduct;
         const allEntries = (AppState.diary || []).filter(e => {
@@ -1441,12 +1585,15 @@ const DashboardModule = {
 
         // Metric tabs + product selector on same row
         const tabs = [
-            { key: 'cpa',     label: 'CPA'      },
-            { key: 'profit',  label: 'Lucro'    },
-            { key: 'revenue', label: 'Receita'  },
-            { key: 'sales',   label: 'Vendas'   },
-            { key: 'cpm',     label: 'CPM'      },
-            { key: 'cpc',     label: 'CPC Médio'},
+            { key: 'cpa',       label: 'CPA'         },
+            { key: 'cpaReal',   label: 'CPA Real'    },
+            { key: 'profit',    label: 'Lucro'       },
+            { key: 'revenue',   label: 'Receita'     },
+            { key: 'sales',     label: 'Vendas'      },
+            { key: 'salesReal', label: 'Vendas Real' },
+            { key: 'budget',    label: 'Gastos'      },
+            { key: 'cpm',       label: 'CPM'         },
+            { key: 'cpc',       label: 'CPC Médio'   },
         ];
 
         // Build product options
@@ -1479,7 +1626,10 @@ const DashboardModule = {
         const monthDate = new Date(this._calYear, this._calMonth, 1);
         const monthHtml = this._renderCalMonth(monthDate, byDate, isSingleProduct, targetCpaUSD);
 
-        container.innerHTML = headerHtml + navHtml + '<div class="mcal-months-wrapper">' + monthHtml + '</div>';
+        // Month summary footer (totals for the selected period + compare delta)
+        const summaryHtml = this._renderCalSummary();
+
+        container.innerHTML = headerHtml + navHtml + '<div class="mcal-months-wrapper">' + monthHtml + '</div>' + summaryHtml;
 
         // Tab click handlers
         container.querySelectorAll('.mcal-tab').forEach(btn => {
@@ -1513,6 +1663,125 @@ const DashboardModule = {
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
+    // Summary footer for the metrics calendar — shows period total and compare delta
+    // for the currently-selected metric, respecting the calendar's product filter.
+    _renderCalSummary() {
+        const metric = this._calMetric;
+        const pid = this._calProduct;
+        const entriesAll = (AppState.diary || []).filter(e => !e.isCampaign);
+        const filterByPid = (arr) => pid === 'todos' ? arr : arr.filter(e => e.productId === pid);
+        const inRange = (arr, s, e) => arr.filter(x => x.date >= s && x.date <= e);
+
+        const curEntries = filterByPid(inRange(entriesAll, this._startDate, this._endDate));
+        const agg = this._aggregate(curEntries);
+
+        const compareActive = this._compareMode !== 'none' && this._compareStart && this._compareEnd;
+        const prevEntries = compareActive ? filterByPid(inRange(entriesAll, this._compareStart, this._compareEnd)) : [];
+        const prevAgg = this._aggregate(prevEntries);
+
+        const realCur = this._sumRealSales(this._realSalesMap, pid, this._startDate, this._endDate);
+        const realPrev = compareActive ? this._sumRealSales(this._realSalesPrevMap, pid, this._compareStart, this._compareEnd) : { sales: 0, revenue: 0 };
+
+        let label = '', value = '', prevValue = null, inverse = false, percent = true;
+
+        const fmtMoney = (v) => (this._currency === 'BRL' ? 'R$' : '$') + this._compactNum(v);
+
+        switch (metric) {
+            case 'cpa':
+                label = 'CPA médio';
+                value = agg.sales > 0 ? fmtMoney(this._currency === 'BRL' ? agg.cpaBRL : agg.cpa) : '--';
+                prevValue = prevAgg.sales > 0 ? (this._currency === 'BRL' ? prevAgg.cpaBRL : prevAgg.cpa) : 0;
+                inverse = true;
+                break;
+            case 'cpaReal':
+                label = 'CPA Real';
+                const cpaR = realCur.sales > 0 ? (this._currency === 'BRL' ? agg.budgetBRL : agg.budget) / realCur.sales : 0;
+                value = realCur.sales > 0 ? fmtMoney(cpaR) : '--';
+                prevValue = realPrev.sales > 0 ? (this._currency === 'BRL' ? prevAgg.budgetBRL : prevAgg.budget) / realPrev.sales : 0;
+                inverse = true;
+                break;
+            case 'profit':
+                label = 'Lucro do período';
+                const profit = this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
+                value = (profit < 0 ? '-' : '') + fmtMoney(Math.abs(profit));
+                prevValue = this._currency === 'BRL' ? (prevAgg.revenueBRL - prevAgg.budgetBRL) : prevAgg.profit;
+                break;
+            case 'revenue':
+                label = 'Receita total';
+                value = fmtMoney(this._currency === 'BRL' ? agg.revenueBRL : agg.revenue);
+                prevValue = this._currency === 'BRL' ? prevAgg.revenueBRL : prevAgg.revenue;
+                break;
+            case 'sales':
+                label = 'Vendas (Meta)';
+                value = agg.sales + (agg.sales === 1 ? ' venda' : ' vendas');
+                prevValue = prevAgg.sales;
+                percent = false;
+                break;
+            case 'salesReal':
+                label = 'Vendas Real';
+                value = realCur.sales + (realCur.sales === 1 ? ' venda' : ' vendas');
+                prevValue = realPrev.sales;
+                percent = false;
+                break;
+            case 'budget':
+                label = 'Gastos';
+                value = fmtMoney(this._currency === 'BRL' ? agg.budgetBRL : agg.budget);
+                prevValue = this._currency === 'BRL' ? prevAgg.budgetBRL : prevAgg.budget;
+                inverse = true;
+                break;
+            case 'cpm':
+                label = 'CPM médio';
+                const cpm = agg.impressions > 0 ? ((this._currency === 'BRL' ? agg.budgetBRL : agg.budget) / agg.impressions) * 1000 : 0;
+                value = agg.impressions > 0 ? fmtMoney(cpm) : '--';
+                prevValue = prevAgg.impressions > 0 ? ((this._currency === 'BRL' ? prevAgg.budgetBRL : prevAgg.budget) / prevAgg.impressions) * 1000 : 0;
+                inverse = true;
+                break;
+            case 'cpc':
+                label = 'CPC médio';
+                let totBud = 0, totClicks = 0;
+                curEntries.forEach(e => { if ((e.cpc || 0) > 0 && e.budget) { totBud += (this._currency === 'BRL' ? (e.budgetCurrency === 'BRL' ? e.budget : convertToBRL(e.budget, e.budgetCurrency)) : convertToUSD(e.budget, e.budgetCurrency)); totClicks += e.budget / e.cpc; } });
+                const cpcVal = totClicks > 0 ? totBud / totClicks : 0;
+                value = totClicks > 0 ? fmtMoney(cpcVal) : '--';
+                let pTotBud = 0, pTotClicks = 0;
+                prevEntries.forEach(e => { if ((e.cpc || 0) > 0 && e.budget) { pTotBud += (this._currency === 'BRL' ? (e.budgetCurrency === 'BRL' ? e.budget : convertToBRL(e.budget, e.budgetCurrency)) : convertToUSD(e.budget, e.budgetCurrency)); pTotClicks += e.budget / e.cpc; } });
+                prevValue = pTotClicks > 0 ? pTotBud / pTotClicks : 0;
+                inverse = true;
+                break;
+            default:
+                return '';
+        }
+
+        let numericCur;
+        if (typeof value === 'string' && value !== '--') {
+            // For delta we need the numeric value — recompute from prev logic where needed
+            numericCur = (() => {
+                if (metric === 'profit') return this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
+                if (metric === 'revenue') return this._currency === 'BRL' ? agg.revenueBRL : agg.revenue;
+                if (metric === 'sales') return agg.sales;
+                if (metric === 'salesReal') return realCur.sales;
+                if (metric === 'budget') return this._currency === 'BRL' ? agg.budgetBRL : agg.budget;
+                if (metric === 'cpa') return agg.sales > 0 ? (this._currency === 'BRL' ? agg.cpaBRL : agg.cpa) : 0;
+                if (metric === 'cpaReal') return realCur.sales > 0 ? (this._currency === 'BRL' ? agg.budgetBRL : agg.budget) / realCur.sales : 0;
+                if (metric === 'cpm') return agg.impressions > 0 ? ((this._currency === 'BRL' ? agg.budgetBRL : agg.budget) / agg.impressions) * 1000 : 0;
+                if (metric === 'cpc') {
+                    let b = 0, c = 0;
+                    curEntries.forEach(e => { if ((e.cpc || 0) > 0 && e.budget) { b += (this._currency === 'BRL' ? (e.budgetCurrency === 'BRL' ? e.budget : convertToBRL(e.budget, e.budgetCurrency)) : convertToUSD(e.budget, e.budgetCurrency)); c += e.budget / e.cpc; } });
+                    return c > 0 ? b / c : 0;
+                }
+                return 0;
+            })();
+        }
+
+        const deltaHtml = compareActive ? this._fmtDelta(numericCur || 0, prevValue || 0, { inverse, percent }) : '';
+        const compareLabel = compareActive ? `<span class="mcal-summary-compare">vs ${formatDate(this._compareStart)} – ${formatDate(this._compareEnd)}</span>` : '';
+
+        return `<div class="mcal-summary">
+            <span class="mcal-summary-label">${label}</span>
+            <span class="mcal-summary-value">${value}${deltaHtml}</span>
+            ${compareLabel}
+        </div>`;
+    },
+
     _renderCalMonth(monthDate, byDate, isSingleProduct, targetCpaUSD) {
         const year  = monthDate.getFullYear();
         const month = monthDate.getMonth();
@@ -1537,7 +1806,7 @@ const DashboardModule = {
             let valHtml = '';
 
             if (hasData) {
-                const mv = this._getDayMetricValue(dayEntries, this._calMetric, isSingleProduct, targetCpaUSD);
+                const mv = this._getDayMetricValue(dayEntries, this._calMetric, isSingleProduct, targetCpaUSD, ds);
                 valHtml = `<span class="mcal-day-val ${mv.cls}">${mv.text}</span>`;
             }
 
@@ -1548,8 +1817,37 @@ const DashboardModule = {
         return html;
     },
 
-    _getDayMetricValue(dayEntries, metric, isSingleProduct, targetCpaUSD) {
+    _getDayMetricValue(dayEntries, metric, isSingleProduct, targetCpaUSD, dayStr) {
         const agg = this._aggregate(dayEntries);
+
+        // "Real" metrics need the Shopify sales map for this day + product filter
+        if (metric === 'cpaReal' || metric === 'salesReal') {
+            const pid = this._calProduct || 'todos';
+            const real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            if (metric === 'cpaReal') {
+                if (real.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
+                const val = this._currency === 'BRL' ? (agg.budgetBRL / real.sales) : (agg.budget / real.sales);
+                const prefix = this._currency === 'BRL' ? 'R$' : '$';
+                const text = prefix + this._compactNum(val);
+                if (isSingleProduct && targetCpaUSD > 0) {
+                    const ratio = (agg.budget / real.sales) / targetCpaUSD;
+                    if (ratio <= 1.0) return { text, cls: 'mcal-val-green' };
+                    if (ratio <= 1.5) return { text, cls: 'mcal-val-yellow' };
+                    return { text, cls: 'mcal-val-red' };
+                }
+                return { text, cls: 'mcal-val-neutral' };
+            }
+            // salesReal
+            if (real.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
+            return { text: real.sales + (real.sales === 1 ? ' venda' : ' vendas'), cls: 'mcal-val-accent' };
+        }
+
+        if (metric === 'budget') {
+            if (agg.budget === 0) return { text: '--', cls: 'mcal-val-muted' };
+            const val = this._currency === 'BRL' ? agg.budgetBRL : agg.budget;
+            const prefix = this._currency === 'BRL' ? 'R$' : '$';
+            return { text: prefix + this._compactNum(val), cls: 'mcal-val-neutral' };
+        }
 
         if (metric === 'cpa') {
             if (agg.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
