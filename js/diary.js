@@ -471,14 +471,14 @@ const DiaryModule = {
             });
         }
 
-        // Period filter
-        document.getElementById('diary-period').addEventListener('change', (e) => {
-            const custom = document.getElementById('diary-custom-range');
-            custom.style.display = e.target.value === 'custom' ? 'flex' : 'none';
-            this.render();
-        });
+        // Period filter — Shopify-style range picker
+        if (typeof RangePicker !== 'undefined') {
+            RangePicker.init('diary-date', {
+                defaultPreset: 'month',
+                onChange: () => this.render()
+            });
+        }
 
-        document.getElementById('diary-filter-apply').addEventListener('click', () => this.render());
         document.getElementById('diary-product-filter').addEventListener('change', () => this.render());
         document.getElementById('diary-platform-filter').addEventListener('change', () => this.render());
 
@@ -869,41 +869,10 @@ const DiaryModule = {
     },
 
     getFilteredEntries() {
-        const period = document.getElementById('diary-period').value;
         const productFilter = document.getElementById('diary-product-filter').value;
         const platformFilter = document.getElementById('diary-platform-filter').value;
-
-        const today = todayISO();
-        let startDate, endDate;
-
-        switch (period) {
-            case 'today':
-                startDate = endDate = today;
-                break;
-            case 'week': {
-                const d = new Date();
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-                const monday = new Date(d.setDate(diff));
-                startDate = monday.toISOString().split('T')[0];
-                endDate = today;
-                break;
-            }
-            case 'month': {
-                const d = new Date();
-                startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-                endDate = today;
-                break;
-            }
-            case 'all':
-                startDate = '';
-                endDate = '';
-                break;
-            case 'custom':
-                startDate = document.getElementById('diary-start').value;
-                endDate = document.getElementById('diary-end').value;
-                break;
-        }
+        const startDate = document.getElementById('diary-date-start')?.value || '';
+        const endDate = document.getElementById('diary-date-end')?.value || '';
 
         return AppState.diary.filter(entry => {
             if (entry.isCampaign) return false;
@@ -1731,6 +1700,7 @@ const DiaryModule = {
 
     _getSlotEntries(slot) {
         return AppState.diary.filter(entry => {
+            if (entry.isCampaign || entry.parentId) return false;
             if (slot.productId !== 'todos' && entry.productId !== slot.productId) return false;
             if (entry.date < slot.startDate || entry.date > slot.endDate) return false;
             return true;
@@ -2084,35 +2054,10 @@ const DiaryModule = {
     _getFilteredCampaignEntries() {
         // Apply same period/product/platform filters as getFilteredEntries,
         // but to sub-entries (isCampaign=true with parentId)
-        const period = document.getElementById('diary-period').value;
         const productFilter = document.getElementById('diary-product-filter').value;
         const platformFilter = document.getElementById('diary-platform-filter').value;
-
-        const today = todayISO();
-        let startDate = '', endDate = '';
-        switch (period) {
-            case 'today': startDate = endDate = today; break;
-            case 'week': {
-                const d = new Date();
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-                const monday = new Date(d.setDate(diff));
-                startDate = monday.toISOString().split('T')[0];
-                endDate = today;
-                break;
-            }
-            case 'month': {
-                const d = new Date();
-                startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-                endDate = today;
-                break;
-            }
-            case 'all': startDate = ''; endDate = ''; break;
-            case 'custom':
-                startDate = document.getElementById('diary-start').value;
-                endDate = document.getElementById('diary-end').value;
-                break;
-        }
+        const startDate = document.getElementById('diary-date-start')?.value || '';
+        const endDate = document.getElementById('diary-date-end')?.value || '';
 
         return (AppState.diary || []).filter(entry => {
             if (!entry.isCampaign && !entry.parentId) return false;

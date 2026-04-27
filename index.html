@@ -635,19 +635,47 @@
             <div class="filter-bar">
                 <div class="filter-group">
                     <label>Período:</label>
-                    <select id="diary-period" class="input">
-                        <option value="month" selected>Este Mês</option>
-                        <option value="today">Hoje</option>
-                        <option value="week">Esta Semana</option>
-                        <option value="all">Todos</option>
-                        <option value="custom">Personalizado</option>
-                    </select>
-                </div>
-                <div class="filter-group" id="diary-custom-range" style="display:none">
-                    <input type="date" id="diary-start" class="input">
-                    <span>até</span>
-                    <input type="date" id="diary-end" class="input">
-                    <button id="diary-filter-apply" class="btn btn-secondary btn-sm">Aplicar</button>
+                    <div class="dash-date-picker-wrap">
+                        <button type="button" id="diary-date-picker-btn" class="dash-date-picker-btn">
+                            <i data-lucide="calendar" style="width:14px;height:14px"></i>
+                            <span id="diary-date-label">Este mês</span>
+                            <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                        </button>
+                        <div id="diary-date-dropdown" class="dash-date-dropdown" style="display:none">
+                            <div class="dash-date-dd-left">
+                                <button class="diary-date-preset" data-preset="today">Hoje</button>
+                                <button class="diary-date-preset" data-preset="yesterday">Ontem</button>
+                                <button class="diary-date-preset" data-preset="7">Últimos 7 dias</button>
+                                <button class="diary-date-preset" data-preset="14">Últimos 14 dias</button>
+                                <button class="diary-date-preset" data-preset="30">Últimos 30 dias</button>
+                                <button class="diary-date-preset active" data-preset="month">Este mês</button>
+                                <button class="diary-date-preset" data-preset="lastMonth">Mês passado</button>
+                                <button class="diary-date-preset" data-preset="90">Últimos 90 dias</button>
+                                <button class="diary-date-preset" data-preset="all">Todos</button>
+                                <button class="diary-date-preset" data-preset="custom">Personalizado</button>
+                            </div>
+                            <div class="dash-date-dd-right">
+                                <div class="dash-range-cal" id="diary-date-cal">
+                                    <div class="dash-range-cal-header">
+                                        <button type="button" class="dash-range-cal-nav" id="diary-date-cal-prev" aria-label="Mês anterior">‹</button>
+                                        <span class="dash-range-cal-title" id="diary-date-cal-title">—</span>
+                                        <button type="button" class="dash-range-cal-nav" id="diary-date-cal-next" aria-label="Próximo mês">›</button>
+                                    </div>
+                                    <div class="dash-range-cal-weekdays">
+                                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                    </div>
+                                    <div class="dash-range-cal-grid" id="diary-date-cal-grid"></div>
+                                    <div class="dash-range-cal-summary" id="diary-date-cal-summary">Clique uma data para começar.</div>
+                                </div>
+                                <input type="hidden" id="diary-date-start">
+                                <input type="hidden" id="diary-date-end">
+                                <div class="dash-date-actions">
+                                    <button id="diary-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                    <button id="diary-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="filter-group">
                     <label>Produto:</label>
@@ -2451,18 +2479,48 @@
                     </div>
                     <div class="form-group" style="flex:0 0 auto">
                         <label>Período do diagnóstico</label>
-                        <div class="date-presets">
-                            <button type="button" class="date-preset-btn active" data-preset="today">Hoje</button>
-                            <button type="button" class="date-preset-btn" data-preset="yesterday">Ontem</button>
-                            <button type="button" class="date-preset-btn" data-preset="last7">7 dias</button>
-                            <button type="button" class="date-preset-btn" data-preset="last14">14 dias</button>
-                            <button type="button" class="date-preset-btn" data-preset="last30">30 dias</button>
-                        </div>
                         <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
                             <button type="button" id="funnel-date-prev" class="date-arrow-btn" title="Período anterior">&#8249;</button>
-                            <input type="date" id="funnel-date-start" class="input input-sm">
-                            <span style="color:var(--text-muted); font-size:0.8rem;">até</span>
-                            <input type="date" id="funnel-date-end" class="input input-sm">
+                            <div class="dash-date-picker-wrap">
+                                <button type="button" id="funnel-date-picker-btn" class="dash-date-picker-btn">
+                                    <i data-lucide="calendar" style="width:14px;height:14px"></i>
+                                    <span id="funnel-date-label">Hoje</span>
+                                    <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                                </button>
+                                <div id="funnel-date-dropdown" class="dash-date-dropdown" style="display:none">
+                                    <div class="dash-date-dd-left">
+                                        <button class="funnel-date-preset active" data-preset="today">Hoje</button>
+                                        <button class="funnel-date-preset" data-preset="yesterday">Ontem</button>
+                                        <button class="funnel-date-preset" data-preset="7">Últimos 7 dias</button>
+                                        <button class="funnel-date-preset" data-preset="14">Últimos 14 dias</button>
+                                        <button class="funnel-date-preset" data-preset="30">Últimos 30 dias</button>
+                                        <button class="funnel-date-preset" data-preset="month">Este mês</button>
+                                        <button class="funnel-date-preset" data-preset="lastMonth">Mês passado</button>
+                                        <button class="funnel-date-preset" data-preset="90">Últimos 90 dias</button>
+                                        <button class="funnel-date-preset" data-preset="custom">Personalizado</button>
+                                    </div>
+                                    <div class="dash-date-dd-right">
+                                        <div class="dash-range-cal" id="funnel-date-cal">
+                                            <div class="dash-range-cal-header">
+                                                <button type="button" class="dash-range-cal-nav" id="funnel-date-cal-prev" aria-label="Mês anterior">‹</button>
+                                                <span class="dash-range-cal-title" id="funnel-date-cal-title">—</span>
+                                                <button type="button" class="dash-range-cal-nav" id="funnel-date-cal-next" aria-label="Próximo mês">›</button>
+                                            </div>
+                                            <div class="dash-range-cal-weekdays">
+                                                <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                            </div>
+                                            <div class="dash-range-cal-grid" id="funnel-date-cal-grid"></div>
+                                            <div class="dash-range-cal-summary" id="funnel-date-cal-summary">Clique uma data para começar.</div>
+                                        </div>
+                                        <input type="hidden" id="funnel-date-start">
+                                        <input type="hidden" id="funnel-date-end">
+                                        <div class="dash-date-actions">
+                                            <button id="funnel-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                            <button id="funnel-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <button type="button" id="funnel-date-next" class="date-arrow-btn" title="Próximo período">&#8250;</button>
                         </div>
                     </div>
@@ -3289,6 +3347,7 @@
     <!-- Scripts (app first, then Google APIs) -->
     <script src="js/app.js"></script>
     <script src="js/currency.js"></script>
+    <script src="js/range-picker.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="js/sheets.js"></script>
     <script src="js/products.js"></script>

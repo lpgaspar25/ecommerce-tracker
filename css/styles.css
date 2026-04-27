@@ -4634,23 +4634,27 @@ thead:hover .diary-check-col input[type="checkbox"],
     max-width: calc(100vw - 2rem);
     overflow: hidden;
 }
+/* Funnel & Diary pickers live near the left of the page — anchor to the left edge */
+#funnel-date-dropdown, #diary-date-dropdown { right: auto; left: 0; }
 @media (max-width: 640px) {
     .dash-date-dropdown { flex-direction: column; min-width: min(420px, calc(100vw - 2rem)); }
     .dash-date-dd-left { border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; padding: 0.3rem; }
-    .dash-date-preset, .dash-compare-preset { padding: 0.35rem 0.6rem; }
+    .dash-date-preset, .dash-compare-preset, .funnel-date-preset, .diary-date-preset { padding: 0.35rem 0.6rem; }
 }
 .dash-date-dd-left {
     display: flex; flex-direction: column; gap: 0; padding: 0.5rem 0;
     border-right: 1px solid var(--border); min-width: 160px;
 }
-.dash-date-preset, .dash-compare-preset {
+.dash-date-preset, .dash-compare-preset, .funnel-date-preset, .diary-date-preset {
     padding: 0.45rem 1rem; font-size: 0.78rem; font-weight: 500;
     border: none; background: none; color: var(--text-secondary);
     cursor: pointer; text-align: left; transition: background 0.1s;
     white-space: nowrap;
 }
-.dash-date-preset:hover, .dash-compare-preset:hover { background: var(--bg-input); color: var(--text-primary); }
-.dash-date-preset.active, .dash-compare-preset.active {
+.dash-date-preset:hover, .dash-compare-preset:hover,
+.funnel-date-preset:hover, .diary-date-preset:hover { background: var(--bg-input); color: var(--text-primary); }
+.dash-date-preset.active, .dash-compare-preset.active,
+.funnel-date-preset.active, .diary-date-preset.active {
     background: var(--accent-light); color: var(--accent); font-weight: 700;
 }
 .dash-date-dd-right {

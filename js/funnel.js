@@ -88,17 +88,18 @@ const FunnelModule = {
 
     init() {
         document.getElementById('funnel-product').addEventListener('change', () => this.onProductChange());
-        document.getElementById('funnel-date-start').addEventListener('change', () => { this._clearActivePreset(); this.onPeriodChange(); });
-        document.getElementById('funnel-date-end').addEventListener('change', () => { this._clearActivePreset(); this.onPeriodChange(); });
+
+        // Shopify-style range picker (replaces inline preset buttons + date inputs)
+        if (typeof RangePicker !== 'undefined') {
+            RangePicker.init('funnel-date', {
+                defaultPreset: 'today',
+                onChange: () => this.onPeriodChange()
+            });
+        }
 
         // Arrow navigation
         document.getElementById('funnel-date-prev')?.addEventListener('click', () => this._shiftPeriod(-1));
         document.getElementById('funnel-date-next')?.addEventListener('click', () => this._shiftPeriod(1));
-
-        // Preset buttons
-        document.querySelectorAll('.date-preset-btn').forEach(btn => {
-            btn.addEventListener('click', () => this._applyPreset(btn.dataset.preset));
-        });
         // Compare mode
         document.getElementById('btn-compare-toggle')?.addEventListener('click', () => this._toggleCompareMode());
         document.getElementById('compare-date-start')?.addEventListener('change', () => this._onComparePeriodChange());
@@ -111,8 +112,6 @@ const FunnelModule = {
 
         document.getElementById('btn-funnel-save-state').addEventListener('click', () => this.saveDiagnosisSnapshot());
         document.getElementById('btn-funnel-save-diary').addEventListener('click', () => this.saveToDiary());
-        document.getElementById('funnel-date-start').value = todayISO();
-        document.getElementById('funnel-date-end').value = todayISO();
 
         const csvBtn = document.getElementById('btn-fb-upload-csv');
         const csvInput = document.getElementById('fb-csv-input');
@@ -195,7 +194,11 @@ const FunnelModule = {
     onPeriodChange() {
         if (!this.state.productId) return;
 
+        const currSel = document.getElementById('funnel-currency');
+        const preferredCurrency = currSel?.value || this.state.actual.ticketCurrency || 'BRL';
+
         if (this.tryAutofillByProductAndPeriod()) {
+            this._applyPreferredCurrency(preferredCurrency);
             this.render();
             if (this._compareMode) this._loadCompareData();
             return;
@@ -203,8 +206,34 @@ const FunnelModule = {
 
         const product = getProductById(this.state.productId);
         this._resetStateForProduct(product);
+        this._applyPreferredCurrency(preferredCurrency);
         this.render();
         if (this._compareMode) this._loadCompareData();
+    },
+
+    _applyPreferredCurrency(preferred) {
+        if (!preferred) return;
+        const current = this.state.actual.ticketCurrency || 'BRL';
+        if (current === preferred) return;
+        this.state.actual.cpc = convertCurrency(
+            this.state.actual.cpc || 0,
+            this.state.actual.cpcCurrency || current,
+            preferred
+        );
+        this.state.actual.ticket = convertCurrency(
+            this.state.actual.ticket || 0,
+            current,
+            preferred
+        );
+        this.state.benchmark.cpc = convertCurrency(
+            this.state.benchmark.cpc || 0,
+            current,
+            preferred
+        );
+        this.state.actual.cpcCurrency = preferred;
+        this.state.actual.ticketCurrency = preferred;
+        const currSel = document.getElementById('funnel-currency');
+        if (currSel) currSel.value = preferred;
     },
 
     _resetStateForProduct(product) {
@@ -466,18 +495,12 @@ const FunnelModule = {
         const { startDate, endDate } = this.getSelectedPeriod();
         if (!productId || !startDate || !endDate) return false;
 
-        const allSnapshots = this._loadSnapshots();
-        const key = this._buildSnapshotKey(productId, startDate, endDate);
-        const snapshot = allSnapshots[key];
-        if (snapshot) {
-            this._applySnapshot(snapshot);
-            showToast(`Diagnóstico carregado automaticamente (${this.getSelectedPeriodLabel()})`, 'success');
-            return true;
-        }
-
+        // Diary is the source of truth — try it first. Snapshots are only a fallback
+        // for periods where the user manually entered diagnostic data with no diary entry.
         const exactEntries = AppState.diary
             .filter(d => {
                 if (d.productId !== productId) return false;
+                if (d.isCampaign || d.parentId) return false;
                 const period = this._getDiaryEntryPeriod(d);
                 return period.startDate === startDate && period.endDate === endDate;
             })
@@ -498,6 +521,7 @@ const FunnelModule = {
         const diaryEntries = AppState.diary
             .filter(d => {
                 if (d.productId !== productId) return false;
+                if (d.isCampaign || d.parentId) return false;
                 const period = this._getDiaryEntryPeriod(d);
                 if (!period.startDate || !period.endDate) return false;
                 // Match entries fully within the range OR whose date falls in the range
@@ -516,6 +540,15 @@ const FunnelModule = {
         if (diaryEntries.length > 1) {
             this._hydrateFromDiaryEntries(diaryEntries);
             showToast(`Dados do diário agregados (${this.getSelectedPeriodLabel()})`, 'info');
+            return true;
+        }
+
+        const allSnapshots = this._loadSnapshots();
+        const key = this._buildSnapshotKey(productId, startDate, endDate);
+        const snapshot = allSnapshots[key];
+        if (snapshot) {
+            this._applySnapshot(snapshot);
+            showToast(`Diagnóstico carregado automaticamente (${this.getSelectedPeriodLabel()})`, 'success');
             return true;
         }
 
@@ -2945,10 +2978,16 @@ const FunnelModule = {
         startD.setDate(startD.getDate() + (direction * days));
         endD.setDate(endD.getDate() + (direction * days));
 
-        document.getElementById('funnel-date-start').value = startD.toISOString().split('T')[0];
-        document.getElementById('funnel-date-end').value = endD.toISOString().split('T')[0];
+        const newStart = startD.toISOString().split('T')[0];
+        const newEnd = endD.toISOString().split('T')[0];
 
-        this._clearActivePreset();
+        if (typeof RangePicker !== 'undefined') {
+            RangePicker.setRange('funnel-date', newStart, newEnd);
+        } else {
+            document.getElementById('funnel-date-start').value = newStart;
+            document.getElementById('funnel-date-end').value = newEnd;
+        }
+
         this.onPeriodChange();
     },
 
@@ -3290,6 +3329,7 @@ const FunnelModule = {
 
         // Get diary entries for this product in the period
         const entries = AppState.diary.filter(d => {
+            if (d.isCampaign || d.parentId) return false;
             if (d.productId !== productId) return false;
             const entryDate = String(d.date || '').trim();
             return entryDate >= startDate && entryDate <= endDate;

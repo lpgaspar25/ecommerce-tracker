@@ -200,6 +200,7 @@ const GoalsModule = {
 
         // Get diary entries for this goal's period and product
         let entries = AppState.diary.filter(d => {
+            if (d.isCampaign || d.parentId) return false;
             if (d.date < goal.startDate || d.date > goal.endDate) return false;
             if (goal.productId !== 'todos' && d.productId !== goal.productId) return false;
             return true;

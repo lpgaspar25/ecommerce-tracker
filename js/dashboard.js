@@ -1125,7 +1125,10 @@ const DashboardModule = {
         if (typeof isAllStoresSelected === 'function' && isAllStoresSelected() && AppState.stores && AppState.stores.length > 1) {
             // Show all stores comparison
             const storeData = AppState.stores.filter(s => s.status === 'ativo').map(s => {
-                const storeEntries = (AppState.allDiary || AppState.diary || []).filter(e => e.storeId === s.id);
+                const storeEntries = (AppState.allDiary || AppState.diary || []).filter(e => {
+                    if (e.isCampaign || e.parentId) return false;
+                    return e.storeId === s.id;
+                });
                 const d = new Date();
                 d.setDate(d.getDate() - (this._period - 1));
                 const startDate = d.toISOString().split('T')[0];
