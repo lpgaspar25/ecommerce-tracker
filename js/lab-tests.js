@@ -489,10 +489,12 @@ const LabTestsModule = {
 
         if (!data.title) { showToast('Preencha o título', 'error'); return; }
 
+        let savedTest;
         if (this._editingId) {
             const idx = this._tests.findIndex(t => t.id === this._editingId);
             if (idx >= 0) {
                 this._tests[idx] = { ...this._tests[idx], ...data, updatedAt: new Date().toISOString() };
+                savedTest = this._tests[idx];
             }
         } else {
             const newTest = {
@@ -504,19 +506,105 @@ const LabTestsModule = {
             };
             this._tests.unshift(newTest);
             this._tempObs = null;
+            savedTest = newTest;
         }
 
         this._persist();
+        if (savedTest) this._syncTestToDiary(savedTest);
         this._closeModal();
         this._renderCards();
         showToast(this._editingId ? 'Teste atualizado!' : 'Teste criado!', 'success');
     },
 
     _deleteTest(id) {
+        const test = this._tests.find(t => t.id === id);
         this._tests = this._tests.filter(t => t.id !== id);
         this._persist();
+        if (test) this._removeTestFromDiary(test);
         this._renderCards();
         showToast('Teste excluído', 'success');
+    },
+
+    // ── Diary integration ────────────────────────────────────────────
+    // Mirror each lab test as a diary entry on the test's product so it shows up
+    // in the Diário with isTest=true. Linked via labTestId, idempotent.
+
+    _syncTestToDiary(test) {
+        if (!test || !test.productId) return;
+        if (typeof AppState === 'undefined' || !Array.isArray(AppState.allDiary)) return;
+        if (!test.dateStart) return;
+
+        const product = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
+        const storeId = product?.storeId
+            || (typeof AppState.currentStoreId !== 'undefined' ? AppState.currentStoreId : '');
+        if (!storeId) return;
+
+        const entryId = 'dia_lab_' + test.id;
+
+        const validation = (() => {
+            if (test.status !== 'concluido') return 'pendente';
+            if (test.result === 'positivo') return 'validado';
+            if (test.result === 'negativo') return 'nao_validado';
+            return 'pendente';
+        })();
+
+        const metricLabelHtml = this.METRICS[test.expectedMetric]?.label || '';
+        const metricLabelText = metricLabelHtml.replace(/<[^>]*>/g, '').trim();
+        const testGoal = test.baselineValue
+            ? `${metricLabelText}${metricLabelText ? ': ' : ''}${test.baselineValue}`
+            : metricLabelText;
+
+        const noteParts = [`[Teste do Pipeline] ${test.title || ''}`.trim()];
+        if (test.hypothesis) noteParts.push(test.hypothesis);
+        const notes = noteParts.filter(Boolean).join(' — ');
+
+        const baseFields = {
+            id: entryId,
+            productId: test.productId,
+            storeId,
+            date: test.dateStart,
+            periodStart: test.dateStart,
+            periodEnd: test.dateEnd || test.dateStart,
+            testEndDate: test.dateEnd || '',
+            isTest: true,
+            testType: 'product',
+            testValidation: validation,
+            testGoal,
+            notes,
+            creativeId: test.creativeId || '',
+            labTestId: test.id,
+        };
+
+        const idx = AppState.allDiary.findIndex(d => d.id === entryId || d.labTestId === test.id);
+        if (idx >= 0) {
+            const existing = AppState.allDiary[idx];
+            // Preserve user-edited metric fields; only refresh test/period/link fields.
+            AppState.allDiary[idx] = { ...existing, ...baseFields };
+        } else {
+            const currency = product?.priceCurrency || 'BRL';
+            AppState.allDiary.push({
+                budget: 0, budgetCurrency: currency,
+                sales: 0, revenue: 0, revenueCurrency: currency,
+                cpa: 0, cpc: 0,
+                impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                platform: '',
+                ...baseFields,
+            });
+        }
+
+        if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof EventBus !== 'undefined') EventBus.emit('diaryChanged');
+    },
+
+    _removeTestFromDiary(test) {
+        if (!test || typeof AppState === 'undefined' || !Array.isArray(AppState.allDiary)) return;
+        const before = AppState.allDiary.length;
+        AppState.allDiary = AppState.allDiary.filter(d => d.labTestId !== test.id && d.id !== 'dia_lab_' + test.id);
+        if (AppState.allDiary.length === before) return;
+        if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof EventBus !== 'undefined') EventBus.emit('diaryChanged');
     },
 
     // ── Calendar ──────────────────────────────────────────────────────
