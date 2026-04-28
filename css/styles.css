@@ -1653,16 +1653,27 @@ thead:hover .diary-check-col input[type="checkbox"],
 .diary-col-item {
     display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.4rem;
     border-radius: 4px; font-size: 0.78rem; cursor: pointer;
+    position: relative;
+    border-top: 2px solid transparent;
+    border-bottom: 2px solid transparent;
+    user-select: none;
 }
 .diary-col-item:hover { background: var(--bg-input); }
 .diary-col-item input[type="checkbox"] { accent-color: var(--accent); }
-.diary-col-item-fixed { opacity: 0.5; pointer-events: none; }
-.diary-col-arrows { display: flex; flex-direction: column; gap: 0; margin-left: auto; }
-.diary-col-arrow {
-    background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 0.65rem; padding: 0; line-height: 1;
+.diary-col-item-fixed { opacity: 0.5; }
+.diary-col-item-fixed input[type="checkbox"] { pointer-events: none; }
+.diary-col-item-fixed .diary-col-handle { visibility: hidden; }
+.diary-col-handle {
+    cursor: grab; color: var(--text-muted); font-size: 0.85rem;
+    line-height: 1; letter-spacing: -2px; padding: 0 2px;
+    user-select: none;
 }
-.diary-col-arrow:hover { color: var(--accent); }
+.diary-col-handle:hover { color: var(--accent); }
+.diary-col-item[draggable="true"]:active .diary-col-handle { cursor: grabbing; }
+.diary-col-label { flex: 1; }
+.diary-col-dragging { opacity: 0.4; }
+.diary-col-drop-before { border-top-color: var(--accent); }
+.diary-col-drop-after { border-bottom-color: var(--accent); }
 
 /* Thresholds modal grid */
 .thresholds-grid {

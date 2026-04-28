@@ -89,13 +89,11 @@ const DiaryModule = {
             if (!def) return;
             const fixedCls = def.fixed ? ' diary-col-item-fixed' : '';
             const checked = item.visible ? 'checked' : '';
-            html += `<div class="diary-col-item${fixedCls}" data-col-idx="${idx}">
+            const draggable = def.fixed ? '' : 'draggable="true"';
+            html += `<div class="diary-col-item${fixedCls}" data-col-idx="${idx}" data-col-id="${item.id}" ${draggable}>
+                <span class="diary-col-handle" title="Arraste para reordenar">⋮⋮</span>
                 <input type="checkbox" ${checked} ${def.fixed ? 'disabled' : ''} data-col-id="${item.id}">
-                <span>${this._escapeHtml(def.label)}</span>
-                <div class="diary-col-arrows">
-                    <button class="diary-col-arrow" data-dir="up" data-col-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>&#9650;</button>
-                    <button class="diary-col-arrow" data-dir="down" data-col-idx="${idx}" ${idx === config.length - 1 ? 'disabled' : ''}>&#9660;</button>
-                </div>
+                <span class="diary-col-label">${this._escapeHtml(def.label)}</span>
             </div>`;
         });
         dd.innerHTML = html;
@@ -112,18 +110,54 @@ const DiaryModule = {
             });
         });
 
-        // Arrow listeners
-        dd.querySelectorAll('.diary-col-arrow').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const idx = parseInt(btn.dataset.colIdx);
-                const dir = btn.dataset.dir;
+        // Drag-and-drop reordering
+        let dragSrcId = null;
+        dd.querySelectorAll('.diary-col-item[draggable="true"]').forEach(row => {
+            row.addEventListener('dragstart', (e) => {
+                dragSrcId = row.dataset.colId;
+                row.classList.add('diary-col-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', dragSrcId); } catch (_) {}
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('diary-col-dragging');
+                dd.querySelectorAll('.diary-col-item').forEach(r => {
+                    r.classList.remove('diary-col-drop-before', 'diary-col-drop-after');
+                });
+            });
+        });
+
+        dd.querySelectorAll('.diary-col-item').forEach(row => {
+            row.addEventListener('dragover', (e) => {
+                if (!dragSrcId || row.dataset.colId === dragSrcId) return;
+                const def = this._allColumns.find(c => c.id === row.dataset.colId);
+                if (def?.fixed) return; // can't drop onto fixed columns
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                const rect = row.getBoundingClientRect();
+                const before = (e.clientY - rect.top) < rect.height / 2;
+                row.classList.toggle('diary-col-drop-before', before);
+                row.classList.toggle('diary-col-drop-after', !before);
+            });
+            row.addEventListener('dragleave', () => {
+                row.classList.remove('diary-col-drop-before', 'diary-col-drop-after');
+            });
+            row.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const targetId = row.dataset.colId;
+                if (!dragSrcId || targetId === dragSrcId) return;
+                const def = this._allColumns.find(c => c.id === targetId);
+                if (def?.fixed) return;
+                const rect = row.getBoundingClientRect();
+                const before = (e.clientY - rect.top) < rect.height / 2;
                 const cfg = this._loadColumnConfig();
-                const newIdx = dir === 'up' ? idx - 1 : idx + 1;
-                if (newIdx < 0 || newIdx >= cfg.length) return;
-                const tmp = cfg[idx];
-                cfg[idx] = cfg[newIdx];
-                cfg[newIdx] = tmp;
+                const fromIdx = cfg.findIndex(c => c.id === dragSrcId);
+                if (fromIdx < 0) return;
+                const [moved] = cfg.splice(fromIdx, 1);
+                let toIdx = cfg.findIndex(c => c.id === targetId);
+                if (toIdx < 0) { cfg.splice(fromIdx, 0, moved); return; }
+                if (!before) toIdx += 1;
+                cfg.splice(toIdx, 0, moved);
                 this._saveColumnConfig(cfg);
                 this._renderColumnConfig();
                 this.render();
