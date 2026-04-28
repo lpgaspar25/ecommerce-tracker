@@ -37,22 +37,20 @@ const LabTestsModule = {
         }
     },
 
-    // One-time migration: sync existing tests that have no diary entry yet.
-    // Why: lab→diary sync was added later, so tests created before this feature
-    // never produced a diary row. Runs after dataLoaded so AppState.allDiary is ready.
+    // Sync ALL tests into Diário on every load.
+    // Why: ensures old/edited tests stay in sync with their diary entries (status,
+    // dates, hypothesis, validation). _syncTestToDiary is idempotent and preserves
+    // user-edited metric fields (budget/sales/etc.) via spread.
     _backfillDiaryFromTests() {
         if (!Array.isArray(this._tests) || !this._tests.length) return;
         if (typeof AppState === 'undefined' || !Array.isArray(AppState.allDiary)) return;
         let synced = 0;
         this._tests.forEach(test => {
             if (!test.productId || !test.dateStart) return;
-            const exists = AppState.allDiary.some(d => d.labTestId === test.id || d.id === 'dia_lab_' + test.id);
-            if (!exists) {
-                this._syncTestToDiary(test);
-                synced++;
-            }
+            this._syncTestToDiary(test);
+            synced++;
         });
-        if (synced > 0) console.log(`[LabTests] Backfilled ${synced} test(s) into Diário`);
+        if (synced > 0) console.log(`[LabTests] Synced ${synced} test(s) into Diário`);
     },
 
     _load() {
