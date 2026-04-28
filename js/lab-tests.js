@@ -677,22 +677,21 @@ const LabTestsModule = {
                 labTestId: test.id,
             };
 
-            // Match by exact id, OR by an entry already on this date+product (so an
-            // existing import row gets the test attached instead of duplicated).
-            const idx = AppState.allDiary.findIndex(d => {
-                if (d.id === entryId) return true;
-                if (d.isCampaign || d.parentId) return false;
-                if (d.productId !== test.productId) return false;
-                if (d.date !== date) return false;
-                // Don't grab a row that already belongs to a different test
-                if (d.labTestId && d.labTestId !== test.id) return false;
-                return true;
-            });
+            // Find ALL candidate rows for this product+date (non-campaign), so we
+            // can dedupe orphans left from earlier sync attempts. Skip rows owned
+            // by a different test.
+            const candidates = [];
+            for (let i = 0; i < AppState.allDiary.length; i++) {
+                const d = AppState.allDiary[i];
+                if (d.id === entryId) { candidates.push(i); continue; }
+                if (d.isCampaign || d.parentId) continue;
+                if (d.productId !== test.productId) continue;
+                if (d.date !== date) continue;
+                if (d.labTestId && d.labTestId !== test.id) continue;
+                candidates.push(i);
+            }
 
-            if (idx >= 0) {
-                const existing = AppState.allDiary[idx];
-                AppState.allDiary[idx] = { ...existing, ...baseFields };
-            } else {
+            if (candidates.length === 0) {
                 AppState.allDiary.push({
                     budget: 0, budgetCurrency: currency,
                     sales: 0, revenue: 0, revenueCurrency: currency,
@@ -701,7 +700,35 @@ const LabTestsModule = {
                     platform: '',
                     ...baseFields,
                 });
+                return;
             }
+
+            // Pick the keeper: prefer a row that already carries this test's labTestId,
+            // else the row with the most data (sum of metrics), else the first.
+            const score = (e) => {
+                if (e.labTestId === test.id) return 1e9;
+                return Number(e.sales || 0) + Number(e.budget || 0) + Number(e.pageViews || 0);
+            };
+            candidates.sort((a, b) => score(AppState.allDiary[b]) - score(AppState.allDiary[a]));
+            const keeperIdx = candidates[0];
+            const keeper = AppState.allDiary[keeperIdx];
+
+            // Merge metrics from any duplicate orphans into the keeper before deleting,
+            // so we don't lose data the user might have entered.
+            const orphans = candidates.slice(1).map(i => AppState.allDiary[i]);
+            orphans.forEach(o => {
+                ['budget','sales','revenue','impressions','pageViews','addToCart','checkout'].forEach(k => {
+                    if (!keeper[k] && o[k]) keeper[k] = o[k];
+                });
+                ['cpa','cpc','atcRate','checkoutRate','saleRate','viewPageRate'].forEach(k => {
+                    if (!keeper[k] && o[k]) keeper[k] = o[k];
+                });
+            });
+            // Apply test fields
+            AppState.allDiary[keeperIdx] = { ...keeper, ...baseFields };
+            // Drop the orphans (highest indices first to keep positions stable)
+            const orphanIdxs = candidates.slice(1).sort((a, b) => b - a);
+            orphanIdxs.forEach(i => AppState.allDiary.splice(i, 1));
         });
 
         if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
