@@ -2008,7 +2008,14 @@ const FunnelModule = {
             impressions: Math.round(Number(importedMetrics.impressions || 0)),
             pageViews: viewContentCount,
             addToCart: addToCartCount,
-            checkout: checkoutCount
+            checkout: checkoutCount,
+            // Funnel rates (percent). Some BMs export only rates, no raw counts —
+            // storing them lets the diary render Pag>Carrinho / Carrinho>IC / Conv.Checkout
+            // even when counts are zero.
+            atcRate: parseFloat(Number(importedMetrics.atcRate || 0).toFixed(2)),
+            checkoutRate: parseFloat(Number(importedMetrics.checkoutRate || 0).toFixed(2)),
+            saleRate: parseFloat(Number(importedMetrics.saleRate || 0).toFixed(2)),
+            viewPageRate: parseFloat(Number(importedMetrics.viewPageRate || 0).toFixed(2))
         };
 
         // Auto-assign test info if there's an active test for this product covering this date

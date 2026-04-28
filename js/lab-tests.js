@@ -35,6 +35,14 @@ const LabTestsModule = {
         if (typeof EventBus !== 'undefined') {
             EventBus.on('dataLoaded', () => this._backfillDiaryFromTests());
         }
+        // Multi-tab safety: when another tab writes to lab tests storage,
+        // re-read in this tab to avoid using stale in-memory state on next save.
+        window.addEventListener('storage', (e) => {
+            if (e.key === this._storageKey) {
+                this._load();
+                if (document.getElementById('lab-cards-container')) this._renderCards();
+            }
+        });
     },
 
     // Sync ALL tests into Diário on every load.
@@ -58,8 +66,62 @@ const LabTestsModule = {
         catch { this._tests = []; }
     },
 
+    // Multi-tab-safe persist: re-read disk before writing, merge by id (newer
+    // updatedAt wins). Prevents an old tab from wiping out tests created in
+    // a newer tab. Also writes a daily backup snapshot for recovery.
     _persist() {
-        localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
+        let onDisk = [];
+        try { onDisk = JSON.parse(localStorage.getItem(this._storageKey)) || []; } catch {}
+
+        const merged = this._mergeTests(onDisk, this._tests);
+        this._tests = merged;
+        localStorage.setItem(this._storageKey, JSON.stringify(merged));
+        this._writeBackup(merged);
+    },
+
+    _mergeTests(a, b) {
+        const byId = new Map();
+        const ts = (t) => t?.updatedAt ? Date.parse(t.updatedAt) || 0 : 0;
+        [...(a || []), ...(b || [])].forEach(t => {
+            if (!t || !t.id) return;
+            const existing = byId.get(t.id);
+            if (!existing || ts(t) >= ts(existing)) byId.set(t.id, t);
+        });
+        return Array.from(byId.values());
+    },
+
+    _writeBackup(tests) {
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            localStorage.setItem(`${this._storageKey}_backup_${today}`, JSON.stringify(tests));
+            // Trim backups older than 7 days
+            const cutoff = Date.now() - 7 * 86400000;
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (!k || !k.startsWith(`${this._storageKey}_backup_`)) continue;
+                const dStr = k.slice(`${this._storageKey}_backup_`.length);
+                const d = Date.parse(dStr);
+                if (d && d < cutoff) localStorage.removeItem(k);
+            }
+        } catch {}
+    },
+
+    // Returns the most recent backup that contains tests (for recovery UIs).
+    _latestBackup() {
+        const prefix = `${this._storageKey}_backup_`;
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(prefix)) keys.push(k);
+        }
+        keys.sort().reverse();
+        for (const k of keys) {
+            try {
+                const arr = JSON.parse(localStorage.getItem(k) || '[]');
+                if (Array.isArray(arr) && arr.length) return { key: k, date: k.slice(prefix.length), tests: arr };
+            } catch {}
+        }
+        return null;
     },
 
     _bindEvents() {

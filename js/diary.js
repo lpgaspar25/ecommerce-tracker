@@ -185,9 +185,17 @@ const DiaryModule = {
                 return `<td class="diary-notion-product">${name}</td>`;
             }
             case 'pageViews': return `<td class="num">${pageViews || '--'}</td>`;
-            case 'atcRate': return this._fmtMetricCell(pageViews > 0 ? addToCart / pageViews * 100 : 0, 'atcRate');
+            case 'atcRate': {
+                const computed = pageViews > 0 ? (addToCart / pageViews) * 100 : 0;
+                const value = computed > 0 ? computed : Number(entry.atcRate || 0);
+                return this._fmtMetricCell(value, 'atcRate');
+            }
             case 'addToCart': return `<td class="num">${addToCart || '--'}</td>`;
-            case 'icRate': return this._fmtMetricCell(addToCart > 0 ? checkout / addToCart * 100 : 0, 'icRate');
+            case 'icRate': {
+                const computed = addToCart > 0 ? (checkout / addToCart) * 100 : 0;
+                const value = computed > 0 ? computed : Number(entry.checkoutRate || 0);
+                return this._fmtMetricCell(value, 'icRate');
+            }
             case 'sales': return `<td class="num">${sales || '--'}</td>`;
             case 'shopifySales': {
                 const data = this._getShopifyDataFor(entry.date, entry.productId);
@@ -205,8 +213,22 @@ const DiaryModule = {
                 const realCpaBRL = budgetBRL / data.sales;
                 return this._fmtMetricCellBRL(realCpaBRL, 'cpa');
             }
-            case 'convPage': return this._fmtMetricCell(pageViews > 0 ? sales / pageViews * 100 : 0, 'convPage');
-            case 'convCheckout': return this._fmtMetricCell(checkout > 0 ? sales / checkout * 100 : 0, 'convCheckout');
+            case 'convPage': {
+                let value = pageViews > 0 ? (sales / pageViews) * 100 : 0;
+                if (value === 0) {
+                    // Derive from rate chain when raw page views aren't available
+                    const atc = Number(entry.atcRate || 0);
+                    const co = Number(entry.checkoutRate || 0);
+                    const sr = Number(entry.saleRate || 0);
+                    if (atc > 0 && co > 0 && sr > 0) value = (atc * co * sr) / 10000;
+                }
+                return this._fmtMetricCell(value, 'convPage');
+            }
+            case 'convCheckout': {
+                const computed = checkout > 0 ? (sales / checkout) * 100 : 0;
+                const value = computed > 0 ? computed : Number(entry.saleRate || 0);
+                return this._fmtMetricCell(value, 'convCheckout');
+            }
             case 'budget': return `<td class="num">${entry.budget ? entry.budget.toFixed(2) : '--'}</td>`;
             case 'revenue': return `<td class="num">${entry.revenue ? entry.revenue.toFixed(2) : '--'}</td>`;
             case 'cpa': {

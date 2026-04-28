@@ -1130,7 +1130,8 @@ const DashboardModule = {
                     return e.storeId === s.id;
                 });
                 const d = new Date();
-                d.setDate(d.getDate() - (this._period - 1));
+                const periodDays = Number(this._period) > 0 ? Number(this._period) : 30;
+                d.setDate(d.getDate() - (periodDays - 1));
                 const startDate = d.toISOString().split('T')[0];
                 const periodEntries = storeEntries.filter(e => e.date >= startDate);
                 const agg = this._aggregate(periodEntries);
