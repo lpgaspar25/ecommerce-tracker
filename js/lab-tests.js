@@ -620,8 +620,6 @@ const LabTestsModule = {
             || (typeof AppState.currentStoreId !== 'undefined' ? AppState.currentStoreId : '');
         if (!storeId) return;
 
-        const entryId = 'dia_lab_' + test.id;
-
         const validation = (() => {
             if (test.status !== 'concluido') return 'pendente';
             if (test.result === 'positivo') return 'validado';
@@ -639,39 +637,72 @@ const LabTestsModule = {
         if (test.hypothesis) noteParts.push(test.hypothesis);
         const notes = noteParts.filter(Boolean).join(' — ');
 
-        const baseFields = {
-            id: entryId,
-            productId: test.productId,
-            storeId,
-            date: test.dateStart,
-            periodStart: test.dateStart,
-            periodEnd: test.dateEnd || test.dateStart,
-            testEndDate: test.dateEnd || '',
-            isTest: true,
-            testType: 'product',
-            testValidation: validation,
-            testGoal,
-            notes,
-            creativeId: test.creativeId || '',
-            labTestId: test.id,
-        };
+        // Build the day-by-day list spanning [dateStart, dateEnd]. One diary entry
+        // per day so the importer (which upserts by productId+date+single-day period)
+        // finds and merges into it instead of creating a parallel row.
+        const dates = (() => {
+            const arr = [];
+            const start = new Date(test.dateStart + 'T00:00:00');
+            const end = new Date((test.dateEnd || test.dateStart) + 'T00:00:00');
+            if (isNaN(start) || isNaN(end) || end < start) return [test.dateStart];
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                arr.push(d.toISOString().slice(0, 10));
+            }
+            return arr;
+        })();
 
-        const idx = AppState.allDiary.findIndex(d => d.id === entryId || d.labTestId === test.id);
-        if (idx >= 0) {
-            const existing = AppState.allDiary[idx];
-            // Preserve user-edited metric fields; only refresh test/period/link fields.
-            AppState.allDiary[idx] = { ...existing, ...baseFields };
-        } else {
-            const currency = product?.priceCurrency || 'BRL';
-            AppState.allDiary.push({
-                budget: 0, budgetCurrency: currency,
-                sales: 0, revenue: 0, revenueCurrency: currency,
-                cpa: 0, cpc: 0,
-                impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
-                platform: '',
-                ...baseFields,
+        // Migrate legacy single-period entry: drop it before creating per-day entries.
+        const legacyId = 'dia_lab_' + test.id;
+        const legacyIdx = AppState.allDiary.findIndex(d => d.id === legacyId);
+        if (legacyIdx >= 0) AppState.allDiary.splice(legacyIdx, 1);
+
+        const currency = product?.priceCurrency || 'BRL';
+
+        dates.forEach(date => {
+            const entryId = `dia_lab_${test.id}_${date}`;
+            const baseFields = {
+                id: entryId,
+                productId: test.productId,
+                storeId,
+                date,
+                periodStart: date,
+                periodEnd: date,
+                testEndDate: test.dateEnd || '',
+                isTest: true,
+                testType: 'product',
+                testValidation: validation,
+                testGoal,
+                notes,
+                creativeId: test.creativeId || '',
+                labTestId: test.id,
+            };
+
+            // Match by exact id, OR by an entry already on this date+product (so an
+            // existing import row gets the test attached instead of duplicated).
+            const idx = AppState.allDiary.findIndex(d => {
+                if (d.id === entryId) return true;
+                if (d.isCampaign || d.parentId) return false;
+                if (d.productId !== test.productId) return false;
+                if (d.date !== date) return false;
+                // Don't grab a row that already belongs to a different test
+                if (d.labTestId && d.labTestId !== test.id) return false;
+                return true;
             });
-        }
+
+            if (idx >= 0) {
+                const existing = AppState.allDiary[idx];
+                AppState.allDiary[idx] = { ...existing, ...baseFields };
+            } else {
+                AppState.allDiary.push({
+                    budget: 0, budgetCurrency: currency,
+                    sales: 0, revenue: 0, revenueCurrency: currency,
+                    cpa: 0, cpc: 0,
+                    impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                    platform: '',
+                    ...baseFields,
+                });
+            }
+        });
 
         if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
         if (typeof filterDataByStore === 'function') filterDataByStore();

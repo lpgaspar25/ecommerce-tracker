@@ -2038,7 +2038,13 @@ const FunnelModule = {
         }
 
         if (existing) {
-            Object.assign(existing, payload);
+            // Preserve test-specific fields when merging into a lab-test entry
+            // (notes carries "[Teste do Pipeline] ..."; testGoal/testValidation/labTestId
+            // are not in payload so already preserved automatically).
+            const mergePayload = existing.labTestId
+                ? (() => { const { notes, ...rest } = payload; return rest; })()
+                : payload;
+            Object.assign(existing, mergePayload);
             // Persist locally first so a Sheets error doesn't lose the data
             if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
             if (AppState.sheetsConnected) {
