@@ -66,9 +66,9 @@ const LabTestsModule = {
         catch { this._tests = []; }
     },
 
-    // Multi-tab-safe persist: re-read disk before writing, merge by id (newer
-    // updatedAt wins). Prevents an old tab from wiping out tests created in
-    // a newer tab. Also writes a daily backup snapshot for recovery.
+    // Multi-tab-safe persist for save/edit flows: re-read disk and merge by id
+    // (newer updatedAt wins). For deletions, use _persistOverwrite which skips
+    // the merge — otherwise deleted-from-memory items would resurrect from disk.
     _persist() {
         let onDisk = [];
         try { onDisk = JSON.parse(localStorage.getItem(this._storageKey)) || []; } catch {}
@@ -77,6 +77,12 @@ const LabTestsModule = {
         this._tests = merged;
         localStorage.setItem(this._storageKey, JSON.stringify(merged));
         this._writeBackup(merged);
+    },
+
+    // Used for deletions: write in-memory directly to disk, no merge.
+    _persistOverwrite() {
+        localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
+        this._writeBackup(this._tests);
     },
 
     _mergeTests(a, b) {
@@ -600,7 +606,7 @@ const LabTestsModule = {
     _deleteTest(id) {
         const test = this._tests.find(t => t.id === id);
         this._tests = this._tests.filter(t => t.id !== id);
-        this._persist();
+        this._persistOverwrite();
         if (test) this._removeTestFromDiary(test);
         this._renderCards();
         showToast('Teste excluído', 'success');
