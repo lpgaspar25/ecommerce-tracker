@@ -1589,15 +1589,16 @@ const DashboardModule = {
 
         // Metric tabs + product selector on same row
         const tabs = [
-            { key: 'cpa',       label: 'CPA'         },
-            { key: 'cpaReal',   label: 'CPA Real'    },
-            { key: 'profit',    label: 'Lucro'       },
-            { key: 'revenue',   label: 'Receita'     },
-            { key: 'sales',     label: 'Vendas'      },
-            { key: 'salesReal', label: 'Vendas Real' },
-            { key: 'budget',    label: 'Gastos'      },
-            { key: 'cpm',       label: 'CPM'         },
-            { key: 'cpc',       label: 'CPC Médio'   },
+            { key: 'cpa',        label: 'CPA'         },
+            { key: 'cpaReal',    label: 'CPA Real'    },
+            { key: 'conversion', label: 'Conversão'   },
+            { key: 'profit',     label: 'Lucro'       },
+            { key: 'revenue',    label: 'Receita'     },
+            { key: 'sales',      label: 'Vendas'      },
+            { key: 'salesReal',  label: 'Vendas Real' },
+            { key: 'budget',     label: 'Gastos'      },
+            { key: 'cpm',        label: 'CPM'         },
+            { key: 'cpc',        label: 'CPC Médio'   },
         ];
 
         // Build product options
@@ -1751,6 +1752,28 @@ const DashboardModule = {
                 prevValue = pTotClicks > 0 ? pTotBud / pTotClicks : 0;
                 inverse = true;
                 break;
+            case 'conversion': {
+                label = 'Conversão (Vendas/Visitantes)';
+                const computeConv = (entries, aggData) => {
+                    let pct = aggData.pageViews > 0 ? (aggData.sales / aggData.pageViews) * 100 : 0;
+                    if (pct === 0) {
+                        let sum = 0, n = 0;
+                        entries.forEach(e => {
+                            const atc = Number(e.atcRate || 0);
+                            const co = Number(e.checkoutRate || 0);
+                            const sr = Number(e.saleRate || 0);
+                            if (atc > 0 && co > 0 && sr > 0) { sum += (atc * co * sr) / 10000; n++; }
+                        });
+                        if (n > 0) pct = sum / n;
+                    }
+                    return pct;
+                };
+                const convCur = computeConv(curEntries, agg);
+                value = convCur > 0 ? convCur.toFixed(2) + '%' : '--';
+                prevValue = compareActive ? computeConv(prevEntries, prevAgg) : 0;
+                percent = false; // delta shown as absolute pct points, not percent change
+                break;
+            }
             default:
                 return '';
         }
@@ -1771,6 +1794,20 @@ const DashboardModule = {
                     let b = 0, c = 0;
                     curEntries.forEach(e => { if ((e.cpc || 0) > 0 && e.budget) { b += (this._currency === 'BRL' ? (e.budgetCurrency === 'BRL' ? e.budget : convertToBRL(e.budget, e.budgetCurrency)) : convertToUSD(e.budget, e.budgetCurrency)); c += e.budget / e.cpc; } });
                     return c > 0 ? b / c : 0;
+                }
+                if (metric === 'conversion') {
+                    let pct = agg.pageViews > 0 ? (agg.sales / agg.pageViews) * 100 : 0;
+                    if (pct === 0) {
+                        let sum = 0, n = 0;
+                        curEntries.forEach(e => {
+                            const atc = Number(e.atcRate || 0);
+                            const co = Number(e.checkoutRate || 0);
+                            const sr = Number(e.saleRate || 0);
+                            if (atc > 0 && co > 0 && sr > 0) { sum += (atc * co * sr) / 10000; n++; }
+                        });
+                        if (n > 0) pct = sum / n;
+                    }
+                    return pct;
                 }
                 return 0;
             })();
@@ -1918,6 +1955,29 @@ const DashboardModule = {
             const avgCpc = totalBudget / totalClicks;
             const prefix = this._currency === 'BRL' ? 'R$' : '$';
             return { text: prefix + this._compactNum(avgCpc), cls: 'mcal-val-neutral' };
+        }
+
+        if (metric === 'conversion') {
+            let pct = agg.pageViews > 0 ? (agg.sales / agg.pageViews) * 100 : 0;
+            // Fallback: derive from stored rate chain (BM that only exports rates)
+            if (pct === 0) {
+                let chainSum = 0, chainCount = 0;
+                dayEntries.forEach(e => {
+                    const atc = Number(e.atcRate || 0);
+                    const co = Number(e.checkoutRate || 0);
+                    const sr = Number(e.saleRate || 0);
+                    if (atc > 0 && co > 0 && sr > 0) {
+                        chainSum += (atc * co * sr) / 10000;
+                        chainCount++;
+                    }
+                });
+                if (chainCount > 0) pct = chainSum / chainCount;
+            }
+            if (pct <= 0) return { text: '--', cls: 'mcal-val-muted' };
+            const text = pct.toFixed(2) + '%';
+            if (pct >= 2) return { text, cls: 'mcal-val-green' };
+            if (pct >= 1) return { text, cls: 'mcal-val-yellow' };
+            return { text, cls: 'mcal-val-red' };
         }
 
         return { text: '--', cls: 'mcal-val-muted' };
