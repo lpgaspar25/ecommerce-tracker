@@ -2672,6 +2672,35 @@
                 </div>
             </div>
 
+            <!-- Segmentos por região/país -->
+            <div class="card" style="margin-top:1rem">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+                    <div>
+                        <h3 style="margin:0"><i data-lucide="globe" style="width:16px;height:16px;vertical-align:-3px"></i> Segmentos por Região</h3>
+                        <p class="section-subtitle" style="margin:0.2rem 0 0">Métricas separadas por país/idioma extraídos do nome da campanha</p>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;margin-top:0.75rem">
+                    <table class="funnel-segments-table" style="width:100%;border-collapse:collapse;font-size:0.82rem">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border);text-align:left">
+                                <th style="padding:0.5rem 0.6rem">Região</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Visitantes</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Add to Cart</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Pag &gt; Carrinho</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Vendas</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Conversão</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Gastos</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">Receita</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">CPA</th>
+                                <th style="padding:0.5rem 0.6rem;text-align:right">ROAS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="funnel-segments-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
         </section>
 
         <!-- ==================== PIPELINE KANBAN ==================== -->
@@ -3364,6 +3393,7 @@
     <script src="js/pipeline.js"></script>
     <script src="js/swipe.js"></script>
     <script src="js/mining.js"></script>
+    <script src="js/region-tags.js"></script>
     <script src="js/lab-tests.js"></script>
     <script src="js/lab-test-ai.js"></script>
     <script src="js/usage-panel.js"></script>

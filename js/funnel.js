@@ -162,6 +162,7 @@ const FunnelModule = {
         this._initFunnelChart();
 
         EventBus.on('dataLoaded', () => this.onProductChange());
+        EventBus.on('dataLoaded', () => this._backfillRegions());
         EventBus.on('productsChanged', () => this.onProductChange());
         EventBus.on('storeChanged', () => this.onProductChange());
         EventBus.on('tabChanged', (tab) => {
@@ -624,6 +625,7 @@ const FunnelModule = {
             this.renderTable();
         }
         this._renderFunnelChart();
+        try { this.renderSegmentsTable(); } catch (e) { console.warn('[Segments] render failed', e); }
     },
 
     // ===========================
@@ -1463,6 +1465,9 @@ const FunnelModule = {
                     const salesPerDay   = agg.purchase / days;
                     const clicksPerDay  = agg.clicks / days;
 
+                    const region = (typeof RegionTags !== 'undefined')
+                        ? RegionTags.extract(agg.campaignVal)
+                        : '';
                     const subEntry = {
                         id: typeof generateId === 'function' ? generateId('camp') : ('camp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
                         parentId: parentEntry.id,
@@ -1472,6 +1477,7 @@ const FunnelModule = {
                         productId, storeId,
                         campaignName: agg.campaignVal,
                         adName: agg.adNameVal,
+                        region,
                         isCampaign: true,
                         budget: parseFloat(spendPerDay.toFixed(2)),
                         budgetCurrency: agg.valueCurrency,
@@ -2154,6 +2160,10 @@ const FunnelModule = {
                 const parentEntry = AppState.allDiary.find(d => d.date === agg.date && d.productId === productId && !d.isCampaign);
                 if (!parentEntry) continue;
 
+                const region = (typeof RegionTags !== 'undefined')
+                    ? RegionTags.extract(agg.campaignVal)
+                    : '';
+
                 const subEntry = {
                     id: generateId('camp'),
                     parentId: parentEntry.id,
@@ -2164,6 +2174,7 @@ const FunnelModule = {
                     storeId: storeId,
                     campaignName: agg.campaignVal,
                     adName: agg.adNameVal,
+                    region,
                     isCampaign: true,
                     budget: parseFloat(agg.spend.toFixed(2)),
                     budgetCurrency: agg.valueCurrency,
@@ -3623,7 +3634,112 @@ const FunnelModule = {
         if (typeof LocalStore !== 'undefined') LocalStore.save('creatives', AppState.allCreatives);
         if (typeof EventBus !== 'undefined') EventBus.emit('creativesChanged');
         return creative.id;
-    }
+    },
+
+    // ── Region segmentation ──────────────────────────────────────────
+    // Tags sub-entries (campaign rows) with a normalized region code extracted
+    // from the campaign name. Backfills existing rows on dataLoaded so historical
+    // imports also get tagged.
+    _backfillRegions() {
+        if (typeof RegionTags === 'undefined') return;
+        if (!Array.isArray(AppState.allDiary)) return;
+        let tagged = 0;
+        AppState.allDiary.forEach(d => {
+            if (!d.isCampaign) return;
+            // Only fill missing — preserve manual overrides
+            if (d.region) return;
+            const r = RegionTags.extract(d.campaignName || '');
+            if (r) { d.region = r; tagged++; }
+        });
+        if (tagged > 0) {
+            if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
+            console.log(`[Funnel] Backfilled region tag on ${tagged} sub-entries`);
+        }
+    },
+
+    // Aggregate sub-entries by region within current period+product filter.
+    // Returns array of {region, label, sales, budget, revenue, impressions,
+    // pageViews, addToCart, checkout, cpa, cpc, convPage, roas}.
+    _aggregateByRegion() {
+        const productId = this.state.productId;
+        const startDate = this.state.actual.startDate;
+        const endDate = this.state.actual.endDate;
+        const subs = (AppState.allDiary || []).filter(d => {
+            if (!d.isCampaign) return false;
+            if (productId && productId !== 'todos' && d.productId !== productId) return false;
+            if (startDate && d.date < startDate) return false;
+            if (endDate && d.date > endDate) return false;
+            return true;
+        });
+
+        const byRegion = {};
+        subs.forEach(d => {
+            const region = d.region || '';
+            if (!byRegion[region]) {
+                byRegion[region] = {
+                    region,
+                    label: typeof RegionTags !== 'undefined' ? RegionTags.labelPlain(region) : (region || 'Sem região'),
+                    sales: 0, budget: 0, revenue: 0,
+                    impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                    campaigns: new Set(),
+                };
+            }
+            const r = byRegion[region];
+            r.sales      += Number(d.sales || 0);
+            r.budget     += convertToUSD(Number(d.budget || 0), d.budgetCurrency || 'BRL');
+            r.revenue    += convertToUSD(Number(d.revenue || 0), d.revenueCurrency || 'BRL');
+            r.impressions+= Number(d.impressions || 0);
+            r.pageViews  += Number(d.pageViews || 0);
+            r.addToCart  += Number(d.addToCart || 0);
+            r.checkout   += Number(d.checkout || 0);
+            if (d.campaignName) r.campaigns.add(d.campaignName);
+        });
+
+        return Object.values(byRegion).map(r => ({
+            ...r,
+            campaignsCount: r.campaigns.size,
+            campaigns: Array.from(r.campaigns),
+            cpa:      r.sales > 0 ? r.budget / r.sales : 0,
+            cpc:      r.pageViews > 0 ? r.budget / r.pageViews : 0, // approximate
+            roas:     r.budget > 0 ? r.revenue / r.budget : 0,
+            convPage: r.pageViews > 0 ? (r.sales / r.pageViews) * 100 : 0,
+            atcRate:  r.pageViews > 0 ? (r.addToCart / r.pageViews) * 100 : 0,
+        })).sort((a, b) => b.revenue - a.revenue);
+    },
+
+    renderSegmentsTable() {
+        const container = document.getElementById('funnel-segments-body');
+        if (!container) return;
+        const rows = this._aggregateByRegion();
+
+        if (!rows.length) {
+            container.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:1.5rem">Sem dados de campanha no período. Importe um relatório do Meta com sub-entradas de anúncio.</td></tr>';
+            return;
+        }
+
+        const fmt$ = (v) => '$' + (Math.abs(v) >= 1000 ? (v/1000).toFixed(1) + 'k' : v.toFixed(2));
+        const fmtPct = (v) => v > 0 ? v.toFixed(2) + '%' : '--';
+        const fmtNum = (v) => v ? v.toLocaleString('pt-BR') : '--';
+        const fmtRoas = (v) => v > 0 ? v.toFixed(2) + 'x' : '--';
+
+        container.innerHTML = rows.map(r => {
+            const labelHtml = typeof RegionTags !== 'undefined' ? RegionTags.label(r.region) : (r.region || '<span style="color:var(--text-muted)">Sem região</span>');
+            return `<tr>
+                <td><strong>${labelHtml}</strong><div style="font-size:0.7rem;color:var(--text-muted)">${r.campaignsCount} campanha${r.campaignsCount !== 1 ? 's' : ''}</div></td>
+                <td class="num">${fmtNum(r.pageViews)}</td>
+                <td class="num">${fmtNum(r.addToCart)}</td>
+                <td class="num">${fmtPct(r.atcRate)}</td>
+                <td class="num">${fmtNum(r.sales)}</td>
+                <td class="num">${fmtPct(r.convPage)}</td>
+                <td class="num">${fmt$(r.budget)}</td>
+                <td class="num">${fmt$(r.revenue)}</td>
+                <td class="num">${r.sales > 0 ? fmt$(r.cpa) : '--'}</td>
+                <td class="num">${fmtRoas(r.roas)}</td>
+            </tr>`;
+        }).join('');
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
 };
 
 document.addEventListener('DOMContentLoaded', () => FunnelModule.init());
