@@ -7,6 +7,11 @@ const RegionTags = {
     // Padrões individuais. A função `extract` coleta TODOS que casam, depois
     // ordena/junta com '+' pra gerar uma chave canônica multi-região.
     PATTERNS: [
+        // Tag de mercado/idioma: EN agrupa Reino Unido + Irlanda + Austrália
+        // (mercados de língua inglesa que o usuário roda numa única campanha).
+        // É tratado como código próprio — não explode em UK/IE/AU automaticamente.
+        { code: 'EN',  label: '<i data-lucide="languages" style="width:12px;height:12px;vertical-align:-2px"></i> Reino Unido + Irlanda + Austrália',
+          re: /\bEN\b/i },
         { code: 'EUA', label: '<i data-lucide="flag" style="width:12px;height:12px;vertical-align:-2px"></i> Estados Unidos',
           re: /\b(?:EUA|USA|ESTADOS\s*UNIDOS|UNITED\s*STATES)\b/i },
         { code: 'UK',  label: '<i data-lucide="flag" style="width:12px;height:12px;vertical-align:-2px"></i> Reino Unido',
@@ -80,6 +85,7 @@ const RegionTags = {
         if (code === 'EU+') return 'Europa+';
         const parts = code.split('+');
         const names = {
+            EN: 'UK+IE+AU',
             EUA: 'Estados Unidos', UK: 'Reino Unido', IE: 'Irlanda', AU: 'Austrália',
             NZ: 'Nova Zelândia', CA: 'Canadá', DE: 'Alemanha', IT: 'Itália', FR: 'França',
             ES: 'Espanha', PT: 'Portugal', NL: 'Holanda', BE: 'Bélgica', CH: 'Suíça',
