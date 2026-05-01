@@ -539,6 +539,70 @@
                 <button id="btn-add-goal" class="btn btn-primary">+ Nova Meta</button>
             </div>
 
+            <!-- ── Calculadora de Vendas Necessárias (live) ── -->
+            <div class="card" style="margin-bottom:1rem">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+                    <div>
+                        <h3 style="margin:0"><i data-lucide="calculator" style="width:16px;height:16px;vertical-align:-3px"></i> Calculadora de Vendas Necessárias</h3>
+                        <p class="section-subtitle" style="margin:0.2rem 0 0">Quantas vendas/dia preciso fazer para breakeven, lucro alvo e conversão alvo. Recalcula sozinho conforme o orçamento muda.</p>
+                    </div>
+                    <button id="dt-reset" class="btn btn-secondary btn-sm" type="button" title="Restaurar padrões do produto">↺ Reset</button>
+                </div>
+
+                <div class="dt-controls" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.6rem;margin-top:0.75rem">
+                    <div class="form-group" style="margin:0">
+                        <label style="font-size:0.78rem">Produto</label>
+                        <select id="dt-product" class="input"></select>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-size:0.78rem">Orçamento/dia</label>
+                        <div style="display:flex;gap:0.3rem">
+                            <input type="number" id="dt-budget" class="input" step="0.01" min="0" style="flex:1">
+                            <select id="dt-budget-currency" class="input" style="width:auto">
+                                <option value="USD">USD</option>
+                                <option value="BRL">BRL</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-size:0.78rem">Visitantes/dia</label>
+                        <div style="display:flex;gap:0.3rem">
+                            <input type="number" id="dt-visitors" class="input" min="0" style="flex:1">
+                            <button id="dt-visitors-recalc" class="btn btn-secondary btn-sm" type="button" title="Estimar via Orçamento ÷ CPC médio" style="white-space:nowrap">↻ Auto</button>
+                        </div>
+                        <div id="dt-visitors-source" style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem"></div>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-size:0.78rem">Lucro alvo (% da receita)</label>
+                        <input type="number" id="dt-target-profit" class="input" step="0.5" min="0">
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label style="font-size:0.78rem">Conversão alvo (%)</label>
+                        <input type="number" id="dt-target-conv" class="input" step="0.1" min="0">
+                    </div>
+                </div>
+
+                <div id="dt-summary" style="margin-top:0.75rem;font-size:0.82rem"></div>
+
+                <div style="overflow-x:auto;margin-top:0.5rem">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border);text-align:left">
+                                <th style="padding:0.4rem 0.6rem">Cenário</th>
+                                <th style="padding:0.4rem 0.6rem;text-align:right">Vendas/dia</th>
+                                <th style="padding:0.4rem 0.6rem;text-align:right">Lucro/dia</th>
+                                <th style="padding:0.4rem 0.6rem;text-align:right">Conversão</th>
+                                <th style="padding:0.4rem 0.6rem;text-align:right">CPA</th>
+                                <th style="padding:0.4rem 0.6rem;text-align:right">ROAS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dt-results-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div id="goals-list" class="cards-grid">
                 <div class="empty-state" id="goals-empty">
                     <p>Nenhuma meta criada. Clique em "+ Nova Meta" para definir seus objetivos.</p>
@@ -3394,6 +3458,7 @@
     <script src="js/swipe.js"></script>
     <script src="js/mining.js"></script>
     <script src="js/region-tags.js"></script>
+    <script src="js/daily-targets.js"></script>
     <script src="js/lab-tests.js"></script>
     <script src="js/lab-test-ai.js"></script>
     <script src="js/usage-panel.js"></script>
