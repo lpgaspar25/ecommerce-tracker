@@ -41,11 +41,25 @@ const DailyTargetsCalculator = {
             this._state.budgetUSD = (typeof convertToUSD === 'function')
                 ? convertToUSD(v, cur)
                 : v;
+            this._state.budgetSource = 'Editado por você (não sincroniza com o Diário)';
+            const srcEl = document.getElementById('dt-budget-source');
+            if (srcEl) srcEl.textContent = this._state.budgetSource;
+            const resyncBtn = document.getElementById('dt-budget-resync');
+            if (resyncBtn) resyncBtn.style.display = '';
             this._saveOverride({ budgetUSD: this._state.budgetUSD });
             this._render();
         };
         budgetInput?.addEventListener('input', onChangeBudget);
         budgetCurrencySel?.addEventListener('change', onChangeBudget);
+        document.getElementById('dt-budget-resync')?.addEventListener('click', () => {
+            // Drop the budget override and re-pull from diary
+            if (this._userOverrides[this._state.productId]) {
+                delete this._userOverrides[this._state.productId].budgetUSD;
+                this._saveAllOverrides();
+            }
+            this._loadProductDefaults();
+            this._render();
+        });
         visitorsInput?.addEventListener('input', () => {
             this._state.visitors = parseInt(visitorsInput.value) || 0;
             this._state.visitorsSource = 'Editado manualmente';
@@ -145,12 +159,14 @@ const DailyTargetsCalculator = {
         let budgetUSD = 0;
         let visitors = 0;
         let visitorsSource = '';   // human-readable label about where visitors came from
+        let budgetSource = '';     // human-readable label about where budget came from
         let avgCpcUSD = 0;
         if (todayEntries.length) {
             todayEntries.forEach(e => {
                 budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
                 visitors  += Number(e.pageViews || 0);
             });
+            if (budgetUSD > 0) budgetSource = 'Sincronizado com Diário (hoje)';
             if (visitors > 0) visitorsSource = 'Visitantes de hoje';
         }
 
@@ -169,6 +185,7 @@ const DailyTargetsCalculator = {
             });
             budgetUSD = bSum / recent.length;
             visitors = vSum / recent.length;
+            if (budgetUSD > 0) budgetSource = 'Média dos últimos 7 dias (sem dado de hoje)';
             if (visitors > 0) visitorsSource = 'Média dos últimos 7 dias';
         }
 
@@ -195,6 +212,9 @@ const DailyTargetsCalculator = {
         }
 
         this._state.budgetUSD = override.budgetUSD ?? budgetUSD;
+        this._state.budgetSource = override.budgetUSD !== undefined && override.budgetUSD !== null
+            ? 'Editado por você (não sincroniza com o Diário)'
+            : (budgetSource || 'Sem dados — preencha manualmente');
         this._state.visitors = override.visitors ?? Math.round(visitors);
         this._state.visitorsSource = override.visitors !== undefined && override.visitors !== null
             ? 'Editado manualmente'
@@ -214,6 +234,11 @@ const DailyTargetsCalculator = {
         this._state.budgetCurrency = cur;
         if (budgetCurrencySel) budgetCurrencySel.value = cur;
         if (budgetInput) budgetInput.value = (convertCurrency(this._state.budgetUSD, 'USD', cur) || 0).toFixed(2);
+        const budgetSrcEl = document.getElementById('dt-budget-source');
+        if (budgetSrcEl) budgetSrcEl.textContent = this._state.budgetSource || '';
+        // Show resync button only when there's a manual override
+        const resyncBtn = document.getElementById('dt-budget-resync');
+        if (resyncBtn) resyncBtn.style.display = (override.budgetUSD !== undefined && override.budgetUSD !== null) ? '' : 'none';
         if (visitorsInput) visitorsInput.value = this._state.visitors;
         if (visitorsSrcEl) visitorsSrcEl.textContent = this._state.visitorsSource || '';
         if (profitInput) profitInput.value = this._state.targetProfitPct;
