@@ -1468,6 +1468,9 @@ const FunnelModule = {
                     const region = (typeof RegionTags !== 'undefined')
                         ? RegionTags.extract(agg.campaignVal)
                         : '';
+                    const interest = (typeof RegionTags !== 'undefined')
+                        ? RegionTags.extractInterest(agg.campaignVal)
+                        : '';
                     const subEntry = {
                         id: typeof generateId === 'function' ? generateId('camp') : ('camp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
                         parentId: parentEntry.id,
@@ -1478,6 +1481,7 @@ const FunnelModule = {
                         campaignName: agg.campaignVal,
                         adName: agg.adNameVal,
                         region,
+                        interest,
                         isCampaign: true,
                         budget: parseFloat(spendPerDay.toFixed(2)),
                         budgetCurrency: agg.valueCurrency,
@@ -2163,6 +2167,9 @@ const FunnelModule = {
                 const region = (typeof RegionTags !== 'undefined')
                     ? RegionTags.extract(agg.campaignVal)
                     : '';
+                const interest = (typeof RegionTags !== 'undefined')
+                    ? RegionTags.extractInterest(agg.campaignVal)
+                    : '';
 
                 const subEntry = {
                     id: generateId('camp'),
@@ -2175,6 +2182,7 @@ const FunnelModule = {
                     campaignName: agg.campaignVal,
                     adName: agg.adNameVal,
                     region,
+                    interest,
                     isCampaign: true,
                     budget: parseFloat(agg.spend.toFixed(2)),
                     budgetCurrency: agg.valueCurrency,
@@ -3643,23 +3651,26 @@ const FunnelModule = {
     _backfillRegions() {
         if (typeof RegionTags === 'undefined') return;
         if (!Array.isArray(AppState.allDiary)) return;
-        let tagged = 0;
+        let taggedRegion = 0, taggedInterest = 0;
         AppState.allDiary.forEach(d => {
             if (!d.isCampaign) return;
-            // Only fill missing — preserve manual overrides
-            if (d.region) return;
-            const r = RegionTags.extract(d.campaignName || '');
-            if (r) { d.region = r; tagged++; }
+            if (!d.region) {
+                const r = RegionTags.extract(d.campaignName || '');
+                if (r) { d.region = r; taggedRegion++; }
+            }
+            if (!d.interest) {
+                const i = RegionTags.extractInterest(d.campaignName || '');
+                if (i) { d.interest = i; taggedInterest++; }
+            }
         });
-        if (tagged > 0) {
+        if (taggedRegion > 0 || taggedInterest > 0) {
             if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
-            console.log(`[Funnel] Backfilled region tag on ${tagged} sub-entries`);
+            console.log(`[Funnel] Backfilled region=${taggedRegion} interest=${taggedInterest}`);
         }
     },
 
-    // Aggregate sub-entries by region within current period+product filter.
-    // Returns array of {region, label, sales, budget, revenue, impressions,
-    // pageViews, addToCart, checkout, cpa, cpc, convPage, roas}.
+    // Aggregate sub-entries by region+interest within current period+product filter.
+    // Returns array of rows, each with region, interest, label, and metrics.
     _aggregateByRegion() {
         const productId = this.state.productId;
         const startDate = this.state.actual.startDate;
@@ -3672,38 +3683,40 @@ const FunnelModule = {
             return true;
         });
 
-        const byRegion = {};
+        const groups = {};
         subs.forEach(d => {
             const region = d.region || '';
-            if (!byRegion[region]) {
-                byRegion[region] = {
-                    region,
+            const interest = d.interest || '';
+            const key = `${region}__${interest}`;
+            if (!groups[key]) {
+                groups[key] = {
+                    region, interest,
                     label: typeof RegionTags !== 'undefined' ? RegionTags.labelPlain(region) : (region || 'Sem região'),
                     sales: 0, budget: 0, revenue: 0,
                     impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
                     campaigns: new Set(),
                 };
             }
-            const r = byRegion[region];
-            r.sales      += Number(d.sales || 0);
-            r.budget     += convertToUSD(Number(d.budget || 0), d.budgetCurrency || 'BRL');
-            r.revenue    += convertToUSD(Number(d.revenue || 0), d.revenueCurrency || 'BRL');
-            r.impressions+= Number(d.impressions || 0);
-            r.pageViews  += Number(d.pageViews || 0);
-            r.addToCart  += Number(d.addToCart || 0);
-            r.checkout   += Number(d.checkout || 0);
-            if (d.campaignName) r.campaigns.add(d.campaignName);
+            const g = groups[key];
+            g.sales      += Number(d.sales || 0);
+            g.budget     += convertToUSD(Number(d.budget || 0), d.budgetCurrency || 'BRL');
+            g.revenue    += convertToUSD(Number(d.revenue || 0), d.revenueCurrency || 'BRL');
+            g.impressions+= Number(d.impressions || 0);
+            g.pageViews  += Number(d.pageViews || 0);
+            g.addToCart  += Number(d.addToCart || 0);
+            g.checkout   += Number(d.checkout || 0);
+            if (d.campaignName) g.campaigns.add(d.campaignName);
         });
 
-        return Object.values(byRegion).map(r => ({
-            ...r,
-            campaignsCount: r.campaigns.size,
-            campaigns: Array.from(r.campaigns),
-            cpa:      r.sales > 0 ? r.budget / r.sales : 0,
-            cpc:      r.pageViews > 0 ? r.budget / r.pageViews : 0, // approximate
-            roas:     r.budget > 0 ? r.revenue / r.budget : 0,
-            convPage: r.pageViews > 0 ? (r.sales / r.pageViews) * 100 : 0,
-            atcRate:  r.pageViews > 0 ? (r.addToCart / r.pageViews) * 100 : 0,
+        return Object.values(groups).map(g => ({
+            ...g,
+            campaignsCount: g.campaigns.size,
+            campaigns: Array.from(g.campaigns),
+            cpa:      g.sales > 0 ? g.budget / g.sales : 0,
+            cpc:      g.pageViews > 0 ? g.budget / g.pageViews : 0,
+            roas:     g.budget > 0 ? g.revenue / g.budget : 0,
+            convPage: g.pageViews > 0 ? (g.sales / g.pageViews) * 100 : 0,
+            atcRate:  g.pageViews > 0 ? (g.addToCart / g.pageViews) * 100 : 0,
         })).sort((a, b) => b.revenue - a.revenue);
     },
 
@@ -3713,7 +3726,7 @@ const FunnelModule = {
         const rows = this._aggregateByRegion();
 
         if (!rows.length) {
-            container.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:1.5rem">Sem dados de campanha no período. Importe um relatório do Meta com sub-entradas de anúncio.</td></tr>';
+            container.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:1.5rem">Sem dados de campanha no período. Importe um relatório do Meta com sub-entradas de anúncio.</td></tr>';
             return;
         }
 
@@ -3721,11 +3734,16 @@ const FunnelModule = {
         const fmtPct = (v) => v > 0 ? v.toFixed(2) + '%' : '--';
         const fmtNum = (v) => v ? v.toLocaleString('pt-BR') : '--';
         const fmtRoas = (v) => v > 0 ? v.toFixed(2) + 'x' : '--';
+        const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
         container.innerHTML = rows.map(r => {
             const labelHtml = typeof RegionTags !== 'undefined' ? RegionTags.label(r.region) : (r.region || '<span style="color:var(--text-muted)">Sem região</span>');
+            const interestHtml = r.interest
+                ? `<span style="background:var(--bg-input);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.78rem">${esc(r.interest)}</span>`
+                : '<span style="color:var(--text-muted);font-style:italic">--</span>';
             return `<tr>
                 <td><strong>${labelHtml}</strong><div style="font-size:0.7rem;color:var(--text-muted)">${r.campaignsCount} campanha${r.campaignsCount !== 1 ? 's' : ''}</div></td>
+                <td>${interestHtml}</td>
                 <td class="num">${fmtNum(r.pageViews)}</td>
                 <td class="num">${fmtNum(r.addToCart)}</td>
                 <td class="num">${fmtPct(r.atcRate)}</td>

@@ -100,4 +100,37 @@ const RegionTags = {
         diary.forEach(d => { if (d.region) set.add(d.region); });
         return Array.from(set).sort();
     },
+
+    // Extrai o "interesse" (audience target) do nome da campanha.
+    // Heurística: o bracket imediatamente após o tag de país/idioma é o interesse,
+    // desde que não seja data, código curto (CBO/RE/TC01/GT02/TP/etc) ou nota de
+    // performance (1V19CPA, 120>240, REATIVADO, etc).
+    extractInterest(campaignName) {
+        if (!campaignName) return '';
+        const brackets = [];
+        const re = /\[([^\]]+)\]/g;
+        let m;
+        while ((m = re.exec(String(campaignName))) !== null) {
+            brackets.push(m[1].trim());
+        }
+        if (!brackets.length) return '';
+
+        // Find country/language bracket
+        let countryIdx = -1;
+        for (let i = 0; i < brackets.length; i++) {
+            if (this.extract(`[${brackets[i]}]`)) { countryIdx = i; break; }
+        }
+        if (countryIdx < 0) return '';
+
+        const isDate = (s) => /^\s*\d{1,2}[./-]\d{1,2}/.test(s);
+        const isPerf = (s) => /\d+\s*V\d+|>|CPA|REATIV[AO]|R\$|\$\d|^\d+$/i.test(s);
+        const isShortCode = (s) => /^(?:CBO|ABO|RE|EN|TP|TC[-\s\d]*|GT[-\s\d]*|RR|FB|MB|ALL|TC-ALL)$/i.test(s.trim());
+
+        for (let i = countryIdx + 1; i < brackets.length; i++) {
+            const b = brackets[i];
+            if (isDate(b) || isPerf(b) || isShortCode(b)) continue;
+            return b;
+        }
+        return '';
+    },
 };

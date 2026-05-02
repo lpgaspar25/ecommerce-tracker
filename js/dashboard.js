@@ -1589,16 +1589,17 @@ const DashboardModule = {
 
         // Metric tabs + product selector on same row
         const tabs = [
-            { key: 'cpa',        label: 'CPA'         },
-            { key: 'cpaReal',    label: 'CPA Real'    },
-            { key: 'conversion', label: 'Conversão'   },
-            { key: 'profit',     label: 'Lucro'       },
-            { key: 'revenue',    label: 'Receita'     },
-            { key: 'sales',      label: 'Vendas'      },
-            { key: 'salesReal',  label: 'Vendas Real' },
-            { key: 'budget',     label: 'Gastos'      },
-            { key: 'cpm',        label: 'CPM'         },
-            { key: 'cpc',        label: 'CPC Médio'   },
+            { key: 'cpa',                label: 'CPA'              },
+            { key: 'cpaReal',            label: 'CPA + Real'       },
+            { key: 'conversion',         label: 'Conversão'        },
+            { key: 'conversionCombined', label: 'Conversão + Real' },
+            { key: 'profit',             label: 'Lucro'            },
+            { key: 'revenue',            label: 'Receita'          },
+            { key: 'sales',              label: 'Vendas'           },
+            { key: 'salesReal',          label: 'Vendas + Real'    },
+            { key: 'budget',             label: 'Gastos'           },
+            { key: 'cpm',                label: 'CPM'              },
+            { key: 'cpc',                label: 'CPC Médio'        },
         ];
 
         // Build product options
@@ -1698,13 +1699,17 @@ const DashboardModule = {
                 prevValue = prevAgg.sales > 0 ? (this._currency === 'BRL' ? prevAgg.cpaBRL : prevAgg.cpa) : 0;
                 inverse = true;
                 break;
-            case 'cpaReal':
-                label = 'CPA Real';
+            case 'cpaReal': {
+                label = 'CPA + Real';
+                const metaCpa = agg.sales > 0 ? (this._currency === 'BRL' ? agg.cpaBRL : agg.cpa) : 0;
                 const cpaR = realCur.sales > 0 ? (this._currency === 'BRL' ? agg.budgetBRL : agg.budget) / realCur.sales : 0;
-                value = realCur.sales > 0 ? fmtMoney(cpaR) : '--';
+                const metaTxt = metaCpa > 0 ? fmtMoney(metaCpa) : '--';
+                const realTxt = cpaR > 0 ? fmtMoney(cpaR) : '--';
+                value = `Meta ${metaTxt} · Real ${realTxt}`;
                 prevValue = realPrev.sales > 0 ? (this._currency === 'BRL' ? prevAgg.budgetBRL : prevAgg.budget) / realPrev.sales : 0;
                 inverse = true;
                 break;
+            }
             case 'profit':
                 label = 'Lucro do período';
                 const profit = this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
@@ -1722,12 +1727,39 @@ const DashboardModule = {
                 prevValue = prevAgg.sales;
                 percent = false;
                 break;
-            case 'salesReal':
-                label = 'Vendas Real';
-                value = realCur.sales + (realCur.sales === 1 ? ' venda' : ' vendas');
+            case 'salesReal': {
+                label = 'Vendas + Real';
+                value = `Meta ${agg.sales || 0} · Real ${realCur.sales || 0}`;
                 prevValue = realPrev.sales;
                 percent = false;
                 break;
+            }
+            case 'conversionCombined': {
+                label = 'Conversão + Real';
+                const computeConv = (entries, aggData, salesOverride) => {
+                    const sales = salesOverride !== undefined ? salesOverride : aggData.sales;
+                    let pct = aggData.pageViews > 0 ? (sales / aggData.pageViews) * 100 : 0;
+                    if (pct === 0 && salesOverride === undefined) {
+                        let sum = 0, n = 0;
+                        entries.forEach(e => {
+                            const atc = Number(e.atcRate || 0);
+                            const co = Number(e.checkoutRate || 0);
+                            const sr = Number(e.saleRate || 0);
+                            if (atc > 0 && co > 0 && sr > 0) { sum += (atc * co * sr) / 10000; n++; }
+                        });
+                        if (n > 0) pct = sum / n;
+                    }
+                    return pct;
+                };
+                const metaConv = computeConv(curEntries, agg);
+                const realConv = computeConv(curEntries, agg, realCur.sales);
+                const metaTxt = metaConv > 0 ? metaConv.toFixed(2) + '%' : '--';
+                const realTxt = realConv > 0 ? realConv.toFixed(2) + '%' : '--';
+                value = `Meta ${metaTxt} · Real ${realTxt}`;
+                prevValue = compareActive ? computeConv(prevEntries, prevAgg, realPrev.sales) : 0;
+                percent = false;
+                break;
+            }
             case 'budget':
                 label = 'Gastos';
                 value = fmtMoney(this._currency === 'BRL' ? agg.budgetBRL : agg.budget);
@@ -1809,6 +1841,10 @@ const DashboardModule = {
                     }
                     return pct;
                 }
+                // For combined "Meta + Real" tabs, delta is computed on the Real value
+                if (metric === 'conversionCombined') {
+                    return agg.pageViews > 0 ? (realCur.sales / agg.pageViews) * 100 : 0;
+                }
                 return 0;
             })();
         }
@@ -1861,26 +1897,57 @@ const DashboardModule = {
     _getDayMetricValue(dayEntries, metric, isSingleProduct, targetCpaUSD, dayStr) {
         const agg = this._aggregate(dayEntries);
 
-        // "Real" metrics need the Shopify sales map for this day + product filter
-        if (metric === 'cpaReal' || metric === 'salesReal') {
+        // Combined "Meta + Real" metrics: show both values stacked
+        if (metric === 'cpaReal' || metric === 'salesReal' || metric === 'conversionCombined') {
             const pid = this._calProduct || 'todos';
             const real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            const prefix = this._currency === 'BRL' ? 'R$' : '$';
+
             if (metric === 'cpaReal') {
-                if (real.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
-                const val = this._currency === 'BRL' ? (agg.budgetBRL / real.sales) : (agg.budget / real.sales);
-                const prefix = this._currency === 'BRL' ? 'R$' : '$';
-                const text = prefix + this._compactNum(val);
-                if (isSingleProduct && targetCpaUSD > 0) {
-                    const ratio = (agg.budget / real.sales) / targetCpaUSD;
-                    if (ratio <= 1.0) return { text, cls: 'mcal-val-green' };
-                    if (ratio <= 1.5) return { text, cls: 'mcal-val-yellow' };
-                    return { text, cls: 'mcal-val-red' };
+                const metaCpa = agg.sales > 0 ? (this._currency === 'BRL' ? agg.cpaBRL : agg.cpa) : 0;
+                const realCpa = real.sales > 0 ? (this._currency === 'BRL' ? agg.budgetBRL / real.sales : agg.budget / real.sales) : 0;
+                if (metaCpa === 0 && realCpa === 0) return { text: '--', cls: 'mcal-val-muted' };
+                const metaTxt = metaCpa > 0 ? prefix + this._compactNum(metaCpa) : '--';
+                const realTxt = realCpa > 0 ? prefix + this._compactNum(realCpa) : '--';
+                let cls = 'mcal-val-neutral';
+                if (isSingleProduct && targetCpaUSD > 0 && realCpa > 0) {
+                    const ratio = (agg.budget / Math.max(real.sales, 1)) / targetCpaUSD;
+                    cls = ratio <= 1.0 ? 'mcal-val-green' : ratio <= 1.5 ? 'mcal-val-yellow' : 'mcal-val-red';
                 }
-                return { text, cls: 'mcal-val-neutral' };
+                return {
+                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${metaTxt}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${realTxt}`,
+                    cls
+                };
             }
-            // salesReal
-            if (real.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
-            return { text: real.sales + (real.sales === 1 ? ' venda' : ' vendas'), cls: 'mcal-val-accent' };
+
+            if (metric === 'salesReal') {
+                const meta = agg.sales || 0;
+                const realN = real.sales || 0;
+                if (meta === 0 && realN === 0) return { text: '--', cls: 'mcal-val-muted' };
+                return {
+                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${meta || '--'}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${realN || '--'}`,
+                    cls: 'mcal-val-accent'
+                };
+            }
+
+            // conversionCombined: pageViews are the same denominator; only sales differ
+            if (metric === 'conversionCombined') {
+                const pv = agg.pageViews;
+                if (pv <= 0 && real.sales === 0 && agg.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
+                const metaConv = pv > 0 ? (agg.sales / pv) * 100 : 0;
+                const realConv = pv > 0 ? (real.sales / pv) * 100 : 0;
+                if (metaConv === 0 && realConv === 0) return { text: '--', cls: 'mcal-val-muted' };
+                const fmtPct = (v) => v > 0 ? v.toFixed(2) + '%' : '--';
+                let cls = 'mcal-val-neutral';
+                const best = Math.max(metaConv, realConv);
+                if (best >= 2) cls = 'mcal-val-green';
+                else if (best >= 1) cls = 'mcal-val-yellow';
+                else cls = 'mcal-val-red';
+                return {
+                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${fmtPct(metaConv)}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${fmtPct(realConv)}`,
+                    cls
+                };
+            }
         }
 
         if (metric === 'budget') {
