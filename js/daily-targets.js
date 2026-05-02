@@ -149,45 +149,74 @@ const DailyTargetsCalculator = {
         if (!pid) return;
         const override = this._userOverrides[pid] || {};
 
-        // Today's actual budget + visitors for this product (excluding sub-entries)
+        // Today's actual budget + visitors for this product.
+        // Strategy: sum SUB-ENTRIES (per-campaign rows) when they exist, since the
+        // parent entry can get overwritten when the user uploads multiple reports
+        // for the same product/date (e.g. one per region). Sub-entries persist
+        // across uploads, so summing them gives the true total budget.
+        // Fallback to parent entry only when no sub-entries exist.
         const today = (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0, 10);
-        const todayEntries = (AppState.diary || []).filter(d =>
+        const todaySubs = (AppState.diary || []).filter(d =>
+            d.isCampaign && d.productId === pid && d.date === today
+        );
+        const todayParents = (AppState.diary || []).filter(d =>
             !d.isCampaign && !d.parentId && d.productId === pid && d.date === today
         );
+        const todayEntries = todaySubs.length ? todaySubs : todayParents;
 
-        // Fallback: avg of last 7 days
         let budgetUSD = 0;
         let visitors = 0;
         let visitorsSource = '';
         let budgetSource = '';
         let avgCpcUSD = 0;
-        let detectedBudgetCurrency = '';   // currency the budget actually came in (from import)
+        let detectedBudgetCurrency = '';
         if (todayEntries.length) {
             todayEntries.forEach(e => {
                 budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
                 visitors  += Number(e.pageViews || 0);
                 if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });
-            if (budgetUSD > 0) budgetSource = 'Sincronizado com Diário (hoje)';
-            if (visitors > 0) visitorsSource = 'Visitantes de hoje';
+            if (budgetUSD > 0) {
+                budgetSource = todaySubs.length
+                    ? `Sincronizado com Diário (soma de ${todaySubs.length} campanhas hoje)`
+                    : 'Sincronizado com Diário (hoje)';
+            }
+            if (visitors > 0) visitorsSource = todaySubs.length
+                ? `Soma das ${todaySubs.length} campanhas hoje`
+                : 'Visitantes de hoje';
         }
 
         const start = new Date();
         start.setDate(start.getDate() - 7);
         const startStr = start.toISOString().slice(0, 10);
-        const recent = (AppState.diary || []).filter(d =>
+        // For 7-day average, use sub-entries when available (more complete), else parents
+        const recentSubs = (AppState.diary || []).filter(d =>
+            d.isCampaign && d.productId === pid && d.date >= startStr && d.date <= today
+        );
+        const recentParents = (AppState.diary || []).filter(d =>
             !d.isCampaign && !d.parentId && d.productId === pid && d.date >= startStr && d.date <= today
         );
-
-        if (todayEntries.length === 0 && recent.length) {
-            let bSum = 0, vSum = 0;
-            recent.forEach(e => {
-                bSum += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
-                vSum += Number(e.pageViews || 0);
+        // Group by date to compute daily totals, then average
+        const groupByDate = (arr) => {
+            const map = {};
+            arr.forEach(e => {
+                const k = e.date;
+                if (!map[k]) map[k] = { budgetUSD: 0, visitors: 0 };
+                map[k].budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
+                map[k].visitors += Number(e.pageViews || 0);
                 if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });
-            budgetUSD = bSum / recent.length;
-            visitors = vSum / recent.length;
+            return map;
+        };
+        const recent = recentSubs.length ? recentSubs : recentParents;
+
+        if (todayEntries.length === 0 && recent.length) {
+            const dailyMap = groupByDate(recent);
+            const dayKeys = Object.keys(dailyMap);
+            const totalBudget = dayKeys.reduce((s, k) => s + dailyMap[k].budgetUSD, 0);
+            const totalVisitors = dayKeys.reduce((s, k) => s + dailyMap[k].visitors, 0);
+            budgetUSD = totalBudget / dayKeys.length;
+            visitors = totalVisitors / dayKeys.length;
             if (budgetUSD > 0) budgetSource = 'Média dos últimos 7 dias (sem dado de hoje)';
             if (visitors > 0) visitorsSource = 'Média dos últimos 7 dias';
         }
@@ -357,12 +386,26 @@ const DailyTargetsCalculator = {
         }
 
         const M_local = convertCurrency(r.margin, 'USD', cur);
-        const todaySalesEntry = (AppState.diary || []).find(d =>
-            !d.isCampaign && !d.parentId && d.productId === this._state.productId && d.date === todayISO()
+        // Today's actual sales / conversion: prefer summing sub-entries when present
+        const todayPid = this._state.productId;
+        const todayDate = todayISO();
+        const todaySubsRender = (AppState.diary || []).filter(d =>
+            d.isCampaign && d.productId === todayPid && d.date === todayDate
         );
-        const todaySales = todaySalesEntry?.sales || 0;
-        const todayConv = (todaySalesEntry?.pageViews || 0) > 0
-            ? (todaySales / todaySalesEntry.pageViews) * 100 : 0;
+        let todaySales = 0, todayPV = 0;
+        if (todaySubsRender.length) {
+            todaySubsRender.forEach(e => {
+                todaySales += Number(e.sales || 0);
+                todayPV += Number(e.pageViews || 0);
+            });
+        } else {
+            const parentToday = (AppState.diary || []).find(d =>
+                !d.isCampaign && !d.parentId && d.productId === todayPid && d.date === todayDate
+            );
+            todaySales = parentToday?.sales || 0;
+            todayPV = parentToday?.pageViews || 0;
+        }
+        const todayConv = todayPV > 0 ? (todaySales / todayPV) * 100 : 0;
 
         summary.innerHTML = `
             <div style="display:flex;flex-wrap:wrap;gap:1rem;font-size:0.82rem;padding:0.6rem 0.8rem;background:var(--bg-input);border-radius:6px">

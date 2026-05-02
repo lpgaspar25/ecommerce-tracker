@@ -1897,56 +1897,55 @@ const DashboardModule = {
     _getDayMetricValue(dayEntries, metric, isSingleProduct, targetCpaUSD, dayStr) {
         const agg = this._aggregate(dayEntries);
 
-        // Combined "Meta + Real" metrics: show both values stacked
+        // Combined "Meta + Real" metrics: Real is the headline value, Meta is shown
+        // as small reference above. Color of Real = direction vs Meta (green=better,
+        // red=worse). Days with no Real fall back to Meta-only (cleaner than showing
+        // a "R --" placeholder).
         if (metric === 'cpaReal' || metric === 'salesReal' || metric === 'conversionCombined') {
             const pid = this._calProduct || 'todos';
             const real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
             const prefix = this._currency === 'BRL' ? 'R$' : '$';
 
+            const renderCombined = (metaVal, realVal, fmt, lowerIsBetter) => {
+                const hasMeta = metaVal > 0;
+                const hasReal = realVal > 0;
+                if (!hasMeta && !hasReal) return { text: '--', cls: 'mcal-val-muted' };
+
+                // Real-only or Meta-only: just show that single value, no comparison line
+                if (hasReal && !hasMeta) {
+                    return { text: fmt(realVal), cls: 'mcal-val-accent' };
+                }
+                if (hasMeta && !hasReal) {
+                    return {
+                        text: `${fmt(metaVal)}<span class="mcal-meta-sub">Sem real</span>`,
+                        cls: 'mcal-val-neutral'
+                    };
+                }
+
+                // Both present: color Real based on whether it beats Meta
+                const better = lowerIsBetter ? (realVal <= metaVal) : (realVal >= metaVal);
+                const cls = better ? 'mcal-val-green' : 'mcal-val-red';
+                return {
+                    text: `<span class="mcal-meta-sub">Meta ${fmt(metaVal)}</span>${fmt(realVal)}`,
+                    cls
+                };
+            };
+
             if (metric === 'cpaReal') {
                 const metaCpa = agg.sales > 0 ? (this._currency === 'BRL' ? agg.cpaBRL : agg.cpa) : 0;
                 const realCpa = real.sales > 0 ? (this._currency === 'BRL' ? agg.budgetBRL / real.sales : agg.budget / real.sales) : 0;
-                if (metaCpa === 0 && realCpa === 0) return { text: '--', cls: 'mcal-val-muted' };
-                const metaTxt = metaCpa > 0 ? prefix + this._compactNum(metaCpa) : '--';
-                const realTxt = realCpa > 0 ? prefix + this._compactNum(realCpa) : '--';
-                let cls = 'mcal-val-neutral';
-                if (isSingleProduct && targetCpaUSD > 0 && realCpa > 0) {
-                    const ratio = (agg.budget / Math.max(real.sales, 1)) / targetCpaUSD;
-                    cls = ratio <= 1.0 ? 'mcal-val-green' : ratio <= 1.5 ? 'mcal-val-yellow' : 'mcal-val-red';
-                }
-                return {
-                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${metaTxt}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${realTxt}`,
-                    cls
-                };
+                return renderCombined(metaCpa, realCpa, (v) => prefix + this._compactNum(v), /*lowerIsBetter*/ true);
             }
 
             if (metric === 'salesReal') {
-                const meta = agg.sales || 0;
-                const realN = real.sales || 0;
-                if (meta === 0 && realN === 0) return { text: '--', cls: 'mcal-val-muted' };
-                return {
-                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${meta || '--'}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${realN || '--'}`,
-                    cls: 'mcal-val-accent'
-                };
+                return renderCombined(agg.sales || 0, real.sales || 0, (v) => String(Math.round(v)), /*lowerIsBetter*/ false);
             }
 
-            // conversionCombined: pageViews are the same denominator; only sales differ
             if (metric === 'conversionCombined') {
                 const pv = agg.pageViews;
-                if (pv <= 0 && real.sales === 0 && agg.sales === 0) return { text: '--', cls: 'mcal-val-muted' };
                 const metaConv = pv > 0 ? (agg.sales / pv) * 100 : 0;
                 const realConv = pv > 0 ? (real.sales / pv) * 100 : 0;
-                if (metaConv === 0 && realConv === 0) return { text: '--', cls: 'mcal-val-muted' };
-                const fmtPct = (v) => v > 0 ? v.toFixed(2) + '%' : '--';
-                let cls = 'mcal-val-neutral';
-                const best = Math.max(metaConv, realConv);
-                if (best >= 2) cls = 'mcal-val-green';
-                else if (best >= 1) cls = 'mcal-val-yellow';
-                else cls = 'mcal-val-red';
-                return {
-                    text: `<span style="font-size:0.65rem;opacity:0.7">M</span> ${fmtPct(metaConv)}<br><span style="font-size:0.65rem;opacity:0.7">R</span> ${fmtPct(realConv)}`,
-                    cls
-                };
+                return renderCombined(metaConv, realConv, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
             }
         }
 
