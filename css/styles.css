@@ -7311,3 +7311,80 @@ body.privacy-mode .pipeline-card-image,
 body.privacy-mode img.product-thumb {
     filter: blur(8px);
 }
+
+/* ── Daily Targets Calculator (Metas tab) ── */
+.dt-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+.dt-card {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--dt-accent, var(--accent));
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.dt-card-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.dt-card-main {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+.dt-card-sales {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--dt-accent);
+    line-height: 1;
+}
+.dt-card-unit {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.dt-card-status {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    align-self: flex-start;
+}
+.dt-status-on-track { background: #d1fae5; color: #047857; }
+.dt-status-off-track { background: #fef3c7; color: #92400e; }
+.dt-card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+    margin-top: 0.2rem;
+}
+.dt-card-grid > div {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+}
+.dt-card-grid > div span {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+.dt-card-grid > div strong {
+    font-weight: 600;
+    color: var(--text);
+}
+.dt-card-unreachable {
+    border-left-color: #dc2626;
+    opacity: 0.85;
+}
+.dt-card-warning {
+    color: #dc2626;
+    font-style: italic;
+    font-size: 0.85rem;
+}

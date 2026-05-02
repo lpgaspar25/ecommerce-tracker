@@ -158,13 +158,15 @@ const DailyTargetsCalculator = {
         // Fallback: avg of last 7 days
         let budgetUSD = 0;
         let visitors = 0;
-        let visitorsSource = '';   // human-readable label about where visitors came from
-        let budgetSource = '';     // human-readable label about where budget came from
+        let visitorsSource = '';
+        let budgetSource = '';
         let avgCpcUSD = 0;
+        let detectedBudgetCurrency = '';   // currency the budget actually came in (from import)
         if (todayEntries.length) {
             todayEntries.forEach(e => {
                 budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
                 visitors  += Number(e.pageViews || 0);
+                if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });
             if (budgetUSD > 0) budgetSource = 'Sincronizado com Diário (hoje)';
             if (visitors > 0) visitorsSource = 'Visitantes de hoje';
@@ -182,6 +184,7 @@ const DailyTargetsCalculator = {
             recent.forEach(e => {
                 bSum += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
                 vSum += Number(e.pageViews || 0);
+                if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });
             budgetUSD = bSum / recent.length;
             visitors = vSum / recent.length;
@@ -230,8 +233,11 @@ const DailyTargetsCalculator = {
         const profitInput = document.getElementById('dt-target-profit');
         const convInput = document.getElementById('dt-target-conv');
         const product = (AppState.products || []).find(p => p.id === pid);
-        const cur = product?.priceCurrency || 'USD';
+        // Prefer the currency the budget actually arrived in (from import). Fallback
+        // to product's price currency, then USD.
+        const cur = (override.budgetCurrency || detectedBudgetCurrency || product?.priceCurrency || 'USD');
         this._state.budgetCurrency = cur;
+        this._state.displayCurrency = cur;
         if (budgetCurrencySel) budgetCurrencySel.value = cur;
         if (budgetInput) budgetInput.value = (convertCurrency(this._state.budgetUSD, 'USD', cur) || 0).toFixed(2);
         const budgetSrcEl = document.getElementById('dt-budget-source');
@@ -338,57 +344,67 @@ const DailyTargetsCalculator = {
     },
 
     _render() {
-        const tbody = document.getElementById('dt-results-body');
+        const cardsEl = document.getElementById('dt-cards');
         const summary = document.getElementById('dt-summary');
-        if (!tbody || !summary) return;
+        if (!cardsEl || !summary) return;
 
         const r = this._calculate();
+        const cur = this._state.displayCurrency || this._state.budgetCurrency || 'USD';
         if (!r || r.budgetUSD <= 0) {
             summary.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem">Preencha um orçamento diário para calcular as metas.</div>';
-            tbody.innerHTML = '';
+            cardsEl.innerHTML = '';
             return;
         }
 
-        // Summary line
-        const product = (AppState.products || []).find(p => p.id === this._state.productId);
-        const cur = product?.priceCurrency || 'USD';
         const M_local = convertCurrency(r.margin, 'USD', cur);
         const todaySalesEntry = (AppState.diary || []).find(d =>
             !d.isCampaign && !d.parentId && d.productId === this._state.productId && d.date === todayISO()
         );
         const todaySales = todaySalesEntry?.sales || 0;
+        const todayConv = (todaySalesEntry?.pageViews || 0) > 0
+            ? (todaySales / todaySalesEntry.pageViews) * 100 : 0;
+
         summary.innerHTML = `
-            <div class="dt-summary-line">
-                <span>Margem unitária (antes de ads): <strong>${this._fmtMoney(M_local, cur)}</strong></span>
-                <span>Vendas hoje: <strong>${todaySales}</strong></span>
+            <div style="display:flex;flex-wrap:wrap;gap:1rem;font-size:0.82rem;padding:0.6rem 0.8rem;background:var(--bg-input);border-radius:6px">
+                <span><span style="color:var(--text-muted)">Margem/venda:</span> <strong>${this._fmtMoney(M_local, cur)}</strong></span>
+                <span><span style="color:var(--text-muted)">Vendas hoje:</span> <strong>${todaySales}</strong></span>
+                <span><span style="color:var(--text-muted)">Conversão hoje:</span> <strong>${todayConv > 0 ? todayConv.toFixed(2) + '%' : '--'}</strong></span>
             </div>`;
 
         if (r.scenarios.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:1rem">Margem zero ou negativa — verifique preço/custo do produto.</td></tr>';
+            cardsEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1.5rem">Margem zero ou negativa — verifique preço/custo do produto.</div>';
             return;
         }
 
-        tbody.innerHTML = r.scenarios.map(s => {
+        cardsEl.innerHTML = r.scenarios.map(s => {
             if (s.unreachable) {
-                return `<tr>
-                    <td><strong>${this._esc(s.label)}</strong></td>
-                    <td colspan="5" style="color:var(--red);font-style:italic">${this._esc(s.note)}</td>
-                </tr>`;
+                return `<div class="dt-card dt-card-unreachable">
+                    <div class="dt-card-header">${this._esc(s.label)}</div>
+                    <div class="dt-card-warning">${this._esc(s.note)}</div>
+                </div>`;
             }
             const onTrack = todaySales >= s.sales;
-            const statusIcon = onTrack ? '✅' : '🎯';
+            const statusCls = onTrack ? 'on-track' : 'off-track';
+            const statusLabel = onTrack ? 'No alvo' : 'Faltam ' + (s.sales - todaySales);
             const profitFmt = s.profit !== undefined ? this._fmtMoney(convertCurrency(s.profit, 'USD', cur), cur) : '--';
-            const convFmt = s.conv !== null && s.conv !== undefined ? s.conv.toFixed(2) + '%' : '--';
+            const convFmt = s.conv !== null && s.conv !== undefined && s.conv > 0 ? s.conv.toFixed(2) + '%' : '--';
             const cpaFmt = s.cpa > 0 ? this._fmtMoney(convertCurrency(s.cpa, 'USD', cur), cur) : '--';
             const roasFmt = s.roas > 0 ? s.roas.toFixed(2) + 'x' : '--';
-            return `<tr>
-                <td><strong>${this._esc(s.label)}</strong></td>
-                <td class="num"><span style="font-size:1.1rem"><strong>${s.sales}</strong></span> ${statusIcon}</td>
-                <td class="num">${profitFmt}</td>
-                <td class="num">${convFmt}</td>
-                <td class="num">${cpaFmt}</td>
-                <td class="num">${roasFmt}</td>
-            </tr>`;
+            const accent = s.key === 'breakeven' ? '#6b7280' : s.key === 'profit' ? '#059669' : '#3b82f6';
+            return `<div class="dt-card" style="--dt-accent:${accent}">
+                <div class="dt-card-label">${this._esc(s.label)}</div>
+                <div class="dt-card-main">
+                    <span class="dt-card-sales">${s.sales}</span>
+                    <span class="dt-card-unit">vendas/dia</span>
+                </div>
+                <div class="dt-card-status dt-status-${statusCls}">${statusLabel}</div>
+                <div class="dt-card-grid">
+                    <div><span>Lucro</span><strong>${profitFmt}</strong></div>
+                    <div><span>Conv.</span><strong>${convFmt}</strong></div>
+                    <div><span>CPA</span><strong>${cpaFmt}</strong></div>
+                    <div><span>ROAS</span><strong>${roasFmt}</strong></div>
+                </div>
+            </div>`;
         }).join('');
     },
 
