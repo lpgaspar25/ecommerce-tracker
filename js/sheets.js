@@ -264,7 +264,7 @@ const SheetsAPI = {
                         'ID', 'Data', 'ProdutoID', 'Orcamento', 'MoedaOrcamento',
                         'Vendas', 'Receita', 'MoedaReceita', 'CPAReal', 'CPCReal', 'Plataforma', 'Notas',
                         'Impressoes', 'PageViews', 'AddToCart', 'Checkout', 'HistoricoProduto', 'LojaID', 'PeriodoInicio', 'PeriodoFim',
-                        'Teste', 'TesteDataFim', 'TesteValidacao', 'TesteTipo', 'CriativoID', 'MetaTeste'
+                        'Teste', 'TesteDataFim', 'TesteValidacao', 'TesteTipo', 'CriativoID', 'MetaTeste', 'OrcamentoConfigurado'
                     ]));
                 }
                 if (needed.includes(this.TABS.CONFIG)) {
@@ -321,7 +321,7 @@ const SheetsAPI = {
                 ranges: [
                     `${this.TABS.PRODUCTS}!A2:M`,
                     `${this.TABS.GOALS}!A2:H`,
-                    `${this.TABS.DIARY}!A2:W`,
+                    `${this.TABS.DIARY}!A2:AA`,
                     `${this.TABS.CONFIG}!A2:C`,
                     `${this.TABS.STORES}!A2:C`
                 ]
@@ -399,7 +399,8 @@ const SheetsAPI = {
                     storeId: row[17] || fallbackStoreId,
                     isTest: ['sim', 'true', '1', 'yes'].includes(String(row[20] || '').trim().toLowerCase()),
                     testEndDate: row[21] || '',
-                    testValidation: row[22] || ''
+                    testValidation: row[22] || '',
+                    budgetConfigured: parseFloat(row[26]) || 0
                 };
             });
 
@@ -928,7 +929,8 @@ const SheetsAPI = {
             d.testValidation || '',
             d.testType || '',
             d.creativeId || '',
-            d.testGoal || ''
+            d.testGoal || '',
+            d.budgetConfigured || 0
         ];
     },
 

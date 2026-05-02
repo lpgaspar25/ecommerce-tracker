@@ -168,18 +168,23 @@ const DailyTargetsCalculator = {
         let visitors = 0;
         let visitorsSource = '';
         let budgetSource = '';
+        let budgetUsedConfigured = false;
         let avgCpcUSD = 0;
         let detectedBudgetCurrency = '';
         if (todayEntries.length) {
+            const anyConfigured = todayEntries.some(e => Number(e.budgetConfigured || 0) > 0);
             todayEntries.forEach(e => {
-                budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
+                const raw = anyConfigured ? Number(e.budgetConfigured || e.budget || 0) : Number(e.budget || 0);
+                budgetUSD += convertToUSD(raw, e.budgetCurrency || 'USD');
                 visitors  += Number(e.pageViews || 0);
                 if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });
+            budgetUsedConfigured = anyConfigured;
             if (budgetUSD > 0) {
+                const suffix = anyConfigured ? ' — orçamento configurado' : ' — gasto real';
                 budgetSource = todaySubs.length
-                    ? `Sincronizado com Diário (soma de ${todaySubs.length} campanhas hoje)`
-                    : 'Sincronizado com Diário (hoje)';
+                    ? `Sincronizado com Diário (soma de ${todaySubs.length} campanhas hoje${suffix})`
+                    : `Sincronizado com Diário (hoje${suffix})`;
             }
             if (visitors > 0) visitorsSource = todaySubs.length
                 ? `Soma das ${todaySubs.length} campanhas hoje`
@@ -199,10 +204,12 @@ const DailyTargetsCalculator = {
         // Group by date to compute daily totals, then average
         const groupByDate = (arr) => {
             const map = {};
+            const anyConfiguredRecent = arr.some(e => Number(e.budgetConfigured || 0) > 0);
             arr.forEach(e => {
                 const k = e.date;
                 if (!map[k]) map[k] = { budgetUSD: 0, visitors: 0 };
-                map[k].budgetUSD += convertToUSD(e.budget || 0, e.budgetCurrency || 'USD');
+                const raw = anyConfiguredRecent ? Number(e.budgetConfigured || e.budget || 0) : Number(e.budget || 0);
+                map[k].budgetUSD += convertToUSD(raw, e.budgetCurrency || 'USD');
                 map[k].visitors += Number(e.pageViews || 0);
                 if (!detectedBudgetCurrency && e.budgetCurrency) detectedBudgetCurrency = e.budgetCurrency;
             });

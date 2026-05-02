@@ -9,6 +9,7 @@ const DashboardModule = {
     _calYear: new Date().getFullYear(),
     _calMonth: new Date().getMonth(), // 0-based
     _calProduct: 'todos',
+    _calRegion: '',
 
     // Shopify real-sales cache (keyed by "start|end")
     _realSalesMap: null,
@@ -1551,6 +1552,61 @@ const DashboardModule = {
     },
 
     // ── Metrics Calendar ─────────────────────────────────────────
+    _getCalendarBaseEntries() {
+        const region = this._calRegion;
+        const calFilter = this._calProduct;
+        const diary = AppState.diary || [];
+        if (!region) {
+            return diary.filter(e => {
+                if (e.isCampaign) return false;
+                if (calFilter !== 'todos' && e.productId !== calFilter) return false;
+                return true;
+            });
+        }
+        const subs = diary.filter(e => {
+            if (!e.isCampaign) return false;
+            if (e.region !== region) return false;
+            if (calFilter !== 'todos' && e.productId !== calFilter) return false;
+            return true;
+        });
+        const byKey = {};
+        subs.forEach(s => {
+            const key = `${s.date}|${s.productId}`;
+            if (!byKey[key]) {
+                byKey[key] = {
+                    id: `cal_${key}`, date: s.date, productId: s.productId, storeId: s.storeId || '',
+                    budget: 0, budgetConfigured: 0, sales: 0, revenue: 0,
+                    impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                    budgetCurrency: s.budgetCurrency, revenueCurrency: s.revenueCurrency || s.budgetCurrency,
+                    cpcCurrency: s.cpcCurrency || s.budgetCurrency,
+                    isCampaign: false, region,
+                };
+            }
+            const a = byKey[key];
+            a.budget += Number(s.budget || 0);
+            a.budgetConfigured += Number(s.budgetConfigured || 0);
+            a.sales += Number(s.sales || 0);
+            a.revenue += Number(s.revenue || 0);
+            a.impressions += Number(s.impressions || 0);
+            a.pageViews += Number(s.pageViews || 0);
+            a.addToCart += Number(s.addToCart || 0);
+            a.checkout += Number(s.checkout || 0);
+        });
+        return Object.values(byKey).map(e => ({
+            ...e,
+            cpa: e.sales > 0 ? e.budget / e.sales : 0,
+            cpc: 0,
+        }));
+    },
+
+    _getCalendarRegionOptions() {
+        const set = new Set();
+        (AppState.diary || []).forEach(d => {
+            if (d.isCampaign && d.region) set.add(d.region);
+        });
+        return Array.from(set).sort();
+    },
+
     _renderMetricsCalendar() {
         const container = document.getElementById('dash-metrics-calendar');
         if (!container) return;
@@ -1563,13 +1619,9 @@ const DashboardModule = {
             return;
         }
 
-        // Use calendar's own product filter
+        // Use calendar's own product + region filter
         const calFilter = this._calProduct;
-        const allEntries = (AppState.diary || []).filter(e => {
-            if (e.isCampaign) return false;
-            if (calFilter !== 'todos' && e.productId !== calFilter) return false;
-            return true;
-        });
+        const allEntries = this._getCalendarBaseEntries();
         const byDate = {};
         allEntries.forEach(e => {
             if (!byDate[e.date]) byDate[e.date] = [];
@@ -1608,6 +1660,13 @@ const DashboardModule = {
             `<option value="${p.id}"${calFilter === p.id ? ' selected' : ''}>${p.name}</option>`
         ).join('');
 
+        // Build region options from sub-entries that have region tags
+        const regions = this._getCalendarRegionOptions();
+        const regionLabel = (r) => (typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(r) : r;
+        const regionOptions = regions.map(r =>
+            `<option value="${r}"${this._calRegion === r ? ' selected' : ''}>${regionLabel(r)}</option>`
+        ).join('');
+
         const headerHtml = `
         <div class="mcal-header-bar">
             <div class="mcal-tabs">${tabs.map(t =>
@@ -1616,6 +1675,10 @@ const DashboardModule = {
             <select class="mcal-product-select" id="mcal-product">
                 <option value="todos"${calFilter === 'todos' ? ' selected' : ''}>Todos os Produtos</option>
                 ${prodOptions}
+            </select>
+            <select class="mcal-product-select" id="mcal-region"${regions.length === 0 ? ' disabled title="Sem campanhas com tag de país"' : ''}>
+                <option value=""${this._calRegion === '' ? ' selected' : ''}>Todos os países</option>
+                ${regionOptions}
             </select>
         </div>`;
 
@@ -1652,6 +1715,12 @@ const DashboardModule = {
             this._renderMetricsCalendar();
         });
 
+        // Region select handler
+        container.querySelector('#mcal-region')?.addEventListener('change', (e) => {
+            this._calRegion = e.target.value;
+            this._renderMetricsCalendar();
+        });
+
         // Prev/next month
         container.querySelector('#mcal-prev')?.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1674,7 +1743,7 @@ const DashboardModule = {
     _renderCalSummary() {
         const metric = this._calMetric;
         const pid = this._calProduct;
-        const entriesAll = (AppState.diary || []).filter(e => !e.isCampaign);
+        const entriesAll = this._getCalendarBaseEntries();
         const filterByPid = (arr) => pid === 'todos' ? arr : arr.filter(e => e.productId === pid);
         const inRange = (arr, s, e) => arr.filter(x => x.date >= s && x.date <= e);
 

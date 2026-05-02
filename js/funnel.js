@@ -1272,6 +1272,29 @@ const FunnelModule = {
         };
     },
 
+    _extractCampaignBudgetConfig(dataRows, headerMap) {
+        const adNameIdx = this._findHeaderIndex(headerMap, ['nome do anuncio', 'ad name']);
+        const campNameIdx = this._findHeaderIndex(headerMap, ['nome da campanha', 'campaign name']);
+        const levelIdx = this._findHeaderIndex(headerMap, ['nivel de veiculacao', 'delivery level']);
+        const byCampaign = {};
+        let totalDaily = 0;
+        dataRows.forEach(row => {
+            const adName = adNameIdx >= 0 ? String(row?.[adNameIdx] || '').trim().toLowerCase() : '';
+            const level = levelIdx >= 0 ? this._normalizeCsvKey(row?.[levelIdx] || '') : '';
+            const isCampaignLevel = (adName === 'all' || adName === '') || level === 'campaign';
+            if (!isCampaignLevel) return;
+            const m = this._extractCsvMetricsFromRow(row, headerMap);
+            const value = Number(m?.budgetConfigured || 0);
+            if (value <= 0) return;
+            const campaign = campNameIdx >= 0 ? String(row?.[campNameIdx] || '').trim() : '';
+            if (campaign && byCampaign[campaign] == null) {
+                byCampaign[campaign] = value;
+                totalDaily += value;
+            }
+        });
+        return { totalDaily: parseFloat(totalDaily.toFixed(2)), byCampaign };
+    },
+
     async _importFacebookReportRows(rows, sourceLabel) {
         if (!rows || rows.length < 2) {
             throw new Error(`${sourceLabel} vazio ou inválido`);
@@ -1291,15 +1314,17 @@ const FunnelModule = {
             throw new Error('Relatório sem linhas de dados');
         }
 
+        const budgetConfig = this._extractCampaignBudgetConfig(dataRows, headerMap);
+
         const dailyGroups = this._groupDailyRows(dataRows, headerMap);
         if (dailyGroups.size > 1) {
-            const handled = await this._importFacebookPeriodByDay(dataRows, headerMap, sourceLabel, dailyGroups);
+            const handled = await this._importFacebookPeriodByDay(dataRows, headerMap, sourceLabel, dailyGroups, budgetConfig);
             if (handled) return;
         }
 
         // NEW: Handle multi-day period summaries (all rows share the same date range).
         // Without this, the fallback below would save everything as "today".
-        const splitHandled = await this._importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel);
+        const splitHandled = await this._importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel, budgetConfig);
         if (splitHandled) return;
 
         const totalsRow = this._findTotalsRow(dataRows, headerMap);
@@ -1330,9 +1355,10 @@ const FunnelModule = {
      *
      * Returns true if it handled the import, false to let the caller use the generic fallback.
      */
-    async _importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel) {
+    async _importFacebookPeriodSummarySplit(dataRows, headerMap, sourceLabel, budgetConfig = null) {
         const overall = this._inferReportOverallRange(dataRows, headerMap);
         if (!overall || overall.startDate === overall.endDate) return false;
+        if (!budgetConfig) budgetConfig = this._extractCampaignBudgetConfig(dataRows, headerMap);
         const days = this._daysBetweenInclusive(overall.startDate, overall.endDate);
         if (days <= 1) return false;
 
@@ -1411,7 +1437,7 @@ const FunnelModule = {
         const noteLabel = `${sourceLabel} (período ${overall.startDate}<i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i>${overall.endDate}, dividido por ${days} dias)`;
         let created = 0, updated = 0;
         for (const date of dates) {
-            const metrics = { ...perDay };
+            const metrics = { ...perDay, budgetConfigured: budgetConfig.totalDaily };
             dailyMetricsByDate[date] = metrics;
             try {
                 const status = await this._upsertDiaryEntryFromImportedDay(productId, storeId, date, metrics, noteLabel);
@@ -1485,6 +1511,7 @@ const FunnelModule = {
                         isCampaign: true,
                         budget: parseFloat(spendPerDay.toFixed(2)),
                         budgetCurrency: agg.valueCurrency,
+                        budgetConfigured: parseFloat((Number(budgetConfig.byCampaign[agg.campaignVal] || 0)).toFixed(2)),
                         sales: Math.round(salesPerDay),
                         revenue: parseFloat((agg.purchaseValue / days).toFixed(2)),
                         revenueCurrency: agg.valueCurrency,
@@ -2007,6 +2034,7 @@ const FunnelModule = {
             storeId,
             budget: parseFloat(spend.toFixed(2)),
             budgetCurrency: spendCurrency,
+            budgetConfigured: parseFloat((Number(importedMetrics.budgetConfigured || 0)).toFixed(2)),
             sales,
             revenue: parseFloat(Number(importedMetrics.purchaseValue || 0).toFixed(2)),
             revenueCurrency: spendCurrency,
@@ -2080,9 +2108,10 @@ const FunnelModule = {
         return 'created';
     },
 
-    async _importFacebookPeriodByDay(dataRows, headerMap, sourceLabel, groupedRows = null) {
+    async _importFacebookPeriodByDay(dataRows, headerMap, sourceLabel, groupedRows = null, budgetConfig = null) {
         const grouped = groupedRows || this._groupDailyRows(dataRows, headerMap);
         if (!grouped || grouped.size <= 1) return false;
+        if (!budgetConfig) budgetConfig = this._extractCampaignBudgetConfig(dataRows, headerMap);
 
         const productId = this.state.productId;
         const storeId = getWritableStoreId(productId);
@@ -2102,6 +2131,7 @@ const FunnelModule = {
             const metrics = this._pickBestDailyRow(dayRows, headerMap);
             if (!metrics) continue;
 
+            metrics.budgetConfigured = budgetConfig.totalDaily;
             dailyMetricsByDate[date] = metrics;
             try {
                 const status = await this._upsertDiaryEntryFromImportedDay(productId, storeId, date, metrics, sourceLabel);
@@ -2186,6 +2216,7 @@ const FunnelModule = {
                     isCampaign: true,
                     budget: parseFloat(agg.spend.toFixed(2)),
                     budgetCurrency: agg.valueCurrency,
+                    budgetConfigured: parseFloat((Number(budgetConfig.byCampaign[agg.campaignVal] || 0)).toFixed(2)),
                     sales: Math.round(agg.purchase),
                     revenue: parseFloat(agg.purchaseValue.toFixed(2)),
                     revenueCurrency: agg.valueCurrency,
@@ -2602,6 +2633,7 @@ const FunnelModule = {
         ];
         const purchaseCandidates = ['compras no site', 'compras', 'purchases', 'resultados'];
         const purchaseValueCandidates = ['valor de conversao da compra', 'valor de conversao', 'purchase conversion value'];
+        const budgetConfiguredCandidates = ['orcamento da campanha', 'campaign budget', 'daily budget', 'orcamento diario'];
         const ctrRateCandidates = ['ctr taxa de cliques no link', 'ctr de saida', 'ctr'];
         const viewPageRateCandidates = ['perda de clique', 'view page cliques', 'view page / cliques'];
         const atcRateCandidates = [
@@ -2637,6 +2669,7 @@ const FunnelModule = {
         const checkout = this._toNumber(this._pickCsvValue(row, headerMap, checkoutCandidates));
         const purchase = this._toNumber(this._pickCsvValue(row, headerMap, purchaseCandidates));
         const purchaseValue = this._toNumber(this._pickCsvValue(row, headerMap, purchaseValueCandidates));
+        const budgetConfigured = this._toNumber(this._pickCsvValue(row, headerMap, budgetConfiguredCandidates));
 
         const ctrRaw = this._normalizeRatePercent(this._pickCsvValue(row, headerMap, ctrRateCandidates));
         const viewPageRateRaw = this._normalizeRatePercent(this._pickCsvValue(row, headerMap, viewPageRateCandidates));
@@ -2698,6 +2731,7 @@ const FunnelModule = {
             checkout: Math.round(checkout),
             purchase: Math.round(purchase),
             purchaseValue: parseFloat(purchaseValue.toFixed(2)),
+            budgetConfigured: parseFloat(budgetConfigured.toFixed(2)),
             ctr: parseFloat((ctr || 0).toFixed(4)),
             viewPageRate: parseFloat((viewPageRate || 0).toFixed(4)),
             atcRate: parseFloat((atcRate || 0).toFixed(4)),
@@ -2739,6 +2773,7 @@ const FunnelModule = {
             checkout: 0,
             purchase: 0,
             purchaseValue: 0,
+            budgetConfigured: 0,
             ctrWeightedSum: 0,
             ctrWeight: 0,
             viewPageRateWeightedSum: 0,
@@ -2784,6 +2819,7 @@ const FunnelModule = {
             totals.checkout += m.checkout;
             totals.purchase += m.purchase;
             totals.purchaseValue += m.purchaseValue;
+            totals.budgetConfigured += Number(m.budgetConfigured || 0);
             {
                 const denominator = m.impressions > 0 ? m.impressions : 0;
                 if (m.rateColumns?.ctr) {

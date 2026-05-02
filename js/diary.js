@@ -26,7 +26,8 @@ const DiaryModule = {
         { id: 'realCpa', label: 'CPA Real', default: false },
         { id: 'convPage', label: 'Conv. Pagina', default: true },
         { id: 'convCheckout', label: 'Conv. Checkout', default: true },
-        { id: 'budget', label: 'Orcamento', default: false },
+        { id: 'budget', label: 'Gasto Real', default: false },
+        { id: 'budgetConfigured', label: 'Orcam. Configurado', default: false },
         { id: 'revenue', label: 'Receita', default: false },
         { id: 'cpa', label: 'CPA', default: false },
         { id: 'cpc', label: 'CPC', default: false },
@@ -230,6 +231,7 @@ const DiaryModule = {
                 return this._fmtMetricCell(value, 'convCheckout');
             }
             case 'budget': return `<td class="num">${entry.budget ? entry.budget.toFixed(2) : '--'}</td>`;
+            case 'budgetConfigured': return `<td class="num">${entry.budgetConfigured ? entry.budgetConfigured.toFixed(2) : '--'}</td>`;
             case 'revenue': return `<td class="num">${entry.revenue ? entry.revenue.toFixed(2) : '--'}</td>`;
             case 'cpa': {
                 const cpaBRL = convertToBRL(entry.cpa || 0, entry.budgetCurrency || 'BRL');
@@ -288,7 +290,7 @@ const DiaryModule = {
     },
 
     _getHeaderHtml(col) {
-        const numCols = ['pageViews','atcRate','addToCart','icRate','sales','convPage','convCheckout','budget','revenue','cpa','cpc','cpm','roas','impressions','profit'];
+        const numCols = ['pageViews','atcRate','addToCart','icRate','sales','convPage','convCheckout','budget','budgetConfigured','revenue','cpa','cpc','cpm','roas','impressions','profit'];
         const isNum = numCols.includes(col.id);
         return `<th${isNum ? ' class="num"' : ''}>${this._escapeHtml(col.label)}</th>`;
     },
@@ -340,6 +342,10 @@ const DiaryModule = {
             }
             case 'budget':
                 return `<td class="num">${totals.totalBudget > 0 ? totals.totalBudget.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            case 'budgetConfigured': {
+                const totalConf = sortedEntries.reduce((s, e) => s + Number(e.budgetConfigured || 0), 0);
+                return `<td class="num">${totalConf > 0 ? totalConf.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
+            }
             case 'revenue':
                 return `<td class="num">${totals.totalRevenue > 0 ? totals.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '--'}</td>`;
             case 'impressions':
@@ -537,6 +543,7 @@ const DiaryModule = {
 
         document.getElementById('diary-product-filter').addEventListener('change', () => this.render());
         document.getElementById('diary-platform-filter').addEventListener('change', () => this.render());
+        document.getElementById('diary-region-filter')?.addEventListener('change', () => this.render());
 
         // Compare mode
         document.getElementById('btn-diary-compare')?.addEventListener('click', () => this._toggleCompareMode());
@@ -924,20 +931,86 @@ const DiaryModule = {
         showToast(`${ids.length} entrada${ids.length > 1 ? 's' : ''} excluída${ids.length > 1 ? 's' : ''}`, 'info');
     },
 
+    _populateRegionFilter() {
+        const sel = document.getElementById('diary-region-filter');
+        if (!sel) return;
+        const present = new Set();
+        (AppState.diary || []).forEach(d => { if (d.isCampaign && d.region) present.add(d.region); });
+        const sorted = Array.from(present).sort();
+        const current = sel.value;
+        while (sel.options.length > 1) sel.remove(1);
+        sorted.forEach(code => {
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = (typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(code) : code;
+            sel.appendChild(opt);
+        });
+        sel.disabled = sorted.length === 0;
+        sel.title = sorted.length === 0 ? 'Importe campanhas com tag de país no nome (ex: [EUA], [DE]) para habilitar' : '';
+        if (current && sorted.includes(current)) sel.value = current;
+    },
+
+    _aggregateSubsByDayProduct(subs, regionCode) {
+        const byKey = {};
+        subs.forEach(s => {
+            const key = `${s.date}|${s.productId}`;
+            if (!byKey[key]) {
+                byKey[key] = {
+                    id: `region_${regionCode}_${key}`,
+                    date: s.date, productId: s.productId, storeId: s.storeId || '',
+                    budget: 0, budgetConfigured: 0, sales: 0, revenue: 0,
+                    impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                    budgetCurrency: s.budgetCurrency || 'BRL',
+                    revenueCurrency: s.revenueCurrency || s.budgetCurrency || 'BRL',
+                    cpcCurrency: s.cpcCurrency || s.budgetCurrency || 'BRL',
+                    platform: s.platform || 'Meta Ads',
+                    notes: `Filtrado por ${(typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(regionCode) : regionCode}`,
+                    isCampaign: false, region: regionCode,
+                    isTest: false, testEndDate: '', testValidation: '',
+                };
+            }
+            const a = byKey[key];
+            a.budget += Number(s.budget || 0);
+            a.budgetConfigured += Number(s.budgetConfigured || 0);
+            a.sales += Number(s.sales || 0);
+            a.revenue += Number(s.revenue || 0);
+            a.impressions += Number(s.impressions || 0);
+            a.pageViews += Number(s.pageViews || 0);
+            a.addToCart += Number(s.addToCart || 0);
+            a.checkout += Number(s.checkout || 0);
+        });
+        return Object.values(byKey).map(e => ({
+            ...e,
+            cpa: e.sales > 0 ? e.budget / e.sales : 0,
+            cpc: 0,
+        }));
+    },
+
     getFilteredEntries() {
         const productFilter = document.getElementById('diary-product-filter').value;
         const platformFilter = document.getElementById('diary-platform-filter').value;
+        const regionFilter = document.getElementById('diary-region-filter')?.value || '';
         const startDate = document.getElementById('diary-date-start')?.value || '';
         const endDate = document.getElementById('diary-date-end')?.value || '';
 
-        return AppState.diary.filter(entry => {
-            if (entry.isCampaign) return false;
+        const matchesScope = (entry) => {
             if (startDate && entry.date < startDate) return false;
             if (endDate && entry.date > endDate) return false;
             if (productFilter === '__STORE__' && entry.productId && entry.testType !== 'store') return false;
             if (productFilter !== 'todos' && productFilter !== '__STORE__' && entry.productId !== productFilter) return false;
             if (platformFilter !== 'todos' && entry.platform !== platformFilter) return false;
             return true;
+        };
+
+        if (regionFilter) {
+            const subs = (AppState.diary || []).filter(e => e.isCampaign && e.region === regionFilter && matchesScope(e));
+            return this._aggregateSubsByDayProduct(subs, regionFilter)
+                .sort((a, b) => b.date.localeCompare(a.date));
+        }
+
+        return AppState.diary.filter(entry => {
+            if (entry.isCampaign) return false;
+            return matchesScope(entry);
         }).sort((a, b) => b.date.localeCompare(a.date));
     },
 
@@ -1267,6 +1340,8 @@ const DiaryModule = {
         }
         // Auto-evaluate test results for entries with ended test periods
         AppState.allDiary.forEach(e => { if (e.isTest && e.testEndDate) this._evaluateTestResult(e); });
+
+        this._populateRegionFilter();
 
         let entries = this.getFilteredEntries();
         if (this._activeView === 'tests') {
@@ -2112,6 +2187,7 @@ const DiaryModule = {
         // but to sub-entries (isCampaign=true with parentId)
         const productFilter = document.getElementById('diary-product-filter').value;
         const platformFilter = document.getElementById('diary-platform-filter').value;
+        const regionFilter = document.getElementById('diary-region-filter')?.value || '';
         const startDate = document.getElementById('diary-date-start')?.value || '';
         const endDate = document.getElementById('diary-date-end')?.value || '';
 
@@ -2123,6 +2199,7 @@ const DiaryModule = {
             if (productFilter === '__STORE__' && entry.productId && entry.testType !== 'store') return false;
             if (productFilter !== 'todos' && productFilter !== '__STORE__' && entry.productId !== productFilter) return false;
             if (platformFilter !== 'todos' && entry.platform !== platformFilter) return false;
+            if (regionFilter && entry.region !== regionFilter) return false;
             return true;
         });
     },
