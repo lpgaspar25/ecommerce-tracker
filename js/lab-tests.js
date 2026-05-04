@@ -429,6 +429,23 @@ const LabTestsModule = {
             creatSelect.value = test?.creativeId || '';
         }
 
+        // Populate region dropdown from RegionTags
+        const regionSelect = get('lab-region');
+        if (regionSelect) {
+            regionSelect.innerHTML = '<option value="">Todos / não específico</option>';
+            if (typeof RegionTags !== 'undefined' && Array.isArray(RegionTags.PATTERNS)) {
+                RegionTags.PATTERNS.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.code;
+                    opt.textContent = RegionTags.labelPlain(p.code);
+                    regionSelect.appendChild(opt);
+                });
+            }
+            regionSelect.value = test?.region || '';
+        }
+        const interestEl = get('lab-interest');
+        if (interestEl) interestEl.value = test?.interest || '';
+
         // Conclusion fields
         get('lab-conclusion').value = test?.conclusion || '';
         get('lab-result').value = test?.result || 'neutro';
@@ -551,6 +568,8 @@ const LabTestsModule = {
             baselineValue: get('lab-baseline'),
             productId: get('lab-product'),
             creativeId: get('lab-creative'),
+            region: get('lab-region'),
+            interest: get('lab-interest'),
             metrics: (() => {
                 const m = {};
                 for (const key of ['cpc','cpa','ctr','sales','roas','budget']) {
@@ -575,6 +594,16 @@ const LabTestsModule = {
         };
 
         if (!data.title) { showToast('Preencha o título', 'error'); return; }
+
+        // Conflict check: warn (but don't block) if another active test of the same product
+        // overlaps in time AND can't be distinguished by region/creativeId/interest.
+        const conflict = this._findOverlappingTest(data, this._editingId);
+        if (conflict) {
+            const reason = !data.region && !conflict.region && !data.creativeId && !conflict.creativeId && !data.interest && !conflict.interest
+                ? 'Defina País, Criativo ou Interesse em pelo menos um deles pra evitar mistura de dados.'
+                : 'Os filtros de País/Criativo/Interesse desses dois testes batem — eles vão computar os mesmos lançamentos.';
+            showToast(`Conflito: já existe teste ativo "${conflict.title}" (${conflict.dateStart} até ${conflict.dateEnd || '—'}) sobreposto. ${reason}`, 'warning');
+        }
 
         let savedTest;
         if (this._editingId) {
@@ -601,6 +630,28 @@ const LabTestsModule = {
         this._closeModal();
         this._renderCards();
         showToast(this._editingId ? 'Teste atualizado!' : 'Teste criado!', 'success');
+    },
+
+    _findOverlappingTest(data, ignoreId) {
+        if (!data.productId || !data.dateStart) return null;
+        const dataEnd = data.dateEnd || data.dateStart;
+        return this._tests.find(t => {
+            if (t.id === ignoreId) return false;
+            if (t.productId !== data.productId) return false;
+            if (t.status === 'cancelado' || t.status === 'concluido') return false;
+            const tEnd = t.dateEnd || t.dateStart;
+            const overlap = !(dataEnd < t.dateStart || data.dateStart > tEnd);
+            if (!overlap) return false;
+            // A segregator only distinguishes when BOTH sides set it to different values.
+            // If one side is empty, its evaluation uses parents (full aggregate) — which
+            // includes the other side's data, so they conflict.
+            const distinguished = (
+                (data.region && t.region && data.region !== t.region) ||
+                (data.creativeId && t.creativeId && data.creativeId !== t.creativeId) ||
+                (data.interest && t.interest && data.interest.trim().toLowerCase() !== t.interest.trim().toLowerCase())
+            );
+            return !distinguished;
+        });
     },
 
     _deleteTest(id) {
@@ -681,6 +732,8 @@ const LabTestsModule = {
                 notes,
                 creativeId: test.creativeId || '',
                 labTestId: test.id,
+                region: test.region || '',
+                interest: test.interest || '',
             };
 
             // Find ALL candidate rows for this product+date (non-campaign), so we

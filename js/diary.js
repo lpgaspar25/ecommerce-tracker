@@ -1279,13 +1279,38 @@ const DiaryModule = {
         const parsed = this._parseTestGoal(entry.testGoal);
         if (!parsed) return;
 
-        // Gather diary entries during test period for same product
+        // Gather diary entries during test period for same product.
+        // When the test has segregators (region / creativeId / interest), pull
+        // from sub-entries (per-campaign rows) filtered by them so we don't
+        // count data from a parallel test on the same product/period.
         const startDate = entry.date;
         const endDate = entry.testEndDate;
         const pid = entry.productId;
-        const testEntries = AppState.allDiary.filter(d =>
-            d.productId === pid && d.date >= startDate && d.date <= endDate
-        );
+        const segRegion = entry.region || '';
+        const segInterest = (entry.interest || '').trim().toLowerCase();
+        let segCreativeName = '';
+        if (entry.creativeId && Array.isArray(AppState.allCreatives)) {
+            const c = AppState.allCreatives.find(c => c.id === entry.creativeId);
+            segCreativeName = (c?.name || '').trim().toLowerCase();
+        }
+        const hasSegmentation = !!(segRegion || segInterest || segCreativeName);
+
+        let testEntries;
+        if (hasSegmentation) {
+            testEntries = AppState.allDiary.filter(d => {
+                if (!d.isCampaign) return false;
+                if (d.productId !== pid) return false;
+                if (d.date < startDate || d.date > endDate) return false;
+                if (segRegion && d.region !== segRegion) return false;
+                if (segInterest && (d.interest || '').trim().toLowerCase() !== segInterest) return false;
+                if (segCreativeName && (d.adName || '').trim().toLowerCase() !== segCreativeName) return false;
+                return true;
+            });
+        } else {
+            testEntries = AppState.allDiary.filter(d =>
+                !d.isCampaign && d.productId === pid && d.date >= startDate && d.date <= endDate
+            );
+        }
         if (testEntries.length === 0) return;
 
         let actual = 0;

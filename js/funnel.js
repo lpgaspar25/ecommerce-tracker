@@ -2056,9 +2056,12 @@ const FunnelModule = {
             viewPageRate: parseFloat(Number(importedMetrics.viewPageRate || 0).toFixed(2))
         };
 
-        // Auto-assign test info if there's an active test for this product covering this date
+        // Auto-assign test info if there's exactly ONE active test for this product
+        // covering this date. When multiple tests overlap, skip auto-attach — the
+        // parent entry can't represent both, and evaluation already works directly
+        // on sub-entries (filtered by region/criativo/interesse).
         if (!existing || !existing.isTest) {
-            const activeTest = AppState.allDiary.find(d =>
+            const activeTests = AppState.allDiary.filter(d =>
                 d.isTest === true &&
                 d.productId === productId &&
                 (!d.testValidation || d.testValidation === 'pendente' || d.testValidation === '') &&
@@ -2066,7 +2069,16 @@ const FunnelModule = {
                 date >= d.date && date <= d.testEndDate &&
                 d.id !== payload.id
             );
-            if (activeTest) {
+            // De-dup by labTestId so the same Pipeline test (mirrored as N daily entries) counts once
+            const uniqTestIds = new Set();
+            const distinctTests = activeTests.filter(t => {
+                const k = t.labTestId || t.id;
+                if (uniqTestIds.has(k)) return false;
+                uniqTestIds.add(k);
+                return true;
+            });
+            if (distinctTests.length === 1) {
+                const activeTest = distinctTests[0];
                 payload.isTest = true;
                 payload.notes = activeTest.notes || payload.notes;
                 payload.testEndDate = activeTest.testEndDate;
