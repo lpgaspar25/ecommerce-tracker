@@ -21,7 +21,7 @@
 
 const DEFAULTS = {
   API_VERSION: '2026-01',
-  SCOPES: 'read_orders,read_products,read_all_orders',
+  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_translations,write_locales,read_translations',
   APP_URL: 'https://app-calculadora-lucas.pages.dev',
 };
 
@@ -60,6 +60,7 @@ export default {
 async function oauthStart(request, env, url) {
   const shop = normalizeShop(url.searchParams.get('shop'));
   const returnUrl = url.searchParams.get('return') || (env.APP_URL || DEFAULTS.APP_URL);
+  const appState = url.searchParams.get('app_state') || '';
 
   if (!shop) {
     return json({ error: 'Missing ?shop=xxx.myshopify.com' }, 400);
@@ -72,10 +73,10 @@ async function oauthStart(request, env, url) {
 
   // state = random nonce + returnUrl (base64)
   const nonce = crypto.randomUUID();
-  const state = btoa(JSON.stringify({ nonce, returnUrl, shop })).replace(/=+$/, '');
+  const state = btoa(JSON.stringify({ nonce, returnUrl, shop, appState })).replace(/=+$/, '');
 
   // Store nonce in KV for 10 min for validation
-  await env.SHOPIFY_TOKENS.put(`state:${nonce}`, JSON.stringify({ shop, returnUrl }), {
+  await env.SHOPIFY_TOKENS.put(`state:${nonce}`, JSON.stringify({ shop, returnUrl, appState }), {
     expirationTtl: 600,
   });
 
@@ -153,7 +154,37 @@ async function oauthCallback(request, env, url) {
     expirationTtl: 60 * 60 * 24 * 365,
   });
 
-  // Redirect back to app with sessionId
+  // If app_state was set, this came from a popup-based flow → postMessage to opener and close
+  if (parsed.appState) {
+    const payload = JSON.stringify({
+      type: 'shopify-oauth-complete',
+      app_state: parsed.appState,
+      session: sessionId,
+      shop,
+      scope: tokenJson.scope || '',
+    });
+    const html = `<!doctype html><meta charset="utf-8"><title>Conectado</title>
+<body style="font-family:system-ui;padding:2rem;background:#111;color:#eee;text-align:center">
+<h2 style="color:#34d399">Loja conectada com sucesso</h2>
+<p>${escapeHtml(shop)}</p>
+<p style="color:#94a3b8">Esta janela vai fechar automaticamente…</p>
+<script>
+(function(){
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(${payload}, '*');
+    }
+  } catch (e) {}
+  setTimeout(function(){ window.close(); }, 600);
+})();
+</script>`;
+    return new Response(html, {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  // Otherwise: redirect back to app with sessionId (legacy single-shop flow)
   const returnUrl = parsed.returnUrl || env.APP_URL || DEFAULTS.APP_URL;
   const finalUrl = new URL(returnUrl);
   finalUrl.searchParams.set('shopify_session', sessionId);

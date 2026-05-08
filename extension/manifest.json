@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "ETracker Product Scraper",
+    "version": "0.1.0",
+    "description": "Captura produtos de qualquer página e envia para o Importador do ETracker.",
+    "permissions": ["activeTab", "scripting", "storage", "tabs"],
+    "host_permissions": ["<all_urls>"],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_title": "ETracker — Capturar produto"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://app-calculadora-lucas.pages.dev/*",
+                "https://*.app-calculadora-lucas.pages.dev/*",
+                "http://localhost:*/*",
+                "http://127.0.0.1:*/*"
+            ],
+            "js": ["content/app-bridge.js"],
+            "run_at": "document_idle"
+        }
+    ]
+}

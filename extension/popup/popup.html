@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>ETracker — Capturar produto</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header>
+        <strong>ETracker</strong>
+        <span class="hint">Captura de produto</span>
+    </header>
+
+    <main id="main">
+        <div id="status" class="status">Detectando…</div>
+
+        <div id="preview" class="preview" style="display:none">
+            <img id="preview-img" alt="">
+            <div class="preview-info">
+                <div id="preview-title" class="preview-title">—</div>
+                <div id="preview-vendor" class="preview-vendor">—</div>
+                <div id="preview-price" class="preview-price">—</div>
+                <div id="preview-imgs" class="preview-imgs">—</div>
+            </div>
+        </div>
+
+        <div id="error" class="error" style="display:none"></div>
+
+        <div class="actions">
+            <button id="btn-extract" class="btn">↻ Re-extrair</button>
+            <button id="btn-collection" class="btn btn-secondary" style="display:none">Capturar coleção</button>
+            <button id="btn-send" class="btn btn-primary" disabled>Enviar para ETracker</button>
+        </div>
+
+        <div class="queue-row" id="queue-row">
+            <span id="queue-count">0 produtos na fila</span>
+            <button id="btn-clear-queue" class="btn-link">Limpar</button>
+        </div>
+    </main>
+
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ compatibility_date = "2024-10-01"
 
 [vars]
 APP_URL = "https://app-calculadora-lucas.pages.dev"
-SCOPES = "read_orders,read_products,read_all_orders"
+SCOPES = "read_orders,read_products,read_all_orders,write_products,write_translations,write_locales,read_translations"
 API_VERSION = "2026-01"
 
 # KV namespace for OAuth state + access tokens.

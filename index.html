@@ -111,6 +111,8 @@
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
+        <button class="tab-btn" data-tab="importador">Importador</button>
+        <button class="tab-btn" data-tab="vendas">Vendas</button>
     </nav>
 
     <!-- Tab Content -->
@@ -260,6 +262,20 @@
                 <div class="dash-card">
                     <h3><i data-lucide="filter" style="width:15px;height:15px"></i> Diagnóstico do Funil</h3>
                     <div id="dash-funnel-diagnosis" class="dash-funnel"></div>
+                </div>
+            </div>
+
+            <!-- Row 2c: Sales Today widget -->
+            <div class="dash-card sales-dash-widget" id="dash-sales-widget">
+                <h3 style="display:flex;align-items:center;justify-content:space-between">
+                    <span><i data-lucide="line-chart" style="width:15px;height:15px;vertical-align:-2px"></i> Vendas hoje &amp; padrões</span>
+                    <span style="display:flex;gap:0.4rem;align-items:center">
+                        <button id="btn-dash-sales-refresh" class="btn btn-secondary btn-sm" type="button" title="Atualizar"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i></button>
+                        <button id="btn-dash-sales-open" class="btn btn-secondary btn-sm" type="button">Abrir aba Vendas →</button>
+                    </span>
+                </h3>
+                <div id="dash-sales-body" class="dash-sales-body">
+                    <p class="imp-hint" style="padding:1rem 0">Conecte o Shopify para ver vendas em tempo real.</p>
                 </div>
             </div>
 
@@ -2798,7 +2814,417 @@
             <div id="projects-list" class="projects-list"></div>
         </section>
 
+        <!-- ==================== IMPORTADOR ==================== -->
+        <section id="tab-importador" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="package-plus" style="width:14px;height:14px;vertical-align:-2px"></i> Importador de Produtos</h2>
+                <div style="display:flex;gap:0.5rem">
+                    <button id="btn-imp-shops" class="btn btn-secondary"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Lojas Shopify</button>
+                    <button id="btn-imp-clear" class="btn btn-secondary">Limpar tudo</button>
+                </div>
+            </div>
+
+            <!-- Source selector -->
+            <div class="imp-source-bar">
+                <label class="imp-source-tab active" data-source="csv">
+                    <input type="radio" name="imp-source" value="csv" checked hidden>
+                    <i data-lucide="file-spreadsheet" style="width:14px;height:14px;vertical-align:-2px"></i> CSV Shopify
+                </label>
+                <label class="imp-source-tab" data-source="url">
+                    <input type="radio" name="imp-source" value="url" hidden>
+                    <i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> URL /products.json
+                </label>
+                <label class="imp-source-tab" data-source="extension" title="Receber DOM de página aberta via extensão">
+                    <input type="radio" name="imp-source" value="extension" hidden>
+                    <i data-lucide="chrome" style="width:14px;height:14px;vertical-align:-2px"></i> Extensão Chrome
+                </label>
+            </div>
+
+            <div id="imp-source-csv" class="imp-source-pane">
+                <label for="imp-csv-file" class="imp-drop-zone">
+                    <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--text-muted)"></i>
+                    <strong>Arraste o CSV ou clique para selecionar</strong>
+                    <small>Formato exportação Shopify (Handle, Title, Body (HTML), Vendor, …)</small>
+                    <input type="file" id="imp-csv-file" accept=".csv,text/csv" hidden>
+                </label>
+            </div>
+
+            <div id="imp-source-url" class="imp-source-pane" style="display:none">
+                <div class="form-row" style="align-items:end">
+                    <div class="form-group" style="flex:3">
+                        <label>URL da loja (Shopify público)</label>
+                        <input type="url" id="imp-url-input" class="input" placeholder="https://exemplo.myshopify.com">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Limite</label>
+                        <input type="number" id="imp-url-limit" class="input" min="1" max="250" value="50">
+                    </div>
+                    <button id="imp-url-load" class="btn btn-primary"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Buscar</button>
+                </div>
+                <p class="imp-hint">Busca <code>/products.json?limit=N</code>. Funciona em qualquer Shopify com catálogo público.</p>
+            </div>
+
+            <div id="imp-source-extension" class="imp-source-pane" style="display:none">
+                <div class="imp-ext-info">
+                    <p class="imp-hint">Capture produtos de qualquer site (Sunglass Hut, Shopify, lojas com Schema.org, etc.) clicando no ícone da extensão na barra do Chrome. Os produtos chegam aqui automaticamente.</p>
+                    <button id="btn-imp-ext-install" class="btn btn-primary"><i data-lucide="chrome" style="width:14px;height:14px;vertical-align:-2px"></i> Instalar / atualizar extensão</button>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div id="imp-toolbar" class="imp-toolbar" style="display:none">
+                <div class="imp-toolbar-left">
+                    <label class="imp-checkbox"><input type="checkbox" id="imp-select-all"> Selecionar todos</label>
+                    <span id="imp-count" class="imp-count">0 produtos</span>
+                </div>
+                <div class="imp-toolbar-right">
+                    <div class="imp-lang-picker" id="imp-lang-picker">
+                        <button type="button" class="btn btn-secondary btn-sm imp-lang-btn" id="imp-lang-btn">
+                            <i data-lucide="languages" style="width:14px;height:14px;vertical-align:-2px"></i>
+                            <span id="imp-lang-btn-label">Idiomas</span>
+                        </button>
+                        <div class="imp-lang-popover" id="imp-lang-popover" style="display:none">
+                            <div class="imp-lang-popover-search">
+                                <input type="text" id="imp-lang-search" class="input input-sm" placeholder="Filtrar idioma…">
+                            </div>
+                            <div class="imp-lang-popover-list" id="imp-lang-list"></div>
+                            <div class="imp-lang-popover-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" id="imp-lang-clear">Limpar</button>
+                                <button type="button" class="btn btn-primary btn-sm" id="imp-lang-done">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="imp-translate-btn" class="btn btn-secondary btn-sm" disabled>Traduzir selecionados</button>
+                    <button id="btn-imp-sessions" class="btn btn-secondary btn-sm" title="Salvar / carregar sessões"><i data-lucide="bookmark" style="width:14px;height:14px;vertical-align:-2px"></i> Sessões</button>
+                    <select id="imp-target-shop" class="input input-sm">
+                        <option value="">Loja de destino…</option>
+                    </select>
+                    <select id="imp-publish-mode" class="input input-sm">
+                        <option value="duplicate">Subir como produto novo</option>
+                        <option value="markets">Atualizar tradução (Markets)</option>
+                    </select>
+                    <label class="imp-checkbox" title="Comprime + redimensiona antes de publicar (WebP)"><input type="checkbox" id="imp-compress-toggle"> Comprimir imagens</label>
+                    <button id="btn-imp-rebrand" class="btn btn-secondary btn-sm" disabled title="Trocar marca em texto e imagens"><i data-lucide="wand" style="width:14px;height:14px;vertical-align:-2px"></i> Trocar marca</button>
+                    <button id="imp-publish-btn" class="btn btn-primary btn-sm" disabled><i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Publicar selecionados</button>
+                </div>
+            </div>
+
+            <div id="imp-products" class="imp-products"></div>
+        </section>
+
+        <!-- ==================== VENDAS & PADRÕES ==================== -->
+        <section id="tab-vendas" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="line-chart" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas &amp; Padrões</h2>
+                <div style="display:flex;gap:0.5rem;align-items:center">
+                    <span id="sales-shop-tz" class="sales-shop-tz" title="Fuso horário da loja Shopify"></span>
+                    <button id="btn-sales-refresh" class="btn btn-secondary"><i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Atualizar</button>
+                    <button id="btn-sales-export" class="btn btn-secondary"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> CSV</button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="sales-filters">
+                <div class="form-group">
+                    <label>Período</label>
+                    <div class="dash-date-picker-wrap">
+                        <button type="button" id="sales-date-picker-btn" class="dash-date-picker-btn">
+                            <i data-lucide="calendar" style="width:14px;height:14px"></i>
+                            <span id="sales-date-label">Últimos 30 dias</span>
+                            <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                        </button>
+                        <div id="sales-date-dropdown" class="dash-date-dropdown" style="display:none">
+                            <div class="dash-date-dd-left">
+                                <button class="sales-date-preset" data-preset="today">Hoje</button>
+                                <button class="sales-date-preset" data-preset="yesterday">Ontem</button>
+                                <button class="sales-date-preset" data-preset="7">Últimos 7 dias</button>
+                                <button class="sales-date-preset" data-preset="14">Últimos 14 dias</button>
+                                <button class="sales-date-preset active" data-preset="30">Últimos 30 dias</button>
+                                <button class="sales-date-preset" data-preset="month">Este mês</button>
+                                <button class="sales-date-preset" data-preset="lastMonth">Mês passado</button>
+                                <button class="sales-date-preset" data-preset="90">Últimos 90 dias</button>
+                                <button class="sales-date-preset" data-preset="all">Todos</button>
+                                <button class="sales-date-preset" data-preset="custom">Personalizado</button>
+                            </div>
+                            <div class="dash-date-dd-right">
+                                <div class="dash-range-cal" id="sales-date-cal">
+                                    <div class="dash-range-cal-header">
+                                        <button type="button" class="dash-range-cal-nav" id="sales-date-cal-prev" aria-label="Mês anterior">‹</button>
+                                        <span class="dash-range-cal-title" id="sales-date-cal-title">—</span>
+                                        <button type="button" class="dash-range-cal-nav" id="sales-date-cal-next" aria-label="Próximo mês">›</button>
+                                    </div>
+                                    <div class="dash-range-cal-weekdays">
+                                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                    </div>
+                                    <div class="dash-range-cal-grid" id="sales-date-cal-grid"></div>
+                                    <div class="dash-range-cal-summary" id="sales-date-cal-summary">Clique uma data para começar.</div>
+                                </div>
+                                <input type="hidden" id="sales-date-start">
+                                <input type="hidden" id="sales-date-end">
+                                <div class="dash-date-actions">
+                                    <button id="sales-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                    <button id="sales-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="sales-date-from">
+                    <input type="hidden" id="sales-date-to">
+                    <input type="hidden" id="sales-quick-period" value="30">
+                </div>
+                <div class="form-group">
+                    <label>País</label>
+                    <select id="sales-country-filter" class="input input-sm">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Produto</label>
+                    <select id="sales-product-filter" class="input input-sm">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Break-even / Target Calculator -->
+            <div class="sales-calc-card">
+                <div class="sales-calc-head">
+                    <div>
+                        <strong><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Calculadora de Metas (período)</strong>
+                        <span class="sales-calc-sub" id="sales-calc-period-label"></span>
+                    </div>
+                    <button id="sales-calc-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                </div>
+                <div class="sales-calc-body" id="sales-calc-body">
+                    <div class="sales-calc-actions-row">
+                        <button id="btn-sales-calc-autofill" class="btn btn-secondary btn-sm" type="button" title="Puxar gasto + visitantes do Diário (relatório do Facebook)"><i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> Auto-preencher do Diário</button>
+                        <span id="sales-calc-source" class="sales-calc-source"></span>
+                    </div>
+                    <div class="sales-calc-inputs">
+                        <div class="form-group">
+                            <label>Gasto em ads (período)</label>
+                            <div style="display:flex;gap:0.3rem">
+                                <input type="text" id="sales-calc-spend" class="input input-sm" inputmode="decimal" placeholder="0,00">
+                                <select id="sales-calc-spend-currency" class="input input-sm" style="width:auto">
+                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Visitantes / sessões</label>
+                            <input type="text" id="sales-calc-visitors" class="input input-sm" inputmode="numeric" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Lucro alvo (% receita)</label>
+                            <input type="number" id="sales-calc-target-profit" class="input input-sm" min="0" step="1" value="30">
+                        </div>
+                        <div class="form-group">
+                            <label>Conversão alvo (%)</label>
+                            <input type="number" id="sales-calc-target-conv" class="input input-sm" min="0" step="0.1" value="2">
+                        </div>
+                        <div class="form-group">
+                            <label>Margem unitária (override)</label>
+                            <input type="text" id="sales-calc-margin-override" class="input input-sm" inputmode="decimal" placeholder="auto">
+                        </div>
+                    </div>
+                    <div class="sales-calc-meta" id="sales-calc-meta"></div>
+                    <div class="sales-calc-scenarios" id="sales-calc-scenarios"></div>
+                </div>
+            </div>
+
+            <!-- Patterns / Insights -->
+            <div class="sales-patterns-card">
+                <div class="sales-calc-head">
+                    <strong><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Padrões &amp; Insights</strong>
+                    <button id="sales-patterns-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                </div>
+                <div class="sales-patterns-body" id="sales-patterns-body">
+                    <div class="sales-patterns-grid">
+                        <div class="sales-pattern-block">
+                            <div class="sales-pattern-title">Mapa de calor — pedidos por hora × dia (TZ da loja)</div>
+                            <div id="sales-heatmap" class="sales-heatmap"></div>
+                        </div>
+                        <div class="sales-pattern-block">
+                            <div class="sales-pattern-title">Por dia da semana</div>
+                            <div id="sales-weekday-bars" class="sales-weekday-bars"></div>
+                        </div>
+                        <div class="sales-pattern-block">
+                            <div class="sales-pattern-title">Top países / cidades</div>
+                            <div id="sales-geo-table"></div>
+                        </div>
+                        <div class="sales-pattern-block">
+                            <div class="sales-pattern-title">Hora da 1ª venda — dias fortes vs fracos</div>
+                            <div id="sales-first-sale" class="sales-first-sale"></div>
+                        </div>
+                    </div>
+                    <div class="sales-pattern-block">
+                        <div class="sales-pattern-title">Insights detectados</div>
+                        <ul id="sales-insights" class="sales-insights"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="sales-summary" id="sales-summary"></div>
+
+            <!-- Table -->
+            <div class="sales-table-wrap">
+                <table class="sales-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Hora loja</th>
+                            <th>Hora cliente</th>
+                            <th>País</th>
+                            <th>Cidade</th>
+                            <th>Produtos</th>
+                            <th class="num">Itens</th>
+                            <th class="num">Valor</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sales-tbody"></tbody>
+                </table>
+                <div class="sales-table-footer">
+                    <button id="btn-sales-load-more" class="btn btn-secondary btn-sm" style="display:none">Mostrar mais</button>
+                </div>
+            </div>
+        </section>
+
     </main>
+
+    <!-- Rebrand Modal -->
+    <div id="modal-rebrand" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal('modal-rebrand')"></div>
+        <div class="modal-content" style="max-width:600px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>Trocar marca</h3>
+                <button class="btn-close" onclick="closeModal('modal-rebrand')">&times;</button>
+            </div>
+            <div style="padding:1rem;display:flex;flex-direction:column;gap:0.6rem">
+                <p class="imp-hint">Substitui o nome da marca em <strong>todos os textos</strong> (título, descrição, vendor, tags, SEO) e <strong>edita as imagens</strong> via <code>gpt-image-1</code> da OpenAI.</p>
+                <div class="form-row">
+                    <div class="form-group" style="flex:1">
+                        <label>Marca antiga *</label>
+                        <input type="text" id="rebrand-old" class="input" placeholder="Ex: Oakley">
+                    </div>
+                    <div class="form-group" style="flex:1">
+                        <label>Marca nova (vazio = remover)</label>
+                        <input type="text" id="rebrand-new" class="input" placeholder="Ex: Meridian">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="imp-checkbox"><input type="checkbox" id="rebrand-do-text" checked> Editar textos (find/replace, case-insensitive)</label>
+                </div>
+                <div class="form-group">
+                    <label class="imp-checkbox"><input type="checkbox" id="rebrand-do-images" checked> Editar imagens com gpt-image-1</label>
+                </div>
+                <div class="form-group" id="rebrand-image-opts">
+                    <label>Tamanho máximo</label>
+                    <select id="rebrand-size" class="input input-sm">
+                        <option value="1024x1024">1024×1024 (quadrado)</option>
+                        <option value="1024x1536">1024×1536 (vertical)</option>
+                        <option value="1536x1024" selected>1536×1024 (horizontal)</option>
+                    </select>
+                </div>
+                <div class="rebrand-cost" id="rebrand-cost-warn">
+                    <i data-lucide="alert-circle" style="width:14px;height:14px;vertical-align:-2px"></i>
+                    <strong>Custo estimado:</strong> ~US$ 0,17 por imagem em qualidade alta. Confirme antes de aplicar.
+                </div>
+                <div id="rebrand-progress" class="rebrand-progress" style="display:none"></div>
+                <div class="form-row" style="justify-content:space-between;margin-top:0.5rem">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-rebrand')">Cancelar</button>
+                    <button type="button" id="btn-rebrand-apply" class="btn btn-primary"><i data-lucide="wand" style="width:14px;height:14px;vertical-align:-2px"></i> Aplicar aos selecionados</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Extension Install Modal -->
+    <div id="modal-ext-install" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal('modal-ext-install')"></div>
+        <div class="modal-content" style="max-width:640px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>Instalar extensão Chrome</h3>
+                <button class="btn-close" onclick="closeModal('modal-ext-install')">&times;</button>
+            </div>
+            <div style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <ol class="imp-ext-steps">
+                    <li>
+                        <strong>Baixe os arquivos da extensão</strong>
+                        <p class="imp-hint"><a href="etracker-extension.zip" target="_blank" download class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-flex;align-items:center;gap:0.3rem"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Baixar ZIP</a> Salve em uma pasta e <strong>descompacte</strong>.</p>
+                        <p class="imp-hint">Arquivos necessários: <code>manifest.json</code>, <code>background.js</code>, <code>popup/popup.html</code>, <code>popup/popup.css</code>, <code>popup/popup.js</code>, <code>content/extractor.js</code>, <code>content/app-bridge.js</code>.</p>
+                    </li>
+                    <li>
+                        <strong>Abra o Chrome em <code>chrome://extensions</code></strong>
+                        <p class="imp-hint">Ative o "Modo do desenvolvedor" no canto superior direito.</p>
+                    </li>
+                    <li>
+                        <strong>Clique em "Carregar sem compactação"</strong>
+                        <p class="imp-hint">Selecione a pasta onde você salvou os arquivos da extensão.</p>
+                    </li>
+                    <li>
+                        <strong>Pronto! Use o ícone da extensão em qualquer página de produto</strong>
+                        <p class="imp-hint">Vá pra um produto da Sunglass Hut, Ray-Ban, qualquer Shopify, etc. → clique no ícone do ETracker Scraper → "Enviar para ETracker". Esta aba abre automaticamente com o produto adicionado.</p>
+                    </li>
+                </ol>
+                <div class="imp-hint" style="border-top:1px solid var(--border);padding-top:0.5rem">
+                    A extensão tenta primeiro <code>/products/{handle}.json</code> (Shopify), depois <code>JSON-LD</code> com Schema.org, e por fim heurística (h1 + og:image). Em coleções <code>/collections/...</code> baixa todos os produtos da página.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Importer Sessions Modal -->
+    <div id="modal-imp-sessions" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal('modal-imp-sessions')"></div>
+        <div class="modal-content" style="max-width:560px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>Sessões salvas</h3>
+                <button class="btn-close" onclick="closeModal('modal-imp-sessions')">&times;</button>
+            </div>
+            <div style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <p class="imp-hint">A sessão atual é salva automaticamente. Use isto para guardar versões nomeadas e voltar depois.</p>
+                <div class="form-row" style="align-items:end;gap:0.5rem">
+                    <div class="form-group" style="flex:2">
+                        <label>Nome da sessão</label>
+                        <input type="text" id="imp-session-name" class="input" placeholder="Ex: Sunglass Hut import 1">
+                    </div>
+                    <button id="btn-imp-session-save" class="btn btn-primary">Salvar atual</button>
+                </div>
+                <div id="imp-sessions-list" class="imp-sessions-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shopify Shops Modal -->
+    <div id="modal-shops" class="modal hidden">
+        <div class="modal-overlay" onclick="closeModal('modal-shops')"></div>
+        <div class="modal-content" style="max-width:680px;max-height:92vh;overflow-y:auto">
+            <div class="modal-header">
+                <h3>Lojas Shopify de destino</h3>
+                <button class="btn-close" onclick="closeModal('modal-shops')">&times;</button>
+            </div>
+            <div style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <p class="imp-hint">Cadastre múltiplas lojas Shopify para publicar produtos. A conexão usa OAuth via o proxy do app — a loja será aberta para autorização e o token salvo localmente.</p>
+                <div id="shops-list" class="imp-shops-list"></div>
+                <div class="form-row" style="align-items:end;gap:0.5rem">
+                    <div class="form-group" style="flex:2">
+                        <label>Domínio da loja (ex.: minhaloja.myshopify.com)</label>
+                        <input type="text" id="shop-domain-input" class="input" placeholder="exemplo.myshopify.com">
+                    </div>
+                    <div class="form-group" style="flex:2">
+                        <label>Nome amigável (opcional)</label>
+                        <input type="text" id="shop-label-input" class="input" placeholder="Loja PT">
+                    </div>
+                    <button id="btn-shop-connect" class="btn btn-primary"><i data-lucide="plug" style="width:14px;height:14px;vertical-align:-2px"></i> Conectar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Lab Test Modal -->
     <div id="lab-modal" class="modal hidden">
@@ -3284,6 +3710,26 @@
                     <label>Descrição</label>
                     <textarea name="description" class="input" rows="2" placeholder="Descreva o projeto..."></textarea>
                 </div>
+                <div class="proj-icon-picker">
+                    <label>Ícone</label>
+                    <div class="proj-icon-pick-row">
+                        <div id="proj-icon-preview" class="proj-icon-preview" title="Preview">
+                            <i data-lucide="package" style="width:24px;height:24px"></i>
+                        </div>
+                        <button type="button" id="btn-proj-icon-pick" class="btn btn-secondary btn-sm">Escolher ícone</button>
+                        <label class="btn btn-secondary btn-sm proj-icon-upload-btn" title="Upload de foto (será redimensionada)">
+                            <i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Upload foto
+                            <input type="file" id="proj-icon-photo-input" accept="image/*" hidden>
+                        </label>
+                        <button type="button" id="btn-proj-icon-reset" class="btn btn-secondary btn-sm" title="Voltar ao ícone padrão do tipo">Reset</button>
+                        <input type="hidden" name="iconName" id="proj-icon-name-hidden">
+                        <input type="hidden" name="iconPhoto" id="proj-icon-photo-hidden">
+                    </div>
+                    <div id="proj-icon-grid-wrap" class="proj-icon-grid-wrap" style="display:none">
+                        <input type="text" id="proj-icon-search" class="input input-sm" placeholder="Filtrar ícones (ex: store, glasses)…">
+                        <div id="proj-icon-grid" class="proj-icon-grid"></div>
+                    </div>
+                </div>
                 <div class="swipe-form-section">
                     <div class="swipe-form-label"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Meta Financeira</div>
                     <div class="form-row">
@@ -3321,25 +3767,36 @@
                     </div>
                 </div>
                 <div class="swipe-form-section">
-                    <div class="swipe-form-label"><i data-lucide="banknote" style="width:14px;height:14px;vertical-align:-2px"></i> Budget de Validação</div>
-                    <div class="form-row">
-                        <div class="form-group" style="flex:2">
-                            <label>Budget total</label>
-                            <input type="number" name="validationBudget" class="input" min="0" step="0.01" placeholder="0.00">
-                        </div>
-                        <div class="form-group">
+                    <div class="proj-budget-head">
+                        <div class="swipe-form-label"><i data-lucide="banknote" style="width:14px;height:14px;vertical-align:-2px"></i> Budget de Validação</div>
+                        <div class="form-group" style="margin:0;min-width:140px">
                             <label>Moeda</label>
-                            <select name="validationBudgetCurrency" class="input">
+                            <select name="validationBudgetCurrency" class="input input-sm">
                                 <option value="BRL">BRL (R$)</option>
                                 <option value="USD">USD ($)</option>
                                 <option value="GBP">GBP (£)</option>
                                 <option value="EUR">EUR (€)</option>
                             </select>
                         </div>
-                        <div class="form-group" style="flex:2">
-                            <label>Já gasto</label>
-                            <input type="number" name="validationSpent" class="input" min="0" step="0.01" placeholder="0.00">
-                        </div>
+                    </div>
+                    <div class="proj-line-list" id="proj-budget-list" data-kind="budget"></div>
+                    <button type="button" class="btn btn-secondary btn-sm proj-line-add" data-kind="budget">+ Adicionar item</button>
+                    <div class="proj-line-totals">
+                        <span>Total</span>
+                        <strong id="proj-budget-total">0,00</strong>
+                    </div>
+                    <div class="form-group" style="margin-top:0.5rem">
+                        <label>Já gasto</label>
+                        <input type="text" name="validationSpent" class="input proj-money-input" inputmode="decimal" placeholder="0,00">
+                    </div>
+                </div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Retorno</div>
+                    <div class="proj-line-list" id="proj-return-list" data-kind="return"></div>
+                    <button type="button" class="btn btn-secondary btn-sm proj-line-add" data-kind="return">+ Adicionar item</button>
+                    <div class="proj-line-totals">
+                        <span>Total</span>
+                        <strong id="proj-return-total">0,00</strong>
                     </div>
                 </div>
                 <div class="form-row">
@@ -3465,6 +3922,9 @@
     <script src="js/shopify.js"></script>
     <script src="js/page-comparison.js"></script>
     <script src="js/projects.js"></script>
+    <script src="js/importer.js"></script>
+    <script src="js/country-tz.js"></script>
+    <script src="js/sales.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">

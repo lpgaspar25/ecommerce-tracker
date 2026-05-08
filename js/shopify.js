@@ -226,10 +226,13 @@ const ShopifyModule = (() => {
 
     // ── Orders (GraphQL) ──
 
+    // Bump this when changing the order shape (cached payloads with old shape get invalidated).
+    const ORDERS_CACHE_VERSION = 'v2';
+
     async function fetchOrders(dateFrom, dateTo, opts = {}) {
         if (!isConfigured()) throw new Error('Shopify não conectado.');
 
-        const cacheKey = `${dateFrom}|${dateTo}`;
+        const cacheKey = `${ORDERS_CACHE_VERSION}|${dateFrom}|${dateTo}`;
         if (!opts.force) {
             const cached = _getCachedOrders(cacheKey);
             if (cached) return cached;
@@ -255,6 +258,13 @@ const ShopifyModule = (() => {
                   id name createdAt cancelledAt displayFinancialStatus
                   currencyCode
                   totalPriceSet { shopMoney { amount currencyCode } }
+                  shippingAddress {
+                    country countryCodeV2
+                    province provinceCode
+                    city zip
+                    latitude longitude
+                  }
+                  customer { id displayName email }
                   lineItems(first: 50) {
                     nodes {
                       quantity
@@ -284,6 +294,7 @@ const ShopifyModule = (() => {
     }
 
     function _normalizeOrder(o) {
+        const sa = o.shippingAddress || null;
         return {
             id: o.id,
             name: o.name,
@@ -291,6 +302,21 @@ const ShopifyModule = (() => {
             currency: o.currencyCode,
             total_price: o.totalPriceSet?.shopMoney?.amount,
             financial_status: o.displayFinancialStatus,
+            customer: o.customer ? {
+                id: o.customer.id ? _gidToNumeric(o.customer.id) : null,
+                name: o.customer.displayName || '',
+                email: o.customer.email || '',
+            } : null,
+            shipping_address: sa ? {
+                country: sa.country || '',
+                country_code: sa.countryCodeV2 || '',
+                province: sa.province || '',
+                province_code: sa.provinceCode || '',
+                city: sa.city || '',
+                zip: sa.zip || '',
+                latitude: sa.latitude ?? null,
+                longitude: sa.longitude ?? null,
+            } : null,
             line_items: (o.lineItems?.nodes || []).map(li => ({
                 product_id: li.product?.id ? _gidToNumeric(li.product.id) : null,
                 variant_id: li.variant?.id ? _gidToNumeric(li.variant.id) : null,
