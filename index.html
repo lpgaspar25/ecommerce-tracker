@@ -45,6 +45,9 @@
         <button class="tab-btn" data-tab="ad-library" hidden>Ad Library</button>
         <button class="tab-btn" data-tab="ad-launcher" hidden>Ad Launcher</button>
         <button class="tab-btn" data-tab="creative-insights" hidden>Creative Insights</button>
+        <button class="tab-btn" data-tab="brands" hidden>Brands</button>
+        <button class="tab-btn" data-tab="recent-edits" hidden>Recent Edits</button>
+        <button class="tab-btn" data-tab="saved-inspirations" hidden>Saved Inspirations</button>
         <button class="tab-btn" data-tab="importador">Importador</button>
         <button class="tab-btn" data-tab="vendas">Vendas</button>
     </nav>
@@ -3648,7 +3651,10 @@
         <section id="tab-recent-edits" class="tab-panel">
             <div class="section-header">
                 <h2><i data-lucide="history" style="width:20px;height:20px;vertical-align:-3px"></i> Recent Edits</h2>
-                <p class="section-subtitle" style="margin:0">Histórico dos seus projetos de geração e edição com IA.</p>
+                <button id="re-clear-all" class="btn btn-secondary btn-sm"><i data-lucide="trash-2" style="width:13px;height:13px;vertical-align:-2px"></i> Limpar tudo</button>
+            </div>
+            <div class="re-toolbar">
+                <input type="search" id="re-search" class="input input-sm" placeholder="Buscar por prompt…" style="flex:1;max-width:360px">
             </div>
             <div id="recent-edits-content"></div>
         </section>
@@ -3667,6 +3673,71 @@
     </main>
 
     </div> <!-- /app-body -->
+
+    <!-- New Board Modal -->
+    <div id="modal-new-board" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Novo Board</h3>
+                <button class="btn-close" id="modal-new-board-close">&times;</button>
+            </div>
+            <form id="new-board-form" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <div class="form-group">
+                    <label>Nome do board</label>
+                    <input type="text" id="new-board-name" class="input" placeholder="Ex: Concorrentes Fitness" required maxlength="60">
+                </div>
+                <div class="form-group">
+                    <label>Cor</label>
+                    <div style="display:flex;gap:0.4rem;align-items:center">
+                        <input type="color" id="new-board-color" class="input" value="#8b5cf6" style="width:44px;height:36px;padding:2px;cursor:pointer">
+                        <div style="display:flex;gap:0.3rem;flex-wrap:wrap">
+                            <button type="button" class="board-color-preset" style="background:#8b5cf6" data-color="#8b5cf6" title="Roxo"></button>
+                            <button type="button" class="board-color-preset" style="background:#ec4899" data-color="#ec4899" title="Rosa"></button>
+                            <button type="button" class="board-color-preset" style="background:#06b6d4" data-color="#06b6d4" title="Ciano"></button>
+                            <button type="button" class="board-color-preset" style="background:#10b981" data-color="#10b981" title="Verde"></button>
+                            <button type="button" class="board-color-preset" style="background:#f59e0b" data-color="#f59e0b" title="Âmbar"></button>
+                            <button type="button" class="board-color-preset" style="background:#ef4444" data-color="#ef4444" title="Vermelho"></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="new-board-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Criar Board</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Inspiration Modal -->
+    <div id="modal-add-inspo" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <h3>Adicionar Inspiração</h3>
+                <button class="btn-close" id="modal-add-inspo-close">&times;</button>
+            </div>
+            <form id="add-inspo-form" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem">
+                <div class="form-group">
+                    <label>URL do anúncio / imagem</label>
+                    <input type="url" id="add-inspo-url" class="input" placeholder="https://…">
+                    <div id="add-inspo-preview" style="margin-top:0.4rem;min-height:0"></div>
+                </div>
+                <div class="form-group">
+                    <label style="display:flex;align-items:center;gap:0.4rem"><i data-lucide="divide" style="width:12px;height:12px;color:var(--text-muted)"></i><span style="color:var(--text-muted);font-size:0.78rem">ou envie um arquivo</span></label>
+                    <input type="file" id="add-inspo-file" class="input" accept="image/*" style="padding:0.3rem">
+                </div>
+                <div class="form-group">
+                    <label>Nota (opcional)</label>
+                    <input type="text" id="add-inspo-note" class="input" placeholder="Ex: Bom hook, copy direta" maxlength="120">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="add-inspo-cancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Rebrand Modal -->
     <div id="modal-rebrand" class="modal hidden">
@@ -4535,6 +4606,9 @@
     <script src="js/ai-ad-generator.js"></script>
     <script src="js/ai-generations.js"></script>
     <script src="js/prompt-templates.js"></script>
+    <script src="js/recent-edits.js"></script>
+    <script src="js/brands.js"></script>
+    <script src="js/saved-inspirations.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>

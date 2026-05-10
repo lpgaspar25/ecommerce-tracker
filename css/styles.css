@@ -2330,23 +2330,122 @@ body {
     color: #fff;
 }
 
-/* Boards (Saved Inspirations) */
-.boards-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+/* ===== Recent Edits ===== */
+.re-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.25rem; }
+.re-group { margin-bottom: 1.75rem; }
+.re-group-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.65rem; }
+.re-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+.re-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.re-card:hover { border-color: rgba(139,92,246,0.2); box-shadow: var(--glow-accent); }
+[data-theme="light"] .re-card { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.06); }
+.re-card-prompt { font-size: 0.82rem; color: var(--text-primary); line-height: 1.4; flex: 1; }
+.re-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; flex-wrap: wrap; }
+.re-card-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+.re-tag {
+    font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.45rem;
+    background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 999px; color: var(--accent); display: inline-flex; align-items: center; gap: 3px;
+}
+.re-card-time { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+.re-card-actions { display: flex; gap: 0.4rem; }
+.re-card-actions .btn { flex: 1; justify-content: center; font-size: 0.75rem; padding: 0.3rem 0.5rem; }
+
+/* ===== Brands extras ===== */
+.brand-avatar {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 800; color: #fff; flex-shrink: 0;
+}
+.brand-name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.brand-page { font-size: 0.72rem; color: var(--text-muted); }
+.brand-industry-tag {
+    font-size: 0.7rem; padding: 0.15rem 0.5rem;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px; color: var(--text-secondary); white-space: nowrap;
+}
+[data-theme="light"] .brand-industry-tag { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.06); }
+.brand-ads-count { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.adhub-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.adhub-count { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; }
+
+/* ===== Boards (Saved Inspirations) ===== */
+.boards-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; padding-bottom: 0.65rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
 [data-theme="light"] .boards-tabs { border-bottom-color: rgba(0,0,0,0.06); }
 .boards-tab {
-    padding: 0.5rem 0.85rem;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 999px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.8rem;
-    font-weight: 600;
-    transition: all 0.12s;
+    padding: 0.4rem 0.75rem; display: inline-flex; align-items: center; gap: 0.3rem;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px; color: var(--text-secondary); cursor: pointer;
+    font-size: 0.78rem; font-weight: 600; transition: all 0.12s;
 }
 .boards-tab:hover { background: rgba(139,92,246,0.12); color: var(--text-primary); }
 .boards-tab-active { background: var(--accent-gradient); color: #fff; border-color: transparent; }
-.boards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.boards-tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.boards-tab-count { font-size: 0.65rem; opacity: 0.6; }
+.boards-tab-del { opacity: 0.35; font-size: 0.9rem; line-height: 1; cursor: pointer; padding: 0 2px; transition: opacity 0.1s; }
+.boards-tab-del:hover { opacity: 1; }
+.boards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+
+/* Board overview card */
+.board-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s;
+}
+.board-card:hover { border-color: rgba(139,92,246,0.25); box-shadow: var(--glow-accent); transform: translateY(-1px); }
+[data-theme="light"] .board-card { background: rgba(255,255,255,0.8); border-color: rgba(0,0,0,0.06); }
+.board-card-cover {
+    height: 110px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--board-color, #8b5cf6) 20%, transparent), color-mix(in srgb, var(--board-color, #8b5cf6) 8%, transparent));
+    overflow: hidden; gap: 2px; flex-wrap: wrap;
+}
+.board-card-cover img { width: 50%; height: 55px; object-fit: cover; }
+.board-card-info { padding: 0.6rem 0.75rem; display: flex; align-items: center; justify-content: space-between; }
+.board-card-name { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+.board-card-count { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Inspiration cards inside a board */
+.inspo-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; overflow: hidden; transition: border-color 0.15s;
+}
+.inspo-card:hover { border-color: rgba(139,92,246,0.2); }
+[data-theme="light"] .inspo-card { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.06); }
+.inspo-card-thumb { width: 100%; aspect-ratio: 1; overflow: hidden; }
+.inspo-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+.inspo-card:hover .inspo-card-thumb img { transform: scale(1.04); }
+.inspo-card-link {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.4rem; color: var(--text-muted); font-size: 0.75rem;
+    background: rgba(139,92,246,0.04);
+}
+.inspo-card-note { padding: 0.5rem 0.65rem; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.35; }
+.inspo-card-footer { padding: 0.4rem 0.65rem; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.04); }
+.inspo-card-url { font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 3px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+.inspo-card-url:hover { color: var(--accent); }
+
+/* Add inspiration card */
+.inspo-add-card {
+    border: 2px dashed rgba(139,92,246,0.2); border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.4rem; min-height: 140px; cursor: pointer; color: var(--text-muted); font-size: 0.78rem; font-weight: 600;
+    transition: all 0.15s;
+}
+.inspo-add-card:hover { border-color: rgba(139,92,246,0.5); color: var(--accent); background: rgba(139,92,246,0.04); }
+
+/* Color preset buttons in New Board modal */
+.board-color-preset {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
+    cursor: pointer; transition: border-color 0.12s, transform 0.12s;
+}
+.board-color-preset:hover { transform: scale(1.15); border-color: rgba(255,255,255,0.4); }
 
 .tab-panel {
     display: none;
