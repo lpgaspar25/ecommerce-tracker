@@ -131,18 +131,9 @@ const LabTestsModule = {
     },
 
     _bindEvents() {
-        // Pipeline sub-tabs
-        document.querySelectorAll('.pipeline-subtab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.pipeline-subtab').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const tab = btn.dataset.subtab;
-                const offersEl = document.getElementById('pipeline-offers-sub');
-                const labEl = document.getElementById('pipeline-lab-sub');
-                if (offersEl) offersEl.style.display = tab === 'offers' ? '' : 'none';
-                if (labEl) labEl.style.display = tab === 'lab' ? '' : 'none';
-                if (tab === 'lab') this._renderCards();
-            });
+        // Aba "Laboratório" (top-level): renderiza ao ativar
+        document.querySelectorAll('[data-tab="laboratorio"]').forEach(btn => {
+            btn.addEventListener('click', () => this._renderCards());
         });
 
         // Diary sub-tabs
@@ -965,8 +956,8 @@ const LabTestsModule = {
         // Bind test item clicks
         container.querySelectorAll('.cal-test-item[data-id]').forEach(el => {
             el.addEventListener('click', () => {
-                // Switch to lab tab and open modal
-                document.querySelector('.pipeline-subtab[data-subtab="lab"]')?.click();
+                // Switch to Laboratório tab and open modal
+                document.querySelector('.tab-btn[data-tab="laboratorio"]')?.click();
                 this._openModal(el.dataset.id);
             });
         });

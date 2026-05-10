@@ -4939,6 +4939,53 @@ thead:hover .diary-check-col input[type="checkbox"],
 
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+
+/* Dashboard customize */
+.dash-block-hidden { display: none !important; }
+
+.dash-customize-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    padding: 0.3rem;
+}
+.dash-customize-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.6rem;
+    margin: 0.2rem 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: grab;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    user-select: none;
+}
+.dash-customize-item:hover { background: var(--bg-card-hover, var(--bg-card)); }
+.dash-customize-item.dash-customize-dragging { opacity: 0.45; cursor: grabbing; }
+.dash-customize-item.dash-customize-drop-before { border-top: 2px solid var(--accent, #2563eb); }
+.dash-customize-item.dash-customize-drop-after { border-bottom: 2px solid var(--accent, #2563eb); }
+.dash-customize-grip {
+    color: var(--text-muted);
+    cursor: grab;
+    display: flex;
+    align-items: center;
+}
+.dash-customize-toggle {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.dash-customize-name {
+    flex: 1;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+}
 .dash-row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 .dash-card {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);

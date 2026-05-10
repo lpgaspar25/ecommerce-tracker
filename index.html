@@ -110,6 +110,7 @@
         <button class="tab-btn tab-btn-hidden" data-tab="mineracao" hidden><i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Mineração</button>
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+        <button class="tab-btn" data-tab="laboratorio"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
         <button class="tab-btn" data-tab="importador">Importador</button>
         <button class="tab-btn" data-tab="vendas">Vendas</button>
@@ -231,15 +232,19 @@
                     <i data-lucide="git-compare" style="width:14px;height:14px"></i>
                     Comparar Páginas
                 </button>
+                <button id="btn-dash-customize" class="btn btn-secondary btn-sm" title="Personalizar dashboard (mostrar/ocultar/reordenar blocos)">
+                    <i data-lucide="layout-grid" style="width:14px;height:14px"></i>
+                    Personalizar
+                </button>
             </div>
 
             <!-- Shopify Integration Widget -->
-            <div class="dash-card shopify-widget" id="shopify-widget">
+            <div class="dash-card shopify-widget dash-block" id="shopify-widget" data-block-id="shopify" data-block-name="Shopify (conexão)">
                 <!-- Rendered by ShopifyModule.renderDashboardWidget() -->
             </div>
 
             <!-- Row 2: Actions + Alerts -->
-            <div class="dash-row-2">
+            <div class="dash-row-2 dash-block" data-block-id="actions-alerts" data-block-name="Centro de Decisão + Produtos em Risco">
                 <div class="dash-card" id="dash-actions-card">
                     <h3>Centro de Decisão</h3>
                     <div id="dash-actions" class="dash-list"></div>
@@ -254,7 +259,7 @@
             </div>
 
             <!-- Row 2b: Goals + Funnel Diagnosis -->
-            <div class="dash-row-2">
+            <div class="dash-row-2 dash-block" data-block-id="goals-funnel" data-block-name="Metas + Diagnóstico do Funil">
                 <div class="dash-card">
                     <h3><i data-lucide="target" style="width:15px;height:15px"></i> Metas</h3>
                     <div id="dash-goals" class="dash-goals-list"></div>
@@ -266,7 +271,7 @@
             </div>
 
             <!-- Row 2c: Sales Today widget -->
-            <div class="dash-card sales-dash-widget" id="dash-sales-widget">
+            <div class="dash-card sales-dash-widget dash-block" id="dash-sales-widget" data-block-id="sales-today" data-block-name="Vendas hoje &amp; padrões"
                 <h3 style="display:flex;align-items:center;justify-content:space-between">
                     <span><i data-lucide="line-chart" style="width:15px;height:15px;vertical-align:-2px"></i> Vendas hoje &amp; padrões</span>
                     <span style="display:flex;gap:0.4rem;align-items:center">
@@ -280,7 +285,7 @@
             </div>
 
             <!-- Row 3: Chart + Top Products -->
-            <div class="dash-row-3">
+            <div class="dash-row-3 dash-block" data-block-id="chart-top" data-block-name="Gráfico do Funil + Top Produtos"
                 <div class="dash-card dash-card-wide">
                     <div class="funnel-chart-header">
                         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
@@ -315,7 +320,7 @@
             </div>
 
             <!-- Metrics Calendar + Ecommerce Dates -->
-            <div class="dash-row-cal">
+            <div class="dash-row-cal dash-block" data-block-id="metrics-cal" data-block-name="Calendário de Métricas + Datas Importantes"
                 <div class="dash-card dash-card-cal">
                     <h3><i data-lucide="calendar-range" style="width:15px;height:15px"></i> Calendário de Métricas</h3>
                     <div id="dash-metrics-calendar"></div>
@@ -328,7 +333,7 @@
             </div>
 
             <!-- Row 3b: Opportunities + Portfolio -->
-            <div class="dash-row-2">
+            <div class="dash-row-2 dash-block" data-block-id="opportunities-portfolio" data-block-name="Mapa de Oportunidades + Saúde do Portfólio">
                 <div class="dash-card">
                     <h3><i data-lucide="map" style="width:15px;height:15px"></i> Mapa de Oportunidades</h3>
                     <div id="dash-opportunities" class="dash-list"></div>
@@ -340,7 +345,7 @@
             </div>
 
             <!-- Row 4: Pipeline + Scores + Stores -->
-            <div class="dash-row-4">
+            <div class="dash-row-4 dash-block" data-block-id="pipeline-scores-stores" data-block-name="Pipeline + Score + Ranking por Loja">
                 <div class="dash-card">
                     <h3>Pipeline</h3>
                     <div id="dash-pipeline" class="dash-pipeline-grid"></div>
@@ -355,7 +360,7 @@
                 </div>
             </div>
             <!-- Row 5: Widgets -->
-            <div class="dash-row-widgets">
+            <div class="dash-row-widgets dash-block" data-block-id="widgets" data-block-name="Widgets de Métricas (% Validados, Kill, etc.)"
                 <div class="dash-widget"><span class="dash-widget-value" id="dw-validated-pct">--</span><span class="dash-widget-label">% Validados</span></div>
                 <div class="dash-widget"><span class="dash-widget-value" id="dw-killed-pct">--</span><span class="dash-widget-label">% Kill</span></div>
                 <div class="dash-widget"><span class="dash-widget-value" id="dw-open-tests">--</span><span class="dash-widget-label">Testes Abertos</span></div>
@@ -365,7 +370,7 @@
             </div>
 
             <!-- Row 6: Calendar + Budget -->
-            <div class="dash-row-2">
+            <div class="dash-row-2 dash-block" data-block-id="cal-budget" data-block-name="Calendário da Semana + Budget por Produto">
                 <div class="dash-card">
                     <h3><i data-lucide="calendar-days" style="width:15px;height:15px"></i> Calendário da Semana</h3>
                     <div id="dash-calendar" class="dash-calendar"></div>
@@ -376,6 +381,25 @@
                 </div>
             </div>
         </section>
+
+        <!-- ==================== DASHBOARD CUSTOMIZE MODAL ==================== -->
+        <div id="dash-customize-modal" class="modal hidden">
+            <div class="modal-overlay" onclick="closeModal('dash-customize-modal')"></div>
+            <div class="modal-content modal-sm">
+                <div class="modal-header">
+                    <h3><i data-lucide="layout-grid" style="width:18px;height:18px;vertical-align:-3px"></i> Personalizar Dashboard</h3>
+                    <button class="btn-close" onclick="closeModal('dash-customize-modal')">&times;</button>
+                </div>
+                <div style="padding:0.5rem 1rem 0">
+                    <p class="section-subtitle" style="margin:0 0 0.5rem">Arraste para reordenar. Desmarque para esconder.</p>
+                    <div id="dash-customize-list" class="dash-customize-list"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="dash-customize-reset"><i data-lucide="rotate-ccw" style="width:14px;height:14px;vertical-align:-2px"></i> Restaurar padrão</button>
+                    <button type="button" class="btn btn-primary" onclick="closeModal('dash-customize-modal')">Pronto</button>
+                </div>
+            </div>
+        </div>
 
         <!-- ==================== PRODUTOS ==================== -->
         <section id="tab-products" class="tab-panel">
@@ -2787,24 +2811,23 @@
             <div class="section-header">
                 <h2>Pipeline</h2>
             </div>
-            <div class="creative-subtabs-row">
-                <button class="pipeline-subtab creative-subtab active" data-subtab="offers"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Gestão de Ofertas</button>
-                <button class="pipeline-subtab creative-subtab" data-subtab="lab"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório de Testes</button>
-            </div>
 
-            <!-- Offers sub-tab (existing kanban) -->
+            <!-- Offers (kanban) -->
             <div id="pipeline-offers-sub">
                 <p id="pipeline-flow-summary" class="section-subtitle" style="margin:0.5rem 0">Ideia <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Validação <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Pesquisa <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Ângulos <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Criativos <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Página <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Teste <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Otimização <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Escala <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Kill</p>
                 <div class="kanban-board" id="kanban-board"></div>
             </div>
+        </section>
 
-            <!-- Lab sub-tab -->
-            <div id="pipeline-lab-sub" style="display:none">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin:0.75rem 0">
-                    <span class="section-subtitle">Registre alterações, gere hipóteses e acompanhe resultados</span>
-                    <button id="btn-add-lab-test" class="btn btn-primary">+ Novo Teste</button>
-                </div>
-                <div id="lab-cards-container"></div>
+        <!-- ==================== LABORATÓRIO DE TESTES ==================== -->
+        <section id="tab-laboratorio" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="flask-conical" style="width:18px;height:18px;vertical-align:-3px"></i> Laboratório de Testes</h2>
+                <button id="btn-add-lab-test" class="btn btn-primary">+ Novo Teste</button>
+            </div>
+            <div id="pipeline-lab-sub">
+                <span class="section-subtitle">Registre alterações, gere hipóteses e acompanhe resultados</span>
+                <div id="lab-cards-container" style="margin-top:1rem"></div>
             </div>
         </section>
 
@@ -3952,6 +3975,7 @@
     <script src="js/goals.js"></script>
     <script src="js/diary.js"></script>
     <script src="js/dashboard.js"></script>
+    <script src="js/dash-customize.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>
