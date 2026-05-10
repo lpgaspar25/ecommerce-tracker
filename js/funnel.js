@@ -1003,7 +1003,7 @@ const FunnelModule = {
             showToast('Configure o Facebook Ads primeiro', 'error');
             return;
         }
-        const mapped = FacebookAds.campaignMap[this.state.productId];
+        const mapped = FacebookAds._accountMap()[this.state.productId];
         if (!mapped || mapped.length === 0) {
             showToast('Mapeie as campanhas para este produto', 'error');
             return;
