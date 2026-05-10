@@ -10519,23 +10519,47 @@ body.privacy-mode img.product-thumb {
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
 }
-.sales-filters {
-    display: flex;
-    gap: 0.5rem;
+/* Sales header inline filters */
+.sales-section-header {
+    align-items: flex-end;
+    justify-content: flex-start;
     flex-wrap: wrap;
-    margin-bottom: 1rem;
-    align-items: end;
-    background: var(--bg-secondary);
-    padding: 0.6rem 0.75rem;
-    border-radius: 6px;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
 }
-.sales-filters .form-group { margin: 0; min-width: 130px; }
-.sales-filters label {
-    font-size: 0.7rem;
+.sales-section-header h2 {
+    flex-shrink: 0;
+    margin-right: 0.25rem;
+}
+.sales-filters-inline {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    flex: 1;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+.sales-filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 110px;
+}
+.sales-filter-item label {
+    font-size: 0.68rem;
     text-transform: uppercase;
     color: var(--text-muted);
-    letter-spacing: 0.04em;
-    margin-bottom: 0.25rem;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    line-height: 1;
+}
+.sales-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-bottom: 0.05rem;
 }
 .sales-summary {
     display: grid;

@@ -3190,81 +3190,81 @@
 
         <!-- ==================== VENDAS & PADRÕES ==================== -->
         <section id="tab-vendas" class="tab-panel">
-            <div class="section-header">
+            <div class="section-header sales-section-header">
                 <h2><i data-lucide="line-chart" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas &amp; Padrões</h2>
-                <div style="display:flex;gap:0.5rem;align-items:center">
+                <!-- Inline filters -->
+                    <div class="sales-filters-inline">
+                        <div class="sales-filter-item">
+                            <label>Período</label>
+                            <div class="dash-date-picker-wrap">
+                                <button type="button" id="sales-date-picker-btn" class="dash-date-picker-btn">
+                                    <i data-lucide="calendar" style="width:14px;height:14px"></i>
+                                    <span id="sales-date-label">Últimos 30 dias</span>
+                                    <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                                </button>
+                                <div id="sales-date-dropdown" class="dash-date-dropdown" style="display:none">
+                                    <div class="dash-date-dd-left">
+                                        <button class="sales-date-preset" data-preset="today">Hoje</button>
+                                        <button class="sales-date-preset" data-preset="yesterday">Ontem</button>
+                                        <button class="sales-date-preset" data-preset="7">Últimos 7 dias</button>
+                                        <button class="sales-date-preset" data-preset="14">Últimos 14 dias</button>
+                                        <button class="sales-date-preset active" data-preset="30">Últimos 30 dias</button>
+                                        <button class="sales-date-preset" data-preset="month">Este mês</button>
+                                        <button class="sales-date-preset" data-preset="lastMonth">Mês passado</button>
+                                        <button class="sales-date-preset" data-preset="90">Últimos 90 dias</button>
+                                        <button class="sales-date-preset" data-preset="all">Todos</button>
+                                        <button class="sales-date-preset" data-preset="custom">Personalizado</button>
+                                    </div>
+                                    <div class="dash-date-dd-right">
+                                        <div class="dash-range-cal" id="sales-date-cal">
+                                            <div class="dash-range-cal-header">
+                                                <button type="button" class="dash-range-cal-nav" id="sales-date-cal-prev" aria-label="Mês anterior">‹</button>
+                                                <span class="dash-range-cal-title" id="sales-date-cal-title">—</span>
+                                                <button type="button" class="dash-range-cal-nav" id="sales-date-cal-next" aria-label="Próximo mês">›</button>
+                                            </div>
+                                            <div class="dash-range-cal-weekdays">
+                                                <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                                            </div>
+                                            <div class="dash-range-cal-grid" id="sales-date-cal-grid"></div>
+                                            <div class="dash-range-cal-summary" id="sales-date-cal-summary">Clique uma data para começar.</div>
+                                        </div>
+                                        <input type="hidden" id="sales-date-start">
+                                        <input type="hidden" id="sales-date-end">
+                                        <div class="dash-date-actions">
+                                            <button id="sales-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                                            <button id="sales-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <input type="hidden" id="sales-date-from">
+                            <input type="hidden" id="sales-date-to">
+                            <input type="hidden" id="sales-quick-period" value="30">
+                        </div>
+                        <div class="sales-filter-item">
+                            <label>País</label>
+                            <select id="sales-country-filter" class="input input-sm">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="sales-filter-item">
+                            <label>Produto</label>
+                            <select id="sales-product-filter" class="input input-sm">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+                        <div class="sales-filter-item">
+                            <label>Cidade</label>
+                            <select id="sales-city-filter" class="input input-sm">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                    </div>
+                <!-- Store / actions -->
+                <div class="sales-header-actions">
                     <span id="sales-shop-tz" class="sales-shop-tz" title="Fuso horário da loja Shopify"></span>
                     <button id="btn-sales-refresh" class="btn btn-secondary"><i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Atualizar</button>
                     <button id="btn-sales-export" class="btn btn-secondary"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> CSV</button>
-                </div>
-            </div>
-
-            <!-- Filters -->
-            <div class="sales-filters">
-                <div class="form-group">
-                    <label>Período</label>
-                    <div class="dash-date-picker-wrap">
-                        <button type="button" id="sales-date-picker-btn" class="dash-date-picker-btn">
-                            <i data-lucide="calendar" style="width:14px;height:14px"></i>
-                            <span id="sales-date-label">Últimos 30 dias</span>
-                            <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
-                        </button>
-                        <div id="sales-date-dropdown" class="dash-date-dropdown" style="display:none">
-                            <div class="dash-date-dd-left">
-                                <button class="sales-date-preset" data-preset="today">Hoje</button>
-                                <button class="sales-date-preset" data-preset="yesterday">Ontem</button>
-                                <button class="sales-date-preset" data-preset="7">Últimos 7 dias</button>
-                                <button class="sales-date-preset" data-preset="14">Últimos 14 dias</button>
-                                <button class="sales-date-preset active" data-preset="30">Últimos 30 dias</button>
-                                <button class="sales-date-preset" data-preset="month">Este mês</button>
-                                <button class="sales-date-preset" data-preset="lastMonth">Mês passado</button>
-                                <button class="sales-date-preset" data-preset="90">Últimos 90 dias</button>
-                                <button class="sales-date-preset" data-preset="all">Todos</button>
-                                <button class="sales-date-preset" data-preset="custom">Personalizado</button>
-                            </div>
-                            <div class="dash-date-dd-right">
-                                <div class="dash-range-cal" id="sales-date-cal">
-                                    <div class="dash-range-cal-header">
-                                        <button type="button" class="dash-range-cal-nav" id="sales-date-cal-prev" aria-label="Mês anterior">‹</button>
-                                        <span class="dash-range-cal-title" id="sales-date-cal-title">—</span>
-                                        <button type="button" class="dash-range-cal-nav" id="sales-date-cal-next" aria-label="Próximo mês">›</button>
-                                    </div>
-                                    <div class="dash-range-cal-weekdays">
-                                        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
-                                    </div>
-                                    <div class="dash-range-cal-grid" id="sales-date-cal-grid"></div>
-                                    <div class="dash-range-cal-summary" id="sales-date-cal-summary">Clique uma data para começar.</div>
-                                </div>
-                                <input type="hidden" id="sales-date-start">
-                                <input type="hidden" id="sales-date-end">
-                                <div class="dash-date-actions">
-                                    <button id="sales-date-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
-                                    <button id="sales-date-apply" class="btn btn-primary btn-sm">Aplicar</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <input type="hidden" id="sales-date-from">
-                    <input type="hidden" id="sales-date-to">
-                    <input type="hidden" id="sales-quick-period" value="30">
-                </div>
-                <div class="form-group">
-                    <label>País</label>
-                    <select id="sales-country-filter" class="input input-sm">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Produto</label>
-                    <select id="sales-product-filter" class="input input-sm">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Cidade</label>
-                    <select id="sales-city-filter" class="input input-sm">
-                        <option value="">Todas</option>
-                    </select>
                 </div>
             </div>
 
