@@ -452,46 +452,237 @@ const FacebookAds = {
             return;
         }
 
-        document.getElementById('fb-campaigns-title').innerHTML =
-            `Mapear Campanhas <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${getProductName(productId)}`;
+        // Estado da sessão do modal — preserva marcações entre re-renders/filtros
+        this._mapperState = {
+            productId,
+            accountId: this.config.activeAdAccountId,
+            campaigns: [],
+            // Set de IDs marcados (todos, visíveis ou não — fonte de verdade)
+            selected: new Set(this._accountMap()[productId] || [])
+        };
+
+        // Popula seletores de conta/produto no toolbar
+        this._renderMapperContextSelectors();
+        this._updateMapperTitle();
+
+        // Carrega campanhas da conta atual
+        this._loadCampaignsForMapper();
+
+        // Save: usa o set ao vivo, sem ler do DOM
+        document.getElementById('fb-campaigns-save').onclick = () => {
+            const st = this._mapperState;
+            if (!st) return;
+            // Salva no map da conta atualmente selecionada no modal
+            const accountId = st.accountId;
+            if (!this.campaignMap[accountId]) this.campaignMap[accountId] = {};
+            this.campaignMap[accountId][st.productId] = Array.from(st.selected);
+            this.saveCampaignMap();
+            const acctName = (this.config.adAccounts.find(a => a.id === accountId)?.name) || accountId;
+            const prodName = getProductName(st.productId) || st.productId;
+            closeModal('fb-campaigns-modal');
+            showToast(`${st.selected.size} campanha(s) mapeada(s) · ${prodName} · ${acctName}`, 'success');
+        };
+    },
+
+    _loadCampaignsForMapper() {
+        const st = this._mapperState;
+        if (!st) return;
         document.getElementById('fb-campaigns-loading').style.display = 'block';
         document.getElementById('fb-campaigns-list').innerHTML = '';
         openModal('fb-campaigns-modal');
 
+        // Salva ad account ativa temporariamente pra reusar fetchCampaigns
+        const originalActive = this.config.activeAdAccountId;
+        this.config.activeAdAccountId = st.accountId;
+
         this.fetchCampaigns().then(campaigns => {
             document.getElementById('fb-campaigns-loading').style.display = 'none';
-            const mapped = (this._accountMap()[productId]) || [];
+            // Restaura conta ativa global (não persistida ainda)
+            this.config.activeAdAccountId = originalActive;
             const listEl = document.getElementById('fb-campaigns-list');
-
-            if (campaigns.length === 0) {
+            if (!campaigns.length) {
                 listEl.innerHTML = '<p style="padding:1rem;text-align:center;color:var(--text-muted)">Nenhuma campanha encontrada nesta conta.</p>';
                 return;
             }
-
-            listEl.innerHTML = campaigns.map(c => `
-                <label class="fb-campaign-item">
-                    <input type="checkbox" value="${c.id}" ${mapped.includes(c.id) ? 'checked' : ''}>
-                    <span class="fb-campaign-name">${c.name}</span>
-                    <span class="fb-campaign-status status-fb-${c.effective_status.toLowerCase()}">${c.effective_status}</span>
-                </label>
-            `).join('');
+            st.campaigns = campaigns;
+            // Re-sincroniza seleção com mapeamento atual da conta+produto
+            const mapping = (this.campaignMap[st.accountId] || {})[st.productId] || [];
+            st.selected = new Set(mapping);
+            this._renderCampaignList();
+            this._wireCampaignFilters();
         }).catch(err => {
+            this.config.activeAdAccountId = originalActive;
             document.getElementById('fb-campaigns-loading').style.display = 'none';
             document.getElementById('fb-campaigns-list').innerHTML =
                 `<p class="text-error">Erro: ${err.message}</p>`;
         });
+    },
 
-        // Save handler
-        document.getElementById('fb-campaigns-save').onclick = () => {
-            const checked = [...document.querySelectorAll('#fb-campaigns-list input:checked')]
-                .map(el => el.value);
-            const acctMap = this._accountMap();
-            acctMap[productId] = checked;
-            this.saveCampaignMap();
-            const acctName = this.activeAccount()?.name || this.config.activeAdAccountId;
-            closeModal('fb-campaigns-modal');
-            showToast(`${checked.length} campanha(s) mapeada(s) em ${acctName}`, 'success');
+    _updateMapperTitle() {
+        const st = this._mapperState;
+        const titleEl = document.getElementById('fb-campaigns-title');
+        if (!titleEl || !st) return;
+        const prodName = getProductName(st.productId) || st.productId;
+        const acctName = (this.config.adAccounts.find(a => a.id === st.accountId)?.name) || st.accountId;
+        titleEl.innerHTML = `Mapear Campanhas <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._esc(prodName)} <span style="color:var(--text-muted);font-size:0.85rem;font-weight:500"> · ${this._esc(acctName)}</span>`;
+        if (typeof lucide !== 'undefined' && lucide.createIcons) { try { lucide.createIcons(); } catch {} }
+    },
+
+    _renderMapperContextSelectors() {
+        const st = this._mapperState;
+        const acctSel = document.getElementById('fb-mapper-account');
+        const prodSel = document.getElementById('fb-mapper-product');
+        if (!acctSel || !prodSel || !st) return;
+
+        // Conta
+        acctSel.innerHTML = (this.config.adAccounts || []).map(a =>
+            `<option value="${this._esc(a.id)}" ${a.id === st.accountId ? 'selected' : ''}>${this._esc(a.name)}</option>`
+        ).join('');
+        acctSel.onchange = () => {
+            st.accountId = acctSel.value;
+            this._updateMapperTitle();
+            this._loadCampaignsForMapper();
         };
+
+        // Produto
+        const products = (typeof AppState !== 'undefined' && AppState.products) ? AppState.products : [];
+        prodSel.innerHTML = products.map(p =>
+            `<option value="${this._esc(p.id)}" ${p.id === st.productId ? 'selected' : ''}>${this._esc(p.name)}</option>`
+        ).join('');
+        prodSel.onchange = () => {
+            st.productId = prodSel.value;
+            this._updateMapperTitle();
+            // Reload selected set baseado em (conta atual, novo produto)
+            const mapping = (this.campaignMap[st.accountId] || {})[st.productId] || [];
+            st.selected = new Set(mapping);
+            this._renderCampaignList();
+        };
+    },
+
+    // Para uma campanha, retorna em quais OUTROS produtos da conta atual ela está mapeada
+    _campaignMappedToOthers(campaignId) {
+        const st = this._mapperState;
+        if (!st) return [];
+        const map = this.campaignMap[st.accountId] || {};
+        const others = [];
+        for (const [pid, ids] of Object.entries(map)) {
+            if (pid === st.productId) continue;
+            if (Array.isArray(ids) && ids.includes(campaignId)) others.push(pid);
+        }
+        return others;
+    },
+
+    // ---- UI: Render lista de campanhas com busca/filtros ----
+    _renderCampaignList() {
+        const listEl = document.getElementById('fb-campaigns-list');
+        const st = this._mapperState;
+        if (!listEl || !st) return;
+        const q = (document.getElementById('fb-campaigns-search')?.value || '').trim().toLowerCase();
+        const showActive = !!document.getElementById('fb-campaigns-filter-active')?.checked;
+        const showPaused = !!document.getElementById('fb-campaigns-filter-paused')?.checked;
+        const onlyMapped = !!document.getElementById('fb-campaigns-filter-mapped')?.checked;
+        const selected = st.selected;
+
+        const filtered = (st.campaigns || []).filter(c => {
+            const status = (c.effective_status || '').toUpperCase();
+            const isActive = status === 'ACTIVE';
+            const isPaused = status === 'PAUSED';
+            if (isActive && !showActive) return false;
+            if (isPaused && !showPaused) return false;
+            if (onlyMapped && !selected.has(c.id)) return false;
+            if (q) {
+                const hay = `${c.name || ''} ${status} ${c.id || ''}`.toLowerCase();
+                const terms = q.split(/\s+/).filter(Boolean);
+                if (!terms.every(t => hay.includes(t))) return false;
+            }
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            listEl.innerHTML = '<p style="padding:1.5rem;text-align:center;color:var(--text-muted)">Nenhuma campanha bate com o filtro.</p>';
+        } else {
+            listEl.innerHTML = filtered.map(c => {
+                const checked = selected.has(c.id) ? 'checked' : '';
+                const status = (c.effective_status || '').toUpperCase();
+                const others = this._campaignMappedToOthers(c.id);
+                const otherBadge = others.length > 0
+                    ? `<span class="fb-campaign-other" title="Já mapeada em ${others.map(p => getProductName(p) || p).join(', ')}"><i data-lucide="link-2" style="width:11px;height:11px;vertical-align:-1px"></i> ${others.length === 1 ? this._esc(getProductName(others[0]) || others[0]) : others.length + ' produtos'}</span>`
+                    : '';
+                return `<label class="fb-campaign-item">
+                    <input type="checkbox" value="${this._esc(c.id)}" ${checked}>
+                    <span class="fb-campaign-name">${this._highlightMatch(c.name || '', q)}</span>
+                    ${otherBadge}
+                    <span class="fb-campaign-status status-fb-${status.toLowerCase()}">${this._esc(status)}</span>
+                </label>`;
+            }).join('');
+        }
+
+        // Atualiza contagem
+        const countEl = document.getElementById('fb-campaigns-count');
+        if (countEl) {
+            const total = (st.campaigns || []).length;
+            countEl.textContent = `${filtered.length}/${total}${selected.size > 0 ? ` · ${selected.size} marcadas` : ''}`;
+        }
+
+        const clearBtn = document.getElementById('fb-campaigns-search-clear');
+        if (clearBtn) clearBtn.style.display = q ? '' : 'none';
+
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    _wireCampaignFilters() {
+        if (this._campaignFiltersWired) return;
+        this._campaignFiltersWired = true;
+        const search = document.getElementById('fb-campaigns-search');
+        const clear = document.getElementById('fb-campaigns-search-clear');
+        const activeChk = document.getElementById('fb-campaigns-filter-active');
+        const pausedChk = document.getElementById('fb-campaigns-filter-paused');
+        const mappedChk = document.getElementById('fb-campaigns-filter-mapped');
+
+        let timer = null;
+        const debouncedRender = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => this._renderCampaignList(), 80);
+        };
+
+        search?.addEventListener('input', debouncedRender);
+        search?.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); search.value = ''; this._renderCampaignList(); }
+        });
+        clear?.addEventListener('click', (e) => { e.preventDefault(); search.value = ''; search.focus(); this._renderCampaignList(); });
+        [activeChk, pausedChk, mappedChk].forEach(el => el?.addEventListener('change', () => this._renderCampaignList()));
+
+        // Captura toggle de checkbox e atualiza Set ao vivo
+        const listEl = document.getElementById('fb-campaigns-list');
+        listEl?.addEventListener('change', (e) => {
+            const cb = e.target;
+            if (!cb?.matches('input[type="checkbox"]')) return;
+            const st = this._mapperState;
+            if (!st) return;
+            if (cb.checked) st.selected.add(cb.value); else st.selected.delete(cb.value);
+            // Atualiza contagem (sem re-render se "só marcadas" não estiver ativo)
+            if (mappedChk?.checked && !cb.checked) {
+                this._renderCampaignList();
+            } else {
+                const countEl = document.getElementById('fb-campaigns-count');
+                const total = (st.campaigns || []).length;
+                const visible = listEl.querySelectorAll('.fb-campaign-item').length;
+                if (countEl) countEl.textContent = `${visible}/${total}${st.selected.size > 0 ? ` · ${st.selected.size} marcadas` : ''}`;
+            }
+        });
+    },
+
+    _highlightMatch(text, q) {
+        if (!q) return this._esc(text);
+        const terms = q.split(/\s+/).filter(Boolean);
+        let out = this._esc(text);
+        terms.forEach(t => {
+            const re = new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+            out = out.replace(re, '<mark class="fb-search-hi">$1</mark>');
+        });
+        return out;
     },
 
     // ---- UI: Conta ativa selector ----

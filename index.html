@@ -3689,6 +3689,29 @@
             <div id="fb-campaigns-loading" class="text-center" style="padding:2rem; display:none;">
                 <p>Carregando campanhas da conta...</p>
             </div>
+            <div class="fb-campaigns-toolbar">
+                <div class="fb-campaigns-context">
+                    <div class="fb-mapper-ctx-field">
+                        <label>Conta</label>
+                        <select id="fb-mapper-account" class="input input-sm" title="Conta de anúncio"></select>
+                    </div>
+                    <div class="fb-mapper-ctx-field">
+                        <label>Produto</label>
+                        <select id="fb-mapper-product" class="input input-sm" title="Produto sendo mapeado"></select>
+                    </div>
+                </div>
+                <div class="fb-campaigns-search-wrap">
+                    <i data-lucide="search" style="width:14px;height:14px;color:var(--text-muted)"></i>
+                    <input type="text" id="fb-campaigns-search" class="input input-sm fb-campaigns-search" placeholder="Pesquisar (nome, status, data)…">
+                    <button type="button" id="fb-campaigns-search-clear" class="fb-campaigns-search-clear" title="Limpar" style="display:none">×</button>
+                </div>
+                <div class="fb-campaigns-filters">
+                    <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-active" checked> Ativas</label>
+                    <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-paused" checked> Pausadas</label>
+                    <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-mapped"> Só marcadas</label>
+                    <span class="fb-campaigns-count" id="fb-campaigns-count"></span>
+                </div>
+            </div>
             <div id="fb-campaigns-list" class="fb-campaigns-list">
                 <!-- Renderizado por FacebookAds.openCampaignMapper() -->
             </div>

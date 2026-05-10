@@ -2830,6 +2830,119 @@ thead:hover .diary-check-col input[type="checkbox"],
     50% { background: rgba(37, 99, 235, 0.18); }
 }
 
+/* Toolbar de busca/filtros do mapeador de campanhas */
+.fb-campaigns-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+}
+.fb-campaigns-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 0.5rem;
+}
+.fb-campaigns-search-wrap:focus-within {
+    border-color: var(--accent, #2563eb);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.fb-campaigns-search {
+    border: none !important;
+    background: transparent !important;
+    flex: 1;
+    padding: 0.45rem 0.2rem !important;
+    font-size: 0.86rem;
+    box-shadow: none !important;
+    outline: none !important;
+}
+.fb-campaigns-search-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+}
+.fb-campaigns-search-clear:hover { color: var(--text-primary); }
+.fb-campaigns-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.78rem;
+}
+.fb-campaigns-filter-chk {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    user-select: none;
+}
+.fb-campaigns-filter-chk input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent);
+    margin: 0;
+}
+.fb-campaigns-count {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+}
+.fb-search-hi {
+    background: rgba(250, 204, 21, 0.35);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
+.fb-campaigns-context {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.fb-mapper-ctx-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+    min-width: 160px;
+}
+.fb-mapper-ctx-field label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+.fb-mapper-ctx-field select {
+    width: 100%;
+}
+
+.fb-campaign-other {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.68rem;
+    color: #7c3aed;
+    background: rgba(124, 58, 237, 0.12);
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .text-error {
     color: var(--red);
     text-align: center;
