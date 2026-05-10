@@ -1013,6 +1013,32 @@ body {
 }
 .aiad-result-item:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
 .aiad-result-item img { width: 100%; display: block; aspect-ratio: 1; object-fit: cover; }
+/* ── Sales table sortable headers ─────────────────────────────── */
+.sales-table th[data-sort] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: color 0.12s;
+}
+.sales-table th[data-sort]:hover {
+    color: var(--accent);
+}
+.sales-table th[data-sort]::after {
+    content: ' ↕';
+    opacity: 0.35;
+    font-size: 0.7em;
+}
+.sales-table th[data-sort].sort-asc::after {
+    content: ' ↑';
+    opacity: 1;
+    color: var(--accent);
+}
+.sales-table th[data-sort].sort-desc::after {
+    content: ' ↓';
+    opacity: 1;
+    color: var(--accent);
+}
+
 .aiad-result-badge {
     position: absolute;
     top: 6px;

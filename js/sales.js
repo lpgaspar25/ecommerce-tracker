@@ -13,6 +13,9 @@ const SalesModule = (() => {
         to: '',
         countryFilter: '',
         productFilter: '',
+        cityFilter: '',
+        sortKey: 'created_at',
+        sortDir: 'desc',
         shopTz: 'UTC',
         shopName: '',
         currency: '',
@@ -642,6 +645,8 @@ const SalesModule = (() => {
     function _applyFilters() {
         const cf = (_state.countryFilter || '').toUpperCase();
         const pf = String(_state.productFilter || '');
+        const city = _state.cityFilter || '';
+
         _state.filtered = _state.orders.filter(o => {
             if (cf) {
                 const cc = (o.shipping_address?.country_code || '').toUpperCase();
@@ -651,9 +656,53 @@ const SalesModule = (() => {
                 const has = (o.line_items || []).some(li => String(li.product_id || '') === pf);
                 if (!has) return false;
             }
+            if (city) {
+                if ((o.shipping_address?.city || '') !== city) return false;
+            }
             return true;
         });
+
+        _sortFiltered();
         _state.displayed = PAGE_SIZE;
+    }
+
+    function _sortFiltered() {
+        const key = _state.sortKey || 'created_at';
+        const dir = _state.sortDir === 'asc' ? 1 : -1;
+        _state.filtered.sort((a, b) => {
+            let av, bv;
+            switch (key) {
+                case 'created_at':
+                    av = a.created_at || '';
+                    bv = b.created_at || '';
+                    return av < bv ? -dir : av > bv ? dir : 0;
+                case 'total_price':
+                    return ((Number(a.total_price) || 0) - (Number(b.total_price) || 0)) * dir;
+                case 'country':
+                    av = (a.shipping_address?.country || '').toLowerCase();
+                    bv = (b.shipping_address?.country || '').toLowerCase();
+                    return av < bv ? -dir : av > bv ? dir : 0;
+                case 'city':
+                    av = (a.shipping_address?.city || '').toLowerCase();
+                    bv = (b.shipping_address?.city || '').toLowerCase();
+                    return av < bv ? -dir : av > bv ? dir : 0;
+                case 'items':
+                    av = (a.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
+                    bv = (b.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
+                    return (av - bv) * dir;
+                default:
+                    return 0;
+            }
+        });
+    }
+
+    function _updateSortIndicators() {
+        document.querySelectorAll('.sales-table th[data-sort]').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.sort === _state.sortKey) {
+                th.classList.add(_state.sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        });
     }
 
     // ── Render: summary + table ──────────────────────────────────
@@ -774,12 +823,16 @@ const SalesModule = (() => {
             more.style.display = remaining > 0 ? '' : 'none';
             more.textContent = remaining > 0 ? `Mostrar mais (${remaining} restantes)` : '';
         }
+
+        _updateSortIndicators();
     }
 
     function _populateFilters() {
         const orders = _state.orders;
+        const cf = (_state.countryFilter || '').toUpperCase();
         const countrySel = document.getElementById('sales-country-filter');
         const productSel = document.getElementById('sales-product-filter');
+        const citySel = document.getElementById('sales-city-filter');
 
         if (countrySel) {
             const countries = new Map();
@@ -807,6 +860,26 @@ const SalesModule = (() => {
             const cur = productSel.value;
             productSel.innerHTML = '<option value="">Todos</option>' + sorted.map(([id, n]) => `<option value="${id}">${_esc(n)}</option>`).join('');
             if (cur) productSel.value = cur;
+        }
+
+        if (citySel) {
+            // Cities scoped to selected country (all orders if no country filter)
+            const base = cf ? orders.filter(o => (o.shipping_address?.country_code || '').toUpperCase() === cf) : orders;
+            const cities = new Map();
+            for (const o of base) {
+                const c = o.shipping_address?.city || '';
+                if (c && !cities.has(c)) cities.set(c, c);
+            }
+            const sorted = [...cities.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+            const cur = citySel.value;
+            citySel.innerHTML = '<option value="">Todas</option>' + sorted.map(([c]) => `<option value="${_esc(c)}">${_esc(c)}</option>`).join('');
+            // Restore selection only if still valid in the new list
+            if (cur && sorted.some(([c]) => c === cur)) {
+                citySel.value = cur;
+            } else {
+                citySel.value = '';
+                _state.cityFilter = '';
+            }
         }
     }
 
@@ -1144,16 +1217,38 @@ const SalesModule = (() => {
         document.getElementById('btn-sales-export')?.addEventListener('click', _exportCsv);
         document.getElementById('sales-country-filter')?.addEventListener('change', (e) => {
             _state.countryFilter = e.target.value;
-            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
+            _state.cityFilter = ''; // reset city when country changes
+            _applyFilters(); _populateFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
         });
         document.getElementById('sales-product-filter')?.addEventListener('change', (e) => {
             _state.productFilter = e.target.value;
+            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
+        });
+        document.getElementById('sales-city-filter')?.addEventListener('change', (e) => {
+            _state.cityFilter = e.target.value;
             _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
         });
         document.getElementById('btn-sales-load-more')?.addEventListener('click', () => {
             _state.displayed += PAGE_SIZE;
             _renderTable();
         });
+
+        // Sortable column headers
+        document.querySelectorAll('.sales-table th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const key = th.dataset.sort;
+                if (_state.sortKey === key) {
+                    _state.sortDir = _state.sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    _state.sortKey = key;
+                    // Default direction: desc for date/value, asc for text
+                    _state.sortDir = (key === 'created_at' || key === 'total_price' || key === 'items') ? 'desc' : 'asc';
+                }
+                _applyFilters();
+                _renderTable();
+            });
+        });
+        _updateSortIndicators();
 
         if (typeof EventBus !== 'undefined') {
             EventBus.on('tabChanged', (t) => {

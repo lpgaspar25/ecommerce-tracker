@@ -3118,6 +3118,12 @@
                         <option value="">Todos</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>Cidade</label>
+                    <select id="sales-city-filter" class="input input-sm">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Break-even / Target Calculator -->
@@ -3210,13 +3216,13 @@
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Hora loja</th>
+                            <th data-sort="created_at">Hora loja</th>
                             <th>Hora cliente</th>
-                            <th>País</th>
-                            <th>Cidade</th>
+                            <th data-sort="country">País</th>
+                            <th data-sort="city">Cidade</th>
                             <th>Produtos</th>
-                            <th class="num">Itens</th>
-                            <th class="num">Valor</th>
+                            <th class="num" data-sort="items">Itens</th>
+                            <th class="num" data-sort="total_price">Valor</th>
                             <th>Status</th>
                         </tr>
                     </thead>
