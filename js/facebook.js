@@ -131,6 +131,25 @@ const FacebookAds = {
             });
         }
 
+        // Botão: Adicionar conta manualmente (incremental, várias permitidas)
+        const btnAddManual = document.getElementById('fb-add-account-manual');
+        if (btnAddManual) {
+            btnAddManual.addEventListener('click', () => {
+                const idInput = document.getElementById('fb-ad-account-id');
+                const nameInput = document.getElementById('fb-ad-account-name');
+                const id = (idInput?.value || '').trim().replace(/^act_/, '');
+                const name = (nameInput?.value || '').trim() || `Conta ${id}`;
+                if (!id || !/^\d+$/.test(id)) {
+                    showToast('ID inválido — use só números (sem "act_")', 'error');
+                    return;
+                }
+                this._addManualAccountToList({ id, name });
+                if (idInput) idInput.value = '';
+                if (nameInput) nameInput.value = '';
+                idInput?.focus();
+            });
+        }
+
         // Botão: Buscar minhas contas no FB (descoberta via API)
         const btnDiscover = document.getElementById('fb-discover-accounts');
         if (btnDiscover) {
@@ -214,6 +233,31 @@ const FacebookAds = {
             badge.className = 'status-badge status-disconnected';
             badge.title = '';
         }
+    },
+
+    // Adiciona uma conta manualmente à lista do modal (sem persistir até "Conectar")
+    _addManualAccountToList({ id, name }) {
+        const list = document.getElementById('fb-account-list');
+        if (!list) return;
+        // Remove placeholder se existir
+        const placeholder = list.querySelector('p');
+        if (placeholder) placeholder.remove();
+        // Verifica duplicata
+        const existing = list.querySelector(`input[type="checkbox"][value="${CSS.escape(id)}"]`);
+        if (existing) {
+            existing.checked = true;
+            existing.closest('.fb-account-item')?.classList.add('fb-account-flash');
+            setTimeout(() => existing.closest('.fb-account-item')?.classList.remove('fb-account-flash'), 600);
+            showToast('Conta já está na lista — marcada', 'success');
+            return;
+        }
+        const html = `<label class="fb-account-item">
+            <input type="checkbox" value="${this._esc(id)}" data-name="${this._esc(name)}" checked>
+            <span class="fb-account-name">${this._esc(name)}</span>
+            <span class="fb-account-meta">${this._esc(id)} · manual</span>
+        </label>`;
+        list.insertAdjacentHTML('beforeend', html);
+        showToast(`Adicionada: ${name}`, 'success');
     },
 
     _populateAccountList(accounts, allChecked = false) {
