@@ -1587,7 +1587,7 @@ const DashboardModule = {
                     items.push({
                         date: p.targetDate,
                         rel,
-                        text: p.title || 'Projeto sem título',
+                        text: p.name || p.title || 'Projeto sem título',
                         sub: 'Prazo do projeto',
                         icon: 'rocket',
                         projId: p.id,
@@ -1601,7 +1601,7 @@ const DashboardModule = {
                         date: task.dueDate,
                         rel,
                         text: task.text,
-                        sub: `Tarefa de "${p.title}"`,
+                        sub: `Tarefa de "${p.name || p.title}"`,
                         icon: 'check-square',
                         projId: p.id,
                         kind: 'project-task'
