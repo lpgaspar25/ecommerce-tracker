@@ -8,27 +8,67 @@ const FacebookAds = {
     BASE_URL: 'https://graph.facebook.com',
 
     // Config persistida em localStorage
-    config: {
-        accessToken: localStorage.getItem('fb_access_token') || '',
-        adAccountId: localStorage.getItem('fb_ad_account_id') || ''
-    },
+    // adAccounts: [{ id, name }]   — várias contas do mesmo perfil FB
+    // activeAdAccountId: id da conta selecionada como "ativa"
+    config: (() => {
+        const accessToken = localStorage.getItem('fb_access_token') || '';
+        let adAccounts = [];
+        try { adAccounts = JSON.parse(localStorage.getItem('fb_ad_accounts') || '[]') || []; } catch { adAccounts = []; }
+        let activeAdAccountId = localStorage.getItem('fb_active_ad_account_id') || '';
 
-    // Mapeamento produto → campanhas: { productId: [campaignId1, campaignId2, ...] }
-    campaignMap: JSON.parse(localStorage.getItem('fb_campaign_map') || '{}'),
+        // Migração do formato antigo (1 ad account)
+        const legacyId = localStorage.getItem('fb_ad_account_id') || '';
+        if (legacyId && adAccounts.length === 0) {
+            adAccounts = [{ id: legacyId, name: 'Conta principal' }];
+            activeAdAccountId = legacyId;
+            localStorage.setItem('fb_ad_accounts', JSON.stringify(adAccounts));
+            localStorage.setItem('fb_active_ad_account_id', activeAdAccountId);
+        }
+        if (!activeAdAccountId && adAccounts.length > 0) activeAdAccountId = adAccounts[0].id;
+
+        return { accessToken, adAccounts, activeAdAccountId };
+    })(),
+
+    // Mapeamento campanhas: { accountId: { productId: [campaignIds] } }
+    campaignMap: (() => {
+        let raw = {};
+        try { raw = JSON.parse(localStorage.getItem('fb_campaign_map') || '{}') || {}; } catch { raw = {}; }
+        // Migração: formato antigo era plano { productId: [campaignIds] }
+        const isFlat = Object.values(raw).some(v => Array.isArray(v));
+        if (isFlat) {
+            const legacyId = localStorage.getItem('fb_ad_account_id') || '';
+            if (legacyId) {
+                raw = { [legacyId]: raw };
+                localStorage.setItem('fb_campaign_map', JSON.stringify(raw));
+            }
+        }
+        return raw;
+    })(),
 
     // ---- Status ----
     isConnected() {
-        return !!(this.config.accessToken && this.config.adAccountId);
+        return !!(this.config.accessToken && this.config.adAccounts.length > 0 && this.config.activeAdAccountId);
     },
+
+    activeAccount() {
+        return (this.config.adAccounts || []).find(a => a.id === this.config.activeAdAccountId) || null;
+    },
+
+    // Conveniência: ID da conta ativa (compatibilidade com chamadas antigas)
+    get activeAdAccountId() { return this.config.activeAdAccountId; },
 
     // ---- Persistência ----
     saveConfig() {
         localStorage.setItem('fb_access_token', this.config.accessToken);
-        localStorage.setItem('fb_ad_account_id', this.config.adAccountId);
+        localStorage.setItem('fb_ad_accounts', JSON.stringify(this.config.adAccounts || []));
+        localStorage.setItem('fb_active_ad_account_id', this.config.activeAdAccountId || '');
+        // Mantém compatibilidade com leitura antiga
+        localStorage.setItem('fb_ad_account_id', this.config.activeAdAccountId || '');
 
         // Salvar no Sheets Config tab se conectado
         if (AppState.sheetsConnected) {
-            SheetsAPI.saveConfig('fb_ad_account_id', this.config.adAccountId);
+            SheetsAPI.saveConfig('fb_ad_accounts', JSON.stringify(this.config.adAccounts || []));
+            SheetsAPI.saveConfig('fb_active_ad_account_id', this.config.activeAdAccountId || '');
             // Token não vai pro Sheets por segurança
         }
     },
@@ -41,6 +81,14 @@ const FacebookAds = {
         }
     },
 
+    // Mapeamento de campanhas da conta ativa
+    _accountMap() {
+        const id = this.config.activeAdAccountId;
+        if (!id) return {};
+        if (!this.campaignMap[id]) this.campaignMap[id] = {};
+        return this.campaignMap[id];
+    },
+
     // ---- UI Init ----
     initUI() {
         // Config form submit
@@ -49,11 +97,60 @@ const FacebookAds = {
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.config.accessToken = document.getElementById('fb-access-token').value.trim();
-                this.config.adAccountId = document.getElementById('fb-ad-account-id').value.trim().replace('act_', '');
+
+                // Lê seleção de contas no modal (checkboxes preenchidos via _populateAccountList)
+                const checks = [...document.querySelectorAll('#fb-account-list input[type="checkbox"]:checked')];
+                if (checks.length > 0) {
+                    this.config.adAccounts = checks.map(c => ({
+                        id: c.value,
+                        name: c.dataset.name || c.value
+                    }));
+                    if (!this.config.adAccounts.some(a => a.id === this.config.activeAdAccountId)) {
+                        this.config.activeAdAccountId = this.config.adAccounts[0].id;
+                    }
+                } else {
+                    // Fallback: pega do input "manual" (ID único, modo legado)
+                    const manual = document.getElementById('fb-ad-account-id')?.value.trim().replace(/^act_/, '');
+                    if (manual) {
+                        const existing = this.config.adAccounts.find(a => a.id === manual);
+                        if (!existing) this.config.adAccounts = [{ id: manual, name: 'Conta principal' }];
+                        this.config.activeAdAccountId = manual;
+                    }
+                }
+
+                if (!this.config.adAccounts.length) {
+                    showToast('Adicione pelo menos uma conta de anúncio', 'error');
+                    return;
+                }
+
                 this.saveConfig();
                 this._updateStatusBadge();
+                this._renderActiveAccountSelector();
                 closeModal('fb-config-modal');
-                showToast('Facebook Ads configurado!', 'success');
+                showToast(`Facebook conectado · ${this.config.adAccounts.length} conta(s)`, 'success');
+            });
+        }
+
+        // Botão: Buscar minhas contas no FB (descoberta via API)
+        const btnDiscover = document.getElementById('fb-discover-accounts');
+        if (btnDiscover) {
+            btnDiscover.addEventListener('click', async () => {
+                const tokenInput = document.getElementById('fb-access-token');
+                const token = tokenInput?.value.trim();
+                if (!token) { showToast('Cole o Access Token primeiro', 'error'); return; }
+                this.config.accessToken = token;
+                btnDiscover.disabled = true;
+                btnDiscover.textContent = 'Buscando…';
+                try {
+                    const accounts = await this.fetchMyAdAccounts();
+                    this._populateAccountList(accounts);
+                    showToast(`${accounts.length} conta(s) encontrada(s)`, 'success');
+                } catch (err) {
+                    showToast('Falha: ' + err.message, 'error');
+                } finally {
+                    btnDiscover.disabled = false;
+                    btnDiscover.textContent = 'Buscar minhas contas';
+                }
             });
         }
 
@@ -62,7 +159,15 @@ const FacebookAds = {
         if (btnConfig) {
             btnConfig.addEventListener('click', () => {
                 document.getElementById('fb-access-token').value = this.config.accessToken;
-                document.getElementById('fb-ad-account-id').value = this.config.adAccountId;
+                const manual = document.getElementById('fb-ad-account-id');
+                if (manual) manual.value = this.config.activeAdAccountId || '';
+                // Re-popula lista com o que já temos salvo (todas marcadas)
+                if ((this.config.adAccounts || []).length > 0) {
+                    this._populateAccountList(this.config.adAccounts, /*allChecked*/ true);
+                } else {
+                    const list = document.getElementById('fb-account-list');
+                    if (list) list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Cole o token e clique em "Buscar minhas contas" para listar suas contas de anúncio.</p>';
+                }
                 openModal('fb-config-modal');
             });
         }
@@ -90,25 +195,76 @@ const FacebookAds = {
 
         // Update status on load
         this._updateStatusBadge();
+        this._renderActiveAccountSelector();
     },
 
     _updateStatusBadge() {
         const badge = document.getElementById('fb-status');
         if (!badge) return;
         if (this.isConnected()) {
-            badge.textContent = 'FB Conectado';
+            const n = this.config.adAccounts.length;
+            const active = this.activeAccount();
+            badge.textContent = n === 1
+                ? `FB · ${active?.name || 'conectado'}`
+                : `FB · ${n} contas`;
             badge.className = 'status-badge status-connected';
+            badge.title = active ? `Conta ativa: ${active.name} (${active.id})` : '';
         } else {
             badge.textContent = 'FB Desconectado';
             badge.className = 'status-badge status-disconnected';
+            badge.title = '';
         }
     },
 
-    // ---- API: Buscar campanhas da conta ----
+    _populateAccountList(accounts, allChecked = false) {
+        const list = document.getElementById('fb-account-list');
+        if (!list) return;
+        if (!accounts || accounts.length === 0) {
+            list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Nenhuma conta retornada.</p>';
+            return;
+        }
+        const tracked = new Set((this.config.adAccounts || []).map(a => a.id));
+        list.innerHTML = accounts.map(a => {
+            const checked = allChecked || tracked.has(a.id) ? 'checked' : '';
+            const meta = [a.currency, a.timezone].filter(Boolean).join(' · ');
+            return `<label class="fb-account-item">
+                <input type="checkbox" value="${this._esc(a.id)}" data-name="${this._esc(a.name)}" ${checked}>
+                <span class="fb-account-name">${this._esc(a.name)}</span>
+                <span class="fb-account-meta">${this._esc(a.id)}${meta ? ' · ' + this._esc(meta) : ''}</span>
+            </label>`;
+        }).join('');
+    },
+
+    // ---- API: Listar todas as ad accounts do perfil (descoberta) ----
+    async fetchMyAdAccounts() {
+        if (!this.config.accessToken) throw new Error('Cole o Access Token primeiro');
+        const url = `${this.BASE_URL}/${this.API_VERSION}/me/adaccounts`
+            + `?access_token=${this.config.accessToken}`
+            + `&fields=id,account_id,name,account_status,currency,timezone_name`
+            + `&limit=200`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.error) {
+            this._handleApiError(data.error);
+            throw new Error(data.error.message);
+        }
+        // Normaliza: id é "act_xxx", account_id é o numérico que usamos
+        return (data.data || []).map(a => ({
+            id: a.account_id || String(a.id || '').replace(/^act_/, ''),
+            name: a.name || `(sem nome) ${a.account_id || ''}`,
+            currency: a.currency || '',
+            status: a.account_status,
+            timezone: a.timezone_name || ''
+        }));
+    },
+
+    // ---- API: Buscar campanhas da conta ativa ----
     async fetchCampaigns() {
         if (!this.isConnected()) throw new Error('Facebook não configurado');
+        const accountId = this.config.activeAdAccountId;
 
-        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${this.config.adAccountId}/campaigns`
+        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/campaigns`
             + `?access_token=${this.config.accessToken}`
             + `&fields=id,name,status,effective_status`
             + `&filtering=${encodeURIComponent('[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]')}`
@@ -125,13 +281,14 @@ const FacebookAds = {
         return data.data || [];
     },
 
-    // ---- API: Buscar insights de campanhas mapeadas a um produto ----
+    // ---- API: Buscar insights de campanhas mapeadas a um produto (na conta ativa) ----
     async fetchProductInsights(productId, dateRange) {
         if (!this.isConnected()) throw new Error('Facebook não configurado');
+        const accountId = this.config.activeAdAccountId;
 
-        const campaignIds = this.campaignMap[productId];
+        const campaignIds = (this._accountMap()[productId]) || [];
         if (!campaignIds || campaignIds.length === 0) {
-            throw new Error('Nenhuma campanha mapeada para este produto');
+            throw new Error('Nenhuma campanha mapeada para este produto na conta ativa');
         }
 
         const since = dateRange?.since || todayISO();
@@ -142,7 +299,7 @@ const FacebookAds = {
             { field: 'campaign.id', operator: 'IN', value: campaignIds }
         ]));
 
-        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${this.config.adAccountId}/insights`
+        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
             + `?access_token=${this.config.accessToken}`
             + `&fields=impressions,clicks,spend,actions,action_values`
             + `&level=campaign`
@@ -259,7 +416,7 @@ const FacebookAds = {
 
         this.fetchCampaigns().then(campaigns => {
             document.getElementById('fb-campaigns-loading').style.display = 'none';
-            const mapped = this.campaignMap[productId] || [];
+            const mapped = (this._accountMap()[productId]) || [];
             const listEl = document.getElementById('fb-campaigns-list');
 
             if (campaigns.length === 0) {
@@ -284,10 +441,40 @@ const FacebookAds = {
         document.getElementById('fb-campaigns-save').onclick = () => {
             const checked = [...document.querySelectorAll('#fb-campaigns-list input:checked')]
                 .map(el => el.value);
-            this.campaignMap[productId] = checked;
+            const acctMap = this._accountMap();
+            acctMap[productId] = checked;
             this.saveCampaignMap();
+            const acctName = this.activeAccount()?.name || this.config.activeAdAccountId;
             closeModal('fb-campaigns-modal');
-            showToast(`${checked.length} campanha(s) mapeada(s)`, 'success');
+            showToast(`${checked.length} campanha(s) mapeada(s) em ${acctName}`, 'success');
         };
+    },
+
+    // ---- UI: Conta ativa selector ----
+    _renderActiveAccountSelector() {
+        const wrap = document.getElementById('fb-active-account-wrap');
+        if (!wrap) return;
+        const accounts = this.config.adAccounts || [];
+        if (accounts.length === 0) {
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+        const sel = document.getElementById('fb-active-account');
+        if (!sel) return;
+        const current = this.config.activeAdAccountId;
+        sel.innerHTML = accounts.map(a =>
+            `<option value="${a.id}" ${a.id === current ? 'selected' : ''}>${this._esc(a.name)} (${a.id})</option>`
+        ).join('');
+        sel.onchange = () => {
+            this.config.activeAdAccountId = sel.value;
+            this.saveConfig();
+            this._updateStatusBadge();
+            showToast(`Conta ativa: ${this.activeAccount()?.name || sel.value}`, 'success');
+        };
+    },
+
+    _esc(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 };
