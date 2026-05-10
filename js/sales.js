@@ -913,6 +913,7 @@ const SalesModule = (() => {
             _renderCalculator();
             _renderPatterns();
             _renderShopTzBadge();
+            _refreshActiveViz();
         } catch (err) {
             console.error('[sales] load error', err);
             if (typeof showToast === 'function') showToast('Falha ao buscar vendas: ' + err.message, 'error');
@@ -1168,6 +1169,315 @@ const SalesModule = (() => {
         });
     }
 
+    // ── Viz state ─────────────────────────────────────────────────
+    let _vizMode = 'tabela';
+    let _calMonth = new Date().getMonth();
+    let _calYear = new Date().getFullYear();
+    let _chartRefs = { orders: null, revenue: null, aov: null, items: null };
+    let _globeInstance = null;
+    let _globeLoaded = false;
+
+    const COUNTRY_CENTROIDS = {
+        US:[39.8,-98.6],BR:[-14.2,-51.9],GB:[55.4,-3.4],DE:[51.2,10.4],FR:[46.2,2.2],
+        CA:[56.1,-106.3],AU:[-25.3,133.8],JP:[36.2,138.3],IN:[20.6,78.9],MX:[23.6,-102.6],
+        IT:[41.9,12.5],ES:[40.5,-3.7],PT:[39.4,-8.2],NL:[52.1,5.3],BE:[50.5,4.5],
+        AR:[-38.4,-63.6],CL:[-35.7,-71.5],CO:[4.6,-74.1],PE:[-9.2,-75.0],
+        SE:[60.1,18.6],NO:[60.5,8.5],DK:[56.3,9.5],FI:[61.9,25.7],
+        PL:[51.9,19.1],AT:[47.5,14.6],CH:[46.8,8.2],IE:[53.1,-7.7],
+        ZA:[-30.6,22.9],KR:[35.9,127.8],NZ:[-40.9,174.9],SG:[1.4,103.8],
+        AE:[23.4,53.8],SA:[23.9,45.1],IL:[31.1,34.8],EG:[26.8,30.8],
+        NG:[9.1,8.7],KE:[-0.02,37.9],GH:[7.9,-1.0],TH:[15.9,100.9],
+        PH:[12.9,121.8],MY:[4.2,101.9],ID:[-0.8,113.9],VN:[14.1,108.3],
+        TW:[23.7,121.0],HK:[22.4,114.1],RU:[61.5,105.3],TR:[39.0,35.2],
+        RO:[45.9,25.0],CZ:[49.8,15.5],HU:[47.2,19.5],GR:[39.1,21.8],
+        HR:[45.1,15.2],BG:[42.7,25.5],SK:[48.7,19.7],SI:[46.2,14.8],
+        LT:[55.2,23.9],LV:[56.9,24.1],EE:[58.6,25.0],CY:[35.1,33.4],
+        MT:[35.9,14.4],LU:[49.8,6.1],IS:[65.0,-19.0],UA:[48.4,31.2],
+    };
+
+    function _refreshActiveViz() {
+        if (_vizMode === 'calendario') _renderCalendarView();
+        else if (_vizMode === 'globo') _renderGlobeView();
+        else if (_vizMode === 'graficos') _renderChartsView();
+    }
+
+    function _setVizMode(mode) {
+        _vizMode = mode;
+        document.querySelectorAll('.sales-viz-tab').forEach(t => t.classList.toggle('active', t.dataset.viz === mode));
+        const tableWrap = document.getElementById('sales-viz-tabela');
+        if (tableWrap) tableWrap.style.display = mode === 'tabela' ? '' : 'none';
+        ['calendario', 'globo', 'graficos', 'comparador'].forEach(p => {
+            const el = document.getElementById('sales-viz-' + p);
+            if (el) el.style.display = p === mode ? '' : 'none';
+        });
+        if (mode === 'calendario') _renderCalendarView();
+        if (mode === 'globo') _renderGlobeView();
+        if (mode === 'graficos') _renderChartsView();
+        if (window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // ── Calendar View ────────────────────────────────────────────
+    function _renderCalendarView() {
+        const titleEl = document.getElementById('sales-cal-title');
+        const gridEl = document.getElementById('sales-cal-grid');
+        if (!titleEl || !gridEl) return;
+
+        const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        titleEl.textContent = `${monthNames[_calMonth]} ${_calYear}`;
+
+        const firstDay = new Date(_calYear, _calMonth, 1).getDay();
+        const daysInMonth = new Date(_calYear, _calMonth + 1, 0).getDate();
+        const todayStr = _todayISO();
+
+        const byDay = new Map();
+        for (const o of _state.filtered) {
+            const d = _orderDateInShopTz(o.created_at);
+            if (!d) continue;
+            const [y, m] = d.split('-').map(Number);
+            if (y !== _calYear || m !== _calMonth + 1) continue;
+            const e = byDay.get(d) || { count: 0, revenue: 0 };
+            e.count++;
+            e.revenue += Number(o.total_price) || 0;
+            byDay.set(d, e);
+        }
+
+        const maxCount = Math.max(...[...byDay.values()].map(e => e.count), 1);
+
+        const dayLabels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+        let html = dayLabels.map(d => `<div class="sales-cal-dayname">${d}</div>`).join('');
+
+        for (let i = 0; i < firstDay; i++) html += '<div class="sales-cal-cell empty"></div>';
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dateStr = `${_calYear}-${String(_calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const e = byDay.get(dateStr);
+            const count = e?.count || 0;
+            const rev = e?.revenue || 0;
+            const ratio = maxCount ? count / maxCount : 0;
+            const heat = count === 0 ? 0 : ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
+            const isToday = dateStr === todayStr;
+            html += `<div class="sales-cal-cell heat-${heat}${isToday ? ' today' : ''}">
+                <div class="sales-cal-day">${day}</div>
+                <div class="sales-cal-count">${count || ''}</div>
+                ${count ? `<div class="sales-cal-rev">${_fmtMoney(rev)}</div>` : ''}
+            </div>`;
+        }
+        gridEl.innerHTML = html;
+    }
+
+    // ── Globe View ───────────────────────────────────────────────
+    function _loadGlobeScript() {
+        return new Promise((resolve, reject) => {
+            if (window.Globe) return resolve();
+            const s = document.createElement('script');
+            s.src = 'https://unpkg.com/globe.gl@2.27.2/dist/globe.gl.min.js';
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('Falha ao carregar globe.gl'));
+            document.head.appendChild(s);
+        });
+    }
+
+    async function _renderGlobeView() {
+        const container = document.getElementById('sales-globe-container');
+        const legend = document.getElementById('sales-globe-legend');
+        if (!container) return;
+
+        const byCountry = new Map();
+        for (const o of _state.filtered) {
+            const cc = (o.shipping_address?.country_code || '').toUpperCase();
+            if (!cc) continue;
+            const name = o.shipping_address?.country || cc;
+            const e = byCountry.get(cc) || { name, count: 0, revenue: 0 };
+            e.count++;
+            e.revenue += Number(o.total_price) || 0;
+            byCountry.set(cc, e);
+        }
+
+        const points = [];
+        for (const [cc, e] of byCountry) {
+            const coords = COUNTRY_CENTROIDS[cc];
+            if (!coords) continue;
+            points.push({ lat: coords[0], lng: coords[1], cc, name: e.name, count: e.count, revenue: e.revenue });
+        }
+
+        if (legend) {
+            const sorted = [...byCountry.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 8);
+            legend.innerHTML = sorted.map(([cc, e]) =>
+                `<div class="sales-globe-legend-item"><div class="sales-globe-legend-dot"></div>${_esc(e.name)} — ${e.count}</div>`
+            ).join('');
+        }
+
+        if (!points.length) {
+            container.innerHTML = '<div class="sales-globe-loading">Sem dados de localização no período.</div>';
+            return;
+        }
+
+        try {
+            if (!_globeLoaded) {
+                await _loadGlobeScript();
+                _globeLoaded = true;
+            }
+            container.querySelector('.sales-globe-loading')?.remove();
+
+            const maxC = Math.max(...points.map(p => p.count), 1);
+
+            if (_globeInstance) {
+                _globeInstance
+                    .pointsData(points)
+                    .pointAltitude(d => 0.02 + (d.count / maxC) * 0.35);
+                return;
+            }
+
+            _globeInstance = Globe()(container)
+                .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+                .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+                .width(container.clientWidth)
+                .height(container.clientHeight)
+                .pointsData(points)
+                .pointLat('lat')
+                .pointLng('lng')
+                .pointAltitude(d => 0.02 + (d.count / maxC) * 0.35)
+                .pointRadius(d => 0.3 + (d.count / maxC) * 1.2)
+                .pointColor(() => '#4f8cff')
+                .pointLabel(d => `<b>${d.name}</b><br>${d.count} pedidos<br>${_fmtMoney(d.revenue)}`)
+                .animateIn(true);
+
+            const ro = new ResizeObserver(() => {
+                if (_globeInstance && container.clientWidth) {
+                    _globeInstance.width(container.clientWidth).height(container.clientHeight);
+                }
+            });
+            ro.observe(container);
+        } catch (err) {
+            container.innerHTML = `<div class="sales-globe-loading">Erro: ${err.message}</div>`;
+        }
+    }
+
+    // ── Charts View ──────────────────────────────────────────────
+    function _renderChartsView() {
+        const orders = _state.filtered;
+        const byDay = new Map();
+        for (const o of orders) {
+            const d = _orderDateInShopTz(o.created_at);
+            if (!d) continue;
+            const e = byDay.get(d) || { count: 0, revenue: 0, items: 0 };
+            e.count++;
+            e.revenue += Number(o.total_price) || 0;
+            e.items += (o.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
+            byDay.set(d, e);
+        }
+
+        const dates = [...byDay.keys()].sort();
+        const labels = dates.map(d => { const [, m, day] = d.split('-'); return `${day}/${m}`; });
+
+        const datasets = {
+            orders: dates.map(d => byDay.get(d).count),
+            revenue: dates.map(d => +byDay.get(d).revenue.toFixed(2)),
+            aov: dates.map(d => { const e = byDay.get(d); return e.count ? +(e.revenue / e.count).toFixed(2) : 0; }),
+            items: dates.map(d => byDay.get(d).items),
+        };
+
+        const chartConfig = (key, data, color, isMoney) => ({
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    data,
+                    borderColor: color,
+                    backgroundColor: color + '18',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: dates.length > 60 ? 0 : 3,
+                    pointHoverRadius: 5,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(128,128,128,0.1)' },
+                        ticks: isMoney ? {
+                            callback: v => _fmtMoney(v),
+                            font: { size: 10 },
+                        } : { font: { size: 10 } },
+                    }
+                },
+                interaction: { mode: 'index', intersect: false },
+            }
+        });
+
+        const build = (canvasId, key, data, color, isMoney) => {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            if (_chartRefs[key]) { _chartRefs[key].destroy(); _chartRefs[key] = null; }
+            _chartRefs[key] = new Chart(canvas, chartConfig(key, data, color, isMoney));
+        };
+
+        build('sales-chart-orders', 'orders', datasets.orders, '#2563eb', false);
+        build('sales-chart-revenue', 'revenue', datasets.revenue, '#059669', true);
+        build('sales-chart-aov', 'aov', datasets.aov, '#d97706', true);
+        build('sales-chart-items', 'items', datasets.items, '#7c3aed', false);
+    }
+
+    // ── Comparator ───────────────────────────────────────────────
+    function _runComparator() {
+        const aFrom = document.getElementById('sales-comp-a-from')?.value;
+        const aTo = document.getElementById('sales-comp-a-to')?.value;
+        const bFrom = document.getElementById('sales-comp-b-from')?.value;
+        const bTo = document.getElementById('sales-comp-b-to')?.value;
+        const wrap = document.getElementById('sales-comp-results');
+        if (!wrap || !aFrom || !aTo || !bFrom || !bTo) {
+            if (wrap) wrap.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Preencha os dois períodos e clique em Comparar.</p>';
+            return;
+        }
+
+        const collect = (from, to) => {
+            const result = { orders: 0, revenue: 0, items: 0 };
+            for (const o of _state.orders) {
+                const d = _orderDateInShopTz(o.created_at);
+                if (!d || d < from || d > to) continue;
+                result.orders++;
+                result.revenue += Number(o.total_price) || 0;
+                result.items += (o.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
+            }
+            result.aov = result.orders ? result.revenue / result.orders : 0;
+            return result;
+        };
+
+        const a = collect(aFrom, aTo);
+        const b = collect(bFrom, bTo);
+
+        const delta = (va, vb) => {
+            if (vb === 0 && va === 0) return { pct: 0, cls: 'neutral' };
+            if (vb === 0) return { pct: 999, cls: 'pos' };
+            const p = ((va - vb) / vb) * 100;
+            return { pct: p, cls: p > 0 ? 'pos' : p < 0 ? 'neg' : 'neutral' };
+        };
+
+        const metrics = [
+            { label: 'Pedidos', aVal: _fmtNumber(a.orders), bVal: _fmtNumber(b.orders), d: delta(a.orders, b.orders) },
+            { label: 'Receita', aVal: _fmtMoney(a.revenue), bVal: _fmtMoney(b.revenue), d: delta(a.revenue, b.revenue) },
+            { label: 'Itens', aVal: _fmtNumber(a.items), bVal: _fmtNumber(b.items), d: delta(a.items, b.items) },
+            { label: 'Ticket médio', aVal: _fmtMoney(a.aov), bVal: _fmtMoney(b.aov), d: delta(a.aov, b.aov) },
+        ];
+
+        wrap.innerHTML = metrics.map(m => `
+            <div class="sales-comp-card">
+                <div class="sales-comp-label">${m.label}</div>
+                <div class="sales-comp-vals">
+                    <div class="sales-comp-val">${m.aVal}<small>Período A</small></div>
+                    <div class="sales-comp-val">${m.bVal}<small>Período B</small></div>
+                </div>
+                <span class="sales-comp-delta ${m.d.cls}">${m.d.pct >= 0 ? '+' : ''}${m.d.pct.toFixed(1)}%</span>
+            </div>
+        `).join('');
+    }
+
     // ── Init ─────────────────────────────────────────────────────
     function init() {
         if (window._salesInited) return;
@@ -1217,16 +1527,16 @@ const SalesModule = (() => {
         document.getElementById('btn-sales-export')?.addEventListener('click', _exportCsv);
         document.getElementById('sales-country-filter')?.addEventListener('change', (e) => {
             _state.countryFilter = e.target.value;
-            _state.cityFilter = ''; // reset city when country changes
-            _applyFilters(); _populateFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
+            _state.cityFilter = '';
+            _applyFilters(); _populateFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
         });
         document.getElementById('sales-product-filter')?.addEventListener('change', (e) => {
             _state.productFilter = e.target.value;
-            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
+            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
         });
         document.getElementById('sales-city-filter')?.addEventListener('change', (e) => {
             _state.cityFilter = e.target.value;
-            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns();
+            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
         });
         document.getElementById('btn-sales-load-more')?.addEventListener('click', () => {
             _state.displayed += PAGE_SIZE;
@@ -1249,6 +1559,33 @@ const SalesModule = (() => {
             });
         });
         _updateSortIndicators();
+
+        // Viz toggle tabs
+        document.querySelectorAll('.sales-viz-tab').forEach(btn => {
+            btn.addEventListener('click', () => _setVizMode(btn.dataset.viz));
+        });
+        // Calendar nav
+        document.getElementById('sales-cal-prev')?.addEventListener('click', () => {
+            _calMonth--;
+            if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+            _renderCalendarView();
+        });
+        document.getElementById('sales-cal-next')?.addEventListener('click', () => {
+            _calMonth++;
+            if (_calMonth > 11) { _calMonth = 0; _calYear++; }
+            _renderCalendarView();
+        });
+        // Comparator
+        document.getElementById('btn-sales-compare')?.addEventListener('click', _runComparator);
+        // Default comparator dates (last 30d vs previous 30d)
+        const compATo = document.getElementById('sales-comp-a-to');
+        const compAFrom = document.getElementById('sales-comp-a-from');
+        const compBTo = document.getElementById('sales-comp-b-to');
+        const compBFrom = document.getElementById('sales-comp-b-from');
+        if (compATo) compATo.value = _todayISO();
+        if (compAFrom) compAFrom.value = _daysAgoISO(29);
+        if (compBTo) compBTo.value = _daysAgoISO(30);
+        if (compBFrom) compBFrom.value = _daysAgoISO(59);
 
         if (typeof EventBus !== 'undefined') {
             EventBus.on('tabChanged', (t) => {

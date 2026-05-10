@@ -1300,6 +1300,239 @@ body {
 .prod-status-rascunho { background: rgba(107,114,128,0.12); color: var(--text-muted); }
 .prod-status-arquivado { background: rgba(220,38,38,0.1); color: #dc2626; }
 
+/* ===========================
+   Sales Viz — toggle bar + panels
+   =========================== */
+.sales-viz-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: var(--sp-4);
+    padding: 4px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow-x: auto;
+}
+.sales-viz-tab {
+    padding: 6px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: calc(var(--radius) - 2px);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.sales-viz-tab:hover { background: var(--bg-subtle); color: var(--text-main); }
+.sales-viz-tab.active { background: var(--accent); color: #fff; }
+.sales-viz-panel { margin-bottom: var(--sp-4); }
+
+/* Calendar */
+.sales-cal-header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    justify-content: center;
+    margin-bottom: var(--sp-3);
+}
+.sales-cal-title { font-size: 1rem; font-weight: 700; }
+.sales-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+.sales-cal-dayname {
+    text-align: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: 4px 0;
+    text-transform: uppercase;
+}
+.sales-cal-cell {
+    min-height: 72px;
+    border-radius: 6px;
+    padding: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: border-color .15s;
+}
+.sales-cal-cell:hover { border-color: var(--accent); }
+.sales-cal-cell.empty { background: transparent; border-color: transparent; min-height: 0; }
+.sales-cal-cell.today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sales-cal-day {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.sales-cal-count {
+    font-size: 1.1rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.sales-cal-rev {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.sales-cal-cell.heat-0 .sales-cal-count { color: var(--text-muted); }
+.sales-cal-cell.heat-1 { background: rgba(37,99,235,0.06); }
+.sales-cal-cell.heat-1 .sales-cal-count { color: #2563eb; }
+.sales-cal-cell.heat-2 { background: rgba(37,99,235,0.12); }
+.sales-cal-cell.heat-2 .sales-cal-count { color: #1d4ed8; }
+.sales-cal-cell.heat-3 { background: rgba(37,99,235,0.22); }
+.sales-cal-cell.heat-3 .sales-cal-count { color: #1e40af; }
+.sales-cal-cell.heat-4 { background: rgba(37,99,235,0.35); }
+.sales-cal-cell.heat-4 .sales-cal-count { color: #fff; }
+.sales-cal-cell.heat-4 .sales-cal-day,
+.sales-cal-cell.heat-4 .sales-cal-rev { color: rgba(255,255,255,0.7); }
+
+/* Globe */
+.sales-globe-container {
+    width: 100%;
+    height: 420px;
+    border-radius: var(--radius);
+    background: #0a0e27;
+    position: relative;
+    overflow: hidden;
+}
+.sales-globe-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+}
+.sales-globe-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    margin-top: var(--sp-2);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+.sales-globe-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-card);
+    padding: 3px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+.sales-globe-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+/* Charts */
+.sales-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+@media (max-width: 768px) {
+    .sales-charts-row { grid-template-columns: 1fr; }
+}
+.sales-chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--sp-4);
+}
+.sales-chart-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: var(--sp-2);
+    color: var(--text-muted);
+}
+
+/* Comparator */
+.sales-comp-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--sp-4);
+    padding: var(--sp-4);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.sales-comp-period {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.sales-comp-period label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    min-width: 62px;
+}
+.sales-comp-period span {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+.sales-comp-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--sp-3);
+}
+.sales-comp-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--sp-4);
+    text-align: center;
+}
+.sales-comp-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: var(--sp-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.sales-comp-vals {
+    display: flex;
+    justify-content: center;
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-2);
+}
+.sales-comp-val {
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+.sales-comp-val small {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.sales-comp-delta {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 12px;
+    display: inline-block;
+}
+.sales-comp-delta.pos { background: rgba(5,150,105,0.12); color: #059669; }
+.sales-comp-delta.neg { background: rgba(220,38,38,0.1); color: #dc2626; }
+.sales-comp-delta.neutral { background: rgba(107,114,128,0.12); color: var(--text-muted); }
+
 /* Galeria de gerações */
 .aigen-grid {
     display: grid;

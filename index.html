@@ -3293,8 +3293,79 @@
             <!-- Summary -->
             <div class="sales-summary" id="sales-summary"></div>
 
+            <!-- Viz toggle bar -->
+            <div class="sales-viz-bar">
+                <button class="sales-viz-tab active" data-viz="tabela"><i data-lucide="table-2" style="width:14px;height:14px;vertical-align:-2px"></i> Tabela</button>
+                <button class="sales-viz-tab" data-viz="calendario"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                <button class="sales-viz-tab" data-viz="globo"><i data-lucide="globe-2" style="width:14px;height:14px;vertical-align:-2px"></i> Globo 3D</button>
+                <button class="sales-viz-tab" data-viz="graficos"><i data-lucide="bar-chart-3" style="width:14px;height:14px;vertical-align:-2px"></i> Gráficos</button>
+                <button class="sales-viz-tab" data-viz="comparador"><i data-lucide="git-compare-arrows" style="width:14px;height:14px;vertical-align:-2px"></i> Comparador</button>
+            </div>
+
+            <!-- Calendar View -->
+            <div class="sales-viz-panel" id="sales-viz-calendario" style="display:none">
+                <div class="sales-cal-header">
+                    <button id="sales-cal-prev" class="btn btn-secondary btn-sm">&larr;</button>
+                    <span id="sales-cal-title" class="sales-cal-title"></span>
+                    <button id="sales-cal-next" class="btn btn-secondary btn-sm">&rarr;</button>
+                </div>
+                <div id="sales-cal-grid" class="sales-cal-grid"></div>
+            </div>
+
+            <!-- Globe View -->
+            <div class="sales-viz-panel" id="sales-viz-globo" style="display:none">
+                <div id="sales-globe-container" class="sales-globe-container">
+                    <div class="sales-globe-loading">Carregando globe.gl…</div>
+                </div>
+                <div id="sales-globe-legend" class="sales-globe-legend"></div>
+            </div>
+
+            <!-- Charts View -->
+            <div class="sales-viz-panel" id="sales-viz-graficos" style="display:none">
+                <div class="sales-charts-row">
+                    <div class="sales-chart-card">
+                        <div class="sales-chart-title">Pedidos por dia</div>
+                        <canvas id="sales-chart-orders"></canvas>
+                    </div>
+                    <div class="sales-chart-card">
+                        <div class="sales-chart-title">Receita por dia</div>
+                        <canvas id="sales-chart-revenue"></canvas>
+                    </div>
+                </div>
+                <div class="sales-charts-row">
+                    <div class="sales-chart-card">
+                        <div class="sales-chart-title">Ticket médio por dia</div>
+                        <canvas id="sales-chart-aov"></canvas>
+                    </div>
+                    <div class="sales-chart-card">
+                        <div class="sales-chart-title">Itens por dia</div>
+                        <canvas id="sales-chart-items"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparator View -->
+            <div class="sales-viz-panel" id="sales-viz-comparador" style="display:none">
+                <div class="sales-comp-controls">
+                    <div class="sales-comp-period">
+                        <label>Período A</label>
+                        <input type="date" id="sales-comp-a-from" class="input input-sm">
+                        <span>até</span>
+                        <input type="date" id="sales-comp-a-to" class="input input-sm">
+                    </div>
+                    <div class="sales-comp-period">
+                        <label>Período B</label>
+                        <input type="date" id="sales-comp-b-from" class="input input-sm">
+                        <span>até</span>
+                        <input type="date" id="sales-comp-b-to" class="input input-sm">
+                    </div>
+                    <button id="btn-sales-compare" class="btn btn-primary btn-sm">Comparar</button>
+                </div>
+                <div id="sales-comp-results" class="sales-comp-results"></div>
+            </div>
+
             <!-- Table -->
-            <div class="sales-table-wrap">
+            <div class="sales-table-wrap" id="sales-viz-tabela">
                 <table class="sales-table">
                     <thead>
                         <tr>
