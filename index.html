@@ -3232,7 +3232,7 @@
         <section id="tab-ai-ad-generator" class="tab-panel">
             <div class="section-header">
                 <h2><i data-lucide="wand-2" style="width:20px;height:20px;vertical-align:-3px"></i> AI Ad Generator</h2>
-                <button id="btn-aiad-config" class="btn btn-secondary btn-sm"><i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar OpenAI</button>
+                <button id="btn-aiad-config" class="btn btn-secondary btn-sm"><i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar IA</button>
             </div>
             <p class="section-subtitle">Gere imagens e copies para anúncios usando IA. Cole um prompt, escolha o tamanho, e a IA cria variações.</p>
 
@@ -3240,6 +3240,10 @@
                 <div class="aiad-prompt-card">
                     <textarea id="aiad-prompt" class="input" rows="3" placeholder="Descreva sua ideia de anúncio… ex: 'Óculos de sol Mercedes-Benz aviador, fundo preto com reflexo de cidade noturna, estilo luxo, pose de modelo'"></textarea>
                     <div class="aiad-controls">
+                        <select id="aiad-provider" class="input input-sm" style="width:auto" title="Provedor de IA para geração de imagens">
+                            <option value="openai">✦ OpenAI DALL-E 3</option>
+                            <option value="google">✦ Google Imagen 3</option>
+                        </select>
                         <select id="aiad-size" class="input input-sm" style="width:auto">
                             <option value="1024x1024">Quadrado 1:1</option>
                             <option value="1024x1792">Vertical 9:16 (Stories/Reels)</option>
@@ -3251,7 +3255,7 @@
                             <option value="3" selected>3 imagens</option>
                             <option value="4">4 imagens</option>
                         </select>
-                        <select id="aiad-quality" class="input input-sm" style="width:auto">
+                        <select id="aiad-quality" class="input input-sm" style="width:auto" title="Apenas para DALL-E 3">
                             <option value="standard">Qualidade padrão</option>
                             <option value="hd">HD</option>
                         </select>
