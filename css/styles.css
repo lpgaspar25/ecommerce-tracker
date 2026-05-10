@@ -10521,29 +10521,38 @@ body.privacy-mode img.product-thumb {
 }
 /* Sales header inline filters */
 .sales-section-header {
-    align-items: flex-end;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 0.75rem;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-end !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
     margin-bottom: 0.75rem;
 }
 .sales-section-header h2 {
-    flex-shrink: 0;
-    margin-right: 0.25rem;
+    flex: 0 0 auto;
+    margin: 0;
+    white-space: nowrap;
 }
 .sales-filters-inline {
     display: flex;
+    flex-direction: row;
     align-items: flex-end;
     gap: 0.5rem;
-    flex: 1;
     flex-wrap: wrap;
-    min-width: 0;
 }
 .sales-filter-item {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    min-width: 110px;
+    width: 150px;
+    flex: 0 0 auto;
+}
+.sales-filter-item .input,
+.sales-filter-item select,
+.sales-filter-item .dash-date-picker-btn {
+    width: 100%;
+    box-sizing: border-box;
 }
 .sales-filter-item label {
     font-size: 0.68rem;
@@ -10555,9 +10564,10 @@ body.privacy-mode img.product-thumb {
 }
 .sales-header-actions {
     display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 0.4rem;
-    flex-shrink: 0;
+    flex: 0 0 auto;
     margin-left: auto;
     padding-bottom: 0.05rem;
 }

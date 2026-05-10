@@ -1059,15 +1059,21 @@ const FunnelModule = {
             impressions: acc.impressions + r.impressions,
             clicks: acc.clicks + r.clicks,
             spend: acc.spend + r.spend,
+            viewContent: acc.viewContent + (r.viewContent || 0),
+            addToCart: acc.addToCart + (r.addToCart || 0),
+            checkout: acc.checkout + (r.checkout || 0),
             purchase: acc.purchase + r.purchase,
             purchaseValue: acc.purchaseValue + r.purchaseValue,
-        }), { impressions: 0, clicks: 0, spend: 0, purchase: 0, purchaseValue: 0 });
+        }), { impressions: 0, clicks: 0, spend: 0, viewContent: 0, addToCart: 0, checkout: 0, purchase: 0, purchaseValue: 0 });
 
         const tbody = rows.map(r => `<tr>
             <td>${fmtDate(r.date)}</td>
             <td>${fmt(r.impressions)}</td>
             <td>${fmt(r.clicks)}</td>
             <td>${fmtCur(r.spend)}</td>
+            <td>${fmt(r.viewContent || 0)}</td>
+            <td>${fmt(r.addToCart || 0)}</td>
+            <td>${fmt(r.checkout || 0)}</td>
             <td>${fmt(r.purchase)}</td>
             <td>${fmtCur(r.purchaseValue)}</td>
         </tr>`).join('');
@@ -1079,7 +1085,7 @@ const FunnelModule = {
             </div>
             <table class="fb-daily-table">
                 <thead><tr>
-                    <th>Dia</th><th>Impr.</th><th>Cliques</th><th>Gasto</th><th>Compras</th><th>Receita</th>
+                    <th>Dia</th><th>Impr.</th><th>Cliques</th><th>Gasto</th><th>View</th><th>ATC</th><th>IC</th><th>Compras</th><th>Receita</th>
                 </tr></thead>
                 <tbody>${tbody}</tbody>
                 <tfoot><tr>
@@ -1087,6 +1093,9 @@ const FunnelModule = {
                     <td>${fmt(totals.impressions)}</td>
                     <td>${fmt(totals.clicks)}</td>
                     <td>${fmtCur(totals.spend)}</td>
+                    <td>${fmt(totals.viewContent)}</td>
+                    <td>${fmt(totals.addToCart)}</td>
+                    <td>${fmt(totals.checkout)}</td>
                     <td>${fmt(totals.purchase)}</td>
                     <td>${fmtCur(totals.purchaseValue)}</td>
                 </tr></tfoot>
@@ -3160,9 +3169,10 @@ const FunnelModule = {
                 notes: 'Via Facebook Ads · dados por dia',
                 productHistory: existing ? (existing.productHistory || '') : '',
                 impressions: row.impressions,
-                pageViews: 0,
-                addToCart: 0,
-                checkout: 0,
+                clicks: row.clicks,
+                pageViews: row.viewContent || row.clicks || 0,
+                addToCart: row.addToCart || 0,
+                checkout: row.checkout || 0,
             };
             if (existing) {
                 Object.assign(existing, data);

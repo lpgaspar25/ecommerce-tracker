@@ -389,9 +389,15 @@ const FacebookAds = {
             const data = await res.json();
             if (data.error) return [];
             return (data.data || []).map(row => {
-                let purchase = 0, purchaseValue = 0;
+                let viewContent = 0, addToCart = 0, checkout = 0, purchase = 0, purchaseValue = 0;
                 (row.actions || []).forEach(a => {
-                    if (a.action_type === 'offsite_conversion.fb_pixel_purchase') purchase += parseInt(a.value) || 0;
+                    const v = parseInt(a.value) || 0;
+                    switch (a.action_type) {
+                        case 'offsite_conversion.fb_pixel_view_content': viewContent += v; break;
+                        case 'offsite_conversion.fb_pixel_add_to_cart': addToCart += v; break;
+                        case 'offsite_conversion.fb_pixel_initiate_checkout': checkout += v; break;
+                        case 'offsite_conversion.fb_pixel_purchase': purchase += v; break;
+                    }
                 });
                 (row.action_values || []).forEach(a => {
                     if (a.action_type === 'offsite_conversion.fb_pixel_purchase') purchaseValue += parseFloat(a.value) || 0;
@@ -401,6 +407,9 @@ const FacebookAds = {
                     impressions: parseInt(row.impressions) || 0,
                     clicks: parseInt(row.clicks) || 0,
                     spend: parseFloat(row.spend) || 0,
+                    viewContent,
+                    addToCart,
+                    checkout,
                     purchase,
                     purchaseValue,
                 };
