@@ -98,8 +98,8 @@
         </div>
     </header>
 
-    <!-- Navigation Tabs -->
-    <nav class="tab-nav">
+    <!-- Navigation Tabs (legado — agora escondido; sidebar à esquerda é a UI ativa) -->
+    <nav class="tab-nav tab-nav-legacy">
         <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
         <button class="tab-btn" data-tab="products">Produtos</button>
         <button class="tab-btn" data-tab="goals">Metas</button>
@@ -112,9 +112,94 @@
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
         <button class="tab-btn" data-tab="laboratorio"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
+        <button class="tab-btn" data-tab="ai-ad-generator" hidden>AI Ad Generator</button>
+        <button class="tab-btn" data-tab="ai-generations" hidden>AI Generations</button>
+        <button class="tab-btn" data-tab="ad-library" hidden>Ad Library</button>
+        <button class="tab-btn" data-tab="ad-launcher" hidden>Ad Launcher</button>
+        <button class="tab-btn" data-tab="creative-insights" hidden>Creative Insights</button>
         <button class="tab-btn" data-tab="importador">Importador</button>
         <button class="tab-btn" data-tab="vendas">Vendas</button>
     </nav>
+
+    <!-- App Body: Sidebar + Main -->
+    <div class="app-body">
+
+    <!-- Sidebar (Madgicx-style) -->
+    <aside class="app-sidebar" id="app-sidebar">
+        <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Recolher menu">
+            <i data-lucide="chevron-left" style="width:16px;height:16px"></i>
+        </button>
+
+        <div class="sidebar-section">
+            <a href="#" class="sidebar-link active" data-tab="dashboard"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Dashboard</span></a>
+            <a href="#" class="sidebar-link" data-tab="vendas"><i data-lucide="line-chart" class="sidebar-icon"></i><span>Vendas</span></a>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="produtos"><i data-lucide="package" class="sidebar-icon"></i><span>Produtos</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="produtos">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="products"><i data-lucide="box" class="sidebar-icon"></i><span>Lista</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="importador"><i data-lucide="package-plus" class="sidebar-icon"></i><span>Importador</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="performance"><i data-lucide="target" class="sidebar-icon"></i><span>Performance</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="performance">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="goals"><i data-lucide="flag" class="sidebar-icon"></i><span>Metas</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="diary"><i data-lucide="book-open" class="sidebar-icon"></i><span>Diário</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="diagnostico"><i data-lucide="stethoscope" class="sidebar-icon"></i><span>Diagnóstico</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="simulacao"><i data-lucide="calculator" class="sidebar-icon"></i><span>Simulação</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="simulacao">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="calculator"><i data-lucide="calculator" class="sidebar-icon"></i><span>Simulador</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="scale-sim"><i data-lucide="trending-up" class="sidebar-icon"></i><span>Escala</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group sidebar-group-creative">
+            <button class="sidebar-group-header" data-group="creative"><i data-lucide="sparkles" class="sidebar-icon"></i><span>Criativo</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="creative">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-ad-generator">
+                    <i data-lucide="wand-2" class="sidebar-icon"></i>
+                    <span>AI Ad Generator</span>
+                    <span class="sidebar-badge">NEW</span>
+                </a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-generations"><i data-lucide="image" class="sidebar-icon"></i><span>Minhas Gerações</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="creatives"><i data-lucide="layers" class="sidebar-icon"></i><span>Criativos</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-library"><i data-lucide="library" class="sidebar-icon"></i><span>Ad Library</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="creative-insights"><i data-lucide="bar-chart-2" class="sidebar-icon"></i><span>Insights</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="launch"><i data-lucide="rocket" class="sidebar-icon"></i><span>Lançamento</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="launch">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-launcher"><i data-lucide="send" class="sidebar-icon"></i><span>Ad Launcher</span><span class="sidebar-badge">NEW</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="pipeline"><i data-lucide="kanban-square" class="sidebar-icon"></i><span>Pipeline</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="execucao"><i data-lucide="flask-conical" class="sidebar-icon"></i><span>Execução</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="execucao">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="laboratorio"><i data-lucide="flask-conical" class="sidebar-icon"></i><span>Laboratório</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="projects"><i data-lucide="clipboard-list" class="sidebar-icon"></i><span>Projetos</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="mineracao"><i data-lucide="pickaxe" class="sidebar-icon"></i><span>Mineração</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-spacer"></div>
+
+        <div class="sidebar-footer">
+            <button class="sidebar-link" id="sidebar-ai-key-btn" title="Configurar chave OpenAI/Claude para AI Ad Generator">
+                <i data-lucide="key-round" class="sidebar-icon"></i><span>API Keys</span>
+            </button>
+        </div>
+    </aside>
 
     <!-- Tab Content -->
     <main class="tab-content">
@@ -3143,7 +3228,110 @@
             </div>
         </section>
 
+        <!-- ==================== AI AD GENERATOR ==================== -->
+        <section id="tab-ai-ad-generator" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="wand-2" style="width:20px;height:20px;vertical-align:-3px"></i> AI Ad Generator</h2>
+                <button id="btn-aiad-config" class="btn btn-secondary btn-sm"><i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar OpenAI</button>
+            </div>
+            <p class="section-subtitle">Gere imagens e copies para anúncios usando IA. Cole um prompt, escolha o tamanho, e a IA cria variações.</p>
+
+            <div class="aiad-container">
+                <div class="aiad-prompt-card">
+                    <textarea id="aiad-prompt" class="input" rows="3" placeholder="Descreva sua ideia de anúncio… ex: 'Óculos de sol Mercedes-Benz aviador, fundo preto com reflexo de cidade noturna, estilo luxo, pose de modelo'"></textarea>
+                    <div class="aiad-controls">
+                        <select id="aiad-size" class="input input-sm" style="width:auto">
+                            <option value="1024x1024">Quadrado 1:1</option>
+                            <option value="1024x1792">Vertical 9:16 (Stories/Reels)</option>
+                            <option value="1792x1024">Horizontal 16:9 (Feed)</option>
+                        </select>
+                        <select id="aiad-count" class="input input-sm" style="width:auto">
+                            <option value="1">1 imagem</option>
+                            <option value="2">2 imagens</option>
+                            <option value="3" selected>3 imagens</option>
+                            <option value="4">4 imagens</option>
+                        </select>
+                        <select id="aiad-quality" class="input input-sm" style="width:auto">
+                            <option value="standard">Qualidade padrão</option>
+                            <option value="hd">HD</option>
+                        </select>
+                        <button id="aiad-generate" class="btn btn-primary"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar</button>
+                    </div>
+                    <div class="aiad-extras">
+                        <button id="aiad-gen-copy" class="btn btn-secondary btn-sm"><i data-lucide="type" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar copy (headline + descrição)</button>
+                        <button id="aiad-prompt-templates" class="btn btn-secondary btn-sm"><i data-lucide="layout-template" style="width:14px;height:14px;vertical-align:-2px"></i> Templates de prompt</button>
+                    </div>
+                </div>
+
+                <div id="aiad-results" class="aiad-results">
+                    <div class="aiad-empty">
+                        <i data-lucide="image" style="width:40px;height:40px;color:var(--text-muted)"></i>
+                        <h3>Sem gerações ainda</h3>
+                        <p>Configure sua chave OpenAI, escreva um prompt e clique em <strong>Gerar</strong>.</p>
+                    </div>
+                </div>
+
+                <div id="aiad-copy-output" class="aiad-copy-output" style="display:none">
+                    <h3>Copy gerada</h3>
+                    <div id="aiad-copy-body"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== AI GENERATIONS (Galeria) ==================== -->
+        <section id="tab-ai-generations" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="image" style="width:20px;height:20px;vertical-align:-3px"></i> Minhas Gerações</h2>
+                <button id="btn-aigen-clear" class="btn btn-secondary btn-sm"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Limpar tudo</button>
+            </div>
+            <p class="section-subtitle">Histórico de todas as imagens e copies geradas pela IA.</p>
+            <div id="aigen-grid" class="aigen-grid">
+                <p style="text-align:center;color:var(--text-muted);padding:3rem 0">Suas gerações vão aparecer aqui depois de usar o AI Ad Generator.</p>
+            </div>
+        </section>
+
+        <!-- ==================== AD LIBRARY ==================== -->
+        <section id="tab-ad-library" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="library" style="width:20px;height:20px;vertical-align:-3px"></i> Ad Library</h2>
+            </div>
+            <p class="section-subtitle">Banco de inspirações: anúncios salvos e templates por nicho. (Em breve — vai puxar da Meta Ad Library e do seu Swipe.)</p>
+            <div class="aiad-empty" style="padding:4rem 0">
+                <i data-lucide="library" style="width:48px;height:48px;color:var(--text-muted)"></i>
+                <h3>Ad Library em desenvolvimento</h3>
+                <p>Por enquanto, use a aba <a href="#" class="sidebar-link" data-tab="creatives" style="color:var(--accent)">Criativos</a> que tem o Swipe de inspirações.</p>
+            </div>
+        </section>
+
+        <!-- ==================== AD LAUNCHER ==================== -->
+        <section id="tab-ad-launcher" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="send" style="width:20px;height:20px;vertical-align:-3px"></i> Ad Launcher</h2>
+            </div>
+            <p class="section-subtitle">Lance anúncios para Meta direto daqui. Selecione criativos, conta de anúncio e configure o público.</p>
+            <div class="aiad-empty" style="padding:4rem 0">
+                <i data-lucide="rocket" style="width:48px;height:48px;color:var(--text-muted)"></i>
+                <h3>Ad Launcher em desenvolvimento</h3>
+                <p>Vai depender do Marketing API do Meta com permissão <code>ads_management</code> + <code>pages_manage_ads</code>. Por enquanto, gere os criativos no <strong>AI Ad Generator</strong> e baixe pra subir manualmente.</p>
+            </div>
+        </section>
+
+        <!-- ==================== CREATIVE INSIGHTS ==================== -->
+        <section id="tab-creative-insights" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="bar-chart-2" style="width:20px;height:20px;vertical-align:-3px"></i> Creative Insights</h2>
+            </div>
+            <p class="section-subtitle">Análise de performance dos seus criativos. Qual ângulo converte? Qual hook tem CTR maior?</p>
+            <div class="aiad-empty" style="padding:4rem 0">
+                <i data-lucide="bar-chart-2" style="width:48px;height:48px;color:var(--text-muted)"></i>
+                <h3>Creative Insights em desenvolvimento</h3>
+                <p>Vai cruzar dados das campanhas (Meta Insights) com tags dos criativos pra mostrar quais elementos funcionam melhor.</p>
+            </div>
+        </section>
+
     </main>
+
+    </div> <!-- /app-body -->
 
     <!-- Rebrand Modal -->
     <div id="modal-rebrand" class="modal hidden">
@@ -3998,6 +4186,8 @@
     <script src="js/diary.js"></script>
     <script src="js/dashboard.js"></script>
     <script src="js/dash-customize.js"></script>
+    <script src="js/sidebar.js"></script>
+    <script src="js/ai-ad-generator.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>
