@@ -25,6 +25,16 @@ const DashCustomize = {
         // Botão "Restaurar padrão"
         const resetBtn = document.getElementById('dash-customize-reset');
         if (resetBtn) resetBtn.addEventListener('click', () => this.resetToDefault());
+
+        // Botão "Reorganizar" (modo edição)
+        const editBtn = document.getElementById('btn-dash-edit-mode');
+        if (editBtn) editBtn.addEventListener('click', () => this.toggleEditMode());
+
+        const doneBtn = document.getElementById('dash-edit-done');
+        if (doneBtn) doneBtn.addEventListener('click', () => this.toggleEditMode(false));
+
+        const showHiddenBtn = document.getElementById('dash-edit-show-hidden');
+        if (showHiddenBtn) showHiddenBtn.addEventListener('click', () => this.showAllHidden());
     },
 
     // ── Layout: { order: [blockId, ...], hidden: [blockId, ...] } ──
@@ -184,6 +194,147 @@ const DashCustomize = {
         const lay = this._readLayout();
         lay.order = ids;
         this._saveLayout(lay);
+    },
+
+    // ── Modo de edição direto no dashboard ──────────────────────────
+    toggleEditMode(force) {
+        const turnOn = typeof force === 'boolean' ? force : !this._editMode;
+        this._editMode = turnOn;
+
+        const dash = document.getElementById('tab-dashboard');
+        const bar = document.getElementById('dash-edit-bar');
+        const editBtn = document.getElementById('btn-dash-edit-mode');
+
+        if (!dash) return;
+
+        if (turnOn) {
+            dash.classList.add('dash-edit-mode');
+            if (bar) bar.style.display = '';
+            if (editBtn) {
+                editBtn.classList.add('btn-primary');
+                editBtn.classList.remove('btn-secondary');
+                editBtn.innerHTML = '<i data-lucide="x" style="width:14px;height:14px"></i> Sair da edição';
+            }
+            this._injectEditControls();
+            this._wireBlockDragDrop();
+        } else {
+            dash.classList.remove('dash-edit-mode');
+            if (bar) bar.style.display = 'none';
+            if (editBtn) {
+                editBtn.classList.remove('btn-primary');
+                editBtn.classList.add('btn-secondary');
+                editBtn.innerHTML = '<i data-lucide="move" style="width:14px;height:14px"></i> Reorganizar';
+            }
+            this._removeEditControls();
+        }
+
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    _injectEditControls() {
+        this._getAllBlocks().forEach(block => {
+            if (block.querySelector('.dash-block-controls')) return;
+            const ctrls = document.createElement('div');
+            ctrls.className = 'dash-block-controls';
+            ctrls.innerHTML = `
+                <button class="dash-block-handle" type="button" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:16px;height:16px"></i></button>
+                <button class="dash-block-hide" type="button" title="Esconder bloco">×</button>
+            `;
+            block.appendChild(ctrls);
+            // Marca como draggable
+            block.setAttribute('draggable', 'true');
+
+            // Handler do botão "esconder"
+            ctrls.querySelector('.dash-block-hide').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._hideBlock(block.dataset.blockId);
+            });
+        });
+    },
+
+    _removeEditControls() {
+        this._getAllBlocks().forEach(block => {
+            block.removeAttribute('draggable');
+            const ctrls = block.querySelector('.dash-block-controls');
+            if (ctrls) ctrls.remove();
+            block.classList.remove('dash-block-dragging', 'dash-block-drop-before', 'dash-block-drop-after');
+        });
+    },
+
+    _wireBlockDragDrop() {
+        const dash = document.getElementById('tab-dashboard');
+        if (!dash) return;
+        let dragged = null;
+
+        this._getAllBlocks().forEach(block => {
+            block.addEventListener('dragstart', (e) => {
+                if (!this._editMode) return;
+                dragged = block;
+                block.classList.add('dash-block-dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', block.dataset.blockId);
+                }
+            });
+            block.addEventListener('dragend', () => {
+                block.classList.remove('dash-block-dragging');
+                dragged = null;
+                this._getAllBlocks().forEach(b =>
+                    b.classList.remove('dash-block-drop-before', 'dash-block-drop-after')
+                );
+                this._persistOrderFromDOM();
+            });
+            block.addEventListener('dragover', (e) => {
+                if (!dragged || dragged === block || !this._editMode) return;
+                e.preventDefault();
+                const rect = block.getBoundingClientRect();
+                const before = e.clientY < rect.top + rect.height / 2;
+                this._getAllBlocks().forEach(b =>
+                    b.classList.remove('dash-block-drop-before', 'dash-block-drop-after')
+                );
+                block.classList.add(before ? 'dash-block-drop-before' : 'dash-block-drop-after');
+            });
+            block.addEventListener('drop', (e) => {
+                if (!dragged || dragged === block || !this._editMode) return;
+                e.preventDefault();
+                const rect = block.getBoundingClientRect();
+                const before = e.clientY < rect.top + rect.height / 2;
+                if (before) block.parentNode.insertBefore(dragged, block);
+                else block.parentNode.insertBefore(dragged, block.nextSibling);
+            });
+        });
+    },
+
+    _persistOrderFromDOM() {
+        const ids = this._getAllBlocks().map(b => b.dataset.blockId);
+        const lay = this._readLayout();
+        lay.order = ids;
+        this._saveLayout(lay);
+    },
+
+    _hideBlock(blockId) {
+        const lay = this._readLayout();
+        const hid = new Set(lay.hidden);
+        hid.add(blockId);
+        lay.hidden = Array.from(hid);
+        this._saveLayout(lay);
+        this.applyLayout();
+        if (typeof showToast === 'function') showToast('Bloco escondido — use "Mostrar ocultos" para trazer de volta', 'success');
+    },
+
+    showAllHidden() {
+        const lay = this._readLayout();
+        if (!lay.hidden.length) {
+            if (typeof showToast === 'function') showToast('Nenhum bloco oculto', 'info');
+            return;
+        }
+        const count = lay.hidden.length;
+        lay.hidden = [];
+        this._saveLayout(lay);
+        this.applyLayout();
+        if (typeof showToast === 'function') showToast(`${count} bloco(s) restaurado(s)`, 'success');
     },
 
     resetToDefault() {

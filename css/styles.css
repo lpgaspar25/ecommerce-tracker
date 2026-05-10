@@ -4986,6 +4986,93 @@ thead:hover .diary-check-col input[type="checkbox"],
     font-size: 0.88rem;
     color: var(--text-primary);
 }
+
+/* ── Dashboard edit mode (drag direto) ──────────────────────────── */
+.dash-edit-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    margin: 0 0 0.75rem 0;
+    background: linear-gradient(90deg, rgba(37,99,235,0.10), rgba(37,99,235,0.05));
+    border: 1px solid rgba(37,99,235,0.30);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.86rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    backdrop-filter: blur(6px);
+}
+.dash-edit-bar-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+}
+
+#tab-dashboard.dash-edit-mode .dash-block {
+    position: relative;
+    outline: 2px dashed rgba(37,99,235,0.45);
+    outline-offset: 2px;
+    border-radius: 8px;
+    cursor: grab;
+    transition: outline-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+#tab-dashboard.dash-edit-mode .dash-block:hover {
+    outline-color: var(--accent, #2563eb);
+    box-shadow: 0 4px 16px rgba(37,99,235,0.12);
+}
+#tab-dashboard.dash-edit-mode .dash-block.dash-block-dragging {
+    opacity: 0.45;
+    cursor: grabbing;
+}
+#tab-dashboard.dash-edit-mode .dash-block.dash-block-drop-before {
+    border-top: 3px solid var(--accent, #2563eb) !important;
+    margin-top: -3px;
+}
+#tab-dashboard.dash-edit-mode .dash-block.dash-block-drop-after {
+    border-bottom: 3px solid var(--accent, #2563eb) !important;
+    margin-bottom: -3px;
+}
+
+.dash-block-controls {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    display: flex;
+    gap: 0.25rem;
+    z-index: 10;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.dash-block-handle, .dash-block-hide {
+    background: none;
+    border: none;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+.dash-block-handle { cursor: grab; }
+.dash-block-handle:hover, .dash-block-hide:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+.dash-block-hide:hover {
+    color: #dc2626;
+}
 .dash-row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 .dash-card {
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);

@@ -119,6 +119,24 @@
     <!-- Tab Content -->
     <main class="tab-content">
 
+        <!-- Floating edit-mode bar (visível só quando modo edição ativo) -->
+        <div id="dash-edit-bar" class="dash-edit-bar" style="display:none">
+            <span class="dash-edit-bar-text">
+                <i data-lucide="move" style="width:14px;height:14px;vertical-align:-2px"></i>
+                Modo edição: arraste pelo ≡, clique no × para esconder
+            </span>
+            <span style="display:flex;gap:0.4rem">
+                <button id="dash-edit-show-hidden" class="btn btn-secondary btn-sm" type="button" title="Restaurar blocos ocultos">
+                    <i data-lucide="eye" style="width:14px;height:14px;vertical-align:-2px"></i>
+                    Mostrar ocultos
+                </button>
+                <button id="dash-edit-done" class="btn btn-primary btn-sm" type="button">
+                    <i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px"></i>
+                    Pronto
+                </button>
+            </span>
+        </div>
+
         <!-- ==================== DASHBOARD ==================== -->
         <section id="tab-dashboard" class="tab-panel active">
             <div class="section-header">
@@ -232,9 +250,13 @@
                     <i data-lucide="git-compare" style="width:14px;height:14px"></i>
                     Comparar Páginas
                 </button>
-                <button id="btn-dash-customize" class="btn btn-secondary btn-sm" title="Personalizar dashboard (mostrar/ocultar/reordenar blocos)">
+                <button id="btn-dash-customize" class="btn btn-secondary btn-sm" title="Personalizar dashboard via menu (mostrar/ocultar/reordenar blocos)">
                     <i data-lucide="layout-grid" style="width:14px;height:14px"></i>
                     Personalizar
+                </button>
+                <button id="btn-dash-edit-mode" class="btn btn-secondary btn-sm" title="Reorganizar arrastando direto no dashboard">
+                    <i data-lucide="move" style="width:14px;height:14px"></i>
+                    Reorganizar
                 </button>
             </div>
 
