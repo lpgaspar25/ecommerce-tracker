@@ -1032,6 +1032,7 @@ const FunnelModule = {
                 FacebookAds.fetchDailyInsights(this.state.productId, dateRange),
             ]);
             this._applyImportedFunnelData(data);
+            this._lastDailyData = daily.length > 1 ? daily : null;
             this._renderDailyPanel(daily, dateRange);
             showToast(`Dados importados: ${data.impressions.toLocaleString('pt-BR')} impressões, ${data.purchase} vendas`, 'success');
         } catch (err) {
@@ -3049,6 +3050,12 @@ const FunnelModule = {
             return;
         }
 
+        // If daily data exists (multi-day import), save one entry per day
+        if (this._lastDailyData && this._lastDailyData.length > 1) {
+            await this._saveDailyToDiary(productId, this._lastDailyData);
+            return;
+        }
+
         const a = this.state.actual;
         const real = this.getRealizadoResults();
         const { startDate, endDate } = this.getSelectedPeriod();
@@ -3119,6 +3126,64 @@ const FunnelModule = {
         filterDataByStore();
         this.saveDiagnosisSnapshot(false);
         EventBus.emit('diaryChanged');
+    },
+
+    async _saveDailyToDiary(productId, dailyRows) {
+        const storeId = getWritableStoreId(productId);
+        if (!storeId) {
+            showToast('Selecione uma loja específica para salvar no diário.', 'error');
+            return;
+        }
+        const currency = this.state.actual.ticketCurrency || 'BRL';
+        let created = 0, updated = 0;
+
+        for (const row of dailyRows) {
+            const date = row.date; // 'YYYY-MM-DD'
+            const existing = AppState.allDiary.find(d =>
+                d.productId === productId && this._getDiaryEntryPeriod(d).startDate === date && this._getDiaryEntryPeriod(d).endDate === date
+            );
+            const data = {
+                id: existing ? existing.id : generateId('dia'),
+                date,
+                periodStart: date,
+                periodEnd: date,
+                productId,
+                storeId,
+                budget: parseFloat(row.spend.toFixed(2)),
+                budgetCurrency: 'BRL',
+                sales: row.purchase,
+                revenue: parseFloat(row.purchaseValue.toFixed(2)),
+                revenueCurrency: currency,
+                cpa: row.purchase > 0 ? parseFloat((row.spend / row.purchase).toFixed(2)) : 0,
+                cpc: row.clicks > 0 ? parseFloat((row.spend / row.clicks).toFixed(2)) : 0,
+                platform: 'Meta Ads',
+                notes: 'Via Facebook Ads · dados por dia',
+                productHistory: existing ? (existing.productHistory || '') : '',
+                impressions: row.impressions,
+                pageViews: 0,
+                addToCart: 0,
+                checkout: 0,
+            };
+            if (existing) {
+                Object.assign(existing, data);
+                if (AppState.sheetsConnected) {
+                    await SheetsAPI.updateRowById(SheetsAPI.TABS.DIARY, data.id, SheetsAPI.diaryToRow(data));
+                }
+                updated++;
+            } else {
+                AppState.allDiary.push(data);
+                if (AppState.sheetsConnected) {
+                    await SheetsAPI.appendRow(SheetsAPI.TABS.DIARY, SheetsAPI.diaryToRow(data));
+                }
+                created++;
+            }
+        }
+
+        filterDataByStore();
+        this.saveDiagnosisSnapshot(false);
+        EventBus.emit('diaryChanged');
+        const msg = [created && `${created} dia(s) criado(s)`, updated && `${updated} atualizado(s)`].filter(Boolean).join(', ');
+        showToast(`Diário salvo por dia — ${msg}`, 'success');
     },
 
     _shiftPeriod(direction) {
