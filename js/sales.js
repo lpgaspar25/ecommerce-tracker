@@ -1354,6 +1354,10 @@ const SalesModule = (() => {
     }
 
     // ── Charts View ──────────────────────────────────────────────
+    function _themeColor(varName, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || fallback;
+    }
+
     function _renderChartsView() {
         const orders = _state.filtered;
         const byDay = new Map();
@@ -1377,6 +1381,13 @@ const SalesModule = (() => {
             items: dates.map(d => byDay.get(d).items),
         };
 
+        const cBlue = _themeColor('--blue', '#6cb6ff');
+        const cGreen = _themeColor('--green', '#4bce97');
+        const cYellow = _themeColor('--yellow', '#e2b203');
+        const cPurple = _themeColor('--purple', '#b39eff');
+        const gridColor = _themeColor('--chart-grid', 'rgba(128,128,128,0.1)');
+        const tickColor = _themeColor('--chart-tick', '#8f95a8');
+
         const chartConfig = (key, data, color, isMoney) => ({
             type: 'line',
             data: {
@@ -1397,14 +1408,15 @@ const SalesModule = (() => {
                 maintainAspectRatio: true,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 }, color: tickColor } },
                     y: {
                         beginAtZero: true,
-                        grid: { color: 'rgba(128,128,128,0.1)' },
+                        grid: { color: gridColor },
                         ticks: isMoney ? {
                             callback: v => _fmtMoney(v),
                             font: { size: 10 },
-                        } : { font: { size: 10 } },
+                            color: tickColor,
+                        } : { font: { size: 10 }, color: tickColor },
                     }
                 },
                 interaction: { mode: 'index', intersect: false },
@@ -1418,10 +1430,10 @@ const SalesModule = (() => {
             _chartRefs[key] = new Chart(canvas, chartConfig(key, data, color, isMoney));
         };
 
-        build('sales-chart-orders', 'orders', datasets.orders, '#2563eb', false);
-        build('sales-chart-revenue', 'revenue', datasets.revenue, '#059669', true);
-        build('sales-chart-aov', 'aov', datasets.aov, '#d97706', true);
-        build('sales-chart-items', 'items', datasets.items, '#7c3aed', false);
+        build('sales-chart-orders', 'orders', datasets.orders, cBlue, false);
+        build('sales-chart-revenue', 'revenue', datasets.revenue, cGreen, true);
+        build('sales-chart-aov', 'aov', datasets.aov, cYellow, true);
+        build('sales-chart-items', 'items', datasets.items, cPurple, false);
     }
 
     // ── Comparator ───────────────────────────────────────────────
@@ -1432,7 +1444,8 @@ const SalesModule = (() => {
         const bTo = document.getElementById('sales-comp-b-to')?.value;
         const wrap = document.getElementById('sales-comp-results');
         if (!wrap || !aFrom || !aTo || !bFrom || !bTo) {
-            if (wrap) wrap.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Preencha os dois períodos e clique em Comparar.</p>';
+            if (wrap) wrap.innerHTML = '<div class="sales-comp-empty"><i data-lucide="git-compare-arrows" style="width:32px;height:32px"></i>Preencha os dois períodos e clique em Comparar.</div>';
+            if (window.lucide?.createIcons) lucide.createIcons();
             return;
         }
 
@@ -1451,6 +1464,12 @@ const SalesModule = (() => {
 
         const a = collect(aFrom, aTo);
         const b = collect(bFrom, bTo);
+
+        if (a.orders === 0 && b.orders === 0) {
+            wrap.innerHTML = '<div class="sales-comp-empty"><i data-lucide="inbox" style="width:32px;height:32px"></i>Sem pedidos nos períodos selecionados.<br>Conecte o Shopify ou ajuste as datas.</div>';
+            if (window.lucide?.createIcons) lucide.createIcons();
+            return;
+        }
 
         const delta = (va, vb) => {
             if (vb === 0 && va === 0) return { pct: 0, cls: 'neutral' };
