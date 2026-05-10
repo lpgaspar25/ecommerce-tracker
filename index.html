@@ -23,80 +23,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <!-- Top Bar -->
-    <header class="top-bar">
-        <div class="top-bar-left">
-            <h1 class="logo"><i data-lucide="bar-chart-3" class="icon-logo"></i> E-commerce Tracker</h1>
-            <div class="store-switcher">
-                <label for="store-selector">Loja:</label>
-                <select id="store-selector" class="input input-sm">
-                    <option value="__ALL__">TODAS</option>
-                </select>
-                <button id="btn-manage-stores" class="btn btn-secondary btn-sm">Gerenciar</button>
-            </div>
-        </div>
-        <div class="top-bar-right">
-            <div class="currency-display">
-                <span class="currency-rates-compact">
-                    <span class="currency-label">BRL:</span><span id="exchange-rate-brl">--</span>
-                    <span class="currency-label">GBP:</span><span id="exchange-rate-gbp">--</span>
-                    <span class="currency-label">EUR:</span><span id="exchange-rate-eur">--</span>
-                </span>
-                <span id="exchange-rate" style="display:none">--</span>
-                <button id="btn-edit-rate" class="btn-icon" title="Editar cotação"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
-                <button id="btn-refresh-rate" class="btn-icon" title="Atualizar cotação"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i></button>
-            </div>
-            <div class="notifications-wrap" id="notifications-wrap">
-                <button id="btn-notifications" type="button" class="btn btn-secondary btn-sm notifications-btn" title="Prazos">
-                    <i data-lucide="bell" style="width:16px;height:16px"></i>
-                    <span id="notifications-count" class="notifications-count" style="display:none;">0</span>
-                </button>
-                <div id="notifications-panel" class="notifications-panel">
-                    <div class="notifications-header">
-                        <strong>Prazos</strong>
-                        <span id="notifications-summary" class="notifications-summary">0 itens</span>
-                    </div>
-                    <div id="notifications-list" class="notifications-list">
-                        <div class="notifications-empty">Nenhum prazo próximo.</div>
-                    </div>
-                </div>
-            </div>
-            <button id="btn-privacy-toggle" type="button" class="btn btn-secondary btn-sm" title="Modo privacidade (ocultar nomes de loja, produtos e campanhas)">
-                <i data-lucide="eye" style="width:14px;height:14px"></i>
-            </button>
-            <button id="btn-theme-toggle" type="button" class="btn btn-secondary btn-sm" title="Alternar tema">
-                <i data-lucide="moon" style="width:14px;height:14px"></i>
-            </button>
-            <!-- Profile Avatar -->
-            <div class="profile-wrap" id="profile-wrap">
-                <button id="btn-profile-avatar" class="profile-avatar" title="Minha conta">
-                    <span id="profile-initial">?</span>
-                </button>
-                <div id="profile-dropdown" class="profile-dropdown">
-                    <div class="profile-dropdown-header">
-                        <div class="profile-dropdown-avatar"><span id="profile-dropdown-initial">?</span></div>
-                        <div class="profile-dropdown-info">
-                            <span id="profile-dropdown-email" class="profile-dropdown-email">Não conectado</span>
-                            <span class="profile-dropdown-plan">Plano gratuito</span>
-                        </div>
-                    </div>
-                    <div class="profile-dropdown-divider"></div>
-                    <button id="btn-usage-panel" class="profile-dropdown-item"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Painel de Uso</button>
-                    <button id="btn-team-panel" class="profile-dropdown-item"><i data-lucide="users" style="width:14px;height:14px"></i> Equipe</button>
-                    <button id="btn-profile-mineracao" class="profile-dropdown-item"><i data-lucide="pickaxe" style="width:14px;height:14px"></i> Mineração</button>
-                    <button id="btn-shopify-config" class="profile-dropdown-item"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Shopify</button>
-                    <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
-                    <button id="btn-connect-sheets" class="profile-dropdown-item">
-                        <i data-lucide="table" style="width:14px;height:14px"></i>
-                        <span>Google Sheets</span>
-                        <span id="sheets-status" class="status-badge status-disconnected profile-dropdown-badge">Desconectado</span>
-                    </button>
-                    <div class="profile-dropdown-divider"></div>
-                    <button id="btn-supabase-logout" class="profile-dropdown-item profile-dropdown-danger"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sair da conta</button>
-                </div>
-            </div>
-        </div>
-    </header>
+    <!-- Top Bar removed — controles realocados para a sidebar -->
+
 
     <!-- Navigation Tabs (legado — agora escondido; sidebar à esquerda é a UI ativa) -->
     <nav class="tab-nav tab-nav-legacy">
@@ -130,6 +58,22 @@
             <i data-lucide="chevron-left" style="width:16px;height:16px"></i>
         </button>
 
+        <!-- Brand -->
+        <div class="sidebar-brand">
+            <h1 class="logo"><i data-lucide="bar-chart-3" class="icon-logo"></i> <span>E-commerce Tracker</span></h1>
+        </div>
+
+        <!-- Store Switcher -->
+        <div class="sidebar-store">
+            <label for="store-selector" class="sidebar-store-label">Loja</label>
+            <div class="sidebar-store-row">
+                <select id="store-selector" class="input input-sm">
+                    <option value="__ALL__">TODAS</option>
+                </select>
+                <button id="btn-manage-stores" class="btn btn-secondary btn-sm" title="Gerenciar lojas"><i data-lucide="settings" style="width:14px;height:14px"></i></button>
+            </div>
+        </div>
+
         <div class="sidebar-section">
             <a href="#" class="sidebar-link active" data-tab="dashboard"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Dashboard</span></a>
             <a href="#" class="sidebar-link" data-tab="vendas"><i data-lucide="line-chart" class="sidebar-icon"></i><span>Vendas</span></a>
@@ -161,17 +105,18 @@
         </div>
 
         <div class="sidebar-group sidebar-group-creative">
-            <button class="sidebar-group-header" data-group="creative"><i data-lucide="sparkles" class="sidebar-icon"></i><span>Criativo</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <button class="sidebar-group-header" data-group="creative"><i data-lucide="sparkles" class="sidebar-icon"></i><span>AI Ad Hub</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
             <div class="sidebar-group-items" data-group-items="creative">
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-ad-generator">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-library"><i data-lucide="library" class="sidebar-icon"></i><span>Ad Library</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="brands"><i data-lucide="building-2" class="sidebar-icon"></i><span>Brands</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-generations">
                     <i data-lucide="wand-2" class="sidebar-icon"></i>
-                    <span>AI Ad Generator</span>
+                    <span>AI Generations</span>
                     <span class="sidebar-badge">NEW</span>
                 </a>
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-generations"><i data-lucide="image" class="sidebar-icon"></i><span>Minhas Gerações</span></a>
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="creatives"><i data-lucide="layers" class="sidebar-icon"></i><span>Criativos</span></a>
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-library"><i data-lucide="library" class="sidebar-icon"></i><span>Ad Library</span></a>
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="creative-insights"><i data-lucide="bar-chart-2" class="sidebar-icon"></i><span>Insights</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="creatives"><i data-lucide="layers" class="sidebar-icon"></i><span>My Creatives</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="recent-edits"><i data-lucide="history" class="sidebar-icon"></i><span>Recent Edits</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="saved-inspirations"><i data-lucide="bookmark" class="sidebar-icon"></i><span>Saved Inspirations</span></a>
             </div>
         </div>
 
@@ -194,10 +139,82 @@
 
         <div class="sidebar-spacer"></div>
 
-        <div class="sidebar-footer">
-            <button class="sidebar-link" id="sidebar-ai-key-btn" title="Configurar chave OpenAI/Claude para AI Ad Generator">
-                <i data-lucide="key-round" class="sidebar-icon"></i><span>API Keys</span>
+        <!-- Currency rates (compact) -->
+        <div class="sidebar-currency">
+            <span class="currency-rates-compact">
+                <span class="currency-label">BRL</span><span id="exchange-rate-brl">--</span>
+                <span class="currency-label">GBP</span><span id="exchange-rate-gbp">--</span>
+                <span class="currency-label">EUR</span><span id="exchange-rate-eur">--</span>
+            </span>
+            <span id="exchange-rate" style="display:none">--</span>
+            <div class="sidebar-currency-actions">
+                <button id="btn-edit-rate" class="btn-icon" title="Editar cotação"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
+                <button id="btn-refresh-rate" class="btn-icon" title="Atualizar cotação"><i data-lucide="refresh-cw" style="width:11px;height:11px"></i></button>
+            </div>
+        </div>
+
+        <!-- Utility row -->
+        <div class="sidebar-utility-row">
+            <div class="notifications-wrap" id="notifications-wrap">
+                <button id="btn-notifications" type="button" class="sidebar-utility-btn notifications-btn" title="Prazos">
+                    <i data-lucide="bell" style="width:16px;height:16px"></i>
+                    <span id="notifications-count" class="notifications-count" style="display:none;">0</span>
+                </button>
+                <div id="notifications-panel" class="notifications-panel">
+                    <div class="notifications-header">
+                        <strong>Prazos</strong>
+                        <span id="notifications-summary" class="notifications-summary">0 itens</span>
+                    </div>
+                    <div id="notifications-list" class="notifications-list">
+                        <div class="notifications-empty">Nenhum prazo próximo.</div>
+                    </div>
+                </div>
+            </div>
+            <button id="btn-privacy-toggle" type="button" class="sidebar-utility-btn" title="Modo privacidade (ocultar nomes de loja, produtos e campanhas)">
+                <i data-lucide="eye" style="width:16px;height:16px"></i>
             </button>
+            <button id="btn-theme-toggle" type="button" class="sidebar-utility-btn" title="Alternar tema">
+                <i data-lucide="moon" style="width:16px;height:16px"></i>
+            </button>
+            <button class="sidebar-utility-btn" id="sidebar-ai-key-btn" title="Configurar chave OpenAI/Claude para AI Ad Generator">
+                <i data-lucide="key-round" style="width:16px;height:16px"></i>
+            </button>
+        </div>
+
+        <!-- Profile -->
+        <div class="sidebar-footer">
+            <div class="profile-wrap" id="profile-wrap">
+                <button id="btn-profile-avatar" class="sidebar-profile-trigger" title="Minha conta">
+                    <span class="profile-avatar"><span id="profile-initial">?</span></span>
+                    <span class="sidebar-profile-info">
+                        <span id="profile-dropdown-email-inline" class="sidebar-profile-email">Não conectado</span>
+                        <span class="sidebar-profile-plan">Plano gratuito</span>
+                    </span>
+                    <i data-lucide="chevron-up" style="width:14px;height:14px;opacity:0.6"></i>
+                </button>
+                <div id="profile-dropdown" class="profile-dropdown">
+                    <div class="profile-dropdown-header">
+                        <div class="profile-dropdown-avatar"><span id="profile-dropdown-initial">?</span></div>
+                        <div class="profile-dropdown-info">
+                            <span id="profile-dropdown-email" class="profile-dropdown-email">Não conectado</span>
+                            <span class="profile-dropdown-plan">Plano gratuito</span>
+                        </div>
+                    </div>
+                    <div class="profile-dropdown-divider"></div>
+                    <button id="btn-usage-panel" class="profile-dropdown-item"><i data-lucide="bar-chart-3" style="width:14px;height:14px"></i> Painel de Uso</button>
+                    <button id="btn-team-panel" class="profile-dropdown-item"><i data-lucide="users" style="width:14px;height:14px"></i> Equipe</button>
+                    <button id="btn-profile-mineracao" class="profile-dropdown-item"><i data-lucide="pickaxe" style="width:14px;height:14px"></i> Mineração</button>
+                    <button id="btn-shopify-config" class="profile-dropdown-item"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Shopify</button>
+                    <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
+                    <button id="btn-connect-sheets" class="profile-dropdown-item">
+                        <i data-lucide="table" style="width:14px;height:14px"></i>
+                        <span>Google Sheets</span>
+                        <span id="sheets-status" class="status-badge status-disconnected profile-dropdown-badge">Desconectado</span>
+                    </button>
+                    <div class="profile-dropdown-divider"></div>
+                    <button id="btn-supabase-logout" class="profile-dropdown-item profile-dropdown-danger"><i data-lucide="log-out" style="width:14px;height:14px"></i> Sair da conta</button>
+                </div>
+            </div>
         </div>
     </aside>
 
@@ -374,6 +391,24 @@
                 <div class="dash-card">
                     <h3><i data-lucide="filter" style="width:15px;height:15px"></i> Diagnóstico do Funil</h3>
                     <div id="dash-funnel-diagnosis" class="dash-funnel"></div>
+                </div>
+            </div>
+
+            <!-- Row 2bb: Prazos — Testes & Projetos -->
+            <div class="dash-row-2 dash-block" data-block-id="deadlines-tests-projects" data-block-name="Prazos — Testes &amp; Projetos">
+                <div class="dash-card">
+                    <h3 style="display:flex;align-items:center;justify-content:space-between">
+                        <span><i data-lucide="flask-conical" style="width:15px;height:15px;vertical-align:-2px"></i> Prazos — Testes</span>
+                        <button id="btn-dash-open-lab" class="btn btn-secondary btn-sm" type="button">Abrir Laboratório →</button>
+                    </h3>
+                    <div id="dash-deadlines-tests" class="dash-deadlines-list"></div>
+                </div>
+                <div class="dash-card">
+                    <h3 style="display:flex;align-items:center;justify-content:space-between">
+                        <span><i data-lucide="clipboard-list" style="width:15px;height:15px;vertical-align:-2px"></i> Prazos — Projetos</span>
+                        <button id="btn-dash-open-projects" class="btn btn-secondary btn-sm" type="button">Abrir Projetos →</button>
+                    </h3>
+                    <div id="dash-deadlines-projects" class="dash-deadlines-list"></div>
                 </div>
             </div>
 
@@ -3442,17 +3477,102 @@
             </div>
         </section>
 
-        <!-- ==================== AI GENERATIONS (Galeria) ==================== -->
+        <!-- ==================== AI GENERATIONS (Madgicx-style) ==================== -->
         <section id="tab-ai-generations" class="tab-panel">
-            <div class="section-header">
-                <h2><i data-lucide="image" style="width:20px;height:20px;vertical-align:-3px"></i> Minhas Gerações</h2>
-                <button id="btn-aigen-clear" class="btn btn-secondary btn-sm"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Limpar tudo</button>
-            </div>
-            <p class="section-subtitle">Histórico de todas as imagens e copies geradas pela IA.</p>
-            <div id="aigen-grid" class="aigen-grid">
-                <p style="text-align:center;color:var(--text-muted);padding:3rem 0">Suas gerações vão aparecer aqui depois de usar o AI Ad Generator.</p>
+            <div class="adhub-page">
+                <div class="section-header">
+                    <h2><i data-lucide="wand-2" style="width:20px;height:20px;vertical-align:-3px"></i> AI Generations</h2>
+                    <div class="adhub-header-actions">
+                        <button id="btn-aigen-config" class="btn btn-secondary btn-sm" title="Configurar API Keys"><i data-lucide="key-round" style="width:14px;height:14px"></i> API Keys</button>
+                        <button id="btn-aigen-clear" class="btn btn-secondary btn-sm"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i> Limpar</button>
+                    </div>
+                </div>
+
+                <div class="adhub-tabs">
+                    <button class="adhub-tab adhub-tab-active" data-aigen-tab="my">My AI Generations</button>
+                    <button class="adhub-tab" data-aigen-tab="community">Community AI Generations</button>
+                </div>
+
+                <div id="aigen-grid" class="aigen-grid"></div>
+
+                <div id="aigen-community" class="adhub-empty" style="display:none;padding:4rem 0">
+                    <i data-lucide="users" style="width:48px;height:48px;color:var(--text-muted)"></i>
+                    <h3>Community AI Generations</h3>
+                    <p>Em breve: descubra ads gerados por outros criadores da comunidade.</p>
+                </div>
+
+                <!-- Sticky prompt bar (bottom) -->
+                <div class="adhub-prompt-bar" id="adhub-prompt-bar">
+                    <button class="adhub-prompt-btn" id="adhub-prompt-upload" title="Upload de imagem de referência">
+                        <i data-lucide="plus" style="width:18px;height:18px"></i>
+                    </button>
+                    <input type="file" id="adhub-prompt-file" accept="image/*" style="display:none">
+                    <span id="adhub-prompt-file-chip" class="adhub-prompt-chip" style="display:none"></span>
+
+                    <textarea id="adhub-prompt-text" class="adhub-prompt-textarea" rows="1" placeholder="Describe your ad idea to generate ads…"></textarea>
+
+                    <div class="adhub-prompt-controls">
+                        <div class="adhub-dropdown" id="adhub-aspect-dropdown">
+                            <button class="adhub-prompt-btn adhub-prompt-btn-labeled" id="adhub-aspect-trigger" title="Aspecto">
+                                <i data-lucide="square" style="width:14px;height:14px"></i>
+                                <span id="adhub-aspect-label">Square</span>
+                                <i data-lucide="chevron-down" style="width:12px;height:12px;opacity:0.6"></i>
+                            </button>
+                            <div class="adhub-dropdown-menu" id="adhub-aspect-menu">
+                                <button class="adhub-dropdown-item" data-aspect="1024x1024" data-aspect-label="Square"><i data-lucide="square" style="width:14px;height:14px"></i> Square</button>
+                                <button class="adhub-dropdown-item" data-aspect="1792x1024" data-aspect-label="Landscape"><i data-lucide="rectangle-horizontal" style="width:14px;height:14px"></i> Landscape</button>
+                                <button class="adhub-dropdown-item" data-aspect="1024x1792" data-aspect-label="Portrait"><i data-lucide="rectangle-vertical" style="width:14px;height:14px"></i> Portrait</button>
+                            </div>
+                        </div>
+
+                        <button class="adhub-prompt-btn adhub-prompt-btn-labeled" id="adhub-templates-trigger" title="Browse Templates">
+                            <i data-lucide="layout-template" style="width:14px;height:14px"></i>
+                            <span>Prompt Templates</span>
+                        </button>
+
+                        <div class="adhub-dropdown" id="adhub-outputs-dropdown">
+                            <button class="adhub-prompt-btn adhub-prompt-btn-labeled" id="adhub-outputs-trigger" title="Quantidade de saídas">
+                                <i data-lucide="grid-2x2" style="width:14px;height:14px"></i>
+                                <span id="adhub-outputs-label">3 outputs</span>
+                                <i data-lucide="chevron-down" style="width:12px;height:12px;opacity:0.6"></i>
+                            </button>
+                            <div class="adhub-dropdown-menu" id="adhub-outputs-menu">
+                                <button class="adhub-dropdown-item" data-outputs="1">1 output</button>
+                                <button class="adhub-dropdown-item" data-outputs="2">2 outputs</button>
+                                <button class="adhub-dropdown-item" data-outputs="3">3 outputs</button>
+                                <button class="adhub-dropdown-item" data-outputs="4">4 outputs</button>
+                                <button class="adhub-dropdown-item" data-outputs="5">5 outputs</button>
+                            </div>
+                        </div>
+
+                        <button class="adhub-prompt-send" id="adhub-prompt-send" title="Gerar">
+                            <i data-lucide="arrow-up" style="width:18px;height:18px"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </section>
+
+        <!-- ==================== Modal: Browse Templates ==================== -->
+        <div id="modal-prompt-templates" class="modal hidden">
+            <div class="modal-overlay"></div>
+            <div class="modal-content" style="max-width:780px">
+                <div class="modal-header">
+                    <h3><i data-lucide="layout-template" style="width:16px;height:16px;vertical-align:-3px"></i> Browse Templates</h3>
+                    <button class="btn-close" id="templates-modal-close">&times;</button>
+                </div>
+                <div class="adhub-tabs" style="margin-bottom:0.75rem">
+                    <button class="adhub-tab adhub-tab-active" data-tpl-tab="madgicx">Madgicx Templates</button>
+                    <button class="adhub-tab" data-tpl-tab="mine">My Templates</button>
+                </div>
+                <input type="search" id="tpl-search" class="input" placeholder="Search template…" style="margin-bottom:0.75rem">
+                <div id="tpl-grid" class="tpl-grid"></div>
+                <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem">
+                    <button id="tpl-cancel" class="btn btn-secondary">Cancel</button>
+                    <button id="tpl-use" class="btn btn-primary" disabled>Use Template</button>
+                </div>
+            </div>
+        </div>
 
         <!-- ==================== AD LIBRARY ==================== -->
         <section id="tab-ad-library" class="tab-panel">
@@ -3480,7 +3600,7 @@
             </div>
         </section>
 
-        <!-- ==================== CREATIVE INSIGHTS ==================== -->
+        <!-- ==================== CREATIVE INSIGHTS (legacy hidden) ==================== -->
         <section id="tab-creative-insights" class="tab-panel">
             <div class="section-header">
                 <h2><i data-lucide="bar-chart-2" style="width:20px;height:20px;vertical-align:-3px"></i> Creative Insights</h2>
@@ -3491,6 +3611,57 @@
                 <h3>Creative Insights em desenvolvimento</h3>
                 <p>Vai cruzar dados das campanhas (Meta Insights) com tags dos criativos pra mostrar quais elementos funcionam melhor.</p>
             </div>
+        </section>
+
+        <!-- ==================== BRANDS ==================== -->
+        <section id="tab-brands" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="building-2" style="width:20px;height:20px;vertical-align:-3px"></i> Brands</h2>
+                <p class="section-subtitle" style="margin:0">Diretório de marcas para monitorar — siga concorrentes e descubra inspirações no feed.</p>
+            </div>
+            <div class="adhub-tabs">
+                <button class="adhub-tab adhub-tab-active" data-brands-tab="all">All brands</button>
+                <button class="adhub-tab" data-brands-tab="followed">Followed Brands</button>
+            </div>
+            <div class="adhub-toolbar">
+                <button class="btn btn-secondary btn-sm" id="brands-filter-btn"><i data-lucide="filter" style="width:14px;height:14px"></i> Filters</button>
+                <input type="search" class="input input-sm" id="brands-search" placeholder="Search brands…" style="flex:1;max-width:320px">
+                <span class="adhub-count" id="brands-count">0 brands</span>
+            </div>
+            <div class="brands-table-wrap">
+                <table class="brands-table">
+                    <thead>
+                        <tr>
+                            <th>Facebook Page name</th>
+                            <th>Industry</th>
+                            <th data-brands-sort="ads" class="brands-sortable">Ads <i data-lucide="arrow-down" style="width:12px;height:12px"></i></th>
+                            <th style="width:90px">Follow</th>
+                        </tr>
+                    </thead>
+                    <tbody id="brands-tbody"></tbody>
+                </table>
+            </div>
+            <div class="brands-pagination" id="brands-pagination"></div>
+        </section>
+
+        <!-- ==================== RECENT EDITS ==================== -->
+        <section id="tab-recent-edits" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="history" style="width:20px;height:20px;vertical-align:-3px"></i> Recent Edits</h2>
+                <p class="section-subtitle" style="margin:0">Histórico dos seus projetos de geração e edição com IA.</p>
+            </div>
+            <div id="recent-edits-content"></div>
+        </section>
+
+        <!-- ==================== SAVED INSPIRATIONS ==================== -->
+        <section id="tab-saved-inspirations" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="bookmark" style="width:20px;height:20px;vertical-align:-3px"></i> Saved Inspirations</h2>
+                <button id="btn-new-board" class="btn btn-primary btn-sm"><i data-lucide="plus" style="width:14px;height:14px"></i> New Board</button>
+            </div>
+            <p class="section-subtitle">Boards de ads salvos para inspiração e referência futura.</p>
+            <div class="boards-tabs" id="boards-tabs"></div>
+            <div class="boards-grid" id="boards-grid"></div>
         </section>
 
     </main>
@@ -3703,6 +3874,16 @@
                 <div class="form-row"><div class="form-group"><label>Status</label>
                     <select id="lab-status" class="input"><option value="ativo"><i data-lucide="microscope" style="width:14px;height:14px;vertical-align:-2px"></i> Ativo</option><option value="concluido"><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Concluído</option><option value="cancelado"><i data-lucide="ban" style="width:14px;height:14px;vertical-align:-2px"></i> Cancelado</option></select>
                 </div></div>
+                <div class="swipe-form-section">
+                    <div class="swipe-form-label"><i data-lucide="check-square" style="width:14px;height:14px;vertical-align:-2px"></i> Tarefas / Ações</div>
+                    <div id="lab-tasks-list"></div>
+                    <div class="form-row" style="margin-top:0.5rem;gap:0.5rem;align-items:flex-end">
+                        <div class="form-group" style="flex:3"><input type="text" id="lab-task-text" class="input" placeholder="Nova tarefa / ação..."></div>
+                        <div class="form-group" style="flex:1;min-width:130px"><label style="font-size:0.7rem;color:var(--text-muted)">Prazo</label><input type="date" id="lab-task-due" class="input"></div>
+                        <button type="button" id="btn-lab-add-task" class="btn btn-secondary btn-sm">+ Tarefa</button>
+                    </div>
+                </div>
+
                 <div class="swipe-form-section">
                     <div class="swipe-form-label"><i data-lucide="eye" style="width:14px;height:14px;vertical-align:-2px"></i>️ Observações</div>
                     <div id="lab-observations-list"></div>
@@ -4352,6 +4533,8 @@
     <script src="js/dash-customize.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/ai-ad-generator.js"></script>
+    <script src="js/ai-generations.js"></script>
+    <script src="js/prompt-templates.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>

@@ -148,6 +148,7 @@ const SupabaseSync = (() => {
         const avatarInit = document.getElementById('profile-initial');
         const dropdownInit = document.getElementById('profile-dropdown-initial');
         const dropdownEmail = document.getElementById('profile-dropdown-email');
+        const inlineEmail = document.getElementById('profile-dropdown-email-inline');
         const logoutBtn = document.getElementById('btn-supabase-logout');
         const syncBtn = document.getElementById('btn-profile-sync');
 
@@ -156,12 +157,14 @@ const SupabaseSync = (() => {
             if (avatarInit) avatarInit.textContent = initial;
             if (dropdownInit) dropdownInit.textContent = initial;
             if (dropdownEmail) dropdownEmail.textContent = _user.email;
+            if (inlineEmail) inlineEmail.textContent = _user.email;
             if (logoutBtn) logoutBtn.style.display = '';
             if (syncBtn) syncBtn.style.display = '';
         } else {
             if (avatarInit) avatarInit.textContent = '?';
             if (dropdownInit) dropdownInit.textContent = '?';
             if (dropdownEmail) dropdownEmail.textContent = 'Não conectado';
+            if (inlineEmail) inlineEmail.textContent = 'Não conectado';
             if (logoutBtn) logoutBtn.style.display = 'none';
             if (syncBtn) syncBtn.style.display = 'none';
         }

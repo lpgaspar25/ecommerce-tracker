@@ -154,6 +154,15 @@ const DashboardModule = {
         EventBus.on('productsChanged', () => this.refresh());
         EventBus.on('goalsChanged', () => this.refresh());
         EventBus.on('tabChanged', (tab) => { if (tab === 'dashboard') this.refresh(); });
+        EventBus.on('labTestsChanged', () => { this._renderDeadlines(); });
+        EventBus.on('projectsChanged', () => { this._renderDeadlines(); });
+
+        document.getElementById('btn-dash-open-lab')?.addEventListener('click', () => {
+            document.querySelector('[data-tab="laboratorio"]')?.click();
+        });
+        document.getElementById('btn-dash-open-projects')?.addEventListener('click', () => {
+            document.querySelector('[data-tab="projects"]')?.click();
+        });
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
@@ -472,6 +481,7 @@ const DashboardModule = {
         this._renderScores();
         this._renderStoresRanking();
         this._renderWidgets();
+        this._renderDeadlines();
         this._renderCalendar();
         this._renderBudgetByProduct();
 
@@ -1480,6 +1490,152 @@ const DashboardModule = {
         });
         const el6 = document.getElementById('dw-best-conv');
         if (el6) el6.textContent = bestConv;
+    },
+
+    // Deadlines from Lab Tests + Projects
+    _renderDeadlines() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const fmtRel = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T00:00:00');
+            const diff = Math.round((d - today) / 86400000);
+            if (diff < 0) return { label: `${Math.abs(diff)}d atrasado`, cls: 'overdue' };
+            if (diff === 0) return { label: 'Hoje', cls: 'soon' };
+            if (diff === 1) return { label: 'Amanhã', cls: 'soon' };
+            if (diff <= 2) return { label: `${diff}d`, cls: 'soon' };
+            if (diff <= 7) return { label: `${diff}d`, cls: 'upcoming' };
+            return { label: dateStr, cls: 'far' };
+        };
+
+        const esc = (s) => String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+        // ── Lab Tests ──
+        const testsContainer = document.getElementById('dash-deadlines-tests');
+        if (testsContainer) {
+            const labTests = (typeof LabTestsModule !== 'undefined') ? (LabTestsModule._tests || []) : [];
+            const items = [];
+            labTests.forEach(t => {
+                if (t.status !== 'ativo') return;
+                if (t.dateEnd) {
+                    const rel = fmtRel(t.dateEnd);
+                    items.push({
+                        date: t.dateEnd,
+                        rel,
+                        text: t.title || 'Teste sem título',
+                        sub: 'Encerramento do teste',
+                        icon: 'flask-conical',
+                        testId: t.id,
+                        kind: 'test-end'
+                    });
+                }
+                (t.tasks || []).forEach(task => {
+                    if (task.done || !task.dueDate) return;
+                    const rel = fmtRel(task.dueDate);
+                    items.push({
+                        date: task.dueDate,
+                        rel,
+                        text: task.text,
+                        sub: `Tarefa de "${t.title}"`,
+                        icon: 'check-square',
+                        testId: t.id,
+                        kind: 'test-task'
+                    });
+                });
+            });
+            items.sort((a, b) => a.date.localeCompare(b.date));
+            const top = items.slice(0, 8);
+            if (!top.length) {
+                testsContainer.innerHTML = '<p class="dash-empty">Nenhum prazo de teste ativo. <a href="#" class="dash-link" id="dash-deadlines-tests-empty-link">Criar teste no Laboratório →</a></p>';
+                document.getElementById('dash-deadlines-tests-empty-link')?.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.querySelector('[data-tab="laboratorio"]')?.click();
+                });
+            } else {
+                testsContainer.innerHTML = top.map(it => `
+                    <div class="dash-deadline-item dash-deadline-${it.rel.cls}" data-test-id="${it.testId}">
+                        <div class="dash-deadline-icon"><i data-lucide="${it.icon}" style="width:14px;height:14px"></i></div>
+                        <div class="dash-deadline-body">
+                            <div class="dash-deadline-text">${esc(it.text)}</div>
+                            <div class="dash-deadline-sub">${esc(it.sub)} · ${it.date}</div>
+                        </div>
+                        <span class="dash-deadline-chip dash-deadline-chip-${it.rel.cls}">${esc(it.rel.label)}</span>
+                    </div>
+                `).join('');
+                testsContainer.querySelectorAll('.dash-deadline-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = el.dataset.testId;
+                        document.querySelector('[data-tab="laboratorio"]')?.click();
+                        setTimeout(() => {
+                            if (typeof LabTestsModule !== 'undefined' && id) LabTestsModule._openModal(id);
+                        }, 50);
+                    });
+                });
+            }
+        }
+
+        // ── Projects ──
+        const projContainer = document.getElementById('dash-deadlines-projects');
+        if (projContainer) {
+            const projects = (typeof AppState !== 'undefined' && AppState.allProjects) ? AppState.allProjects : [];
+            const items = [];
+            projects.forEach(p => {
+                if (p.status === 'concluido') return;
+                if (p.targetDate) {
+                    const rel = fmtRel(p.targetDate);
+                    items.push({
+                        date: p.targetDate,
+                        rel,
+                        text: p.title || 'Projeto sem título',
+                        sub: 'Prazo do projeto',
+                        icon: 'rocket',
+                        projId: p.id,
+                        kind: 'project-target'
+                    });
+                }
+                (p.tasks || []).forEach(task => {
+                    if (task.done || !task.dueDate) return;
+                    const rel = fmtRel(task.dueDate);
+                    items.push({
+                        date: task.dueDate,
+                        rel,
+                        text: task.text,
+                        sub: `Tarefa de "${p.title}"`,
+                        icon: 'check-square',
+                        projId: p.id,
+                        kind: 'project-task'
+                    });
+                });
+            });
+            items.sort((a, b) => a.date.localeCompare(b.date));
+            const top = items.slice(0, 8);
+            if (!top.length) {
+                projContainer.innerHTML = '<p class="dash-empty">Nenhum prazo de projeto pendente. <a href="#" class="dash-link" id="dash-deadlines-proj-empty-link">Abrir Projetos →</a></p>';
+                document.getElementById('dash-deadlines-proj-empty-link')?.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.querySelector('[data-tab="projects"]')?.click();
+                });
+            } else {
+                projContainer.innerHTML = top.map(it => `
+                    <div class="dash-deadline-item dash-deadline-${it.rel.cls}" data-proj-id="${it.projId}">
+                        <div class="dash-deadline-icon"><i data-lucide="${it.icon}" style="width:14px;height:14px"></i></div>
+                        <div class="dash-deadline-body">
+                            <div class="dash-deadline-text">${esc(it.text)}</div>
+                            <div class="dash-deadline-sub">${esc(it.sub)} · ${it.date}</div>
+                        </div>
+                        <span class="dash-deadline-chip dash-deadline-chip-${it.rel.cls}">${esc(it.rel.label)}</span>
+                    </div>
+                `).join('');
+                projContainer.querySelectorAll('.dash-deadline-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        document.querySelector('[data-tab="projects"]')?.click();
+                    });
+                });
+            }
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
     // Weekly calendar with deadlines

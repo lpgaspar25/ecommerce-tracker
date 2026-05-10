@@ -130,23 +130,26 @@ const AIAdGenerator = {
     },
 
     // ── Generate images ───────────────────────────────────────────────
-    async generateImages() {
-        const prompt = document.getElementById('aiad-prompt')?.value.trim();
+    async generateImages(opts) {
+        opts = opts || {};
+        const prompt = (opts.prompt != null ? opts.prompt : document.getElementById('aiad-prompt')?.value || '').trim();
         if (!prompt) {
             if (typeof showToast === 'function') showToast('Escreva um prompt antes de gerar', 'error');
             return;
         }
 
-        const provider = this._getProvider();
-        const size = document.getElementById('aiad-size')?.value || '1024x1024';
-        const count = parseInt(document.getElementById('aiad-count')?.value || '1', 10);
-        const quality = document.getElementById('aiad-quality')?.value || 'standard';
+        const provider = opts.provider || this._getProvider();
+        const size = opts.size || document.getElementById('aiad-size')?.value || '1024x1024';
+        const count = parseInt(opts.count || document.getElementById('aiad-count')?.value || '1', 10);
+        const quality = opts.quality || document.getElementById('aiad-quality')?.value || 'standard';
+        const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
 
         const providerLabel = provider === 'google' ? 'Google Imagen 3' : 'DALL-E 3';
         const results = document.getElementById('aiad-results');
         if (results) {
             results.innerHTML = `<div class="aiad-loading">Gerando ${count} imagem(ns) com ${providerLabel}…</div>`;
         }
+        if (onProgress) onProgress('start', { count, providerLabel });
 
         try {
             let items;
@@ -167,10 +170,14 @@ const AIAdGenerator = {
 
             this._saveGenerations(compressed);
             this._renderResults(compressed);
+            if (onProgress) onProgress('done', { items: compressed });
+            if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
+            this.renderGenerationsGallery();
             if (typeof showToast === 'function') showToast(`${compressed.length} imagem(ns) gerada(s) ✓`, 'success');
 
         } catch (err) {
             console.error('[AIAdGenerator]', err);
+            if (onProgress) onProgress('error', { error: err });
             if (results) {
                 results.innerHTML = `
                     <div class="aiad-empty">
@@ -481,26 +488,38 @@ const AIAdGenerator = {
         if (!grid) return;
         const all = this._getAllGenerations();
         if (!all.length) {
-            grid.innerHTML = `<p style="text-align:center;color:var(--text-muted);padding:3rem 0;grid-column:1/-1">Suas gerações vão aparecer aqui depois de usar o AI Ad Generator.</p>`;
+            grid.innerHTML = `<div class="adhub-empty" style="padding:4rem 0;grid-column:1/-1">
+                <i data-lucide="wand-2" style="width:48px;height:48px;color:var(--text-muted)"></i>
+                <h3>Nenhuma geração ainda</h3>
+                <p>Use a barra abaixo: descreva uma ideia, escolha o aspecto e gere seu primeiro ad.</p>
+            </div>`;
+            if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch(e) {}
             return;
         }
         grid.innerHTML = all.map(item => `
-            <div class="aiad-result-item" data-id="${item.id}">
-                <img src="${item.dataUrl}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
-                <div class="aiad-result-badge ${item.provider === 'google' ? 'aiad-badge-google' : 'aiad-badge-openai'}">
-                    ${item.provider === 'google' ? 'Google Imagen 3' : 'DALL-E 3'}
+            <div class="aigen-card" data-id="${item.id}">
+                <div class="aigen-card-thumb">
+                    <img src="${item.dataUrl}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
+                    <div class="aigen-card-overlay">
+                        <button class="btn btn-primary btn-sm" data-action="similar" data-id="${item.id}"><i data-lucide="sparkles" style="width:13px;height:13px"></i> Generate Similar</button>
+                    </div>
                 </div>
-                <div class="aiad-result-actions">
-                    <button class="btn btn-secondary btn-sm" data-action="dl" data-id="${item.id}" title="Baixar"><i data-lucide="download" style="width:13px;height:13px"></i></button>
-                    <button class="btn btn-secondary btn-sm" data-action="cp" data-id="${item.id}" title="Copiar prompt"><i data-lucide="copy" style="width:13px;height:13px"></i></button>
-                    <button class="btn btn-secondary btn-sm" data-action="del" data-id="${item.id}" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+                <div class="aigen-card-meta">
+                    <span class="aigen-card-prompt" title="${this._esc(item.revisedPrompt || item.prompt)}">${this._esc((item.prompt || '').slice(0, 80))}${(item.prompt || '').length > 80 ? '…' : ''}</span>
+                    <div class="aigen-card-actions">
+                        <span class="aiad-result-badge ${item.provider === 'google' ? 'aiad-badge-google' : 'aiad-badge-openai'}">${item.provider === 'google' ? 'Imagen 3' : 'DALL-E 3'}</span>
+                        <button class="btn-icon" data-action="dl" data-id="${item.id}" title="Baixar"><i data-lucide="download" style="width:13px;height:13px"></i></button>
+                        <button class="btn-icon" data-action="cp" data-id="${item.id}" title="Copiar prompt"><i data-lucide="copy" style="width:13px;height:13px"></i></button>
+                        <button class="btn-icon" data-action="del" data-id="${item.id}" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+                    </div>
                 </div>
             </div>
         `).join('');
         if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch(e) {}
 
         grid.querySelectorAll('button[data-action]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const id = btn.dataset.id;
                 const item = all.find(i => i.id === id);
                 if (!item) return;
@@ -518,6 +537,13 @@ const AIAdGenerator = {
                     const remaining = all.filter(i => i.id !== id);
                     localStorage.setItem(this.STORAGE_KEY, JSON.stringify(remaining));
                     this.renderGenerationsGallery();
+                } else if (action === 'similar') {
+                    const promptEl = document.getElementById('adhub-prompt-text');
+                    if (promptEl) {
+                        promptEl.value = item.prompt || '';
+                        promptEl.dispatchEvent(new Event('input'));
+                        promptEl.focus();
+                    }
                 }
             });
         });
@@ -535,4 +561,5 @@ const AIAdGenerator = {
     }
 };
 
+window.AIAdGenerator = AIAdGenerator;
 AIAdGenerator.init();

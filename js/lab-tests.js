@@ -77,6 +77,7 @@ const LabTestsModule = {
         this._tests = merged;
         localStorage.setItem(this._storageKey, JSON.stringify(merged));
         this._writeBackup(merged);
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
     // Used for deletions: write in-memory directly to disk, no merge.
@@ -158,6 +159,10 @@ const LabTestsModule = {
         document.getElementById('lab-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this._closeModal());
         document.getElementById('lab-form')?.addEventListener('submit', (e) => this._handleSave(e));
         document.getElementById('btn-lab-add-obs')?.addEventListener('click', () => this._addObservation());
+        document.getElementById('btn-lab-add-task')?.addEventListener('click', () => this._addTask());
+        document.getElementById('lab-task-text')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); this._addTask(); }
+        });
 
         // Toggle metrics section
         document.getElementById('btn-lab-toggle-metrics')?.addEventListener('click', () => {
@@ -348,6 +353,14 @@ const LabTestsModule = {
                 <span>Dia ${elapsed}/${totalDays}</span>
                 ${metric ? `<span>${metric.icon} ${metric.label}${test.baselineValue ? ': ' + this._esc(test.baselineValue) : ''}</span>` : ''}
                 ${obsCount ? `<span><i data-lucide="message-circle" style="width:14px;height:14px;vertical-align:-2px"></i> ${obsCount}</span>` : ''}
+                ${(() => {
+                    const ts = test.tasks || [];
+                    if (!ts.length) return '';
+                    const done = ts.filter(t => t.done).length;
+                    const today = new Date(); today.setHours(0,0,0,0);
+                    const overdue = ts.filter(t => !t.done && t.dueDate && new Date(t.dueDate + 'T00:00:00') < today).length;
+                    return `<span title="${done}/${ts.length} tarefas concluídas${overdue ? ' · ' + overdue + ' atrasada(s)' : ''}"><i data-lucide="check-square" style="width:14px;height:14px;vertical-align:-2px"></i> ${done}/${ts.length}${overdue ? ' <span style="color:var(--red);font-weight:700">!' + overdue + '</span>' : ''}</span>`;
+                })()}
             </div>` : ''}
             ${test.status === 'concluido' && test.conclusion ? `<p class="lab-card-conclusion">${this._esc(test.conclusion)}</p>` : ''}
             ${test.stages && test.stages.length > 0 ? this._renderStagesProgress(test) : ''}
@@ -362,6 +375,7 @@ const LabTestsModule = {
         if (!modal) return;
         this._editingId = id || null;
         const test = id ? this._tests.find(t => t.id === id) : null;
+        if (!id) { this._tempObs = []; this._tempTasks = []; }
 
         // Fill form
         const get = (sel) => document.getElementById(sel);
@@ -446,6 +460,9 @@ const LabTestsModule = {
 
         // Observations
         this._renderObservations(test?.observations || []);
+
+        // Tasks
+        this._renderTasks(test?.tasks || []);
 
         // Show/hide conclusion section
         const conclusionSection = document.getElementById('lab-conclusion-section');
@@ -544,6 +561,123 @@ const LabTestsModule = {
         showToast('Observação adicionada!', 'success');
     },
 
+    // ── Tasks (com prazos) ──────────────────────────────────────────
+
+    _renderTasks(tasks) {
+        const container = document.getElementById('lab-tasks-list');
+        if (!container) return;
+        tasks = tasks || [];
+        if (!tasks.length) {
+            container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Nenhuma tarefa ainda.</p>';
+            return;
+        }
+        const today = new Date(); today.setHours(0,0,0,0);
+        container.innerHTML = tasks.map((task, i) => {
+            const due = task.dueDate || '';
+            let dueClass = '';
+            let dueLabel = '';
+            if (due) {
+                const d = new Date(due + 'T00:00:00');
+                const diff = Math.round((d - today) / 86400000);
+                if (!task.done) {
+                    if (diff < 0) { dueClass = 'lab-task-due-overdue'; dueLabel = `${Math.abs(diff)}d atrasado`; }
+                    else if (diff === 0) { dueClass = 'lab-task-due-soon'; dueLabel = 'Hoje'; }
+                    else if (diff <= 2) { dueClass = 'lab-task-due-soon'; dueLabel = `${diff}d`; }
+                    else { dueLabel = `${diff}d`; }
+                } else {
+                    dueLabel = due;
+                }
+            }
+            return `<div class="lab-task-item">
+                <input type="checkbox" class="lab-task-check" data-idx="${i}" ${task.done ? 'checked' : ''}>
+                <span class="lab-task-text ${task.done ? 'lab-task-done' : ''}">${this._esc(task.text)}</span>
+                ${due ? `<span class="lab-task-due ${dueClass}" title="${due}"><i data-lucide="calendar-clock" style="width:12px;height:12px;vertical-align:-2px"></i> ${dueLabel}</span>` : ''}
+                <input type="date" class="input input-sm lab-task-due-input" data-idx="${i}" value="${due}" title="Prazo">
+                <button class="lab-task-del" data-idx="${i}" title="Remover"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+            </div>`;
+        }).join('');
+
+        container.querySelectorAll('.lab-task-check').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const idx = parseInt(cb.dataset.idx);
+                this._toggleTask(idx);
+            });
+        });
+        container.querySelectorAll('.lab-task-due-input').forEach(inp => {
+            inp.addEventListener('change', (e) => {
+                const idx = parseInt(inp.dataset.idx);
+                this._setTaskDueDate(idx, inp.value);
+            });
+        });
+        container.querySelectorAll('.lab-task-del').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.dataset.idx);
+                this._deleteTask(idx);
+            });
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _getTasksList() {
+        if (this._editingId) {
+            const test = this._tests.find(t => t.id === this._editingId);
+            if (test) {
+                if (!test.tasks) test.tasks = [];
+                return test.tasks;
+            }
+        }
+        if (!this._tempTasks) this._tempTasks = [];
+        return this._tempTasks;
+    },
+
+    _addTask() {
+        const text = document.getElementById('lab-task-text')?.value?.trim();
+        if (!text) { showToast('Escreva a tarefa', 'error'); return; }
+        const dueDate = document.getElementById('lab-task-due')?.value || '';
+        const tasks = this._getTasksList();
+        tasks.push({
+            id: 'labtask_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+            text,
+            done: false,
+            dueDate,
+        });
+        if (this._editingId) this._persist();
+        this._renderTasks(tasks);
+        document.getElementById('lab-task-text').value = '';
+        document.getElementById('lab-task-due').value = '';
+        showToast('Tarefa adicionada!', 'success');
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+    },
+
+    _toggleTask(idx) {
+        const tasks = this._getTasksList();
+        if (!tasks[idx]) return;
+        tasks[idx].done = !tasks[idx].done;
+        if (this._editingId) this._persist();
+        this._renderTasks(tasks);
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+    },
+
+    _setTaskDueDate(idx, dueDate) {
+        const tasks = this._getTasksList();
+        if (!tasks[idx]) return;
+        tasks[idx].dueDate = dueDate || '';
+        if (this._editingId) this._persist();
+        this._renderTasks(tasks);
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+    },
+
+    _deleteTask(idx) {
+        const tasks = this._getTasksList();
+        if (!tasks[idx]) return;
+        tasks.splice(idx, 1);
+        if (this._editingId) this._persist();
+        this._renderTasks(tasks);
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+    },
+
     _handleSave(e) {
         e.preventDefault();
         const get = (id) => document.getElementById(id)?.value?.trim() || '';
@@ -608,11 +742,13 @@ const LabTestsModule = {
                 id: 'lab_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
                 ...data,
                 observations: this._tempObs || [],
+                tasks: this._tempTasks || [],
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
             };
             this._tests.unshift(newTest);
             this._tempObs = null;
+            this._tempTasks = null;
             savedTest = newTest;
         }
 
