@@ -3,6 +3,8 @@
    =========================== */
 
 const ProductsModule = {
+    _images: [],
+
     COUNTRIES: [
         { code: 'GB', label: 'GB — Reino Unido', currency: 'GBP' },
         { code: 'DE', label: 'DE — Alemanha', currency: 'EUR' },
@@ -58,6 +60,34 @@ const ProductsModule = {
 
         EventBus.on('dataLoaded', () => this.render());
         EventBus.on('rateUpdated', () => this.render());
+
+        // Rich text toolbar (execCommand — simple, no deps)
+        document.querySelectorAll('#product-form .prod-rich-btn').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault(); // prevent editor blur
+                document.execCommand(btn.dataset.cmd, false, null);
+                document.getElementById('product-description')?.focus();
+            });
+        });
+
+        // AI description button
+        document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
+
+        // Image upload
+        const imgInput = document.getElementById('prod-image-input');
+        const imgZone = document.getElementById('prod-image-zone');
+        if (imgInput) {
+            imgInput.addEventListener('change', (e) => this._handleImageFiles(e.target.files));
+        }
+        if (imgZone) {
+            imgZone.addEventListener('dragover', (e) => { e.preventDefault(); imgZone.classList.add('prod-image-drop-hover'); });
+            imgZone.addEventListener('dragleave', () => imgZone.classList.remove('prod-image-drop-hover'));
+            imgZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                imgZone.classList.remove('prod-image-drop-hover');
+                this._handleImageFiles(e.dataTransfer.files);
+            });
+        }
     },
 
     openForm(product = null) {
@@ -86,11 +116,39 @@ const ProductsModule = {
             if (product.countryPrices && product.countryPrices.length > 0) {
                 product.countryPrices.forEach(cp => this.addCountryPriceRow(cp));
             }
+            // New fields
+            const descEl = document.getElementById('product-description');
+            if (descEl) descEl.innerHTML = product.description || '';
+            const statusEl = document.getElementById('product-status');
+            if (statusEl) statusEl.value = product.status || 'ativo';
+            const vendorEl = document.getElementById('product-vendor');
+            if (vendorEl) vendorEl.value = product.vendor || '';
+            const skuEl = document.getElementById('product-sku');
+            if (skuEl) skuEl.value = product.sku || '';
+            const tagsEl = document.getElementById('product-tags');
+            if (tagsEl) tagsEl.value = (product.tags || []).join(', ');
+            this._images = (product.images || []).slice();
         } else {
             title.textContent = 'Adicionar Produto';
             document.getElementById('product-id').value = '';
+            const descEl = document.getElementById('product-description');
+            if (descEl) descEl.innerHTML = '';
+            const statusEl = document.getElementById('product-status');
+            if (statusEl) statusEl.value = 'ativo';
+            const vendorEl = document.getElementById('product-vendor');
+            if (vendorEl) vendorEl.value = '';
+            const skuEl = document.getElementById('product-sku');
+            if (skuEl) skuEl.value = '';
+            const tagsEl = document.getElementById('product-tags');
+            if (tagsEl) tagsEl.value = '';
+            this._images = [];
         }
 
+        // Reset AI status
+        const aiStatus = document.getElementById('prod-ai-desc-status');
+        if (aiStatus) { aiStatus.style.display = 'none'; aiStatus.textContent = ''; }
+
+        this._renderProductImages();
         this.updateProfitPreview();
         openModal('product-modal');
     },
@@ -223,7 +281,12 @@ const ProductsModule = {
             cpa: parseFloat(document.getElementById('product-cpa').value) || 0,
             cpaCurrency: document.getElementById('product-cpa-currency').value,
             countryPrices: this._getCountryPrices(),
-            status: 'ativo',
+            description: (document.getElementById('product-description')?.innerHTML || '').trim(),
+            status: document.getElementById('product-status')?.value || 'ativo',
+            vendor: (document.getElementById('product-vendor')?.value || '').trim(),
+            sku: (document.getElementById('product-sku')?.value || '').trim(),
+            tags: (document.getElementById('product-tags')?.value || '').split(',').map(t => t.trim()).filter(Boolean),
+            images: this._images || [],
             storeId: getWritableStoreId()
         };
     },
@@ -277,12 +340,155 @@ const ProductsModule = {
         }
     },
 
+    async generateDescription() {
+        const nameEl = document.getElementById('product-name');
+        const name = nameEl?.value.trim();
+        if (!name) {
+            if (typeof showToast === 'function') showToast('Preencha o título do produto primeiro', 'error');
+            return;
+        }
+        const language = document.getElementById('product-language')?.value || 'Ingles';
+        const langMap = {
+            'Ingles': 'English', 'Ingles Americano': 'American English',
+            'Frances': 'French', 'Espanhol': 'Spanish', 'Holandes': 'Dutch',
+            'Alemao': 'German', 'Polones': 'Polish', 'Checol': 'Czech',
+            'Dinamarques': 'Danish', 'Sueco': 'Swedish', 'Noruegues': 'Norwegian'
+        };
+        const lang = langMap[language] || 'English';
+        const openAIKey = localStorage.getItem('openai_api_key') || '';
+        const googleKey = localStorage.getItem('google_ai_api_key') || '';
+
+        const statusEl = document.getElementById('prod-ai-desc-status');
+        const btn = document.getElementById('btn-prod-ai-desc');
+        if (statusEl) { statusEl.style.display = ''; statusEl.style.color = ''; statusEl.textContent = 'Gerando descrição…'; }
+        if (btn) btn.disabled = true;
+
+        try {
+            const sysPrompt = `You are a professional e-commerce copywriter. Write a compelling product description in ${lang}. 2–3 paragraphs, highlight key benefits, persuasive tone. Format as simple HTML using only <p> and <strong> tags. Do NOT include a title or heading — only the body text.`;
+            let html = '';
+
+            if (openAIKey) {
+                const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIKey}` },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',
+                        messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: `Product name: ${name}` }],
+                        temperature: 0.8
+                    })
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error.message);
+                html = data.choices?.[0]?.message?.content || '';
+            } else if (googleKey) {
+                const res = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${googleKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            system_instruction: { parts: [{ text: sysPrompt }] },
+                            contents: [{ parts: [{ text: `Product name: ${name}` }] }],
+                            generationConfig: { temperature: 0.8 }
+                        })
+                    }
+                );
+                const data = await res.json();
+                if (data.error) throw new Error(data.error.message || 'Google AI error');
+                html = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            } else {
+                throw new Error('Configure uma chave OpenAI ou Google AI (AI Ad Generator → Configurar IA)');
+            }
+
+            if (!html) throw new Error('Resposta vazia da IA');
+            const descEl = document.getElementById('product-description');
+            if (descEl) descEl.innerHTML = html;
+            if (statusEl) { statusEl.textContent = '✓ Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
+            setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+        } catch (err) {
+            console.error('[generateDescription]', err);
+            if (statusEl) { statusEl.textContent = '✗ ' + err.message; statusEl.style.color = '#dc2626'; }
+            if (typeof showToast === 'function') showToast('Erro ao gerar: ' + err.message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    async _handleImageFiles(files) {
+        for (const file of Array.from(files)) {
+            if (!file.type.startsWith('image/')) continue;
+            if (this._images.length >= 5) break;
+            const dataUrl = await this._compressImageToWebP(file, 800, 0.75);
+            this._images.push({ dataUrl, name: file.name });
+        }
+        this._renderProductImages();
+        // reset input so same file can be re-selected
+        const inp = document.getElementById('prod-image-input');
+        if (inp) inp.value = '';
+    },
+
+    async _compressImageToWebP(file, maxW = 800, quality = 0.75) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const scale = Math.min(1, maxW / img.naturalWidth);
+                        const w = Math.round(img.naturalWidth * scale);
+                        const h = Math.round(img.naturalHeight * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        canvas.toBlob(blob => {
+                            if (!blob) { resolve(ev.target.result); return; }
+                            const fr = new FileReader();
+                            fr.onloadend = () => resolve(fr.result || ev.target.result);
+                            fr.readAsDataURL(blob);
+                        }, 'image/webp', quality);
+                    } catch { resolve(ev.target.result); }
+                };
+                img.onerror = () => resolve(ev.target.result);
+                img.src = ev.target.result;
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+        });
+    },
+
+    _renderProductImages() {
+        const zone = document.getElementById('prod-image-zone');
+        const thumbs = document.getElementById('prod-image-thumbs');
+        if (!thumbs) return;
+        if (!this._images.length) {
+            if (zone) zone.style.display = '';
+            thumbs.style.display = 'none';
+            thumbs.innerHTML = '';
+            return;
+        }
+        thumbs.style.display = '';
+        thumbs.innerHTML = this._images.map((img, i) => `
+            <div class="prod-image-thumb">
+                <img src="${img.dataUrl}" alt="${img.name || ''}">
+                <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
+                ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
+            </div>
+        `).join('');
+        thumbs.querySelectorAll('.prod-image-remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._images.splice(parseInt(btn.dataset.idx), 1);
+                this._renderProductImages();
+            });
+        });
+        if (zone) zone.style.display = this._images.length >= 5 ? 'none' : '';
+    },
+
     render() {
         const tbody = document.getElementById('products-tbody');
-        const products = AppState.products.filter(p => p.status === 'ativo');
+        const products = AppState.products.filter(p => !p.status || p.status !== 'arquivado');
 
         if (products.length === 0) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="10">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td></tr>';
             return;
         }
 
@@ -294,6 +500,9 @@ const ProductsModule = {
         tbody.innerHTML = products.map(p => {
             const profitUSD = calculateProfitPerSale(p, p.cpaCurrency, p.cpa);
             const profitClass = profitUSD >= 0 ? 'color: var(--green)' : 'color: var(--red)';
+            const statusBadge = p.status === 'rascunho'
+                ? '<span class="prod-status-badge prod-status-rascunho">Rascunho</span>'
+                : '<span class="prod-status-badge prod-status-ativo">Ativo</span>';
 
             // Pipeline stage badge
             const pipeCard = pipelineCards.find(c => c.productId === p.id);
@@ -325,6 +534,7 @@ const ProductsModule = {
 
             return `<tr>
                 <td><strong>${this._escapeHtml(p.name)}</strong><br>${stageBadge}${countryBadges}</td>
+                <td>${statusBadge}</td>
                 <td>${this._escapeHtml(p.language || p.country || 'Ingles')}</td>
                 <td>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</td>
                 <td>${formatDualCurrencyHTML(p.cost, p.costCurrency)}</td>

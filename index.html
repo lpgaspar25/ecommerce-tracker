@@ -520,6 +520,7 @@
                 <thead>
                     <tr>
                         <th>Nome</th>
+                        <th>Status</th>
                         <th>Idioma</th>
                         <th>Preço Final</th>
                         <th>Custo</th>
@@ -532,7 +533,7 @@
                 </thead>
                 <tbody id="products-tbody">
                     <tr class="empty-row">
-                        <td colspan="9">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
+                        <td colspan="10">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
                     </tr>
                 </tbody>
             </table>
@@ -540,115 +541,197 @@
             <!-- Product Modal -->
             <div id="product-modal" class="modal hidden">
                 <div class="modal-overlay"></div>
-                <div class="modal-content">
+                <div class="modal-content modal-content-xl">
                     <div class="modal-header">
                         <h3 id="product-modal-title">Adicionar Produto</h3>
-                        <button class="btn-close" id="product-modal-close">&times;</button>
+                        <div style="display:flex;gap:0.5rem;align-items:center">
+                            <button type="button" id="product-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                            <button type="submit" form="product-form" class="btn btn-primary btn-sm">Salvar produto</button>
+                            <button class="btn-close" id="product-modal-close">&times;</button>
+                        </div>
                     </div>
-                    <form id="product-form">
-                        <input type="hidden" id="product-id">
-                        <div class="form-group">
-                            <label>Nome do Produto</label>
-                            <input type="text" id="product-name" class="input" required placeholder="Ex: Óculos Retangular">
-                        </div>
-                        <div class="form-group">
-                            <label>Idioma</label>
-                            <select id="product-language" class="input" required>
-                                <option value="Ingles" selected>Ingles</option>
-                                <option value="Frances">Frances</option>
-                                <option value="Espanhol">Espanhol</option>
-                                <option value="Holandes">Holandes</option>
-                                <option value="Alemao">Alemao</option>
-                                <option value="Polones">Polones</option>
-                                <option value="Checol">Checol</option>
-                                <option value="Ingles Americano">Ingles Americano</option>
-                                <option value="Dinamarques">Dinamarques</option>
-                                <option value="Sueco">Sueco</option>
-                                <option value="Noruegues">Noruegues</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Preço Final</label>
-                                <input type="number" id="product-price" class="input" required step="0.01" placeholder="39.99">
-                            </div>
-                            <div class="form-group">
-                                <label>Moeda</label>
-                                <select id="product-price-currency" class="input">
-                                    <option value="USD">USD ($)</option>
-                                    <option value="BRL">BRL (R$)</option>
-                                    <option value="GBP">GBP (£)</option>
-                                    <option value="EUR">EUR (€)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Custo do Produto</label>
-                                <input type="number" id="product-cost" class="input" required step="0.01" placeholder="8.50">
-                            </div>
-                            <div class="form-group">
-                                <label>Moeda</label>
-                                <select id="product-cost-currency" class="input">
-                                    <option value="USD">USD ($)</option>
-                                    <option value="BRL">BRL (R$)</option>
-                                    <option value="GBP">GBP (£)</option>
-                                    <option value="EUR">EUR (€)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Impostos (%)</label>
-                                <input type="number" id="product-tax" class="input" required step="0.1" placeholder="6.5">
-                            </div>
-                            <div class="form-group">
-                                <label>Custos Variáveis (%) <small>Gateway + Shopify</small></label>
-                                <input type="number" id="product-variable-costs" class="input" required step="0.1" placeholder="5.0">
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>CPA Alvo</label>
-                                <input type="number" id="product-cpa" class="input" required step="0.01" placeholder="12.00">
-                            </div>
-                            <div class="form-group">
-                                <label>Moeda CPA</label>
-                                <select id="product-cpa-currency" class="input">
-                                    <option value="USD">USD ($)</option>
-                                    <option value="BRL">BRL (R$)</option>
-                                    <option value="GBP">GBP (£)</option>
-                                    <option value="EUR">EUR (€)</option>
-                                </select>
-                            </div>
-                        </div>
+                    <div class="prod-modal-scroll">
+                        <form id="product-form" class="prod-modal-layout">
+                            <input type="hidden" id="product-id">
 
-                        <!-- Country Prices -->
-                        <div class="form-group">
-                            <label style="display:flex;align-items:center;justify-content:space-between;">
-                                Preços por País
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="ProductsModule.addCountryPriceRow()">+ Adicionar País</button>
-                            </label>
-                            <div id="country-prices-list" style="margin-top:0.5rem;">
-                                <!-- rows added dynamically -->
-                            </div>
-                        </div>
+                            <!-- ── Left column (main) ── -->
+                            <div class="prod-col-main">
 
-                        <!-- Live Preview -->
-                        <div class="profit-preview">
-                            <h4>Lucro por Venda (estimado)</h4>
-                            <div class="profit-preview-values">
-                                <span id="preview-profit-usd">$0.00 USD</span>
-                                <span class="divider">|</span>
-                                <span id="preview-profit-brl">R$0.00 BRL</span>
-                            </div>
-                        </div>
+                                <!-- Title -->
+                                <div class="prod-section-card">
+                                    <div class="form-group" style="margin:0">
+                                        <label>Título</label>
+                                        <input type="text" id="product-name" class="input prod-title-input" required placeholder="Nome curto e descritivo do produto">
+                                    </div>
+                                </div>
 
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" id="product-cancel">Cancelar</button>
-                            <button type="submit" class="btn btn-primary">Salvar</button>
-                        </div>
-                    </form>
+                                <!-- Description -->
+                                <div class="prod-section-card">
+                                    <div class="form-group" style="margin:0">
+                                        <div class="prod-rich-label">
+                                            <label>Descrição</label>
+                                            <button type="button" id="btn-prod-ai-desc" class="btn btn-secondary btn-sm prod-ai-btn">
+                                                <i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar com IA
+                                            </button>
+                                        </div>
+                                        <div class="prod-rich-toolbar">
+                                            <button type="button" class="prod-rich-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
+                                            <button type="button" class="prod-rich-btn" data-cmd="italic" title="Itálico"><i>I</i></button>
+                                            <button type="button" class="prod-rich-btn" data-cmd="underline" title="Sublinhado"><u>U</u></button>
+                                            <div class="prod-rich-sep"></div>
+                                            <button type="button" class="prod-rich-btn" data-cmd="insertUnorderedList" title="Lista com marcadores">≡</button>
+                                            <button type="button" class="prod-rich-btn" data-cmd="insertOrderedList" title="Lista numerada">1.</button>
+                                            <div class="prod-rich-sep"></div>
+                                            <button type="button" class="prod-rich-btn" data-cmd="removeFormat" title="Limpar formatação">✕</button>
+                                        </div>
+                                        <div id="product-description" class="prod-rich-editor" contenteditable="true" data-placeholder="Descreva o produto: materiais, características, benefícios para o cliente..."></div>
+                                        <div id="prod-ai-desc-status" class="prod-ai-status" style="display:none"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Media -->
+                                <div class="prod-section-card">
+                                    <label style="display:block;margin-bottom:0.5rem">Mídia</label>
+                                    <div id="prod-image-zone" class="prod-image-upload-zone">
+                                        <input type="file" id="prod-image-input" accept="image/*" multiple style="display:none">
+                                        <i data-lucide="image-plus" style="width:36px;height:36px;color:var(--text-muted)"></i>
+                                        <p style="margin:0.4rem 0 0.6rem;color:var(--text-muted);font-size:0.85rem">Arraste imagens ou clique para adicionar</p>
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('prod-image-input').click()">Adicionar imagem</button>
+                                    </div>
+                                    <div id="prod-image-thumbs" class="prod-image-thumbs" style="display:none"></div>
+                                </div>
+
+                            </div>
+
+                            <!-- ── Right column (sidebar) ── -->
+                            <div class="prod-col-sidebar">
+
+                                <!-- Status -->
+                                <div class="prod-section-card">
+                                    <div class="form-group" style="margin:0">
+                                        <label>Status</label>
+                                        <select id="product-status" class="input input-sm">
+                                            <option value="ativo">● Ativo</option>
+                                            <option value="rascunho">○ Rascunho</option>
+                                            <option value="arquivado">⊘ Arquivado</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Organization -->
+                                <div class="prod-section-card">
+                                    <div class="prod-section-title">Organização</div>
+                                    <div class="form-group">
+                                        <label>Idioma / Mercado</label>
+                                        <select id="product-language" class="input input-sm" required>
+                                            <option value="Ingles" selected>Inglês</option>
+                                            <option value="Frances">Francês</option>
+                                            <option value="Espanhol">Espanhol</option>
+                                            <option value="Holandes">Holandês</option>
+                                            <option value="Alemao">Alemão</option>
+                                            <option value="Polones">Polonês</option>
+                                            <option value="Checol">Tcheco</option>
+                                            <option value="Ingles Americano">Inglês (EUA)</option>
+                                            <option value="Dinamarques">Dinamarquês</option>
+                                            <option value="Sueco">Sueco</option>
+                                            <option value="Noruegues">Norueguês</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Fornecedor / Vendor</label>
+                                        <input type="text" id="product-vendor" class="input input-sm" placeholder="Ex: AliExpress, CJ Dropshipping">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>SKU</label>
+                                        <input type="text" id="product-sku" class="input input-sm" placeholder="Ex: SKU-001">
+                                    </div>
+                                    <div class="form-group" style="margin:0">
+                                        <label>Tags <small style="color:var(--text-muted);font-weight:400">(vírgula para separar)</small></label>
+                                        <input type="text" id="product-tags" class="input input-sm" placeholder="verão, acessório, promoção">
+                                    </div>
+                                </div>
+
+                                <!-- Pricing -->
+                                <div class="prod-section-card">
+                                    <div class="prod-section-title">Precificação</div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Preço Final</label>
+                                            <input type="number" id="product-price" class="input input-sm" required step="0.01" placeholder="39.99">
+                                        </div>
+                                        <div class="form-group" style="max-width:88px">
+                                            <label>Moeda</label>
+                                            <select id="product-price-currency" class="input input-sm">
+                                                <option value="USD">USD ($)</option>
+                                                <option value="BRL">BRL (R$)</option>
+                                                <option value="GBP">GBP (£)</option>
+                                                <option value="EUR">EUR (€)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Custo</label>
+                                            <input type="number" id="product-cost" class="input input-sm" required step="0.01" placeholder="8.50">
+                                        </div>
+                                        <div class="form-group" style="max-width:88px">
+                                            <label>Moeda</label>
+                                            <select id="product-cost-currency" class="input input-sm">
+                                                <option value="USD">USD ($)</option>
+                                                <option value="BRL">BRL (R$)</option>
+                                                <option value="GBP">GBP (£)</option>
+                                                <option value="EUR">EUR (€)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Impostos (%)</label>
+                                            <input type="number" id="product-tax" class="input input-sm" required step="0.1" placeholder="6.5">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Custos Var. % <small>Gateway</small></label>
+                                            <input type="number" id="product-variable-costs" class="input input-sm" required step="0.1" placeholder="5.0">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>CPA Alvo</label>
+                                            <input type="number" id="product-cpa" class="input input-sm" required step="0.01" placeholder="12.00">
+                                        </div>
+                                        <div class="form-group" style="max-width:88px">
+                                            <label>Moeda</label>
+                                            <select id="product-cpa-currency" class="input input-sm">
+                                                <option value="USD">USD ($)</option>
+                                                <option value="BRL">BRL (R$)</option>
+                                                <option value="GBP">GBP (£)</option>
+                                                <option value="EUR">EUR (€)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <!-- Live Preview -->
+                                    <div class="profit-preview" style="margin-top:0.5rem">
+                                        <h4>Lucro por Venda (estimado)</h4>
+                                        <div class="profit-preview-values">
+                                            <span id="preview-profit-usd">$0.00 USD</span>
+                                            <span class="divider">|</span>
+                                            <span id="preview-profit-brl">R$0.00 BRL</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Country Prices -->
+                                <div class="prod-section-card">
+                                    <div class="prod-section-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+                                        Preços por País
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="ProductsModule.addCountryPriceRow()">+ Adicionar</button>
+                                    </div>
+                                    <div id="country-prices-list" style="display:flex;flex-direction:column;gap:0.5rem"></div>
+                                </div>
+
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
 
