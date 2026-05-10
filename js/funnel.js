@@ -113,6 +113,20 @@ const FunnelModule = {
         document.getElementById('btn-funnel-save-state').addEventListener('click', () => this.saveDiagnosisSnapshot());
         document.getElementById('btn-funnel-save-diary').addEventListener('click', () => this.saveToDiary());
 
+        // Collapsible ads sections
+        const _bindToggle = (toggleId, barSelector) => {
+            const btn = document.getElementById(toggleId);
+            if (!btn) return;
+            const bar = btn.closest(barSelector) || btn.closest('.ads-collapsible-bar');
+            if (!bar) return;
+            btn.addEventListener('click', () => {
+                bar.classList.toggle('ads-section-expanded');
+                btn.setAttribute('aria-expanded', bar.classList.contains('ads-section-expanded'));
+            });
+        };
+        _bindToggle('fb-section-toggle', '.fb-controls-bar');
+        _bindToggle('gads-section-toggle', '.gads-controls-bar');
+
         const csvBtn = document.getElementById('btn-fb-upload-csv');
         const csvInput = document.getElementById('fb-csv-input');
         if (csvBtn && csvInput) {
@@ -1003,22 +1017,80 @@ const FunnelModule = {
             showToast('Configure o Facebook Ads primeiro', 'error');
             return;
         }
+        // Check active account; fetchProductInsights will handle it
         const mapped = FacebookAds._accountMap()[this.state.productId];
         if (!mapped || mapped.length === 0) {
-            showToast('Mapeie as campanhas para este produto', 'error');
+            showToast('Mapeie as campanhas para este produto (conta ativa)', 'error');
             return;
         }
 
         try {
             showToast('Importando dados do Facebook...', 'info');
             const dateRange = this._getSelectedDateRange();
-            const data = await FacebookAds.fetchProductInsights(this.state.productId, dateRange);
+            const [data, daily] = await Promise.all([
+                FacebookAds.fetchProductInsights(this.state.productId, dateRange),
+                FacebookAds.fetchDailyInsights(this.state.productId, dateRange),
+            ]);
             this._applyImportedFunnelData(data);
+            this._renderDailyPanel(daily, dateRange);
             showToast(`Dados importados: ${data.impressions.toLocaleString('pt-BR')} impressões, ${data.purchase} vendas`, 'success');
         } catch (err) {
             showToast('Erro ao importar: ' + err.message, 'error');
             console.error('FB Import Error:', err);
         }
+    },
+
+    _renderDailyPanel(rows, dateRange) {
+        const panel = document.getElementById('fb-daily-panel');
+        if (!panel) return;
+        if (!rows || rows.length <= 1) {
+            panel.style.display = 'none';
+            panel.innerHTML = '';
+            return;
+        }
+        const fmt = (n) => n.toLocaleString('pt-BR');
+        const fmtCur = (n) => 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtDate = (iso) => {
+            const [y, m, d] = iso.split('-');
+            return `${d}/${m}`;
+        };
+        const totals = rows.reduce((acc, r) => ({
+            impressions: acc.impressions + r.impressions,
+            clicks: acc.clicks + r.clicks,
+            spend: acc.spend + r.spend,
+            purchase: acc.purchase + r.purchase,
+            purchaseValue: acc.purchaseValue + r.purchaseValue,
+        }), { impressions: 0, clicks: 0, spend: 0, purchase: 0, purchaseValue: 0 });
+
+        const tbody = rows.map(r => `<tr>
+            <td>${fmtDate(r.date)}</td>
+            <td>${fmt(r.impressions)}</td>
+            <td>${fmt(r.clicks)}</td>
+            <td>${fmtCur(r.spend)}</td>
+            <td>${fmt(r.purchase)}</td>
+            <td>${fmtCur(r.purchaseValue)}</td>
+        </tr>`).join('');
+
+        panel.innerHTML = `
+            <div class="fb-daily-panel-header">
+                <span>Dados por dia · ${dateRange?.since || ''} – ${dateRange?.until || ''}</span>
+                <span>${rows.length} dias</span>
+            </div>
+            <table class="fb-daily-table">
+                <thead><tr>
+                    <th>Dia</th><th>Impr.</th><th>Cliques</th><th>Gasto</th><th>Compras</th><th>Receita</th>
+                </tr></thead>
+                <tbody>${tbody}</tbody>
+                <tfoot><tr>
+                    <td>Total</td>
+                    <td>${fmt(totals.impressions)}</td>
+                    <td>${fmt(totals.clicks)}</td>
+                    <td>${fmtCur(totals.spend)}</td>
+                    <td>${fmt(totals.purchase)}</td>
+                    <td>${fmtCur(totals.purchaseValue)}</td>
+                </tr></tfoot>
+            </table>`;
+        panel.style.display = '';
     },
 
     async loadFromFacebookReportFile(file) {

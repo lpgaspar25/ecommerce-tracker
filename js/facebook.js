@@ -361,6 +361,53 @@ const FacebookAds = {
         return this._aggregateInsights(data.data || []);
     },
 
+    // ---- Daily breakdown (time_increment=1) ----
+    async fetchDailyInsights(productId, dateRange) {
+        if (!this.isConnected()) return [];
+        const accountId = this.config.activeAdAccountId;
+        const campaignIds = (this._accountMap()[productId]) || [];
+        if (!campaignIds.length) return [];
+
+        const since = dateRange?.since || todayISO();
+        const until = dateRange?.until || todayISO();
+
+        const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
+        const filtering = encodeURIComponent(JSON.stringify([
+            { field: 'campaign.id', operator: 'IN', value: campaignIds }
+        ]));
+
+        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
+            + `?access_token=${this.config.accessToken}`
+            + `&fields=date_start,impressions,clicks,spend,actions,action_values`
+            + `&level=account`
+            + `&time_increment=1`
+            + `&time_range=${timeRange}`
+            + `&filtering=${filtering}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.error) return [];
+            return (data.data || []).map(row => {
+                let purchase = 0, purchaseValue = 0;
+                (row.actions || []).forEach(a => {
+                    if (a.action_type === 'offsite_conversion.fb_pixel_purchase') purchase += parseInt(a.value) || 0;
+                });
+                (row.action_values || []).forEach(a => {
+                    if (a.action_type === 'offsite_conversion.fb_pixel_purchase') purchaseValue += parseFloat(a.value) || 0;
+                });
+                return {
+                    date: row.date_start,
+                    impressions: parseInt(row.impressions) || 0,
+                    clicks: parseInt(row.clicks) || 0,
+                    spend: parseFloat(row.spend) || 0,
+                    purchase,
+                    purchaseValue,
+                };
+            }).sort((a, b) => a.date.localeCompare(b.date));
+        } catch { return []; }
+    },
+
     // ---- Agregar dados de múltiplas campanhas ----
     _aggregateInsights(rows) {
         const totals = {
@@ -443,6 +490,7 @@ const FacebookAds = {
 
     // ---- UI: Campaign Mapper ----
     openCampaignMapper(productId) {
+        this._campaignFiltersWired = false; // reset so listeners re-attach on reopen
         if (!this.isConnected()) {
             showToast('Configure o Facebook Ads primeiro', 'error');
             return;
@@ -452,35 +500,45 @@ const FacebookAds = {
             return;
         }
 
-        // Estado da sessão do modal — preserva marcações entre re-renders/filtros
+        // Estado da sessão do modal — suporte multi-conta
+        const accounts = this.config.adAccounts || [];
+        const firstAccountId = this.config.activeAdAccountId || (accounts[0]?.id || '');
+        const selectedByAccount = {};
+        accounts.forEach(a => {
+            const existing = (this.campaignMap[a.id] || {})[productId] || [];
+            selectedByAccount[a.id] = new Set(existing);
+        });
+
         this._mapperState = {
             productId,
-            accountId: this.config.activeAdAccountId,
-            campaigns: [],
-            // Set de IDs marcados (todos, visíveis ou não — fonte de verdade)
-            selected: new Set(this._accountMap()[productId] || [])
+            accountId: firstAccountId,         // aba/conta ativa no modal
+            selectedByAccount,                  // Set<campaignId> por conta
+            campaigns: [],                      // campanhas da conta ativa
         };
 
         // Popula seletores de conta/produto no toolbar
         this._renderMapperContextSelectors();
         this._updateMapperTitle();
 
-        // Carrega campanhas da conta atual
+        // Carrega campanhas da conta ativa
         this._loadCampaignsForMapper();
 
-        // Save: usa o set ao vivo, sem ler do DOM
+        // Save: persiste seleções de TODAS as contas
         document.getElementById('fb-campaigns-save').onclick = () => {
             const st = this._mapperState;
             if (!st) return;
-            // Salva no map da conta atualmente selecionada no modal
-            const accountId = st.accountId;
-            if (!this.campaignMap[accountId]) this.campaignMap[accountId] = {};
-            this.campaignMap[accountId][st.productId] = Array.from(st.selected);
+            let totalMapped = 0;
+            let accountsWithSel = 0;
+            for (const [acctId, selSet] of Object.entries(st.selectedByAccount)) {
+                if (!this.campaignMap[acctId]) this.campaignMap[acctId] = {};
+                this.campaignMap[acctId][st.productId] = Array.from(selSet);
+                if (selSet.size > 0) { totalMapped += selSet.size; accountsWithSel++; }
+            }
             this.saveCampaignMap();
-            const acctName = (this.config.adAccounts.find(a => a.id === accountId)?.name) || accountId;
             const prodName = getProductName(st.productId) || st.productId;
+            const acctLabel = accountsWithSel > 1 ? `${accountsWithSel} contas` : ((this.config.adAccounts.find(a => a.id === st.accountId)?.name) || st.accountId);
             closeModal('fb-campaigns-modal');
-            showToast(`${st.selected.size} campanha(s) mapeada(s) · ${prodName} · ${acctName}`, 'success');
+            showToast(`${totalMapped} campanha(s) mapeada(s) · ${prodName} · ${acctLabel}`, 'success');
         };
     },
 
@@ -491,13 +549,11 @@ const FacebookAds = {
         document.getElementById('fb-campaigns-list').innerHTML = '';
         openModal('fb-campaigns-modal');
 
-        // Salva ad account ativa temporariamente pra reusar fetchCampaigns
         const originalActive = this.config.activeAdAccountId;
         this.config.activeAdAccountId = st.accountId;
 
         this.fetchCampaigns().then(campaigns => {
             document.getElementById('fb-campaigns-loading').style.display = 'none';
-            // Restaura conta ativa global (não persistida ainda)
             this.config.activeAdAccountId = originalActive;
             const listEl = document.getElementById('fb-campaigns-list');
             if (!campaigns.length) {
@@ -505,9 +561,10 @@ const FacebookAds = {
                 return;
             }
             st.campaigns = campaigns;
-            // Re-sincroniza seleção com mapeamento atual da conta+produto
-            const mapping = (this.campaignMap[st.accountId] || {})[st.productId] || [];
-            st.selected = new Set(mapping);
+            // Garante Set existe para esta conta
+            if (!st.selectedByAccount[st.accountId]) {
+                st.selectedByAccount[st.accountId] = new Set();
+            }
             this._renderCampaignList();
             this._wireCampaignFilters();
         }).catch(err => {
@@ -530,19 +587,40 @@ const FacebookAds = {
 
     _renderMapperContextSelectors() {
         const st = this._mapperState;
-        const acctSel = document.getElementById('fb-mapper-account');
+        const acctContainer = document.getElementById('fb-mapper-account');
         const prodSel = document.getElementById('fb-mapper-product');
-        if (!acctSel || !prodSel || !st) return;
+        if (!acctContainer || !prodSel || !st) return;
 
-        // Conta
-        acctSel.innerHTML = (this.config.adAccounts || []).map(a =>
-            `<option value="${this._esc(a.id)}" ${a.id === st.accountId ? 'selected' : ''}>${this._esc(a.name)}</option>`
-        ).join('');
-        acctSel.onchange = () => {
-            st.accountId = acctSel.value;
+        // Conta — substituir <select> por tabs de conta (multi-conta)
+        const accounts = this.config.adAccounts || [];
+        const tabsHtml = accounts.map(a => {
+            const selSet = st.selectedByAccount[a.id] || new Set();
+            const hasSel = selSet.size > 0;
+            const isActive = a.id === st.accountId;
+            return `<button type="button"
+                class="fb-mapper-acct-tab ${isActive ? 'active' : ''} ${hasSel ? 'has-sel' : ''}"
+                data-acct-tab="${this._esc(a.id)}"
+                title="${this._esc(a.name)}">
+                ${this._esc(a.name)}
+                <span class="acct-sel-count">${selSet.size}</span>
+            </button>`;
+        }).join('');
+
+        // Replace the select with tabs div (keep same #fb-mapper-account id on wrapper)
+        const wrapper = acctContainer.closest('.fb-mapper-ctx-field') || acctContainer.parentElement;
+        wrapper.innerHTML = `<label>Contas</label><div class="fb-mapper-acct-tabs">${tabsHtml}</div>`;
+
+        // Re-wire tab clicks (delegation on wrapper)
+        wrapper.addEventListener('click', (e) => {
+            const tab = e.target.closest('[data-acct-tab]');
+            if (!tab || !this._mapperState) return;
+            this._mapperState.accountId = tab.dataset.acctTab;
             this._updateMapperTitle();
             this._loadCampaignsForMapper();
-        };
+            // Update active state
+            wrapper.querySelectorAll('.fb-mapper-acct-tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.acctTab === this._mapperState.accountId));
+        });
 
         // Produto
         const products = (typeof AppState !== 'undefined' && AppState.products) ? AppState.products : [];
@@ -550,19 +628,36 @@ const FacebookAds = {
             `<option value="${this._esc(p.id)}" ${p.id === st.productId ? 'selected' : ''}>${this._esc(p.name)}</option>`
         ).join('');
         prodSel.onchange = () => {
-            st.productId = prodSel.value;
+            const newProductId = prodSel.value;
+            st.productId = newProductId;
+            // Rebuild selectedByAccount for new product
+            accounts.forEach(a => {
+                const existing = (this.campaignMap[a.id] || {})[newProductId] || [];
+                st.selectedByAccount[a.id] = new Set(existing);
+            });
             this._updateMapperTitle();
-            // Reload selected set baseado em (conta atual, novo produto)
-            const mapping = (this.campaignMap[st.accountId] || {})[st.productId] || [];
-            st.selected = new Set(mapping);
             this._renderCampaignList();
         };
     },
 
-    // Para uma campanha, retorna em quais OUTROS produtos da conta atual ela está mapeada
+    // Atualiza badges de contagem nos tabs de conta
+    _refreshAccountTabBadges() {
+        const st = this._mapperState;
+        if (!st) return;
+        document.querySelectorAll('[data-acct-tab]').forEach(tab => {
+            const acctId = tab.dataset.acctTab;
+            const selSet = st.selectedByAccount[acctId] || new Set();
+            tab.classList.toggle('has-sel', selSet.size > 0);
+            const badge = tab.querySelector('.acct-sel-count');
+            if (badge) badge.textContent = selSet.size;
+        });
+    },
+
+    // Para uma campanha, retorna em quais OUTROS produtos da conta ativa ela está mapeada
     _campaignMappedToOthers(campaignId) {
         const st = this._mapperState;
         if (!st) return [];
+        // Check saved map (persistent) for current account
         const map = this.campaignMap[st.accountId] || {};
         const others = [];
         for (const [pid, ids] of Object.entries(map)) {
@@ -581,7 +676,9 @@ const FacebookAds = {
         const showActive = !!document.getElementById('fb-campaigns-filter-active')?.checked;
         const showPaused = !!document.getElementById('fb-campaigns-filter-paused')?.checked;
         const onlyMapped = !!document.getElementById('fb-campaigns-filter-mapped')?.checked;
-        const selected = st.selected;
+        // Use per-account selection set
+        if (!st.selectedByAccount[st.accountId]) st.selectedByAccount[st.accountId] = new Set();
+        const selected = st.selectedByAccount[st.accountId];
 
         const filtered = (st.campaigns || []).filter(c => {
             const status = (c.effective_status || '').toUpperCase();
@@ -633,6 +730,7 @@ const FacebookAds = {
     },
 
     _wireCampaignFilters() {
+        // Reset flag each time modal opens so event listeners are re-attached
         if (this._campaignFiltersWired) return;
         this._campaignFiltersWired = true;
         const search = document.getElementById('fb-campaigns-search');
@@ -654,22 +752,25 @@ const FacebookAds = {
         clear?.addEventListener('click', (e) => { e.preventDefault(); search.value = ''; search.focus(); this._renderCampaignList(); });
         [activeChk, pausedChk, mappedChk].forEach(el => el?.addEventListener('change', () => this._renderCampaignList()));
 
-        // Captura toggle de checkbox e atualiza Set ao vivo
+        // Captura toggle de checkbox e atualiza Set ao vivo (por conta)
         const listEl = document.getElementById('fb-campaigns-list');
         listEl?.addEventListener('change', (e) => {
             const cb = e.target;
             if (!cb?.matches('input[type="checkbox"]')) return;
             const st = this._mapperState;
             if (!st) return;
-            if (cb.checked) st.selected.add(cb.value); else st.selected.delete(cb.value);
-            // Atualiza contagem (sem re-render se "só marcadas" não estiver ativo)
+            if (!st.selectedByAccount[st.accountId]) st.selectedByAccount[st.accountId] = new Set();
+            const sel = st.selectedByAccount[st.accountId];
+            if (cb.checked) sel.add(cb.value); else sel.delete(cb.value);
+            this._refreshAccountTabBadges();
+            // Atualiza contagem
             if (mappedChk?.checked && !cb.checked) {
                 this._renderCampaignList();
             } else {
                 const countEl = document.getElementById('fb-campaigns-count');
                 const total = (st.campaigns || []).length;
                 const visible = listEl.querySelectorAll('.fb-campaign-item').length;
-                if (countEl) countEl.textContent = `${visible}/${total}${st.selected.size > 0 ? ` · ${st.selected.size} marcadas` : ''}`;
+                if (countEl) countEl.textContent = `${visible}/${total}${sel.size > 0 ? ` · ${sel.size} marcadas` : ''}`;
             }
         });
     },

@@ -2870,55 +2870,76 @@
                     </div>
                 </div>
                 <!-- Facebook Ads Controls -->
-                <div class="fb-controls-bar">
-                    <span class="fb-controls-label">Facebook Ads</span>
-                    <div class="funnel-help">
-                        <button type="button" class="funnel-help-btn" aria-label="Ajuda da importação do diagnóstico" title="Ajuda da importação">i</button>
-                        <div class="funnel-help-popover" role="tooltip">
-                            <h4>Como importar no Diagnóstico</h4>
-                            <p>1. O app usa a linha <strong>Resultados totais</strong>. Se não existir, usa a última linha válida de total.</p>
-                            <p>2. Se a coluna de <strong>%</strong> existir, ela tem prioridade. Se não existir, o app calcula pela quantidade.</p>
-                            <p><strong>Métricas obrigatórias (contagem):</strong> Impressões, Cliques no link (ou Cliques), Valor usado (USD/BRL), Visualizações da página de destino, Compras/Resultados.</p>
-                            <p><strong>Nomes de % recomendados:</strong></p>
-                            <p>• Taxa de Visualização: <code>PERDA DE CLIQUE</code></p>
-                            <p>• Taxa de Carrinho: <code>Visu. Página &gt; Add To Cart</code></p>
-                            <p>• Taxa de Checkout: <code>Carrinho &gt; Checkout</code></p>
-                            <p>• Taxa de Compra: <code>IC &gt; Compras</code></p>
-                            <p>• CTR: <code>CTR (taxa de cliques no link)</code></p>
-                            <p class="funnel-help-note">Se algum nome vier diferente, o app tenta mapear variações automaticamente.</p>
+                <div class="fb-controls-bar ads-collapsible-bar">
+                    <div class="ads-section-header">
+                        <button class="ads-section-toggle" id="fb-section-toggle" title="Expandir configurações" aria-expanded="false">
+                            <i data-lucide="chevron-right" style="width:13px;height:13px"></i>
+                        </button>
+                        <span class="fb-controls-label">FACEBOOK ADS</span>
+                        <div class="funnel-help">
+                            <button type="button" class="funnel-help-btn" aria-label="Ajuda da importação do diagnóstico" title="Ajuda da importação">i</button>
+                            <div class="funnel-help-popover" role="tooltip">
+                                <h4>Como importar no Diagnóstico</h4>
+                                <p>1. O app usa a linha <strong>Resultados totais</strong>. Se não existir, usa a última linha válida de total.</p>
+                                <p>2. Se a coluna de <strong>%</strong> existir, ela tem prioridade. Se não existir, o app calcula pela quantidade.</p>
+                                <p><strong>Métricas obrigatórias (contagem):</strong> Impressões, Cliques no link (ou Cliques), Valor usado (USD/BRL), Visualizações da página de destino, Compras/Resultados.</p>
+                                <p><strong>Nomes de % recomendados:</strong></p>
+                                <p>• Taxa de Visualização: <code>PERDA DE CLIQUE</code></p>
+                                <p>• Taxa de Carrinho: <code>Visu. Página &gt; Add To Cart</code></p>
+                                <p>• Taxa de Checkout: <code>Carrinho &gt; Checkout</code></p>
+                                <p>• Taxa de Compra: <code>IC &gt; Compras</code></p>
+                                <p>• CTR: <code>CTR (taxa de cliques no link)</code></p>
+                                <p class="funnel-help-note">Se algum nome vier diferente, o app tenta mapear variações automaticamente.</p>
+                            </div>
+                        </div>
+                        <span id="fb-status" class="status-badge status-disconnected">FB Desconectado</span>
+                        <span id="fb-active-account-wrap" style="display:none;align-items:center;gap:0.3rem">
+                            <i data-lucide="briefcase" style="width:14px;height:14px;vertical-align:-2px;color:var(--text-muted)"></i>
+                            <select id="fb-active-account" class="input input-sm" style="width:auto;min-width:160px" title="Conta de anúncio ativa"></select>
+                        </span>
+                        <div style="margin-left:auto;display:flex;align-items:center;gap:0.4rem">
+                            <select id="fb-date-range" class="input input-sm" style="width:auto">
+                                <option value="today">Hoje</option>
+                                <option value="yesterday">Ontem</option>
+                                <option value="last_3d">Últimos 3 dias</option>
+                                <option value="last_7d">Últimos 7 dias</option>
+                                <option value="last_30d">Últimos 30 dias</option>
+                                <option value="custom">Personalizado (período acima)</option>
+                            </select>
+                            <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar do Facebook</button>
                         </div>
                     </div>
-                    <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar</button>
-                    <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Mapear Campanhas</button>
-                    <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV</button>
-                    <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
-                    <select id="fb-date-range" class="input input-sm" style="width:auto">
-                        <option value="today">Hoje</option>
-                        <option value="yesterday">Ontem</option>
-                        <option value="last_3d">Últimos 3 dias</option>
-                        <option value="last_7d">Últimos 7 dias</option>
-                        <option value="last_30d">Últimos 30 dias</option>
-                        <option value="custom">Personalizado (usar período acima)</option>
-                    </select>
-                    <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar do Facebook</button>
-                    <span id="fb-active-account-wrap" style="display:none;align-items:center;gap:0.3rem">
-                        <i data-lucide="briefcase" style="width:14px;height:14px;vertical-align:-2px;color:var(--text-muted)"></i>
-                        <select id="fb-active-account" class="input input-sm" style="width:auto;min-width:160px" title="Conta de anúncio ativa"></select>
-                    </span>
-                    <span id="fb-status" class="status-badge status-disconnected">FB Desconectado</span>
+                    <div class="ads-section-body" id="fb-section-body">
+                        <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar</button>
+                        <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Mapear Campanhas</button>
+                        <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV</button>
+                        <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
+                    </div>
                 </div>
 
+                <!-- Daily breakdown panel (shown after import with multi-day range) -->
+                <div id="fb-daily-panel" style="display:none" class="fb-daily-panel"></div>
+
                 <!-- Google Ads Sync Controls -->
-                <div class="gads-controls-bar">
-                    <span class="fb-controls-label">Google Ads</span>
-                    <button type="button" id="btn-gads-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Configurar Sync</button>
-                    <button type="button" id="btn-gads-sync-now" class="btn btn-primary btn-sm"><i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> Sincronizar agora</button>
-                    <span id="gads-status" class="status-badge status-disconnected">GAds Não Configurado</span>
-                </div>
-                <div class="gads-runs-panel">
-                    <h4>Últimas sincronizações</h4>
-                    <div id="gads-runs-list" class="gads-runs-list">
-                        <p class="text-muted">Nenhuma sincronização registrada.</p>
+                <div class="gads-controls-bar ads-collapsible-bar">
+                    <div class="ads-section-header">
+                        <button class="ads-section-toggle" id="gads-section-toggle" title="Expandir configurações" aria-expanded="false">
+                            <i data-lucide="chevron-right" style="width:13px;height:13px"></i>
+                        </button>
+                        <span class="fb-controls-label">GOOGLE ADS</span>
+                        <span id="gads-status" class="status-badge status-disconnected" style="margin-left:0.5rem">GAds Não Configurado</span>
+                        <div style="margin-left:auto;display:flex;align-items:center;gap:0.4rem">
+                            <button type="button" id="btn-gads-sync-now" class="btn btn-primary btn-sm"><i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> Sincronizar agora</button>
+                        </div>
+                    </div>
+                    <div class="ads-section-body" id="gads-section-body">
+                        <button type="button" id="btn-gads-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar Sync</button>
+                        <div class="gads-runs-panel" style="width:100%;margin-top:0.4rem">
+                            <h4>Últimas sincronizações</h4>
+                            <div id="gads-runs-list" class="gads-runs-list">
+                                <p class="text-muted">Nenhuma sincronização registrada.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

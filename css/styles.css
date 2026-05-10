@@ -4272,30 +4272,162 @@ thead:hover .diary-check-col input[type="checkbox"],
     flex-shrink: 0;
 }
 
-/* ---- Facebook Ads Controls Bar ---- */
-.fb-controls-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-    padding: 0.6rem 0.75rem;
+/* ---- Ads Collapsible Bars (FB + Google) ---- */
+.fb-controls-bar,
+.gads-controls-bar {
+    margin-top: 0.65rem;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    flex-wrap: wrap;
+    overflow: hidden;
 }
 
-.gads-controls-bar {
+/* Always-visible header row */
+.ads-section-header {
     display: flex;
     align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.75rem;
+    flex-wrap: nowrap;
+    min-height: 36px;
+}
+
+/* Chevron toggle button */
+.ads-section-toggle {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+.ads-section-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.ads-section-toggle [data-lucide] {
+    transition: transform 0.2s ease;
+}
+.ads-collapsible-bar.ads-section-expanded .ads-section-toggle [data-lucide] {
+    transform: rotate(90deg);
+}
+
+/* Collapsible body — hidden by default */
+.ads-section-body {
+    display: none;
+    align-items: center;
     gap: 0.5rem;
-    margin-top: 0.65rem;
-    padding: 0.6rem 0.75rem;
+    padding: 0.5rem 0.75rem 0.6rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.ads-collapsible-bar.ads-section-expanded .ads-section-body {
+    display: flex;
+}
+
+/* Daily data panel */
+.fb-daily-panel {
+    margin-top: 0.5rem;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    flex-wrap: wrap;
+    overflow: hidden;
 }
+.fb-daily-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.fb-daily-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+.fb-daily-table th {
+    padding: 0.35rem 0.6rem;
+    text-align: right;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.72rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.fb-daily-table th:first-child { text-align: left; }
+.fb-daily-table td {
+    padding: 0.3rem 0.6rem;
+    text-align: right;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+}
+.fb-daily-table td:first-child {
+    text-align: left;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.fb-daily-table tbody tr:hover { background: var(--bg-hover); }
+.fb-daily-table tfoot td {
+    font-weight: 700;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+}
+
+/* Multi-account mapper tabs */
+.fb-mapper-acct-tabs {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.fb-mapper-acct-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    font-size: 0.75rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+}
+.fb-mapper-acct-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.fb-mapper-acct-tab.active {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+.fb-mapper-acct-tab .acct-sel-count {
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 0 5px;
+    line-height: 1.4;
+    display: none;
+}
+.fb-mapper-acct-tab.has-sel .acct-sel-count { display: inline; }
 
 .gads-runs-panel {
     margin-top: 0.6rem;
