@@ -1285,18 +1285,19 @@ const FunnelModule = {
         const totals = rows.reduce((acc, r) => ({
             impressions: acc.impressions + r.impressions,
             clicks: acc.clicks + r.clicks,
+            linkClicks: acc.linkClicks + (r.linkClicks || 0),
             spend: acc.spend + r.spend,
             viewContent: acc.viewContent + (r.viewContent || 0),
             addToCart: acc.addToCart + (r.addToCart || 0),
             checkout: acc.checkout + (r.checkout || 0),
             purchase: acc.purchase + r.purchase,
             purchaseValue: acc.purchaseValue + r.purchaseValue,
-        }), { impressions: 0, clicks: 0, spend: 0, viewContent: 0, addToCart: 0, checkout: 0, purchase: 0, purchaseValue: 0 });
+        }), { impressions: 0, clicks: 0, linkClicks: 0, spend: 0, viewContent: 0, addToCart: 0, checkout: 0, purchase: 0, purchaseValue: 0 });
 
         const tbody = rows.map(r => `<tr>
             <td>${fmtDate(r.date)}</td>
             <td>${fmt(r.impressions)}</td>
-            <td>${fmt(r.clicks)}</td>
+            <td>${fmt(r.linkClicks || r.clicks)}</td>
             <td>${fmtCur(r.spend)}</td>
             <td>${fmt(r.viewContent || 0)}</td>
             <td>${fmt(r.addToCart || 0)}</td>
@@ -1312,13 +1313,13 @@ const FunnelModule = {
             </div>
             <table class="fb-daily-table">
                 <thead><tr>
-                    <th>Dia</th><th>Impr.</th><th>Cliques</th><th>Gasto</th><th>View</th><th>ATC</th><th>IC</th><th>Compras</th><th>Receita</th>
+                    <th>Dia</th><th>Impr.</th><th>Cliques no link</th><th>Gasto</th><th>View</th><th>ATC</th><th>IC</th><th>Compras</th><th>Receita</th>
                 </tr></thead>
                 <tbody>${tbody}</tbody>
                 <tfoot><tr>
                     <td>Total</td>
                     <td>${fmt(totals.impressions)}</td>
-                    <td>${fmt(totals.clicks)}</td>
+                    <td>${fmt(totals.linkClicks || totals.clicks)}</td>
                     <td>${fmtCur(totals.spend)}</td>
                     <td>${fmt(totals.viewContent)}</td>
                     <td>${fmt(totals.addToCart)}</td>
@@ -2733,8 +2734,9 @@ const FunnelModule = {
             this.state.actual.impressions = data.impressions || 0;
         }
         const cpcSourceCurrency = data.valueCurrency || this.state.actual.ticketCurrency;
-        const importedCpc = (data.clicks || 0) > 0
-            ? ((data.spend || 0) / data.clicks)
+        const cpcDenominator = (data.linkClicks || data.clicks || 0);
+        const importedCpc = cpcDenominator > 0
+            ? ((data.spend || 0) / cpcDenominator)
             : 0;
         if (shouldApply('clicks') && shouldApply('spend')) {
             this.state.actual.cpc = parseFloat(convertCurrency(
@@ -2773,6 +2775,7 @@ const FunnelModule = {
         this._lastFBData = {
             impressions: shouldApply('impressions') ? (data.impressions || 0) : (prevFb.impressions || 0),
             clicks: shouldApply('clicks') ? (data.clicks || 0) : (prevFb.clicks || 0),
+            linkClicks: shouldApply('clicks') ? (data.linkClicks || 0) : (prevFb.linkClicks || 0),
             spend: shouldApply('spend') ? (data.spend || 0) : (prevFb.spend || 0),
             cpc: this.state.actual.cpc || 0,
             viewContent: shouldApply('viewContent') ? (data.viewContent || 0) : (prevFb.viewContent || 0),
@@ -3467,8 +3470,8 @@ const FunnelModule = {
             cpa: fb && real.sales > 0
                 ? parseFloat((fb.spend / real.sales).toFixed(2))
                 : (existing ? existing.cpa : 0),
-            cpc: fb && fb.clicks > 0
-                ? parseFloat((fb.spend / fb.clicks).toFixed(2))
+            cpc: fb && (fb.linkClicks || fb.clicks) > 0
+                ? parseFloat((fb.spend / (fb.linkClicks || fb.clicks)).toFixed(2))
                 : (a.cpc > 0 ? parseFloat(a.cpc.toFixed(2)) : (existing ? existing.cpc : 0)),
             platform: fb ? 'Meta Ads' : (existing ? existing.platform : ''),
             notes: existing
@@ -3595,12 +3598,14 @@ const FunnelModule = {
                 revenue: parseFloat(row.purchaseValue.toFixed(2)),
                 revenueCurrency: currency,
                 cpa: row.purchase > 0 ? parseFloat((row.spend / row.purchase).toFixed(2)) : 0,
-                cpc: row.clicks > 0 ? parseFloat((row.spend / row.clicks).toFixed(2)) : 0,
+                cpc: (row.linkClicks || row.clicks) > 0
+                    ? parseFloat((row.spend / (row.linkClicks || row.clicks)).toFixed(2))
+                    : 0,
                 platform: 'Meta Ads',
                 notes: 'Via Facebook Ads · dados por dia',
                 productHistory: existing ? (existing.productHistory || '') : '',
                 impressions: row.impressions,
-                clicks: row.clicks,
+                clicks: row.linkClicks || row.clicks,
                 pageViews: row.viewContent || row.clicks || 0,
                 addToCart: row.addToCart || 0,
                 checkout: row.checkout || 0,
@@ -4327,7 +4332,7 @@ const FunnelModule = {
                     region, interest,
                     label: typeof RegionTags !== 'undefined' ? RegionTags.labelPlain(region) : (region || 'Sem região'),
                     sales: 0, budget: 0, revenue: 0,
-                    impressions: 0, pageViews: 0, addToCart: 0, checkout: 0,
+                    impressions: 0, clicks: 0, pageViews: 0, addToCart: 0, checkout: 0,
                     campaigns: new Set(),
                 };
             }
@@ -4336,6 +4341,11 @@ const FunnelModule = {
             g.budget     += convertToUSD(Number(d.budget || 0), d.budgetCurrency || 'BRL');
             g.revenue    += convertToUSD(Number(d.revenue || 0), d.revenueCurrency || 'BRL');
             g.impressions+= Number(d.impressions || 0);
+            // Prefer explicit click count; fall back to budget/cpc when sub-entry only stored cpc
+            const subClicks = Number(d.clicks || 0) > 0
+                ? Number(d.clicks)
+                : (Number(d.cpc || 0) > 0 ? Number(d.budget || 0) / Number(d.cpc) : 0);
+            g.clicks     += subClicks;
             g.pageViews  += Number(d.pageViews || 0);
             g.addToCart  += Number(d.addToCart || 0);
             g.checkout   += Number(d.checkout || 0);
@@ -4347,7 +4357,7 @@ const FunnelModule = {
             campaignsCount: g.campaigns.size,
             campaigns: Array.from(g.campaigns),
             cpa:      g.sales > 0 ? g.budget / g.sales : 0,
-            cpc:      g.pageViews > 0 ? g.budget / g.pageViews : 0,
+            cpc:      g.clicks > 0 ? g.budget / g.clicks : 0,
             roas:     g.budget > 0 ? g.revenue / g.budget : 0,
             convPage: g.pageViews > 0 ? (g.sales / g.pageViews) * 100 : 0,
             atcRate:  g.pageViews > 0 ? (g.addToCart / g.pageViews) * 100 : 0,
