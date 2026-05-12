@@ -710,10 +710,12 @@ const FacebookAds = {
         });
 
         // Calcular taxas (média ponderada via soma)
+        // CTR e viewPageRate usam inline_link_clicks (mesma base do Gerenciador do FB).
+        const ctrDenom = totals.linkClicks || totals.clicks;
         const ctr = totals.impressions > 0
-            ? (totals.clicks / totals.impressions) * 100 : 0;
-        const viewPageRate = totals.clicks > 0
-            ? (totals.viewContent / totals.clicks) * 100 : 0;
+            ? (ctrDenom / totals.impressions) * 100 : 0;
+        const viewPageRate = ctrDenom > 0
+            ? (totals.viewContent / ctrDenom) * 100 : 0;
         const atcRate = totals.viewContent > 0
             ? (totals.addToCart / totals.viewContent) * 100 : 0;
         const checkoutRate = totals.addToCart > 0
