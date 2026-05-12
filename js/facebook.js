@@ -515,23 +515,26 @@ const FacebookAds = {
             + `&filtering=${filtering}`
             + `&limit=500`;
 
-        // Pagination: FB retorna 25 por página por padrão
-        const allRows = [];
-        let nextUrl = firstUrl;
-        let safety = 0;
-        while (nextUrl && safety < 20) {
-            const res = await fetch(nextUrl);
+        const allRows = await this._fetchAllPages(firstUrl);
+        return this._aggregateInsights(allRows);
+    },
+
+    // Segue todas as páginas (paging.next) e concatena rows.
+    async _fetchAllPages(initialUrl) {
+        const rows = [];
+        let url = initialUrl;
+        let safety = 50; // teto pra evitar loop infinito
+        while (url && safety-- > 0) {
+            const res = await fetch(url);
             const data = await res.json();
             if (data.error) {
                 this._handleApiError(data.error);
                 throw new Error(data.error.message);
             }
-            if (Array.isArray(data.data)) allRows.push(...data.data);
-            nextUrl = data.paging?.next || null;
-            safety++;
+            if (Array.isArray(data.data)) rows.push(...data.data);
+            url = data.paging && data.paging.next ? data.paging.next : null;
         }
-
-        return this._aggregateInsights(allRows);
+        return rows;
     },
 
     // ---- Daily breakdown (time_increment=1) ----
@@ -561,21 +564,7 @@ const FacebookAds = {
             + `&limit=500`;
 
         try {
-            // Pagina até cobrir todos os dias do range
-            const allRows = [];
-            let nextUrl = firstUrl;
-            let safety = 0;
-            while (nextUrl && safety < 20) {
-                const res = await fetch(nextUrl);
-                const data = await res.json();
-                if (data.error) {
-                    console.warn('[FacebookAds] fetchDailyInsights error:', data.error);
-                    break;
-                }
-                if (Array.isArray(data.data)) allRows.push(...data.data);
-                nextUrl = data.paging?.next || null;
-                safety++;
-            }
+            const allRows = await this._fetchAllPages(firstUrl);
             const accountCurrency = (this.activeAccount() || {}).currency || 'USD';
             return allRows.map(row => {
                 let viewContent = 0, addToCart = 0, checkout = 0, purchase = 0, purchaseValue = 0;
