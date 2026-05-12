@@ -1273,11 +1273,16 @@ const FunnelModule = {
             return;
         }
         const fmt = (n) => n.toLocaleString('pt-BR');
-        const accCurrency = (typeof FacebookAds !== 'undefined' && FacebookAds.activeAccountCurrency)
-            ? FacebookAds.activeAccountCurrency() : 'USD';
-        const currencySymbols = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£', CAD: 'C$', AUD: 'A$', MXN: 'MX$', INR: '₹', JPY: '¥' };
-        const sym = currencySymbols[accCurrency] || accCurrency + ' ';
-        const fmtCur = (n) => `${sym} ${(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const rowsCurrency = (rows.find(r => r.valueCurrency) || {}).valueCurrency
+            || (this._lastFBData && this._lastFBData.valueCurrency)
+            || this.state.actual.ticketCurrency
+            || 'BRL';
+        const currencyPrefix = rowsCurrency === 'BRL' ? 'R$ '
+            : rowsCurrency === 'USD' ? 'US$ '
+            : rowsCurrency === 'EUR' ? '€ '
+            : rowsCurrency === 'GBP' ? '£ '
+            : `${rowsCurrency} `;
+        const fmtCur = (n) => currencyPrefix + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const fmtDate = (iso) => {
             const [y, m, d] = iso.split('-');
             return `${d}/${m}`;
@@ -2777,6 +2782,7 @@ const FunnelModule = {
             clicks: shouldApply('clicks') ? (data.clicks || 0) : (prevFb.clicks || 0),
             linkClicks: shouldApply('clicks') ? (data.linkClicks || 0) : (prevFb.linkClicks || 0),
             spend: shouldApply('spend') ? (data.spend || 0) : (prevFb.spend || 0),
+            valueCurrency: data.valueCurrency || prevFb.valueCurrency || this.state.actual.ticketCurrency,
             cpc: this.state.actual.cpc || 0,
             viewContent: shouldApply('viewContent') ? (data.viewContent || 0) : (prevFb.viewContent || 0),
             addToCart: shouldApply('addToCart') ? (data.addToCart || 0) : (prevFb.addToCart || 0),
@@ -3450,6 +3456,7 @@ const FunnelModule = {
         }
 
         const fb = this._lastFBData;
+        const fbCurrency = fb ? (fb.valueCurrency || this.state.actual.ticketCurrency || 'BRL') : null;
         const data = {
             id: existing ? existing.id : generateId('dia'),
             date: selectedDate,
@@ -3458,7 +3465,7 @@ const FunnelModule = {
             productId: productId,
             storeId: storeId,
             budget: fb ? fb.spend : (existing ? existing.budget : 0),
-            budgetCurrency: fb ? 'USD' : (existing ? existing.budgetCurrency : (a.cpcCurrency || 'BRL')),
+            budgetCurrency: fb ? fbCurrency : (existing ? existing.budgetCurrency : (a.cpcCurrency || 'BRL')),
             sales: Math.round(real.sales),
             revenue: parseFloat(real.faturamento.toFixed(2)),
             revenueCurrency: this.state.actual.ticketCurrency,
@@ -3473,6 +3480,7 @@ const FunnelModule = {
             cpc: fb && (fb.linkClicks || fb.clicks) > 0
                 ? parseFloat((fb.spend / (fb.linkClicks || fb.clicks)).toFixed(2))
                 : (a.cpc > 0 ? parseFloat(a.cpc.toFixed(2)) : (existing ? existing.cpc : 0)),
+            cpcCurrency: fb ? fbCurrency : (existing ? (existing.cpcCurrency || existing.budgetCurrency) : (a.cpcCurrency || 'BRL')),
             platform: fb ? 'Meta Ads' : (existing ? existing.platform : ''),
             notes: existing
                 ? existing.notes
@@ -3585,6 +3593,7 @@ const FunnelModule = {
                 AppState.allDiary = AppState.allDiary.filter(d => !duplicateIds.includes(d.parentId));
                 deduped += duplicateIds.length;
             }
+            const rowCurrency = row.valueCurrency || currency;
             const data = {
                 id: existing ? existing.id : generateId('dia'),
                 date,
@@ -3593,14 +3602,15 @@ const FunnelModule = {
                 productId,
                 storeId,
                 budget: parseFloat(row.spend.toFixed(2)),
-                budgetCurrency: 'BRL',
+                budgetCurrency: rowCurrency,
                 sales: row.purchase,
                 revenue: parseFloat(row.purchaseValue.toFixed(2)),
-                revenueCurrency: currency,
+                revenueCurrency: rowCurrency,
                 cpa: row.purchase > 0 ? parseFloat((row.spend / row.purchase).toFixed(2)) : 0,
                 cpc: (row.linkClicks || row.clicks) > 0
                     ? parseFloat((row.spend / (row.linkClicks || row.clicks)).toFixed(2))
                     : 0,
+                cpcCurrency: rowCurrency,
                 platform: 'Meta Ads',
                 notes: 'Via Facebook Ads · dados por dia',
                 productHistory: existing ? (existing.productHistory || '') : '',

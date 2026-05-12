@@ -576,6 +576,7 @@ const FacebookAds = {
                 nextUrl = data.paging?.next || null;
                 safety++;
             }
+            const accountCurrency = (this.activeAccount() || {}).currency || 'USD';
             return allRows.map(row => {
                 let viewContent = 0, addToCart = 0, checkout = 0, purchase = 0, purchaseValue = 0;
                 (row.actions || []).forEach(a => {
@@ -607,6 +608,7 @@ const FacebookAds = {
                     checkout,
                     purchase,
                     purchaseValue,
+                    valueCurrency: accountCurrency,
                 };
             }).sort((a, b) => a.date.localeCompare(b.date));
         } catch { return []; }
@@ -655,6 +657,7 @@ const FacebookAds = {
 
     // ---- Agregar dados de múltiplas campanhas ----
     _aggregateInsights(rows) {
+        const accountCurrency = (this.activeAccount() || {}).currency || '';
         const totals = {
             impressions: 0,
             clicks: 0,        // = linkClicks (alinhado com FB Ads Manager)
@@ -665,7 +668,8 @@ const FacebookAds = {
             addToCart: 0,
             checkout: 0,
             purchase: 0,
-            purchaseValue: 0
+            purchaseValue: 0,
+            valueCurrency: accountCurrency || 'USD'
         };
 
         rows.forEach(row => {
