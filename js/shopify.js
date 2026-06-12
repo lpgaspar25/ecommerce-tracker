@@ -227,29 +227,70 @@ const ShopifyModule = (() => {
     // ── Orders (GraphQL) ──
 
     // Bump this when changing the order shape (cached payloads with old shape get invalidated).
-    const ORDERS_CACHE_VERSION = 'v2';
+    const ORDERS_CACHE_VERSION = 'v3'; // bumped to per-day cache
+    const DAY_CACHE_KEY = 'etracker_shopify_orders_day_cache';
+    // Per-day TTL based on age:
+    //   - today:        5 min  (data still changing)
+    //   - yesterday:    6 h    (late refunds/captures)
+    //   - 2-6 days ago: 7 days
+    //   - 7+ days ago:  never expires (until version bump)
+    const DAY_TTL_TODAY     = 5 * 60 * 1000;
+    const DAY_TTL_YESTERDAY = 6 * 60 * 60 * 1000;
+    const DAY_TTL_RECENT    = 7 * 24 * 60 * 60 * 1000;
+    const DAY_TTL_OLD       = Infinity;
 
-    async function fetchOrders(dateFrom, dateTo, opts = {}) {
-        if (!isConfigured()) throw new Error('Shopify não conectado.');
-
-        const cacheKey = `${ORDERS_CACHE_VERSION}|${dateFrom}|${dateTo}`;
-        if (!opts.force) {
-            const cached = _getCachedOrders(cacheKey);
-            if (cached) return cached;
+    function _loadDayCache() {
+        try {
+            const raw = localStorage.getItem(DAY_CACHE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            if (parsed.__v !== ORDERS_CACHE_VERSION) return {}; // version mismatch → reset
+            return parsed.days || {};
+        } catch { return {}; }
+    }
+    function _saveDayCache(days) {
+        try {
+            // Race-condition safe: merge with the latest on-disk cache so concurrent
+            // fetchOrders calls don't overwrite each other's days.
+            const onDisk = _loadDayCache();
+            const merged = { ...onDisk, ...days };
+            // For overlapping keys, keep whichever has the most recent ts (i.e., freshest data wins)
+            for (const k of Object.keys(days)) {
+                const a = onDisk[k], b = days[k];
+                if (a && b && a.ts > b.ts) merged[k] = a;
+            }
+            const keys = Object.keys(merged).sort();
+            while (keys.length > 365) {
+                const k = keys.shift();
+                delete merged[k];
+            }
+            localStorage.setItem(DAY_CACHE_KEY, JSON.stringify({ __v: ORDERS_CACHE_VERSION, days: merged }));
+        } catch (e) { console.warn('[Shopify] day cache save failed:', e); }
+    }
+    function _ttlForDay(dateStr) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (dateStr === today) return DAY_TTL_TODAY;
+        const t = new Date(today + 'T00:00:00');
+        const d = new Date(dateStr + 'T00:00:00');
+        const ageDays = Math.round((t - d) / 86400000);
+        if (ageDays <= 1) return DAY_TTL_YESTERDAY;
+        if (ageDays <= 6) return DAY_TTL_RECENT;
+        return DAY_TTL_OLD;
+    }
+    function _eachDayInRange(from, to) {
+        const out = [];
+        if (!from || !to) return out;
+        const start = new Date(from + 'T00:00:00');
+        const end = new Date(to + 'T00:00:00');
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            out.push(d.toISOString().slice(0, 10));
         }
+        return out;
+    }
 
-        // Shopify interprets bare YYYY-MM-DD in the SHOP's timezone, which is what we want.
-        // Never use ISO timestamps here — they bypass shop timezone and pin to UTC.
-        const queryParts = [];
-        if (dateFrom) queryParts.push(`created_at:>=${dateFrom}`);
-        if (dateTo)   queryParts.push(`created_at:<=${dateTo}`);
-        queryParts.push(`(financial_status:paid OR financial_status:partially_paid OR financial_status:authorized)`);
-        const searchQuery = queryParts.join(' AND ');
-
-        const all = [];
-        let cursor = null;
-        let pages = 0;
-
+    // Fetches a single day from Shopify (no cache check).
+    async function _fetchOrdersForDay(dateStr) {
+        const searchQuery = `created_at:>=${dateStr} AND created_at:<=${dateStr} AND (financial_status:paid OR financial_status:partially_paid OR financial_status:authorized)`;
         const gql = `
             query Orders($q: String!, $cursor: String) {
               orders(first: 100, after: $cursor, query: $q, sortKey: CREATED_AT) {
@@ -276,7 +317,9 @@ const ShopifyModule = (() => {
                 }
               }
             }`;
-
+        const all = [];
+        let cursor = null;
+        let pages = 0;
         do {
             const data = await _graphql(gql, { q: searchQuery, cursor });
             const conn = data.orders;
@@ -286,12 +329,76 @@ const ShopifyModule = (() => {
             }
             cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
             pages++;
-            if (pages > 50) break; // safety: max ~5000 orders
+            if (pages > 50) break;
         } while (cursor);
-
-        _setCachedOrders(cacheKey, all);
         return all;
     }
+
+    async function fetchOrders(dateFrom, dateTo, opts = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo) return [];
+
+        const days = _eachDayInRange(dateFrom, dateTo);
+        const cache = _loadDayCache();
+        const now = Date.now();
+
+        // Identify which days need fetching (missing OR expired by TTL)
+        const toFetch = [];
+        const cachedDays = {};
+        for (const day of days) {
+            const entry = cache[day];
+            const ttl = _ttlForDay(day);
+            const fresh = entry && (now - entry.ts) < ttl;
+            if (!opts.force && fresh) {
+                cachedDays[day] = entry.orders || [];
+            } else {
+                toFetch.push(day);
+            }
+        }
+
+        // Fetch missing/stale days (sequential to avoid rate limits; parallel max 3)
+        const fetched = {};
+        const CONCURRENCY = 3;
+        for (let i = 0; i < toFetch.length; i += CONCURRENCY) {
+            const batch = toFetch.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(batch.map(async (day) => {
+                try {
+                    const orders = await _fetchOrdersForDay(day);
+                    return { day, orders };
+                } catch (e) {
+                    console.warn('[Shopify] fetch failed for', day, e);
+                    // On failure, fall back to cached if available (stale)
+                    return { day, orders: cache[day]?.orders || [], failed: true };
+                }
+            }));
+            for (const r of results) {
+                fetched[r.day] = r.orders;
+                if (!r.failed) {
+                    cache[r.day] = { ts: now, orders: r.orders };
+                }
+            }
+        }
+        if (toFetch.length) _saveDayCache(cache);
+
+        // Combine all days in chronological order
+        const all = [];
+        for (const day of days) {
+            const dayOrders = cachedDays[day] || fetched[day] || [];
+            all.push(...dayOrders);
+        }
+        // Sort by created_at desc (most recent first) — Shopify default
+        all.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+        // Legacy: still write to range cache so any old code path that reads it gets something
+        try {
+            const cacheKey = `${ORDERS_CACHE_VERSION}|${dateFrom}|${dateTo}`;
+            _setCachedOrders(cacheKey, all);
+        } catch {}
+
+        return all;
+    }
+
+    // (Legacy range-fetch removed — fetchOrders now uses per-day cache)
 
     function _normalizeOrder(o) {
         const sa = o.shippingAddress || null;
@@ -500,6 +607,153 @@ const ShopifyModule = (() => {
         }
         if (linked > 0) _saveLinks();
         return linked;
+    }
+
+    // ── Product views / sessions via ShopifyQL (requires read_reports scope) ──
+    // Returns { byShopifyProductId: { <pid>: views }, byLocalProductId: { <localId>: views }, total }
+    // Throws a friendly error if scope/ShopifyQL unavailable.
+    let _viewsCache = {}; // key: "from|to" -> result
+    async function fetchProductViews(dateFrom, dateTo) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo) throw new Error('Período inválido.');
+        const cacheKey = `${dateFrom}|${dateTo}`;
+        if (_viewsCache[cacheKey]) return _viewsCache[cacheKey];
+
+        // ShopifyQL: sessões/visualizações agrupadas por produto.
+        // Datasets variam por versão da API; tentamos algumas formas em ordem.
+        const queries = [
+            `FROM products SHOW view_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY view_sessions DESC LIMIT 250`,
+            `FROM sessions SHOW total_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY total_sessions DESC LIMIT 250`,
+            `FROM products SHOW online_store_product_views GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY online_store_product_views DESC LIMIT 250`,
+        ];
+
+        const gql = `query SQL($q: String!) {
+            shopifyqlQuery(query: $q) {
+                tableData {
+                    columns { name }
+                    rowData
+                }
+                parseErrors
+            }
+        }`;
+
+        let lastErr = null;
+        for (const q of queries) {
+            try {
+                const data = await _graphql(gql, { q });
+                const resp = data?.shopifyqlQuery;
+                if (!resp) continue;
+                // parseErrors is a String in this API version
+                if (resp.parseErrors && String(resp.parseErrors).trim()) {
+                    lastErr = new Error(String(resp.parseErrors));
+                    continue;
+                }
+                const table = resp.tableData;
+                if (!table || !Array.isArray(table.rowData)) continue;
+
+                // Identify column indices
+                const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+                const pidIdx = cols.findIndex(c => c.includes('product_id'));
+                const titleIdx = cols.findIndex(c => c.includes('product_title') || c.includes('title'));
+                // views metric = the column that isn't product_id/title
+                const viewIdx = cols.findIndex((c, i) => i !== pidIdx && i !== titleIdx);
+
+                const byShopifyProductId = {};
+                const byTitle = {};
+                let total = 0;
+                for (const row of table.rowData) {
+                    const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
+                    const title = titleIdx >= 0 ? String(row[titleIdx] || '') : '';
+                    const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
+                    if (pid) byShopifyProductId[pid] = (byShopifyProductId[pid] || 0) + views;
+                    if (title) byTitle[title] = (byTitle[title] || 0) + views;
+                    total += views;
+                }
+
+                // Map to local product IDs via existing links
+                const byLocalProductId = {};
+                if (typeof AppState !== 'undefined') {
+                    const localProducts = AppState.allProducts || AppState.products || [];
+                    for (const lp of localProducts) {
+                        const sid = getLink(lp.id);
+                        if (sid && byShopifyProductId[String(sid)] != null) {
+                            byLocalProductId[lp.id] = byShopifyProductId[String(sid)];
+                        }
+                    }
+                }
+
+                const result = { byShopifyProductId, byTitle, byLocalProductId, total };
+                _viewsCache[cacheKey] = result;
+                return result;
+            } catch (e) {
+                lastErr = e;
+                const msg = (e.message || '').toLowerCase();
+                // Scope missing → actionable message
+                if (msg.includes('access denied') || msg.includes('read_reports') || msg.includes('not approved')) {
+                    throw new Error('Visualizações indisponíveis: falta o escopo read_reports (Analytics) no app Shopify. Adicione e reconecte.');
+                }
+                // otherwise keep trying next query form
+            }
+        }
+        // Surface the RAW error so we can see exactly which field/dataset is wrong
+        throw lastErr || new Error('ShopifyQL não retornou dados de visualizações.');
+    }
+
+    // Per-day product views via ShopifyQL.
+    // Returns { "YYYY-MM-DD|shopifyProductId": views }.  Empty object if unavailable.
+    let _viewsByDateCache = {};
+    async function fetchProductViewsByDate(dateFrom, dateTo) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo) return {};
+        const cacheKey = `${dateFrom}|${dateTo}`;
+        if (_viewsByDateCache[cacheKey]) return _viewsByDateCache[cacheKey];
+
+        const queries = [
+            `FROM products SHOW view_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
+            `FROM sessions SHOW total_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
+            `FROM products SHOW online_store_product_views GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
+        ];
+        const gql = `query SQL($q: String!) {
+            shopifyqlQuery(query: $q) {
+                tableData { columns { name } rowData }
+                parseErrors
+            }
+        }`;
+
+        let lastErr = null;
+        for (const q of queries) {
+            try {
+                const data = await _graphql(gql, { q });
+                const resp = data?.shopifyqlQuery;
+                if (!resp) continue;
+                if (resp.parseErrors && String(resp.parseErrors).trim()) { lastErr = new Error(String(resp.parseErrors)); continue; }
+                const table = resp.tableData;
+                if (!table || !Array.isArray(table.rowData)) continue;
+                const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+                const dayIdx = cols.findIndex(c => c === 'day' || c.includes('date') || c.includes('dia'));
+                const pidIdx = cols.findIndex(c => c.includes('product_id'));
+                const titleIdx = cols.findIndex(c => c.includes('product_title') || c.includes('title'));
+                const viewIdx = cols.findIndex((c, i) => i !== dayIdx && i !== pidIdx && i !== titleIdx);
+                const out = {};
+                for (const row of table.rowData) {
+                    const day = dayIdx >= 0 ? String(row[dayIdx] || '').slice(0, 10) : '';
+                    const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
+                    const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
+                    if (day && pid) out[`${day}|${pid}`] = (out[`${day}|${pid}`] || 0) + views;
+                }
+                _viewsByDateCache[cacheKey] = out;
+                return out;
+            } catch (e) {
+                lastErr = e;
+                const msg = (e.message || '').toLowerCase();
+                if (msg.includes('access denied') || msg.includes('read_reports') || msg.includes('not approved')) {
+                    throw new Error('Visitas indisponíveis: falta read_reports OU a loja precisa reconectar após adicionar o escopo.');
+                }
+                // otherwise keep trying next query form
+            }
+        }
+        // Surface the RAW error (e.g. "Cannot query field X on type Y") for debugging
+        throw lastErr || new Error('ShopifyQL não retornou visitas por dia.');
     }
 
     // ── Aggregation ──
@@ -1284,10 +1538,13 @@ const ShopifyModule = (() => {
                         const localP = reverseLinks[pid];
                         const name = localP?.name || productTitles[pid] || `Produto #${pid}`;
                         const badge = localP ? '' : '<span class="shopify-tag-unlinked">não vinculado</span>';
+                        // Platforms + languages + ad-account badges (only when product is linked)
+                        const metaBadges = (localP && typeof renderProductMetaBadges === 'function')
+                            ? renderProductMetaBadges(localP) : '';
                         const rowRevenue = _convToDisplay(data.revenue, data.currency || shopCurrencyRaw);
                         return `
                             <div class="shopify-products-table-row shopify-products-table-row-3col">
-                                <span class="shopify-product-name">${_esc(name)}${badge}</span>
+                                <span class="shopify-product-name">${_esc(name)}${badge}${metaBadges}</span>
                                 <span class="shopify-product-num">${data.sales}</span>
                                 <span class="shopify-product-num">${fmtMoney(rowRevenue)}</span>
                             </div>
@@ -1404,11 +1661,12 @@ const ShopifyModule = (() => {
                 </div>
 
                 ${warnings.length ? `
-                    <div class="shopify-warnings">
-                        <div class="shopify-warnings-header">
+                    <details class="shopify-warnings shopify-warnings-collapsed">
+                        <summary class="shopify-warnings-header">
                             <i data-lucide="alert-triangle" style="width:14px;height:14px;color:#d97706"></i>
                             <span>${warnings.length} incompatibilidade${warnings.length > 1 ? 's' : ''} detectada${warnings.length > 1 ? 's' : ''}</span>
-                        </div>
+                            <i data-lucide="chevron-down" class="shopify-warnings-chevron" style="width:14px;height:14px;margin-left:auto;color:var(--text-muted)"></i>
+                        </summary>
                         <div class="shopify-warnings-list">
                             ${warnings.map(w => `
                                 <div class="shopify-warning-row">
@@ -1418,7 +1676,7 @@ const ShopifyModule = (() => {
                                 </div>
                             `).join('')}
                         </div>
-                    </div>
+                    </details>
                 ` : `
                     <div class="shopify-warnings-ok">
                         <i data-lucide="check-circle-2" style="width:14px;height:14px;color:var(--success)"></i>
@@ -1510,7 +1768,7 @@ const ShopifyModule = (() => {
         linkProduct, getLink, autoLinkByName, syncAllLinkedPrices,
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
-        getRealSalesMapByDate, getSalesMapByDate,
+        getRealSalesMapByDate, getSalesMapByDate, fetchProductViews, fetchProductViewsByDate,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
     };

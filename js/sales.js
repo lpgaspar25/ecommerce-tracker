@@ -6,14 +6,93 @@ const SalesModule = (() => {
     const PAGE_SIZE = 100;
     const CALC_KEY = 'etracker_sales_calc';
 
+    // Campaign link to open in a NEW TAB (no Mapa de Ads).
+    // Per-country links live in lp.campaignUrlsByCountry["DE"]; campaignGroupUrl is the generic fallback.
+    // No auto-build — that opened unrelated ad accounts. Empty => fall back to Mapa de Ads.
+    const _buildCampaignUrl = (lp, country) => {
+        if (!lp) return '';
+        const cc = String(country || '').toUpperCase();
+        const byC = lp.campaignUrlsByCountry || {};
+        if (cc && byC[cc] && String(byC[cc]).trim()) return String(byC[cc]).trim();
+        return (lp.campaignGroupUrl || '').trim();
+    };
+
+    // Count how many campaigns a pasted Ads Manager URL points to.
+    // Reads selected_campaign_ids=ID1%2CID2... (the IDs the user selected in the manager).
+    const _campaignCountFromUrl = (url) => {
+        if (!url) return 0;
+        try {
+            const m = String(url).match(/selected_campaign_ids=([^&#]+)/i);
+            if (m && m[1]) {
+                const decoded = decodeURIComponent(m[1]);
+                return decoded.split(',').map(s => s.trim()).filter(Boolean).length;
+            }
+        } catch {}
+        return 0;
+    };
+
+    // Save a campaign URL onto a product (by id). country='' => generic; country='DE' => per-country.
+    const _saveCampaignUrl = (productId, url, country) => {
+        try {
+            const all = (typeof AppState !== 'undefined' && (AppState.allProducts || AppState.products)) || [];
+            const prod = all.find(p => p && p.id === productId);
+            if (!prod) return false;
+            const cc = String(country || '').toUpperCase();
+            const clean = (url || '').trim();
+            if (cc) {
+                if (!prod.campaignUrlsByCountry || typeof prod.campaignUrlsByCountry !== 'object') prod.campaignUrlsByCountry = {};
+                if (clean) prod.campaignUrlsByCountry[cc] = clean;
+                else delete prod.campaignUrlsByCountry[cc];
+            } else {
+                prod.campaignGroupUrl = clean;
+            }
+            if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts || all);
+            if (typeof EventBus !== 'undefined') EventBus.emit('productsChanged');
+            return true;
+        } catch (e) { console.warn('[Sales] saveCampaignUrl failed', e); return false; }
+    };
+
+    // Prompt to paste/edit a product's campaign link. If no country is given, ask for one
+    // (empty = generic/all countries), so the user can set separate campaigns per country.
+    const _promptCampaignUrl = (productId, prodName, country) => {
+        const all = (typeof AppState !== 'undefined' && (AppState.allProducts || AppState.products)) || [];
+        const prod = all.find(p => p && p.id === productId);
+        const name = prodName || (prod && prod.name) || 'produto';
+        let cc = String(country || '').toUpperCase();
+        if (!cc) {
+            const ans = prompt(`Campanha de "${name}" — para qual PAÍS?\nUse a sigla (ex.: DE, IE, US). Deixe vazio = campanha padrão (todos os países).`, '');
+            if (ans === null) return; // cancelled
+            cc = (ans || '').trim().toUpperCase();
+        }
+        const current = cc
+            ? ((prod && prod.campaignUrlsByCountry && prod.campaignUrlsByCountry[cc]) || '')
+            : ((prod && prod.campaignGroupUrl) || '');
+        const label = cc ? `${name} — país ${cc}` : `${name} (padrão)`;
+        const url = prompt(`Cole o link da campanha de "${label}"\n(ex.: https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=...)\nDeixe vazio pra remover.`, current);
+        if (url === null) return; // cancelled
+        const trimmed = url.trim();
+        if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+            if (typeof showToast === 'function') showToast('Link inválido — precisa começar com http:// ou https://', 'error');
+            return;
+        }
+        const ok = _saveCampaignUrl(productId, trimmed, cc);
+        if (ok && typeof showToast === 'function') {
+            const where = cc ? ` (${cc})` : '';
+            showToast(trimmed ? `Link${where} salvo! Clique no produto pra abrir a campanha.` : `Link${where} removido.`, 'success');
+        }
+        _renderMdgxRanking();
+        try { _renderTable(); } catch {}
+    };
+
     let _state = {
         orders: [],
         filtered: [],
         from: '',
         to: '',
-        countryFilter: '',
+        countries: [],          // multi-select de países (siglas, ex.: ['DE','IE'])
         productFilter: '',
         cityFilter: '',
+        accountFilter: '',
         sortKey: 'created_at',
         sortDir: 'desc',
         shopTz: 'UTC',
@@ -208,13 +287,61 @@ const SalesModule = (() => {
             : (overrideUSD != null
                 ? `Margem unitária <strong>${_fmtMoney(_convertFromUSD(marginUSD, displayCcy), displayCcy)}</strong> (override).`
                 : `Margem unitária <strong>${_fmtMoney(_convertFromUSD(marginUSD, displayCcy), displayCcy)}</strong> · estimado a partir de ${Math.round((auto?.matchRatio || 0) * 100)}% dos produtos vendidos.`);
+        // Conversão real = vendas ÷ visitantes
+        const visitorsForConv = _state.calc.visitors || 0;
+        const realConvPct = visitorsForConv > 0 ? (actualSales / visitorsForConv) * 100 : null;
+        const targetConvPct = _state.calc.targetConvPct || 0;
+        let convLine = '';
+        if (realConvPct != null) {
+            let convColor = '#6b7280', convArrow = '', convNote = '';
+            if (targetConvPct > 0) {
+                if (realConvPct >= targetConvPct) {
+                    convColor = '#059669'; convArrow = '↑';
+                    convNote = ` (alvo ${targetConvPct}% ✓)`;
+                } else {
+                    convColor = '#dc2626'; convArrow = '↓';
+                    const gap = (targetConvPct - realConvPct).toFixed(2);
+                    convNote = ` (alvo ${targetConvPct}% · faltam ${gap}pp)`;
+                }
+            }
+            convLine = `<div class="sales-calc-meta-row sales-calc-conv-row">
+                <span class="sales-calc-conv-big" style="color:${convColor}">
+                    <i data-lucide="percent" style="width:14px;height:14px;vertical-align:-2px"></i>
+                    Conversão real: <strong>${convArrow} ${realConvPct.toFixed(2)}%</strong>
+                </span>
+                <span class="sales-calc-conv-detail">${_fmtNumber(actualSales)} vendas ÷ ${_fmtNumber(visitorsForConv)} visitantes${convNote}</span>
+            </div>`;
+        } else {
+            convLine = `<div class="sales-calc-meta-row sales-calc-conv-row">
+                <span class="sales-calc-conv-hint">Preencha <strong>Visitantes / sessões</strong> acima para ver a conversão real (vendas ÷ visitantes).</span>
+            </div>`;
+        }
+
+        // Conversão FB — placeholder (preenchido async por _renderFbConversion)
+        const fbConvLine = `<div class="sales-calc-meta-row sales-calc-conv-row sales-calc-fbconv-row" id="sales-calc-fbconv">
+            <span class="sales-calc-conv-hint"><i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Carregando conversão do Facebook…</span>
+        </div>`;
+        // Conversão Shopify — placeholder (sessões reais da loja via ShopifyQL)
+        const shopConvLine = `<div class="sales-calc-meta-row sales-calc-conv-row sales-calc-shopconv-row" id="sales-calc-shopconv">
+            <span class="sales-calc-conv-hint"><i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Carregando visualizações da Shopify…</span>
+        </div>`;
+
         meta.innerHTML = `
             <div class="sales-calc-meta-row">
                 <span>Vendas atuais: <strong>${_fmtNumber(actualSales)}</strong></span>
                 <span>Receita: <strong>${_fmtMoney(_convertFromUSD(actualRevenueUSD, displayCcy), displayCcy)}</strong></span>
                 <span>Ticket médio: <strong>${_fmtMoney(_convertFromUSD(ticketUSD, displayCcy), displayCcy)}</strong></span>
             </div>
+            ${convLine}
+            ${fbConvLine}
+            ${shopConvLine}
             <div class="sales-calc-meta-row">${marginNote}</div>`;
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+
+        // Fetch + render FB conversion async (separate metric, uses FB API clicks)
+        _renderFbConversion(actualSales);
+        // Fetch + render Shopify conversion async (real store sessions via ShopifyQL)
+        _renderShopifyConversion(actualSales);
 
         // Scenarios
         const scenarios = [];
@@ -263,6 +390,118 @@ const SalesModule = (() => {
                 </tr>`;
             }).join('')}</tbody>
         </table>`;
+    }
+
+    // ── Conversão FB (separada): vendas ÷ cliques no link do Facebook ──
+    let _fbConvCache = { key: '', totals: null };
+    async function _renderFbConversion(actualSales) {
+        const el = document.getElementById('sales-calc-fbconv');
+        if (!el) return;
+
+        if (typeof FacebookAds === 'undefined' || !FacebookAds.isConnected || !FacebookAds.isConnected()) {
+            el.innerHTML = `<span class="sales-calc-conv-hint"><svg class="brand-icon" viewBox="0 0 24 24" style="width:13px;height:13px;vertical-align:-2px"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg> Conecte o Facebook Ads para ver a conversão do FB (cliques → vendas).</span>`;
+            return;
+        }
+
+        const from = _state.from, to = _state.to;
+        if (!from || !to) { el.style.display = 'none'; return; }
+        const cacheKey = `${from}|${to}|${FacebookAds.config?.activeAdAccountId}`;
+        try {
+            let totals;
+            if (_fbConvCache.key === cacheKey && _fbConvCache.totals) {
+                totals = _fbConvCache.totals;
+            } else {
+                totals = await FacebookAds.fetchAccountTotals({ since: from, until: to });
+                _fbConvCache = { key: cacheKey, totals };
+            }
+            // Element may have been re-rendered; re-grab
+            const el2 = document.getElementById('sales-calc-fbconv');
+            if (!el2) return;
+
+            if (!totals || totals.linkClicks === 0) {
+                el2.innerHTML = `<span class="sales-calc-conv-hint">Sem cliques de anúncios FB no período (ou conta sem dados).</span>`;
+                return;
+            }
+
+            const clicks = totals.linkClicks;
+            // PURO FACEBOOK: compras atribuídas pelo pixel ÷ cliques no link do FB.
+            // Não mistura vendas Shopify — só dados do próprio Facebook.
+            const fbPurchases = totals.purchases || 0;
+            const convFb = (fbPurchases / clicks) * 100;
+            const targetConv = _state.calc.targetConvPct || 0;
+
+            let color = '#1877F2', arrow = '', note = '';
+            if (targetConv > 0) {
+                if (convFb >= targetConv) { color = '#059669'; arrow = '↑'; note = ` (alvo ${targetConv}% ✓)`; }
+                else { color = '#dc2626'; arrow = '↓'; note = ` (alvo ${targetConv}% · faltam ${(targetConv - convFb).toFixed(2)}pp)`; }
+            }
+
+            const fbIcon = `<svg class="brand-icon" viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>`;
+            el2.innerHTML = `
+                <span class="sales-calc-conv-big" style="color:${color}">
+                    ${fbIcon} Conversão FB: <strong>${arrow} ${convFb.toFixed(2)}%</strong>
+                </span>
+                <span class="sales-calc-conv-detail">${_fmtNumber(fbPurchases)} compras (pixel FB) ÷ ${_fmtNumber(clicks)} cliques no link${note}</span>`;
+        } catch (e) {
+            const el3 = document.getElementById('sales-calc-fbconv');
+            if (el3) el3.innerHTML = `<span class="sales-calc-conv-hint">Erro ao buscar dados do FB.</span>`;
+        }
+    }
+
+    // ── Conversão Shopify (separada): vendas ÷ sessões reais da loja (ShopifyQL) ──
+    let _shopViewsCache = { key: '', data: null };
+    async function _renderShopifyConversion(actualSales) {
+        const el = document.getElementById('sales-calc-shopconv');
+        if (!el) return;
+        const shopIcon = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px"><path fill="#95BF47" d="M15.34 3.3c-.06-.04-.13-.06-.2-.06-.07 0-1.4.03-1.4.03s-.93-.9-1.02-1c-.1-.1-.28-.07-.36-.05l-.5.15c-.3-.86-.82-1.65-1.74-1.65h-.08C9.5.27 9.05.03 8.66.03 5.7.04 4.28 3.74 3.84 5.62l-2.07.64c-.64.2-.66.22-.74.83C.97 7.55 0 14.9 0 14.9l9.13 1.7 4.95-1.07S15.4 3.4 15.34 3.3zM11.4 2.5l-.8.25v-.17c0-.5-.07-.9-.18-1.22.46.06.76.58.98 1.14zm-1.62-1.04c.13.32.2.78.2 1.4v.1l-1.67.5c.32-1.22.93-1.82 1.47-2zM9.1.7c.1 0 .2.04.28.1-.72.34-1.5 1.2-1.82 2.9l-1.32.4C6.66 2.46 7.83.7 9.1.7z"/><path fill="#5E8E3E" d="M15.14 3.24c-.07 0-1.4.03-1.4.03s-.93-.9-1.02-1c-.04-.03-.08-.05-.13-.06L12 16.6l4.95-1.07S15.4 3.4 15.34 3.3c-.06-.04-.13-.06-.2-.06z"/><path fill="#FFF" d="M9.6 6.04l-.6 1.8s-.54-.28-1.18-.28c-.95 0-1 .6-1 .75 0 .82 2.13 1.13 2.13 3.04 0 1.5-.95 2.47-2.24 2.47-1.54 0-2.33-.96-2.33-.96l.4-1.36s.8.7 1.5.7c.45 0 .63-.36.63-.62 0-1.07-1.75-1.12-1.75-2.87 0-1.47 1.05-2.9 3.2-2.9.82 0 1.22.23 1.22.23z"/></svg>`;
+
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured || !ShopifyModule.isConfigured()) {
+            el.innerHTML = `<span class="sales-calc-conv-hint">${shopIcon} Conecte o Shopify para ver as visualizações reais da loja.</span>`;
+            return;
+        }
+        const from = _state.from, to = _state.to;
+        if (!from || !to) { el.style.display = 'none'; return; }
+
+        const cacheKey = `${from}|${to}`;
+        try {
+            let viewsData;
+            if (_shopViewsCache.key === cacheKey && _shopViewsCache.data) {
+                viewsData = _shopViewsCache.data;
+            } else {
+                viewsData = await ShopifyModule.fetchProductViews(from, to);
+                _shopViewsCache = { key: cacheKey, data: viewsData };
+            }
+            const el2 = document.getElementById('sales-calc-shopconv');
+            if (!el2) return;
+
+            // Determine views: product-specific if filter active, else total
+            const pf = String(_state.productFilter || '');
+            let views = viewsData.total || 0;
+            if (pf) {
+                // productFilter is a Shopify product_id
+                views = (viewsData.byShopifyProductId && viewsData.byShopifyProductId[pf]) || 0;
+            }
+            if (!views) {
+                el2.innerHTML = `<span class="sales-calc-conv-hint">${shopIcon} Sem visualizações Shopify no período${pf ? ' para este produto' : ''}.</span>`;
+                return;
+            }
+
+            const conv = (actualSales / views) * 100;
+            const target = _state.calc.targetConvPct || 0;
+            let color = '#95BF47', arrow = '', note = '';
+            if (target > 0) {
+                if (conv >= target) { color = '#059669'; arrow = '↑'; note = ` (alvo ${target}% ✓)`; }
+                else { color = '#dc2626'; arrow = '↓'; note = ` (alvo ${target}% · faltam ${(target - conv).toFixed(2)}pp)`; }
+            }
+            el2.innerHTML = `
+                <span class="sales-calc-conv-big" style="color:${color}">
+                    ${shopIcon} Conversão Shopify: <strong>${arrow} ${conv.toFixed(2)}%</strong>
+                </span>
+                <span class="sales-calc-conv-detail">${_fmtNumber(actualSales)} vendas ÷ ${_fmtNumber(views)} visualizações${note}</span>`;
+        } catch (e) {
+            const el3 = document.getElementById('sales-calc-shopconv');
+            if (el3) el3.innerHTML = `<span class="sales-calc-conv-hint">${shopIcon} ${(e.message || 'Erro ao buscar visualizações Shopify.')}</span>`;
+        }
     }
 
     // ── Pull spend + visitors from Diário (Facebook report ingest) ─
@@ -627,7 +866,340 @@ const SalesModule = (() => {
         _renderGeo();
         _renderFirstSale();
         _renderInsights();
+        _renderMdgxRanking();
         if (window.lucide?.createIcons) lucide.createIcons();
+    }
+
+    // Aggregate orders by product (using line_items.product_id)
+    function _aggregateByProduct(orders) {
+        const byProd = {}; // shopifyProductId -> { sales, revenue, title }
+        for (const o of (orders || [])) {
+            const cur = o.currency || _state.currency || 'BRL';
+            for (const li of (o.line_items || [])) {
+                const pid = String(li.product_id || '');
+                if (!pid) continue;
+                const qty = li.quantity || 0;
+                const unitPrice = parseFloat(li.price) || 0;
+                if (!byProd[pid]) byProd[pid] = { sales: 0, revenue: 0, title: li.title || pid, currency: cur };
+                byProd[pid].sales += qty;
+                byProd[pid].revenue += unitPrice * qty;
+            }
+        }
+        return byProd;
+    }
+
+    function _previousRange(from, to) {
+        if (!from || !to) return { from: '', to: '' };
+        const start = new Date(from + 'T00:00:00');
+        const end = new Date(to + 'T00:00:00');
+        const days = Math.round((end - start) / 86400000) + 1;
+        const prevEnd = new Date(start);
+        prevEnd.setDate(prevEnd.getDate() - 1);
+        const prevStart = new Date(prevEnd);
+        prevStart.setDate(prevStart.getDate() - (days - 1));
+        const fmt = (d) => d.toISOString().slice(0, 10);
+        return { from: fmt(prevStart), to: fmt(prevEnd) };
+    }
+
+    let _mdgxPrevCache = { key: '', orders: null };
+    let _mdgxShowAll = false;
+
+    async function _renderMdgxRanking() {
+        const totalEl = document.getElementById('sales-mdgx-ranking-total');
+        const compareEl = document.getElementById('sales-mdgx-ranking-compare');
+        const listEl = document.getElementById('sales-mdgx-ranking-list');
+        if (!listEl) return;
+
+        const curOrders = _state.filtered || [];
+        const curByProd = _aggregateByProduct(curOrders);
+        const totalSales = Object.values(curByProd).reduce((s, p) => s + p.sales, 0);
+        if (totalEl) totalEl.textContent = totalSales.toLocaleString('pt-BR');
+
+        // Fetch previous period for comparison
+        const { from: pFrom, to: pTo } = _previousRange(_state.from, _state.to);
+        let prevByProd = {};
+        let prevTotal = 0;
+        let pairedHourLabel = '';
+        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+            // Raw orders from yesterday — cache normally
+            const cacheKey = `${pFrom}|${pTo}`;
+            try {
+                let prevOrders;
+                if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
+                    prevOrders = _mdgxPrevCache.orders;
+                } else {
+                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    _mdgxPrevCache = { key: cacheKey, orders: prevOrders }; // cache RAW (unfiltered)
+                }
+
+                // Apply the SAME active filters (país/produto/conta/cidade) to the previous
+                // period — otherwise we'd compare filtered-current vs unfiltered-previous.
+                prevOrders = (prevOrders || []).filter(_buildFilterPredicate());
+
+                // PAIRED-HOUR COMPARISON: when current period is "today" (in progress), trim
+                // previous-period orders to the same time-of-day window so the comparison is fair.
+                const todayStr = _todayISO();
+                const isSingleDay = _state.from === _state.to;
+                const isTodayOrPartial = isSingleDay && _state.from === todayStr;
+                if (isTodayOrPartial) {
+                    const now = new Date();
+                    const hh = String(now.getHours()).padStart(2, '0');
+                    const mm = String(now.getMinutes()).padStart(2, '0');
+                    pairedHourLabel = ` até ${hh}:${mm}`;
+                    // Filter prev orders to only those whose created_at hour:min <= now's hour:min
+                    const cutoffMins = now.getHours() * 60 + now.getMinutes();
+                    prevOrders = (prevOrders || []).filter(o => {
+                        if (!o.created_at) return true;
+                        const d = new Date(o.created_at);
+                        const oMins = d.getHours() * 60 + d.getMinutes();
+                        return oMins <= cutoffMins;
+                    });
+                }
+
+                prevByProd = _aggregateByProduct(prevOrders || []);
+                prevTotal = Object.values(prevByProd).reduce((s, p) => s + p.sales, 0);
+            } catch (e) { /* fail silently — no comparator */ }
+        }
+
+        // Total comparator badge
+        if (compareEl) {
+            if (prevTotal > 0) {
+                const deltaPct = ((totalSales - prevTotal) / prevTotal) * 100;
+                const sign = deltaPct >= 0 ? '+' : '';
+                const cls = deltaPct > 0 ? 'mdgx-ranking-compare-up' :
+                           deltaPct < 0 ? 'mdgx-ranking-compare-down' :
+                           'mdgx-ranking-compare-neutral';
+                const arrow = deltaPct > 0 ? '↑' : deltaPct < 0 ? '↓' : '→';
+                compareEl.className = 'mdgx-ranking-compare ' + cls;
+                const periodLbl = pairedHourLabel ? `ontem${pairedHourLabel}` : 'período anterior';
+                compareEl.innerHTML = `${arrow} ${sign}${deltaPct.toFixed(1)}% vs ${periodLbl} (${prevTotal})`;
+            } else if (totalSales > 0) {
+                compareEl.className = 'mdgx-ranking-compare mdgx-ranking-compare-up';
+                compareEl.innerHTML = `↑ Novo (sem período anterior)`;
+            } else {
+                compareEl.className = 'mdgx-ranking-compare mdgx-ranking-compare-neutral';
+                compareEl.innerHTML = '';
+            }
+        }
+
+        // Build ranked list
+        const ranked = Object.entries(curByProd).map(([pid, info]) => {
+            const prev = prevByProd[pid];
+            const prevSales = prev?.sales || 0;
+            let delta = null;
+            if (prevSales === 0 && info.sales > 0) delta = { type: 'new', label: 'Novo' };
+            else if (prevSales > 0) {
+                const pct = ((info.sales - prevSales) / prevSales) * 100;
+                if (pct > 0) delta = { type: 'up', label: `+${pct.toFixed(0)}%` };
+                else if (pct < 0) delta = { type: 'down', label: `${pct.toFixed(0)}%` };
+                else delta = { type: 'neutral', label: '0%' };
+            }
+            return {
+                pid,
+                title: info.title,
+                sales: info.sales,
+                revenue: info.revenue,
+                currency: info.currency,
+                avgPrice: info.sales > 0 ? info.revenue / info.sales : 0,
+                delta,
+            };
+        }).filter(p => p.sales > 0).sort((a, b) => b.sales - a.sales);
+
+        if (ranked.length === 0) {
+            listEl.innerHTML = '<div class="mdgx-ranking-empty">Sem vendas no período.</div>';
+            return;
+        }
+
+        // Get Shopify product cover images
+        const shopifyProds = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getShopifyProducts)
+            ? ShopifyModule.getShopifyProducts() : [];
+        const coverOf = (pid) => {
+            const sp = shopifyProds.find(p => String(p.id) === String(pid));
+            return sp?.image || '';
+        };
+
+        const fmtMoney = (v, cur) => {
+            const sym = { BRL:'R$', USD:'$', EUR:'€', GBP:'£' }[cur] || (cur + ' ');
+            return `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+
+        const localProducts = AppState.allProducts || AppState.products || [];
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+        const localProductFor = (shopifyPid, title) => {
+            // 1) by Shopify link, 2) by name match
+            let lp = null;
+            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) || null;
+            }
+            if (!lp && title) lp = localProducts.find(p => norm(p.name) === norm(title)) || null;
+            return lp;
+        };
+
+        // Per-product conversions from the Diary (FB CSV + Shopify sync). No live FB needed.
+        const convForProduct = (localId) => {
+            if (!localId) return { fb: null, shopify: null };
+            const from = _state.from, to = _state.to;
+            const entries = (AppState.allDiary || AppState.diary || []).filter(d =>
+                d.productId === localId && !d.isCampaign && !d.parentId &&
+                (!from || d.date >= from) && (!to || d.date <= to)
+            );
+            let fbSales = 0, clicks = 0, shSales = 0, visits = 0;
+            entries.forEach(d => {
+                fbSales += Number(d.fbSales != null ? d.fbSales : (d.salesSource === 'shopify' ? 0 : d.sales)) || 0;
+                clicks += Number(d.clicks || 0);
+                shSales += Number(d.shopifySales != null ? d.shopifySales : (d.salesSource === 'shopify' ? d.sales : 0)) || 0;
+                visits += Number(d.shopifyViews || d.pageViews || 0) || 0;
+            });
+            return {
+                fb: clicks > 0 ? (fbSales / clicks) * 100 : null,
+                shopify: visits > 0 ? (shSales / visits) * 100 : null,
+            };
+        };
+
+        const total = ranked.length;
+        const visibleCount = _mdgxShowAll ? total : Math.min(5, total);
+        const visible = ranked.slice(0, visibleCount);
+
+        let itemsHtml = visible.map(p => {
+            const thumb = coverOf(p.pid);
+            const deltaHtml = p.delta
+                ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}">${p.delta.label}</span>`
+                : '';
+            const lp = localProductFor(p.pid, p.title);
+            const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
+            const conv = convForProduct(lp?.id);
+            const convHtml = `<span class="mdgx-conv-chips">
+                ${conv.fb != null ? `<span class="mdgx-conv-chip mdgx-conv-fb" title="Conversão Facebook = compras FB ÷ cliques FB"><svg class="brand-icon" viewBox="0 0 24 24" style="width:11px;height:11px;vertical-align:-2px"><path fill="#1877F2" d="M24 12.07C24 5.44 18.63.07 12 .07S0 5.44 0 12.07c0 5.99 4.39 10.95 10.13 11.85v-8.38H7.08v-3.47h3.05V9.43c0-3.01 1.79-4.67 4.53-4.67 1.31 0 2.69.24 2.69.24v2.95h-1.52c-1.49 0-1.96.93-1.96 1.87v2.25h3.33l-.53 3.47h-2.8v8.38C19.61 23.02 24 18.06 24 12.07z"/></svg> ${conv.fb.toFixed(1)}%</span>` : ''}
+                ${conv.shopify != null ? `<span class="mdgx-conv-chip mdgx-conv-shop" title="Conversão Shopify = vendas ÷ visitas">🛍️ ${conv.shopify.toFixed(1)}%</span>` : ''}
+            </span>`;
+            // Campaign access buttons — open the campaign in a NEW TAB (no Mapa de Ads).
+            // Country context = active País filter. Without filter, show one chip per country link.
+            // Country context for per-country campaigns: only when exactly ONE country is selected
+            const curCC = ((_state.countries || []).length === 1) ? String(_state.countries[0]).toUpperCase() : '';
+            const byC = (lp && lp.campaignUrlsByCountry) || {};
+            const campCount = (lp && typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.campaignCountForProduct)
+                ? AdHierarchyModule.campaignCountForProduct(lp.id) : 0;
+            const nameAttr = lp ? (lp.name || '').replace(/"/g, '&quot;') : '';
+            const esc = (s) => String(s || '').replace(/"/g, '&quot;');
+            let btnsInner = '';
+            if (lp) {
+                // Badge with the number of campaigns the link points to (selected_campaign_ids)
+                const campBadge = (n) => n ? `<span class="mdgx-camp-count" title="${n} campanha${n !== 1 ? 's' : ''} no link">${n}</span>` : '';
+                if (curCC) {
+                    // País filter active → operate on that country (fallback to generic for opening)
+                    const url = _buildCampaignUrl(lp, curCC);
+                    if (url) {
+                        const n = _campaignCountFromUrl(url);
+                        btnsInner = `<a class="mdgx-ranking-btn mdgx-ranking-btn-go" href="${esc(url)}" target="_blank" rel="noopener" title="Abrir ${n || ''} campanha${n !== 1 ? 's' : ''} ${curCC} em nova guia" onclick="event.stopPropagation()"><i data-lucide="external-link" style="width:13px;height:13px"></i><span class="mdgx-cc-tag">${curCC}</span>${campBadge(n)}</a>
+                            <button class="mdgx-ranking-btn" data-set-camp-url="${lp.id}" data-set-camp-name="${nameAttr}" data-set-camp-country="${curCC}" title="Editar link da campanha (${curCC})"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>`;
+                    } else {
+                        btnsInner = `<button class="mdgx-ranking-btn mdgx-ranking-btn-setlink" data-set-camp-url="${lp.id}" data-set-camp-name="${nameAttr}" data-set-camp-country="${curCC}" title="Colar link da campanha de ${curCC}"><i data-lucide="link" style="width:13px;height:13px"></i><span class="mdgx-cc-tag">${curCC}</span></button>
+                            <button class="mdgx-ranking-btn" data-map-product="${lp.id}" title="Ver campanhas no Mapa de Ads"><i data-lucide="git-fork" style="width:13px;height:13px"></i></button>`;
+                    }
+                } else {
+                    // No filter → a chip per country link, plus the generic, plus add/manage
+                    const ccList = Object.keys(byC).filter(cc => String(byC[cc]).trim());
+                    const ccChips = ccList.map(cc => {
+                        const n = _campaignCountFromUrl(byC[cc]);
+                        return `<a class="mdgx-ranking-btn mdgx-ranking-btn-go mdgx-ranking-btn-cc" href="${esc(byC[cc])}" target="_blank" rel="noopener" title="Abrir ${n || ''} campanha${n !== 1 ? 's' : ''} ${cc} em nova guia" onclick="event.stopPropagation()"><i data-lucide="external-link" style="width:11px;height:11px"></i><span class="mdgx-cc-tag">${cc}</span>${campBadge(n)}</a>`;
+                    }).join('');
+                    const generic = (lp.campaignGroupUrl || '').trim();
+                    const genN = _campaignCountFromUrl(generic) || campCount;
+                    const genChip = generic
+                        ? `<a class="mdgx-ranking-btn mdgx-ranking-btn-go" href="${esc(generic)}" target="_blank" rel="noopener" title="Abrir campanha padrão em nova guia" onclick="event.stopPropagation()"><i data-lucide="external-link" style="width:13px;height:13px"></i>${campBadge(genN)}</a>`
+                        : '';
+                    const addBtn = `<button class="mdgx-ranking-btn ${(ccChips||genChip) ? '' : 'mdgx-ranking-btn-setlink'}" data-set-camp-url="${lp.id}" data-set-camp-name="${nameAttr}" title="Adicionar/editar link da campanha (por país)"><i data-lucide="${(ccChips||genChip) ? 'plus' : 'link'}" style="width:12px;height:12px"></i></button>`;
+                    const mapBtn = (!ccChips && !genChip) ? `<button class="mdgx-ranking-btn" data-map-product="${lp.id}" title="Ver campanhas no Mapa de Ads"><i data-lucide="git-fork" style="width:13px;height:13px"></i></button>` : '';
+                    btnsInner = ccChips + genChip + addBtn + mapBtn;
+                }
+            }
+            const btns = `<span class="mdgx-ranking-actions">${btnsInner}</span>`;
+            return `<div class="mdgx-ranking-item">
+                ${thumb
+                    ? `<img class="mdgx-ranking-thumb" src="${thumb}" alt="">`
+                    : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
+                }
+                <div class="mdgx-ranking-info">
+                    <div class="mdgx-ranking-name" title="${(p.title || '').replace(/"/g, '&quot;')}">${p.title || p.pid}${badges}</div>
+                    <div class="mdgx-ranking-meta">
+                        <span class="mdgx-ranking-price">${fmtMoney(p.avgPrice, p.currency)}</span>
+                        <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
+                        ${convHtml}
+                    </div>
+                </div>
+                ${btns}
+                ${deltaHtml}
+            </div>`;
+        }).join('');
+
+        // "Ver mais N" / "Mostrar menos" footer (inline expand without leaving page)
+        if (total > 5) {
+            if (_mdgxShowAll) {
+                itemsHtml += `<button type="button" class="mdgx-ranking-expand" id="mdgx-ranking-collapse-btn">
+                    <i data-lucide="chevron-up" style="width:13px;height:13px"></i> Mostrar menos
+                </button>`;
+            } else {
+                const hidden = total - visibleCount;
+                itemsHtml += `<button type="button" class="mdgx-ranking-expand" id="mdgx-ranking-expand-btn">
+                    <i data-lucide="chevron-down" style="width:13px;height:13px"></i> Ver mais ${hidden} produto${hidden !== 1 ? 's' : ''}
+                </button>`;
+            }
+        }
+
+        listEl.innerHTML = itemsHtml;
+
+        document.getElementById('mdgx-ranking-expand-btn')?.addEventListener('click', () => {
+            _mdgxShowAll = true;
+            _renderMdgxRanking();
+        });
+        document.getElementById('mdgx-ranking-collapse-btn')?.addEventListener('click', () => {
+            _mdgxShowAll = false;
+            _renderMdgxRanking();
+            // Scroll back to ranking header
+            document.getElementById('sales-mdgx-ranking-list')?.scrollIntoView({ behavior:'smooth', block:'center' });
+        });
+
+        // "Ver campanhas no Mapa de Ads" buttons → switch tab + select product
+        listEl.querySelectorAll('[data-map-product]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pid = btn.dataset.mapProduct;
+                document.querySelectorAll('[data-tab="ad-hierarchy"]').forEach(b => b.click());
+                setTimeout(() => {
+                    if (typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.focusProduct) {
+                        AdHierarchyModule.focusProduct(pid);
+                    }
+                }, 200);
+            });
+        });
+
+        // "+" add campaign inline (without leaving for Mapa de Ads)
+        listEl.querySelectorAll('[data-add-campaign]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pid = btn.dataset.addCampaign;
+                const prodName = btn.dataset.addCampaignName || '';
+                const name = prompt(`Nova campanha para "${prodName}":`);
+                if (!name) return;
+                if (typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.addCampaignForProduct) {
+                    const ok = AdHierarchyModule.addCampaignForProduct(pid, name);
+                    if (ok && typeof showToast === 'function') showToast(`Campanha "${name}" adicionada a ${prodName}`, 'success');
+                    _renderMdgxRanking(); // refresh campaign count
+                }
+            });
+        });
+
+        // "🔗 / ✏️ / ➕" paste/edit the campaign link directly here → saved on the product.
+        // data-set-camp-country carries the active País filter (per-country campaign).
+        listEl.querySelectorAll('[data-set-camp-url]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pid = btn.dataset.setCampUrl;
+                _promptCampaignUrl(pid, btn.dataset.setCampName || '', btn.dataset.setCampCountry || '');
+            });
+        });
+
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     }
 
     function _bindPatternsToggle() {
@@ -642,15 +1214,36 @@ const SalesModule = (() => {
     }
 
     // ── Filters ──────────────────────────────────────────────────
-    function _applyFilters() {
-        const cf = (_state.countryFilter || '').toUpperCase();
+    // Build a predicate (order) => boolean from the CURRENT filter state.
+    // Reused for both the current period AND the previous period (fair comparison).
+    function _buildFilterPredicate() {
+        const ccSet = new Set((_state.countries || []).map(c => String(c).toUpperCase()));
         const pf = String(_state.productFilter || '');
         const city = _state.cityFilter || '';
+        const acc = _state.accountFilter || ''; // "fb:<id>" or "google:<id>"
 
-        _state.filtered = _state.orders.filter(o => {
-            if (cf) {
+        // Pre-compute which local products match the selected account
+        let accProductIds = null;
+        if (acc) {
+            const [plat, accId] = acc.split(':');
+            const localProducts = AppState.allProducts || AppState.products || [];
+            accProductIds = new Set();
+            localProducts.forEach(p => {
+                const ids = plat === 'fb' ? (p.fbAdAccountIds || []) : (p.googleAdAccountIds || []);
+                if (ids.map(String).includes(String(accId))) {
+                    // store the product's shopify id (linked) so we match orders
+                    const sid = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) ? ShopifyModule.getLink(p.id) : null;
+                    if (sid) accProductIds.add(String(sid));
+                    accProductIds.add('__name__' + String(p.name || '').toLowerCase().trim());
+                }
+            });
+        }
+        const normT = (s) => String(s || '').toLowerCase().trim();
+
+        return (o) => {
+            if (ccSet.size) {
                 const cc = (o.shipping_address?.country_code || '').toUpperCase();
-                if (cc !== cf) return false;
+                if (!ccSet.has(cc)) return false;
             }
             if (pf) {
                 const has = (o.line_items || []).some(li => String(li.product_id || '') === pf);
@@ -659,9 +1252,19 @@ const SalesModule = (() => {
             if (city) {
                 if ((o.shipping_address?.city || '') !== city) return false;
             }
+            if (accProductIds) {
+                const has = (o.line_items || []).some(li =>
+                    accProductIds.has(String(li.product_id || '')) ||
+                    accProductIds.has('__name__' + normT(li.title))
+                );
+                if (!has) return false;
+            }
             return true;
-        });
+        };
+    }
 
+    function _applyFilters() {
+        _state.filtered = _state.orders.filter(_buildFilterPredicate());
         _sortFiltered();
         _state.displayed = PAGE_SIZE;
     }
@@ -795,11 +1398,61 @@ const SalesModule = (() => {
             return;
         }
 
+        // Compact platform-icon + clickable product helper (no extra column)
+        const localProducts = AppState.allProducts || AppState.products || [];
+        const normP = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+        const localFor = (pid, title) => {
+            let lp = null;
+            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
+            }
+            if (!lp && title) lp = localProducts.find(p => normP(p.name) === normP(title)) || null;
+            return lp;
+        };
+        const platMiniIcons = (lp) => {
+            if (!lp) return '';
+            const plats = Array.isArray(lp.platforms) ? lp.platforms : [];
+            const fbIds = lp.fbAdAccountIds || [];
+            const gIds = lp.googleAdAccountIds || [];
+            if (!plats.length && !fbIds.length && !gIds.length) return '';
+            const icon = (b) => (typeof BRAND_ICONS !== 'undefined' && BRAND_ICONS[b]) ? `<span style="display:inline-block;width:13px;height:13px;vertical-align:-2px">${BRAND_ICONS[b]}</span>` : '';
+            const html = plats.map(icon).join('');
+            // Build detailed tooltip with account names
+            const fbName = (id) => (lp.fbAdAccountLabels && lp.fbAdAccountLabels[id]) || (typeof fbAdAccountName === 'function' ? fbAdAccountName(id, lp.fbAdAccountLabels) : id);
+            const gName = (id) => (lp.googleAdAccountLabels && lp.googleAdAccountLabels[id]) || id;
+            const platLabels = plats.map(p => ({facebook:'Facebook',google:'Google',tiktok:'TikTok',instagram:'Instagram',youtube:'YouTube',pinterest:'Pinterest'}[p] || p));
+            const tipParts = [];
+            if (platLabels.length) tipParts.push('Plataformas: ' + platLabels.join(', '));
+            if (fbIds.length) tipParts.push('FB: ' + fbIds.map(id => `${fbName(String(id))} (${id})`).join(', '));
+            if (gIds.length) tipParts.push('Google: ' + gIds.map(id => `${gName(String(id))} (${id})`).join(', '));
+            const tip = tipParts.join(' · ').replace(/"/g, '&quot;');
+            const accNote = (fbIds.length || gIds.length) ? `<span class="sales-prod-acc">${fbIds.length ? 'FB·'+fbIds.length : ''}${fbIds.length && gIds.length ? ' ' : ''}${gIds.length ? 'G·'+gIds.length : ''}</span>` : '';
+            return `<span class="sales-prod-plats" title="${tip}">${html}${accNote}</span>`;
+        };
+        const productCellItems = (o) => {
+            const orderCC = (o.shipping_address?.country_code || '').toUpperCase();
+            return (o.line_items || []).map(li => {
+                const lp = localFor(li.product_id, li.title);
+                const title = `${_esc(li.title || '—')} ×${li.quantity}`;
+                if (lp) {
+                    // Open the campaign for THIS order's country (falls back to the generic link)
+                    const campUrl = _buildCampaignUrl(lp, orderCC);
+                    if (campUrl) {
+                        const hasCountry = lp.campaignUrlsByCountry && lp.campaignUrlsByCountry[orderCC];
+                        const tip = hasCountry ? `Abrir campanha de ${_esc(lp.name)} — ${orderCC} (nova guia)` : `Abrir campanha de ${_esc(lp.name)} em nova guia`;
+                        return `<a class="sales-prod-link" href="${campUrl.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="${tip}">${title}${platMiniIcons(lp)}</a>`;
+                    }
+                    return `<span class="sales-prod-link" data-map-product="${lp.id}" title="Ver campanhas de ${_esc(lp.name)}">${title}${platMiniIcons(lp)}</span>`;
+                }
+                return title;
+            }).join('<br>');
+        };
+
         const slice = orders.slice(0, _state.displayed);
         tbody.innerHTML = slice.map(o => {
             const addr = o.shipping_address || {};
             const tz = (window.CountryTZ?.tzForOrder?.(addr)) || null;
-            const items = (o.line_items || []).map(li => `${li.title || '—'} ×${li.quantity}`).join('<br>');
+            const items = productCellItems(o);
             const totalQty = (o.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
             const status = o.financial_status || 'PAID';
             const country = addr.country_code ? `${addr.country_code}` : (addr.country || '—');
@@ -824,28 +1477,29 @@ const SalesModule = (() => {
             more.textContent = remaining > 0 ? `Mostrar mais (${remaining} restantes)` : '';
         }
 
+        // Clickable product → Mapa de Ads (campaigns)
+        tbody.querySelectorAll('.sales-prod-link[data-map-product]').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pid = el.dataset.mapProduct;
+                document.querySelectorAll('[data-tab="ad-hierarchy"]').forEach(b => b.click());
+                setTimeout(() => {
+                    if (typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.focusProduct) AdHierarchyModule.focusProduct(pid);
+                }, 200);
+            });
+        });
+
         _updateSortIndicators();
     }
 
     function _populateFilters() {
         const orders = _state.orders;
-        const cf = (_state.countryFilter || '').toUpperCase();
-        const countrySel = document.getElementById('sales-country-filter');
+        const ccSet = new Set((_state.countries || []).map(c => String(c).toUpperCase()));
         const productSel = document.getElementById('sales-product-filter');
         const citySel = document.getElementById('sales-city-filter');
 
-        if (countrySel) {
-            const countries = new Map();
-            for (const o of orders) {
-                const cc = (o.shipping_address?.country_code || '').toUpperCase();
-                const name = o.shipping_address?.country || cc;
-                if (cc && !countries.has(cc)) countries.set(cc, name);
-            }
-            const sorted = [...countries.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-            const cur = countrySel.value;
-            countrySel.innerHTML = '<option value="">Todos</option>' + sorted.map(([cc, n]) => `<option value="${cc}">${_esc(n)} (${cc})</option>`).join('');
-            if (cur) countrySel.value = cur;
-        }
+        // País agora é multi-select (dropdown com checkboxes) — populado à parte
+        _populateCountryDropdowns();
 
         if (productSel) {
             const products = new Map();
@@ -863,8 +1517,8 @@ const SalesModule = (() => {
         }
 
         if (citySel) {
-            // Cities scoped to selected country (all orders if no country filter)
-            const base = cf ? orders.filter(o => (o.shipping_address?.country_code || '').toUpperCase() === cf) : orders;
+            // Cities scoped to selected countries (all orders if no country filter)
+            const base = ccSet.size ? orders.filter(o => ccSet.has((o.shipping_address?.country_code || '').toUpperCase())) : orders;
             const cities = new Map();
             for (const o of base) {
                 const c = o.shipping_address?.city || '';
@@ -881,6 +1535,79 @@ const SalesModule = (() => {
                 _state.cityFilter = '';
             }
         }
+
+        // Ad account filter — list all FB + Google accounts across products (with names)
+        const accSel = document.getElementById('sales-account-filter');
+        if (accSel) {
+            const localProducts = AppState.allProducts || AppState.products || [];
+            const fbName = (id, p) => (p.fbAdAccountLabels && p.fbAdAccountLabels[id]) ||
+                (typeof fbAdAccountName === 'function' ? fbAdAccountName(id, p.fbAdAccountLabels) : id);
+            const gName = (id, p) => (p.googleAdAccountLabels && p.googleAdAccountLabels[id]) || id;
+            const fbOpts = new Map(); // value -> label
+            const gOpts = new Map();
+            localProducts.forEach(p => {
+                (p.fbAdAccountIds || []).forEach(id => { if (id) fbOpts.set('fb:' + id, fbName(String(id), p)); });
+                (p.googleAdAccountIds || []).forEach(id => { if (id) gOpts.set('google:' + id, gName(String(id), p)); });
+            });
+            const cur = accSel.value;
+            let html = '<option value="">Todas</option>';
+            if (fbOpts.size) {
+                html += '<optgroup label="Facebook">' + [...fbOpts.entries()].map(([v, n]) => `<option value="${v}">${_esc(n)}</option>`).join('') + '</optgroup>';
+            }
+            if (gOpts.size) {
+                html += '<optgroup label="Google">' + [...gOpts.entries()].map(([v, n]) => `<option value="${v}">${_esc(n)}</option>`).join('') + '</optgroup>';
+            }
+            accSel.innerHTML = html;
+            if (cur) accSel.value = cur;
+        }
+
+        // Mirror options into the compact segmentation bar (keeps both in sync)
+        const _mirror = (mainId, mirId, allLabel, stateKey) => {
+            const main = document.getElementById(mainId);
+            const mir = document.getElementById(mirId);
+            if (!main || !mir) return;
+            // Clone main's options but relabel the first "Todos/Todas" with a clearer prefix
+            mir.innerHTML = main.innerHTML;
+            const first = mir.querySelector('option[value=""]');
+            if (first) first.textContent = allLabel;
+            mir.value = _state[stateKey] || '';
+        };
+        _mirror('sales-product-filter', 'sales-viz-product-filter', 'Produto: todos', 'productFilter');
+        _mirror('sales-account-filter', 'sales-viz-account-filter', 'Conta: todas', 'accountFilter');
+
+        // Keep top selects reflecting state too (in case set programmatically)
+        if (productSel) productSel.value = _state.productFilter || '';
+        if (citySel) citySel.value = _state.cityFilter || '';
+        if (accSel) accSel.value = _state.accountFilter || '';
+    }
+
+    // Populate the País multi-select dropdowns (top + segmentation bar) from orders.
+    function _populateCountryDropdowns() {
+        const orders = _state.orders || [];
+        const countries = new Map();
+        for (const o of orders) {
+            const cc = (o.shipping_address?.country_code || '').toUpperCase();
+            const name = o.shipping_address?.country || cc;
+            if (cc && !countries.has(cc)) countries.set(cc, name);
+        }
+        const sorted = [...countries.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+        const sel = new Set((_state.countries || []).map(c => String(c).toUpperCase()));
+        document.querySelectorAll('.ms-dropdown[data-ms-target="country"]').forEach(wrap => {
+            const list = wrap.querySelector('.ms-dropdown-list');
+            const label = wrap.querySelector('.ms-dropdown-label');
+            if (list) {
+                list.innerHTML = sorted.length
+                    ? sorted.map(([cc, n]) => `<label class="ms-dropdown-opt"><input type="checkbox" value="${cc}" ${sel.has(cc) ? 'checked' : ''}><span>${_esc(n)} (${cc})</span></label>`).join('')
+                    : '<div class="ms-dropdown-empty">Sem países nos pedidos</div>';
+            }
+            if (label) {
+                const compact = wrap.classList.contains('ms-dropdown-compact');
+                const prefix = compact ? 'País: ' : '';
+                if (sel.size === 0) label.textContent = compact ? 'País: todos' : 'Todos';
+                else if (sel.size === 1) label.textContent = prefix + [...sel][0];
+                else label.textContent = prefix + `${[...sel][0]} +${sel.size - 1}`;
+            }
+        });
     }
 
     // ── Load orders ──────────────────────────────────────────────
@@ -894,6 +1621,14 @@ const SalesModule = (() => {
             return;
         }
         _state.loading = true;
+        // Show loading state on the refresh button
+        const refreshBtn = document.getElementById('btn-sales-refresh');
+        if (refreshBtn) {
+            refreshBtn.dataset.origHtml = refreshBtn.dataset.origHtml || refreshBtn.innerHTML;
+            refreshBtn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Carregando…';
+            refreshBtn.disabled = true;
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+        }
         try {
             // Pull shop info for TZ + currency
             try {
@@ -919,6 +1654,12 @@ const SalesModule = (() => {
             if (typeof showToast === 'function') showToast('Falha ao buscar vendas: ' + err.message, 'error');
         } finally {
             _state.loading = false;
+            const btn = document.getElementById('btn-sales-refresh');
+            if (btn && btn.dataset.origHtml) {
+                btn.innerHTML = btn.dataset.origHtml;
+                btn.disabled = false;
+                if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+            }
         }
     }
 
@@ -1325,22 +2066,78 @@ const SalesModule = (() => {
                 _globeInstance
                     .pointsData(points)
                     .pointAltitude(d => 0.02 + (d.count / maxC) * 0.35);
+                // Auto-foca no top país
+                const top = points.slice().sort((a, b) => b.count - a.count)[0];
+                if (top) _globeInstance.pointOfView({ lat: top.lat, lng: top.lng, altitude: 2 }, 1500);
                 return;
             }
 
+            // Carrega geometria de países pra estilo hex (Shopify-like)
+            let countries = null;
+            try {
+                const geoRes = await fetch('https://unpkg.com/three-globe/example/datasets/ne_110m_admin_0_countries.geojson');
+                countries = await geoRes.json();
+            } catch (e) {
+                console.warn('[Globe] falha carregar geojson:', e);
+            }
+
+            const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+
             _globeInstance = Globe()(container)
-                .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-                .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+                .backgroundColor('rgba(0,0,0,0)')
                 .width(container.clientWidth)
                 .height(container.clientHeight)
+                .showGlobe(true)
+                .showAtmosphere(true)
+                .atmosphereColor(isDark ? '#a78bfa' : '#7c3aed')
+                .atmosphereAltitude(0.18)
                 .pointsData(points)
                 .pointLat('lat')
                 .pointLng('lng')
                 .pointAltitude(d => 0.02 + (d.count / maxC) * 0.35)
-                .pointRadius(d => 0.3 + (d.count / maxC) * 1.2)
-                .pointColor(() => '#4f8cff')
-                .pointLabel(d => `<b>${d.name}</b><br>${d.count} pedidos<br>${_fmtMoney(d.revenue)}`)
-                .animateIn(true);
+                .pointRadius(d => 0.4 + (d.count / maxC) * 1.4)
+                .pointColor(() => isDark ? '#ec4899' : '#7c3aed')
+                .pointLabel(d => `<div style="background:#0f0f17;color:#fff;padding:6px 10px;border-radius:6px;border:1px solid rgba(139,92,246,0.4);font-size:12px"><b>${d.name}</b><br>${d.count} pedidos<br>${_fmtMoney(d.revenue)}</div>`);
+
+            // Cor sólida do globo (sem textura de Terra) — estilo Shopify
+            try {
+                const THREE = window.THREE || (_globeInstance.scene && _globeInstance.scene().constructor && (window.THREE = _globeInstance.scene().__THREE__));
+                if (window.THREE) {
+                    _globeInstance.globeMaterial(new window.THREE.MeshBasicMaterial({
+                        color: isDark ? 0x14141d : 0xe8efff,
+                        transparent: true,
+                        opacity: isDark ? 0.65 : 0.9,
+                    }));
+                }
+            } catch {}
+
+            // Hex polygons (countries) — efeito de pontilhado igual Shopify
+            if (countries?.features) {
+                _globeInstance
+                    .hexPolygonsData(countries.features)
+                    .hexPolygonResolution(3)
+                    .hexPolygonMargin(0.3)
+                    .hexPolygonUseDots(true)
+                    .hexPolygonColor(() => isDark ? 'rgba(167, 139, 250, 0.55)' : 'rgba(124, 58, 237, 0.55)');
+            }
+
+            // Foca no país com mais pedidos
+            const top = points.slice().sort((a, b) => b.count - a.count)[0];
+            if (top) {
+                setTimeout(() => {
+                    try { _globeInstance.pointOfView({ lat: top.lat, lng: top.lng, altitude: 2 }, 1500); } catch {}
+                }, 100);
+            }
+
+            // Auto-rotate suave
+            try {
+                const controls = _globeInstance.controls();
+                if (controls) {
+                    controls.autoRotate = true;
+                    controls.autoRotateSpeed = 0.4;
+                    controls.enableZoom = true;
+                }
+            } catch {}
 
             const ro = new ResizeObserver(() => {
                 if (_globeInstance && container.clientWidth) {
@@ -1349,6 +2146,7 @@ const SalesModule = (() => {
             });
             ro.observe(container);
         } catch (err) {
+            console.error('[Globe] error:', err);
             container.innerHTML = `<div class="sales-globe-loading">Erro: ${err.message}</div>`;
         }
     }
@@ -1510,27 +2308,41 @@ const SalesModule = (() => {
         _renderCalculator();
         _bindPatternsToggle();
         _renderPatterns();
+        // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
+        document.getElementById('btn-sales-mdgx-ranking-all')?.addEventListener('click', () => {
+            _mdgxShowAll = !_mdgxShowAll;
+            _renderMdgxRanking();
+        });
         _bindDashWidget();
         // Render dashboard widget after a tick so ShopifyModule has init'd
         setTimeout(() => renderDashWidget(false), 800);
 
         // Period filter — Shopify-style range picker (matches Diário/Diagnóstico)
+        // Auto-applies on every date change (no need to click "Atualizar")
+        const _autoReloadOnDateChange = () => {
+            const startEl = document.getElementById('sales-date-start');
+            const endEl = document.getElementById('sales-date-end');
+            const start = startEl?.value || '';
+            const end = endEl?.value || _todayISO();
+            const newFrom = start || _daysAgoISO(29);
+            const newTo = end || _todayISO();
+            // Skip if range didn't actually change (avoid double-fetch)
+            if (newFrom === _state.from && newTo === _state.to && _state.loaded) return;
+            _state.from = newFrom;
+            _state.to = newTo;
+            const fromEl = document.getElementById('sales-date-from');
+            const toEl = document.getElementById('sales-date-to');
+            if (fromEl) fromEl.value = _state.from;
+            if (toEl) toEl.value = _state.to;
+            // Invalidate previous-period cache (Madgicx ranking comparator)
+            _mdgxPrevCache = { key: '', orders: null };
+            _loadOrders();
+        };
+
         if (typeof RangePicker !== 'undefined') {
             RangePicker.init('sales-date', {
                 defaultPreset: '30',
-                onChange: () => {
-                    const startEl = document.getElementById('sales-date-start');
-                    const endEl = document.getElementById('sales-date-end');
-                    const start = startEl?.value || '';
-                    const end = endEl?.value || _todayISO();
-                    _state.from = start || _daysAgoISO(29);
-                    _state.to = end || _todayISO();
-                    const fromEl = document.getElementById('sales-date-from');
-                    const toEl = document.getElementById('sales-date-to');
-                    if (fromEl) fromEl.value = _state.from;
-                    if (toEl) toEl.value = _state.to;
-                    _loadOrders();
-                }
+                onChange: _autoReloadOnDateChange,
             });
             // Sync initial state from picker (defaultPreset '30' set silently)
             const sIni = document.getElementById('sales-date-start')?.value;
@@ -1542,20 +2354,80 @@ const SalesModule = (() => {
             if (fromEl) fromEl.value = _state.from;
             if (toEl) toEl.value = _state.to;
         }
+
+        // Safety net: listen for direct changes on hidden date inputs (covers manual edits,
+        // programmatic updates, browser autofill, etc) to guarantee auto-refresh.
+        ['sales-date-start', 'sales-date-end', 'sales-date-from', 'sales-date-to'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', _autoReloadOnDateChange);
+        });
+        // Also listen to preset buttons directly as belt-and-suspenders
+        document.querySelectorAll('.sales-date-preset').forEach(btn => {
+            btn.addEventListener('click', () => setTimeout(_autoReloadOnDateChange, 50));
+        });
+        document.getElementById('sales-date-apply')?.addEventListener('click', () => {
+            setTimeout(_autoReloadOnDateChange, 50);
+        });
         document.getElementById('btn-sales-refresh')?.addEventListener('click', () => _loadOrders(true));
         document.getElementById('btn-sales-export')?.addEventListener('click', _exportCsv);
-        document.getElementById('sales-country-filter')?.addEventListener('change', (e) => {
-            _state.countryFilter = e.target.value;
-            _state.cityFilter = '';
-            _applyFilters(); _populateFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
+        // Unified filter setter — keeps top filters + the compact segmentation bar in sync
+        const _renderAll = () => {
+            _applyFilters();
+            _populateFilters(); // refresh dependent lists (e.g. cities) + mirror both bars + country dropdowns
+            _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
+        };
+        const _setFilter = (type, value) => {
+            if (type === 'product') { _state.productFilter = value; }
+            else if (type === 'city') { _state.cityFilter = value; }
+            else if (type === 'account') { _state.accountFilter = value; }
+            _renderAll();
+        };
+        // Top filters (Produto/Cidade/Conta = single select)
+        document.getElementById('sales-product-filter')?.addEventListener('change', (e) => _setFilter('product', e.target.value));
+        document.getElementById('sales-city-filter')?.addEventListener('change', (e) => _setFilter('city', e.target.value));
+        document.getElementById('sales-account-filter')?.addEventListener('change', (e) => _setFilter('account', e.target.value));
+        // Compact segmentation bar (next to the table) — same state, same renders
+        document.getElementById('sales-viz-product-filter')?.addEventListener('change', (e) => _setFilter('product', e.target.value));
+        document.getElementById('sales-viz-account-filter')?.addEventListener('change', (e) => _setFilter('account', e.target.value));
+        document.getElementById('sales-seg-clear')?.addEventListener('click', () => {
+            _state.countries = []; _state.productFilter = ''; _state.cityFilter = ''; _state.accountFilter = '';
+            _renderAll();
         });
-        document.getElementById('sales-product-filter')?.addEventListener('change', (e) => {
-            _state.productFilter = e.target.value;
-            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
+
+        // País — multi-select dropdowns (top + segmentation bar) with checkboxes
+        const _onCountryChange = () => { _state.cityFilter = ''; _renderAll(); };
+        document.querySelectorAll('.ms-dropdown[data-ms-target="country"]').forEach(wrap => {
+            const btn = wrap.querySelector('.ms-dropdown-btn');
+            const panel = wrap.querySelector('.ms-dropdown-panel');
+            const list = wrap.querySelector('.ms-dropdown-list');
+            btn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = panel.style.display !== 'none';
+                document.querySelectorAll('.ms-dropdown[data-ms-target="country"] .ms-dropdown-panel').forEach(p => p.style.display = 'none');
+                panel.style.display = isOpen ? 'none' : '';
+            });
+            // checkbox toggle (delegated — list innerHTML is rebuilt on each populate)
+            list?.addEventListener('change', (e) => {
+                const cb = e.target.closest('input[type="checkbox"]');
+                if (!cb) return;
+                const cc = cb.value.toUpperCase();
+                const set = new Set((_state.countries || []).map(c => String(c).toUpperCase()));
+                if (cb.checked) set.add(cc); else set.delete(cc);
+                _state.countries = [...set];
+                _onCountryChange();
+            });
+            wrap.querySelector('[data-ms-none]')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _state.countries = [];
+                _onCountryChange();
+            });
         });
-        document.getElementById('sales-city-filter')?.addEventListener('change', (e) => {
-            _state.cityFilter = e.target.value;
-            _applyFilters(); _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
+        // Close country dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.ms-dropdown[data-ms-target="country"]')) {
+                document.querySelectorAll('.ms-dropdown[data-ms-target="country"] .ms-dropdown-panel').forEach(p => p.style.display = 'none');
+            }
         });
         document.getElementById('btn-sales-load-more')?.addEventListener('click', () => {
             _state.displayed += PAGE_SIZE;

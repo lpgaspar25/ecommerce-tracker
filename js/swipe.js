@@ -84,9 +84,12 @@ const SwipeModule = {
         document.querySelectorAll('.creative-subtabs-row .creative-subtab').forEach(b => b.classList.toggle('active', b.dataset.subtab === tab));
         document.getElementById('creatives-sub').style.display = tab === 'creatives' ? '' : 'none';
         document.getElementById('swipe-sub').style.display     = tab === 'swipe'     ? '' : 'none';
+        const pendingSub = document.getElementById('pending-sub');
+        if (pendingSub) pendingSub.style.display = tab === 'pending' ? '' : 'none';
         document.getElementById('creatives-actions').style.display = tab === 'creatives' ? '' : 'none';
         document.getElementById('swipe-actions').style.display     = tab === 'swipe'     ? '' : 'none';
         if (tab === 'swipe') this.render();
+        if (tab === 'pending' && window.PendingApprovals) window.PendingApprovals.render();
     },
 
     // ── Storage ──────────────────────────────────────────────────────────────

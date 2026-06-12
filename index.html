@@ -44,6 +44,8 @@
         <button class="tab-btn" data-tab="ai-generations" hidden>AI Generations</button>
         <button class="tab-btn" data-tab="ad-library" hidden>Ad Library</button>
         <button class="tab-btn" data-tab="ad-launcher" hidden>Ad Launcher</button>
+        <button class="tab-btn" data-tab="ads-manager" hidden>Ads Manager</button>
+        <button class="tab-btn" data-tab="ad-hierarchy" hidden>Mapa de Ads</button>
         <button class="tab-btn" data-tab="creative-insights" hidden>Creative Insights</button>
         <button class="tab-btn" data-tab="brands" hidden>Brands</button>
         <button class="tab-btn" data-tab="recent-edits" hidden>Recent Edits</button>
@@ -62,9 +64,9 @@
         </button>
 
         <!-- Brand -->
-        <div class="sidebar-brand">
+        <a href="#" class="sidebar-brand" data-tab="dashboard" title="Voltar para o Dashboard">
             <h1 class="logo"><i data-lucide="bar-chart-3" class="icon-logo"></i> <span>E-commerce Tracker</span></h1>
-        </div>
+        </a>
 
         <!-- Store Switcher -->
         <div class="sidebar-store">
@@ -127,6 +129,8 @@
             <button class="sidebar-group-header" data-group="launch"><i data-lucide="rocket" class="sidebar-icon"></i><span>Lançamento</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
             <div class="sidebar-group-items" data-group-items="launch">
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-launcher"><i data-lucide="send" class="sidebar-icon"></i><span>Ad Launcher</span><span class="sidebar-badge">NEW</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ads-manager"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Ads Manager</span><span class="sidebar-badge">NEW</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-hierarchy"><i data-lucide="git-fork" class="sidebar-icon"></i><span>Mapa de Ads</span><span class="sidebar-badge">NEW</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="pipeline"><i data-lucide="kanban-square" class="sidebar-icon"></i><span>Pipeline</span></a>
             </div>
         </div>
@@ -208,6 +212,11 @@
                     <button id="btn-team-panel" class="profile-dropdown-item"><i data-lucide="users" style="width:14px;height:14px"></i> Equipe</button>
                     <button id="btn-profile-mineracao" class="profile-dropdown-item"><i data-lucide="pickaxe" style="width:14px;height:14px"></i> Mineração</button>
                     <button id="btn-shopify-config" class="profile-dropdown-item"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Shopify</button>
+                    <button id="btn-fb-global-config" class="profile-dropdown-item">
+                        <i data-lucide="facebook" style="width:14px;height:14px"></i>
+                        <span>Facebook Ads</span>
+                        <span id="fb-global-status" class="status-badge status-disconnected profile-dropdown-badge">Desconectado</span>
+                    </button>
                     <button id="btn-profile-sync" class="profile-dropdown-item"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Sincronizar agora</button>
                     <button id="btn-connect-sheets" class="profile-dropdown-item">
                         <i data-lucide="table" style="width:14px;height:14px"></i>
@@ -464,6 +473,21 @@
                 </div>
             </div>
 
+            <!-- Row 3b: Sales Ranking (Madgicx-style) -->
+            <div class="dash-block" data-block-id="sales-ranking" data-block-name="Ranking de Vendas">
+                <div class="dash-card dash-card-mdgx-ranking">
+                    <div class="mdgx-ranking-header">
+                        <div class="mdgx-ranking-circle"><i data-lucide="package-search" style="width:22px;height:22px;color:white"></i></div>
+                        <div class="mdgx-ranking-title-wrap">
+                            <div class="mdgx-ranking-label">Ranking</div>
+                            <div class="mdgx-ranking-total" id="dash-mdgx-ranking-total">0</div>
+                        </div>
+                        <button id="btn-mdgx-ranking-all" class="btn btn-secondary btn-sm" type="button">Ver Tudo</button>
+                    </div>
+                    <div id="dash-mdgx-ranking-list" class="mdgx-ranking-list"></div>
+                </div>
+            </div>
+
             <!-- Metrics Calendar + Ecommerce Dates -->
             <div class="dash-row-cal dash-block" data-block-id="metrics-cal" data-block-name="Calendário de Métricas + Datas Importantes">
                 <div class="dash-card dash-card-cal">
@@ -554,12 +578,36 @@
                 <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
             </div>
 
+            <div class="products-toolbar">
+                <div class="products-search-wrap">
+                    <i data-lucide="search" class="products-search-icon"></i>
+                    <input type="search" id="products-search" class="input input-sm products-search-input" placeholder="Buscar por nome, SKU, fornecedor ou tag…">
+                    <span id="products-search-count" class="products-search-count"></span>
+                </div>
+                <select id="products-status-filter" class="input input-sm" style="width:160px">
+                    <option value="">Todos os status</option>
+                    <option value="ativo">Ativo</option>
+                    <option value="rascunho">Rascunho</option>
+                    <option value="arquivado">Arquivado</option>
+                </select>
+            </div>
+
+            <!-- Bulk action bar -->
+            <div id="products-bulk-bar" class="products-bulk-bar" style="display:none">
+                <span id="products-bulk-count">0 selecionados</span>
+                <button class="btn btn-sm btn-secondary" id="products-bulk-clear">Cancelar</button>
+                <button class="btn btn-sm btn-danger" id="products-bulk-delete">
+                    <i data-lucide="trash-2" style="width:13px;height:13px"></i> Excluir selecionados
+                </button>
+            </div>
+
             <table class="data-table" id="products-table">
                 <thead>
                     <tr>
+                        <th style="width:32px"><input type="checkbox" id="products-select-all" title="Selecionar todos"></th>
                         <th>Nome</th>
                         <th>Status</th>
-                        <th>Idioma</th>
+                        <th>Plataformas / Idiomas</th>
                         <th>Preço Final</th>
                         <th>Custo</th>
                         <th>Impostos %</th>
@@ -571,7 +619,7 @@
                 </thead>
                 <tbody id="products-tbody">
                     <tr class="empty-row">
-                        <td colspan="10">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
+                        <td colspan="11">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
                     </tr>
                 </tbody>
             </table>
@@ -656,24 +704,86 @@
                                     </div>
                                 </div>
 
+                                <!-- Shopify Link -->
+                                <div class="prod-section-card" id="prod-shopify-card">
+                                    <div class="prod-section-title" style="display:flex;align-items:center;gap:0.5rem">
+                                        <i data-lucide="shopping-bag" style="width:14px;height:14px;color:#95bf47"></i>
+                                        Conexão Shopify
+                                    </div>
+                                    <div id="prod-shopify-not-connected" style="display:none">
+                                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0.4rem 0">Conecte sua loja Shopify para vincular este produto e sincronizar preço/imagens automaticamente.</p>
+                                        <button type="button" id="btn-prod-connect-shopify" class="btn btn-secondary btn-sm" style="width:100%">
+                                            <i data-lucide="link" style="width:13px;height:13px"></i> Conectar Shopify
+                                        </button>
+                                    </div>
+                                    <div id="prod-shopify-connected" style="display:none">
+                                        <div class="form-group" style="margin:0 0 0.5rem">
+                                            <label>Produto vinculado</label>
+                                            <div style="display:flex;gap:0.4rem">
+                                                <select id="prod-shopify-link" class="input input-sm" style="flex:1">
+                                                    <option value="">— Não vinculado —</option>
+                                                </select>
+                                                <button type="button" id="btn-prod-shopify-refresh" class="btn btn-secondary btn-sm" title="Recarregar lista">
+                                                    <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="prod-shopify-info" style="display:none;font-size:0.72rem;color:var(--text-muted);padding:0.5rem;background:rgba(149,191,71,0.08);border:1px solid rgba(149,191,71,0.2);border-radius:6px;margin-top:0.4rem"></div>
+                                    </div>
+                                </div>
+
                                 <!-- Organization -->
                                 <div class="prod-section-card">
                                     <div class="prod-section-title">Organização</div>
                                     <div class="form-group">
-                                        <label>Idioma / Mercado</label>
-                                        <select id="product-language" class="input input-sm" required>
-                                            <option value="Ingles" selected>Inglês</option>
-                                            <option value="Frances">Francês</option>
-                                            <option value="Espanhol">Espanhol</option>
-                                            <option value="Holandes">Holandês</option>
-                                            <option value="Alemao">Alemão</option>
-                                            <option value="Polones">Polonês</option>
-                                            <option value="Checol">Tcheco</option>
-                                            <option value="Ingles Americano">Inglês (EUA)</option>
-                                            <option value="Dinamarques">Dinamarquês</option>
-                                            <option value="Sueco">Sueco</option>
-                                            <option value="Noruegues">Norueguês</option>
-                                        </select>
+                                        <label>Plataformas <small style="color:var(--text-muted);font-weight:400">(uma ou mais)</small></label>
+                                        <div id="product-platforms" class="prod-multi-chips">
+                                            <label class="prod-multi-chip" data-brand="facebook"><input type="checkbox" value="facebook"><span>Facebook</span></label>
+                                            <label class="prod-multi-chip" data-brand="google"><input type="checkbox" value="google"><span>Google</span></label>
+                                            <label class="prod-multi-chip" data-brand="tiktok"><input type="checkbox" value="tiktok"><span>TikTok</span></label>
+                                            <label class="prod-multi-chip" data-brand="instagram"><input type="checkbox" value="instagram"><span>Instagram</span></label>
+                                            <label class="prod-multi-chip" data-brand="youtube"><input type="checkbox" value="youtube"><span>YouTube</span></label>
+                                            <label class="prod-multi-chip" data-brand="pinterest"><input type="checkbox" value="pinterest"><span>Pinterest</span></label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Idiomas / Mercados <small style="color:var(--text-muted);font-weight:400">(um ou mais)</small></label>
+                                        <div id="product-languages" class="prod-multi-chips">
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles"><span>🇬🇧 Inglês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles Americano"><span>🇺🇸 EN (EUA)</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Portugues"><span>🇧🇷 Português</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Espanhol"><span>🇪🇸 Espanhol</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Frances"><span>🇫🇷 Francês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Alemao"><span>🇩🇪 Alemão</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Italiano"><span>🇮🇹 Italiano</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Holandes"><span>🇳🇱 Holandês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Polones"><span>🇵🇱 Polonês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Checol"><span>🇨🇿 Tcheco</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Dinamarques"><span>🇩🇰 Dinamarquês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Sueco"><span>🇸🇪 Sueco</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Noruegues"><span>🇳🇴 Norueguês</span></label>
+                                        </div>
+                                        <!-- Hidden compat input: keeps the first selected language for legacy fields -->
+                                        <input type="hidden" id="product-language">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Contas de Anúncio Facebook <small style="color:var(--text-muted);font-weight:400">(uma ou mais)</small></label>
+                                        <div id="product-fb-accounts" class="prod-multi-chips">
+                                            <!-- Populated dynamically from FacebookAds.config.adAccounts -->
+                                        </div>
+                                        <small id="product-fb-accounts-empty" style="color:var(--text-muted);font-size:0.7rem;display:none;margin:0.3rem 0">Sem contas FB conectadas — use o campo abaixo para digitar manualmente.</small>
+                                        <input type="text" id="product-fb-accounts-manual" class="input input-sm" style="margin-top:0.4rem" placeholder="Nome=ID separados por vírgula: G-01=1548460345711350, BR Conta=9876543210">
+                                        <small style="color:var(--text-muted);font-size:0.65rem;display:block;margin-top:0.2rem">Use <code>Nome=ID</code> para dar apelido. Ou só <code>ID</code> para usar o nome da conta conectada.</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Contas Google Ads <small style="color:var(--text-muted);font-weight:400">(uma ou mais)</small></label>
+                                        <input type="text" id="product-google-accounts" class="input input-sm" placeholder="Nome=ID: GAds BR=123-456-7890, GAds EU=987-654-3210">
+                                        <small style="color:var(--text-muted);font-size:0.65rem;display:block;margin-top:0.2rem">Use <code>Nome=ID</code> para dar apelido. Ou só <code>ID</code>.</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Link do grupo de campanhas <small style="color:var(--text-muted);font-weight:400">(opcional)</small></label>
+                                        <input type="url" id="product-campaign-url" class="input input-sm" placeholder="https://adsmanager.facebook.com/... ou link do grupo">
+                                        <small style="color:var(--text-muted);font-size:0.65rem;display:block;margin-top:0.2rem">Cole a URL do grupo de campanhas (Ads Manager, planilha, etc). Aparece como botão no ranking.</small>
                                     </div>
                                     <div class="form-group">
                                         <label>Fornecedor / Vendor</label>
@@ -949,6 +1059,9 @@
                     <div id="diary-columns-dropdown" class="diary-columns-dropdown"></div>
                 </div>
                 <button id="btn-diary-compare" class="btn btn-secondary btn-sm" title="Comparar períodos"><i data-lucide="git-compare-arrows" style="width:13px;height:13px"></i> Comparar</button>
+                <button id="btn-diary-dedup" class="btn btn-secondary btn-sm" title="Remove duplicatas (mesmo produto + mesma data, mantém a mais completa)"><i data-lucide="layers" style="width:13px;height:13px"></i> Limpar duplicatas</button>
+                <button id="btn-diary-sync-shopify" class="btn btn-secondary btn-sm" title="Puxa as vendas reais da Shopify para o Diário (não apaga dados do Facebook)"><i data-lucide="shopping-bag" style="width:13px;height:13px"></i> Sincronizar Shopify</button>
+                <button id="btn-diary-sync-scroll" class="btn btn-secondary btn-sm" title="Rolar todas as tabelas de produtos lateralmente juntas"><i data-lucide="move-horizontal" style="width:13px;height:13px"></i> Rolar juntas</button>
             </div>
 
             <!-- Date Filter -->
@@ -999,10 +1112,22 @@
                 </div>
                 <div class="filter-group">
                     <label>Produto:</label>
-                    <select id="diary-product-filter" class="input">
-                        <option value="todos">Todos</option>
-                        <option value="__STORE__"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Teste de Loja</option>
-                    </select>
+                    <div class="multi-select" id="diary-product-multi">
+                        <button type="button" class="multi-select-trigger input" id="diary-product-trigger">
+                            <span id="diary-product-label">Todos</span>
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </button>
+                        <div class="multi-select-menu" id="diary-product-menu" style="display:none">
+                            <input type="search" class="input input-sm multi-select-search" id="diary-product-search" placeholder="Buscar produto…">
+                            <div class="multi-select-actions">
+                                <button type="button" class="multi-select-action" data-multi-act="all">Selecionar todos</button>
+                                <button type="button" class="multi-select-action" data-multi-act="none">Limpar</button>
+                            </div>
+                            <div class="multi-select-list" id="diary-product-list"></div>
+                        </div>
+                        <!-- compat: hidden input to keep .value reads working as a fallback -->
+                        <input type="hidden" id="diary-product-filter" value="todos">
+                    </div>
                 </div>
                 <div class="filter-group">
                     <label>Plataforma:</label>
@@ -2130,8 +2255,10 @@
             <div class="section-header">
                 <h2>Criativos & Testes</h2>
                 <div id="creatives-actions">
+                    <button id="btn-import-creatives" class="btn btn-secondary" title="Importar criativos de uma planilha (CSV)"><i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Importar planilha</button>
                     <button id="btn-compare-creatives" class="btn btn-secondary">Comparar</button>
                     <button id="btn-add-creative" class="btn btn-primary">+ Novo Criativo</button>
+                    <input type="file" id="creative-csv-input" accept=".csv,.tsv,.txt" style="display:none">
                 </div>
                 <div id="swipe-actions" style="display:none">
                     <button id="btn-swipe-settings" class="btn btn-secondary" title="Configurar API Keys"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Config.</button>
@@ -2140,7 +2267,87 @@
             </div>
             <div class="creative-subtabs-row">
                 <button class="creative-subtab active" data-subtab="creatives"><i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> Criativos</button>
+                <button class="creative-subtab" data-subtab="pending"><i data-lucide="inbox" style="width:14px;height:14px;vertical-align:-2px"></i> Aprovações <span class="creative-subtab-badge" id="pending-count-badge" style="display:none">0</span></button>
                 <button class="creative-subtab" data-subtab="swipe"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Swipe File</button>
+            </div>
+
+            <!-- ── Aprovações pendentes (Designer Drop) ── -->
+            <div id="pending-sub" style="display:none">
+                <div class="pending-section-tabs">
+                    <button class="pending-section-tab active" data-pending-section="submissions">
+                        <i data-lucide="inbox" style="width:13px;height:13px;vertical-align:-2px"></i> Submissões
+                    </button>
+                    <button class="pending-section-tab" data-pending-section="designers">
+                        <i data-lucide="users" style="width:13px;height:13px;vertical-align:-2px"></i> Designers
+                    </button>
+                </div>
+
+                <!-- Submissions section -->
+                <div id="pending-section-submissions">
+                    <div class="filter-bar" style="justify-content:space-between;align-items:center">
+                        <div style="display:flex;gap:1rem;align-items:center;flex:1">
+                            <span style="color:var(--text-muted);font-size:0.85rem">
+                                <i data-lucide="link" style="width:13px;height:13px;vertical-align:-2px"></i>
+                                Portal do designer:
+                            </span>
+                            <code id="designer-link" style="background:var(--bg-tertiary);padding:0.35rem 0.6rem;border-radius:5px;font-size:0.78rem;color:var(--accent);user-select:all"></code>
+                            <button id="btn-copy-designer-link" class="btn btn-sm btn-secondary">
+                                <i data-lucide="copy" style="width:12px;height:12px"></i> Copiar
+                            </button>
+                        </div>
+                        <button id="btn-refresh-pending" class="btn btn-sm btn-secondary">
+                            <i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Atualizar
+                        </button>
+                    </div>
+                    <div id="pending-list" class="pending-list"></div>
+                </div>
+
+                <!-- Designers management section -->
+                <div id="pending-section-designers" style="display:none">
+                    <div class="filter-bar" style="justify-content:space-between;align-items:center">
+                        <span style="color:var(--text-muted);font-size:0.85rem">
+                            Gerencie quais designers têm acesso e a quais produtos podem submeter criativos.
+                        </span>
+                        <button id="btn-invite-designer" class="btn btn-sm btn-primary">
+                            <i data-lucide="user-plus" style="width:13px;height:13px"></i> Convidar designer
+                        </button>
+                    </div>
+                    <div id="designers-list" class="designers-list"></div>
+                </div>
+
+                <!-- Modal: Invite/edit designer -->
+                <div class="modal-overlay" id="designer-modal" style="display:none">
+                    <div class="modal-content" style="max-width:520px">
+                        <div class="modal-header">
+                            <h3 id="designer-modal-title"><i data-lucide="user-plus" style="width:18px;height:18px;color:var(--accent)"></i> Convidar designer</h3>
+                            <button class="modal-close" data-close-modal="designer-modal">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" id="designer-id-input">
+                            <label class="adm-editor-field">
+                                <span>Email do designer *</span>
+                                <input type="email" id="designer-email-input" class="input input-sm" placeholder="designer@example.com" required>
+                            </label>
+                            <label class="adm-editor-field">
+                                <span>Nome (opcional)</span>
+                                <input type="text" id="designer-name-input" class="input input-sm" placeholder="Nome completo">
+                            </label>
+                            <label class="adm-editor-field">
+                                <span>Produtos com acesso *</span>
+                            </label>
+                            <div id="designer-products-list" class="designer-products-list"></div>
+                            <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem">
+                                O designer vai fazer login no portal com o email acima. Se for a primeira vez, ele cria a conta (com senha própria) e automaticamente entra na sua lista.
+                            </p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" data-close-modal="designer-modal">Cancelar</button>
+                            <button id="designer-modal-save" class="btn btn-primary">
+                                <i data-lucide="save" style="width:13px;height:13px"></i> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- ── Criativos sub-section ── -->
@@ -2149,6 +2356,18 @@
                     <div class="filter-group">
                         <label>Produto:</label>
                         <select id="creative-product-filter" class="input">
+                            <option value="todos">Todos</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Campanha:</label>
+                        <select id="creative-campaign-filter" class="input">
+                            <option value="todos">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>País:</label>
+                        <select id="creative-country-filter" class="input">
                             <option value="todos">Todos</option>
                         </select>
                     </div>
@@ -2163,8 +2382,18 @@
                             <option value="killed">Killed</option>
                         </select>
                     </div>
+                    <div class="filter-group">
+                        <label>Agrupar por:</label>
+                        <select id="creative-group-by" class="input">
+                            <option value="produto">Produto</option>
+                            <option value="campanha">Campanha</option>
+                            <option value="pais">País</option>
+                        </select>
+                    </div>
+                    <button id="btn-creative-csv-template" class="btn btn-secondary btn-sm" title="Baixar modelo de planilha para importação"><i data-lucide="file-down" style="width:13px;height:13px;vertical-align:-2px"></i> Modelo CSV</button>
                 </div>
 
+                <div id="creative-best-summary"></div>
                 <div id="creative-fatigue-summary"></div>
                 <div id="compare-panel" style="display:none"></div>
 
@@ -2210,6 +2439,18 @@
                     </div>
                     <form id="creative-form">
                         <input type="hidden" id="creative-id">
+
+                        <!-- Mídia (foto ou vídeo) — salva no navegador via IndexedDB -->
+                        <div class="creative-media-field">
+                            <label>Mídia do criativo (foto ou vídeo)</label>
+                            <input type="file" id="creative-media-input" accept="image/*,video/*" style="display:none">
+                            <div id="creative-media-preview" class="creative-media-preview creative-media-empty">
+                                <button type="button" id="creative-media-pick" class="btn btn-secondary"><i data-lucide="image-plus" style="width:15px;height:15px;vertical-align:-2px"></i> Subir foto / vídeo</button>
+                                <span class="creative-media-hint">PNG, JPG, GIF, MP4, MOV… fica salvo no navegador</span>
+                            </div>
+                            <input type="url" id="creative-image-url" class="input input-sm" placeholder="…ou cole a URL de uma imagem (opcional)" style="margin-top:0.5rem">
+                        </div>
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Nome do Criativo *</label>
@@ -2271,6 +2512,20 @@
                             <input type="text" id="creative-hook-text" class="input" placeholder="Ex: Voce sabia que 80% das pessoas...">
                         </div>
 
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>País / Mercado</label>
+                                <select id="creative-country" class="input">
+                                    <option value="">— Nenhum —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Campanha</label>
+                                <input type="text" id="creative-campaign" class="input" list="creative-campaign-list" placeholder="Nome da campanha">
+                                <datalist id="creative-campaign-list"></datalist>
+                            </div>
+                        </div>
+
                         <h4 style="margin:1rem 0 0.5rem;color:var(--text-muted)">Textos do Anuncio (Facebook)</h4>
                         <div class="form-group">
                             <label>Texto Principal (Primary Text)</label>
@@ -2310,6 +2565,13 @@
                         </div>
                     </form>
                 </div>
+            </div>
+
+            <!-- Quick-view media lightbox -->
+            <div id="creative-media-lightbox" class="creative-lightbox" style="display:none">
+                <button type="button" class="creative-lightbox-close" id="creative-lightbox-close" aria-label="Fechar">&times;</button>
+                <div class="creative-lightbox-body" id="creative-lightbox-body"></div>
+                <div class="creative-lightbox-caption" id="creative-lightbox-caption"></div>
             </div>
 
             <!-- Metric Entry Modal -->
@@ -2907,6 +3169,7 @@
                                 <option value="custom">Personalizado (período acima)</option>
                             </select>
                             <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar do Facebook</button>
+                            <button type="button" id="btn-fb-fetch-all" class="btn btn-secondary btn-sm" title="Importa do FB todos os produtos com campanhas mapeadas na conta ativa"><i data-lucide="layers" style="width:14px;height:14px;vertical-align:-2px"></i> Importar TODOS os produtos</button>
                         </div>
                     </div>
                     <div class="ads-section-body" id="fb-section-body">
@@ -3112,7 +3375,7 @@
                 </label>
                 <label class="imp-source-tab" data-source="extension" title="Receber DOM de página aberta via extensão">
                     <input type="radio" name="imp-source" value="extension" hidden>
-                    <i data-lucide="chrome" style="width:14px;height:14px;vertical-align:-2px"></i> Extensão Chrome
+                    <i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Extensão Chrome
                 </label>
             </div>
 
@@ -3143,7 +3406,7 @@
             <div id="imp-source-extension" class="imp-source-pane" style="display:none">
                 <div class="imp-ext-info">
                     <p class="imp-hint">Capture produtos de qualquer site (Sunglass Hut, Shopify, lojas com Schema.org, etc.) clicando no ícone da extensão na barra do Chrome. Os produtos chegam aqui automaticamente.</p>
-                    <button id="btn-imp-ext-install" class="btn btn-primary"><i data-lucide="chrome" style="width:14px;height:14px;vertical-align:-2px"></i> Instalar / atualizar extensão</button>
+                    <button id="btn-imp-ext-install" class="btn btn-primary"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Instalar / atualizar extensão</button>
                 </div>
             </div>
 
@@ -3243,9 +3506,19 @@
                         </div>
                         <div class="sales-filter-item">
                             <label>País</label>
-                            <select id="sales-country-filter" class="input input-sm">
-                                <option value="">Todos</option>
-                            </select>
+                            <div class="ms-dropdown" id="sales-country-ms" data-ms-target="country">
+                                <button type="button" class="input input-sm ms-dropdown-btn">
+                                    <span class="ms-dropdown-label">Todos</span>
+                                    <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                                </button>
+                                <div class="ms-dropdown-panel" style="display:none">
+                                    <div class="ms-dropdown-actions">
+                                        <span class="ms-dropdown-hint">Selecione 1 ou mais</span>
+                                        <button type="button" class="ms-dropdown-mini" data-ms-none>Limpar</button>
+                                    </div>
+                                    <div class="ms-dropdown-list"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="sales-filter-item">
                             <label>Produto</label>
@@ -3256,6 +3529,12 @@
                         <div class="sales-filter-item">
                             <label>Cidade</label>
                             <select id="sales-city-filter" class="input input-sm">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div class="sales-filter-item">
+                            <label>Conta de anúncio</label>
+                            <select id="sales-account-filter" class="input input-sm">
                                 <option value="">Todas</option>
                             </select>
                         </div>
@@ -3315,6 +3594,20 @@
                     <div class="sales-calc-meta" id="sales-calc-meta"></div>
                     <div class="sales-calc-scenarios" id="sales-calc-scenarios"></div>
                 </div>
+            </div>
+
+            <!-- Sales Ranking (Madgicx-style with period comparator) -->
+            <div class="dash-card dash-card-mdgx-ranking" style="margin-bottom:1rem">
+                <div class="mdgx-ranking-header">
+                    <div class="mdgx-ranking-circle"><i data-lucide="package-search" style="width:22px;height:22px;color:white"></i></div>
+                    <div class="mdgx-ranking-title-wrap">
+                        <div class="mdgx-ranking-label">Ranking — Período selecionado</div>
+                        <div class="mdgx-ranking-total" id="sales-mdgx-ranking-total">0</div>
+                        <div class="mdgx-ranking-compare" id="sales-mdgx-ranking-compare"></div>
+                    </div>
+                    <button id="btn-sales-mdgx-ranking-all" class="btn btn-secondary btn-sm" type="button">Ver Tudo</button>
+                </div>
+                <div id="sales-mdgx-ranking-list" class="mdgx-ranking-list"></div>
             </div>
 
             <!-- Patterns / Insights -->
@@ -3423,6 +3716,27 @@
                 <div id="sales-comp-results" class="sales-comp-results"></div>
             </div>
 
+            <!-- Segmentação rápida — logo acima da lista -->
+            <div class="sales-seg-bar" id="sales-viz-tabela-segbar">
+                <span class="sales-seg-label"><i data-lucide="filter" style="width:13px;height:13px;vertical-align:-2px"></i> Segmentar:</span>
+                <div class="ms-dropdown ms-dropdown-compact" id="sales-viz-country-ms" data-ms-target="country" title="Filtrar por país (1 ou mais)">
+                    <button type="button" class="input input-sm ms-dropdown-btn">
+                        <span class="ms-dropdown-label">País: todos</span>
+                        <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                    </button>
+                    <div class="ms-dropdown-panel" style="display:none">
+                        <div class="ms-dropdown-actions">
+                            <span class="ms-dropdown-hint">Selecione 1 ou mais</span>
+                            <button type="button" class="ms-dropdown-mini" data-ms-none>Limpar</button>
+                        </div>
+                        <div class="ms-dropdown-list"></div>
+                    </div>
+                </div>
+                <select id="sales-viz-product-filter" class="input input-sm" title="Filtrar por produto"><option value="">Produto: todos</option></select>
+                <select id="sales-viz-account-filter" class="input input-sm" title="Filtrar por conta de anúncio"><option value="">Conta: todas</option></select>
+                <button id="sales-seg-clear" class="btn btn-secondary btn-sm" title="Limpar filtros">Limpar</button>
+            </div>
+
             <!-- Table -->
             <div class="sales-table-wrap" id="sales-viz-tabela">
                 <table class="sales-table">
@@ -3460,8 +3774,11 @@
                     <textarea id="aiad-prompt" class="input" rows="3" placeholder="Descreva sua ideia de anúncio… ex: 'Óculos de sol Mercedes-Benz aviador, fundo preto com reflexo de cidade noturna, estilo luxo, pose de modelo'"></textarea>
                     <div class="aiad-controls">
                         <select id="aiad-provider" class="input input-sm" style="width:auto" title="Provedor de IA para geração de imagens">
-                            <option value="openai">✦ OpenAI DALL-E 3</option>
+                            <option value="gpt-image-2" selected>✦ GPT Image 2 (mais recente)</option>
+                            <option value="gpt-image-1">✦ GPT Image 1</option>
+                            <option value="openai">✦ DALL-E 3</option>
                             <option value="google">✦ Google Imagen 3</option>
+                            <option value="google-imagen2">✦ Google Imagen 2</option>
                         </select>
                         <select id="aiad-size" class="input input-sm" style="width:auto">
                             <option value="1024x1024">Quadrado 1:1</option>
@@ -3474,9 +3791,10 @@
                             <option value="3" selected>3 imagens</option>
                             <option value="4">4 imagens</option>
                         </select>
-                        <select id="aiad-quality" class="input input-sm" style="width:auto" title="Apenas para DALL-E 3">
-                            <option value="standard">Qualidade padrão</option>
-                            <option value="hd">HD</option>
+                        <select id="aiad-quality" class="input input-sm" style="width:auto" title="Qualidade da imagem">
+                            <option value="high" selected>Alta qualidade</option>
+                            <option value="medium">Média</option>
+                            <option value="low">Rascunho</option>
                         </select>
                         <button id="aiad-generate" class="btn btn-primary"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar</button>
                     </div>
@@ -3534,6 +3852,11 @@
                     <span id="adhub-prompt-file-chip" class="adhub-prompt-chip" style="display:none"></span>
 
                     <textarea id="adhub-prompt-text" class="adhub-prompt-textarea" rows="1" placeholder="Describe your ad idea to generate ads…"></textarea>
+
+                    <button class="adhub-prompt-btn adhub-prompt-btn-labeled" id="adhub-prompt-enhance" title="Refinar prompt com IA (Claude) antes de gerar a imagem">
+                        <i data-lucide="sparkles" style="width:14px;height:14px"></i>
+                        <span>Enhance</span>
+                    </button>
 
                     <div class="adhub-prompt-controls">
                         <div class="adhub-dropdown" id="adhub-aspect-dropdown">
@@ -3617,10 +3940,841 @@
                 <h2><i data-lucide="send" style="width:20px;height:20px;vertical-align:-3px"></i> Ad Launcher</h2>
             </div>
             <p class="section-subtitle">Lance anúncios para Meta direto daqui. Selecione criativos, conta de anúncio e configure o público.</p>
-            <div class="aiad-empty" style="padding:4rem 0">
+
+            <!-- Empty state quando FB não conectado ou sem criativos -->
+            <div class="aiad-empty" style="padding:3rem 0;display:none" id="adl-empty-state">
                 <i data-lucide="rocket" style="width:48px;height:48px;color:var(--text-muted)"></i>
-                <h3>Ad Launcher em desenvolvimento</h3>
-                <p>Vai depender do Marketing API do Meta com permissão <code>ads_management</code> + <code>pages_manage_ads</code>. Por enquanto, gere os criativos no <strong>AI Ad Generator</strong> e baixe pra subir manualmente.</p>
+                <h3 id="adl-empty-title">Conecte o Facebook Ads para começar</h3>
+                <p id="adl-empty-desc">Conecte a conta no menu de perfil (canto superior direito) ou clique abaixo. Depois selecione criativos e lance direto para um conjunto de anúncios.</p>
+                <button id="adl-empty-config" class="btn btn-primary" style="margin-top:1rem">
+                    <i data-lucide="settings" style="width:14px;height:14px"></i> Configurar Facebook Ads
+                </button>
+            </div>
+
+            <!-- Workspace principal -->
+            <div class="adl-workspace" id="adl-workspace" style="display:none">
+                <!-- Coluna esquerda: picker de criativos -->
+                <div class="adl-picker">
+                    <div class="adl-picker-toolbar">
+                        <div class="adl-picker-tabs">
+                            <button class="adl-picker-tab adl-picker-tab-active" data-adl-source="creatives">
+                                <i data-lucide="image" style="width:14px;height:14px"></i> Criativos
+                            </button>
+                            <button class="adl-picker-tab" data-adl-source="generations">
+                                <i data-lucide="sparkles" style="width:14px;height:14px"></i> Gerações IA
+                            </button>
+                            <button class="adl-picker-tab" data-adl-source="used">
+                                <i data-lucide="history" style="width:14px;height:14px"></i> Em uso
+                            </button>
+                            <button class="adl-picker-tab" data-adl-source="uploads">
+                                <i data-lucide="upload-cloud" style="width:14px;height:14px"></i> Uploads
+                            </button>
+                        </div>
+                        <div class="adl-picker-filters">
+                            <button id="adl-upload-btn" class="btn btn-sm btn-secondary" title="Upload de imagem">
+                                <i data-lucide="upload" style="width:13px;height:13px"></i>
+                                Upload
+                            </button>
+                            <input type="file" id="adl-upload-input" accept="image/*" multiple style="display:none">
+                            <select id="adl-filter-product" class="input input-sm">
+                                <option value="">Todos os produtos</option>
+                            </select>
+                            <input type="search" id="adl-filter-search" class="input input-sm" placeholder="Buscar…" style="width:160px">
+                        </div>
+                    </div>
+                    <div class="adl-picker-grid" id="adl-picker-grid"></div>
+                </div>
+
+                <!-- Coluna direita: painel de seleção / launch -->
+                <aside class="adl-panel" id="adl-panel">
+                    <div class="adl-panel-header">
+                        <i data-lucide="rocket" style="width:16px;height:16px;color:var(--accent)"></i>
+                        <strong>Lançar anúncios</strong>
+                        <span class="adl-selection-count" id="adl-selection-count">0 selecionados</span>
+                    </div>
+                    <div class="adl-mode-tabs">
+                        <button class="adl-mode-tab adl-mode-tab-active" data-adl-mode="single">
+                            <i data-lucide="image" style="width:12px;height:12px"></i> Único
+                        </button>
+                        <button class="adl-mode-tab" data-adl-mode="cluster" title="Cria múltiplos anúncios combinando criativos × textos">
+                            <i data-lucide="layers-2" style="width:12px;height:12px"></i> Cluster Criativo
+                        </button>
+                    </div>
+
+                    <!-- Cluster mode panel -->
+                    <div id="adl-cluster-panel" style="display:none" class="adl-cluster-panel">
+                        <p style="font-size:0.75rem;color:var(--text-muted);margin:0 0 0.5rem">
+                            Modo cluster: selecione múltiplos criativos no picker da esquerda + adicione múltiplos textos abaixo. Vamos criar <strong id="adl-cluster-count">0</strong> anúncios (uma combinação por linha).
+                        </p>
+                        <div class="adl-cluster-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label">Textos principais</label>
+                                <button type="button" class="adl-lib-btn" data-adl-cluster-add="primary_text">
+                                    <i data-lucide="plus" style="width:11px;height:11px"></i> Adicionar
+                                </button>
+                            </div>
+                            <div id="adl-cluster-primary-texts" class="adl-cluster-list"></div>
+                        </div>
+                        <div class="adl-cluster-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label">Títulos</label>
+                                <button type="button" class="adl-lib-btn" data-adl-cluster-add="headline">
+                                    <i data-lucide="plus" style="width:11px;height:11px"></i> Adicionar
+                                </button>
+                            </div>
+                            <div id="adl-cluster-headlines" class="adl-cluster-list"></div>
+                        </div>
+                        <div class="adl-cluster-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label">Descrições</label>
+                                <button type="button" class="adl-lib-btn" data-adl-cluster-add="description">
+                                    <i data-lucide="plus" style="width:11px;height:11px"></i> Adicionar
+                                </button>
+                            </div>
+                            <div id="adl-cluster-descriptions" class="adl-cluster-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="adl-panel-body">
+                        <!-- Selecionados -->
+                        <div class="adl-panel-section">
+                            <div class="adl-panel-section-label">Criativos selecionados</div>
+                            <div class="adl-selected-list" id="adl-selected-list">
+                                <div class="adl-selected-empty">Nenhum criativo selecionado</div>
+                            </div>
+                        </div>
+
+                        <!-- ===== SEÇÃO 1: IDENTIDADE ===== -->
+                        <div class="adl-section adl-section-open" data-adl-section="identity">
+                            <div class="adl-section-header" data-adl-section-toggle="identity">
+                                <span class="adl-section-num">1</span>
+                                <span class="adl-section-title">Identidade</span>
+                                <i data-lucide="chevron-down" class="adl-section-chevron" style="width:14px;height:14px"></i>
+                            </div>
+                            <div class="adl-section-body">
+
+                        <!-- Conta -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-account">Conta de anúncios</label>
+                            <select id="adl-account" class="input input-sm"></select>
+                        </div>
+
+                        <!-- Campanha -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-campaign">Campanha</label>
+                            <div class="adl-panel-row">
+                                <select id="adl-campaign" class="input input-sm" style="flex:1"></select>
+                                <button id="adl-refresh-campaigns" class="btn btn-sm btn-secondary" title="Recarregar">
+                                    <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+                                </button>
+                            </div>
+                            <!-- Inline form: criar nova campanha -->
+                            <div class="adl-inline-form" id="adl-new-campaign-form" style="display:none">
+                                <label class="adl-inline-field">
+                                    <span>Nome da campanha</span>
+                                    <input type="text" id="adl-new-campaign-name" class="input input-sm" placeholder="Ex: 10.05 [PRODUTO] [CBO] [BR]">
+                                </label>
+                                <label class="adl-inline-field">
+                                    <span>Objetivo</span>
+                                    <select id="adl-new-campaign-objective" class="input input-sm">
+                                        <option value="OUTCOME_SALES">Vendas</option>
+                                        <option value="OUTCOME_LEADS">Leads</option>
+                                        <option value="OUTCOME_TRAFFIC">Tráfego</option>
+                                        <option value="OUTCOME_ENGAGEMENT">Engajamento</option>
+                                        <option value="OUTCOME_AWARENESS">Reconhecimento</option>
+                                        <option value="OUTCOME_APP_PROMOTION">App</option>
+                                    </select>
+                                </label>
+                                <label class="adl-inline-field">
+                                    <span>Modo de orçamento</span>
+                                    <select id="adl-new-campaign-budget-mode" class="input input-sm">
+                                        <option value="adset">Por conjunto (mais flexível)</option>
+                                        <option value="cbo_daily">CBO diário</option>
+                                        <option value="cbo_lifetime">CBO total</option>
+                                    </select>
+                                </label>
+                                <label class="adl-inline-field" id="adl-new-campaign-budget-wrap" style="display:none">
+                                    <span>Orçamento CBO (R$)</span>
+                                    <input type="number" id="adl-new-campaign-budget" class="input input-sm" min="1" step="0.01" placeholder="50.00">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Conjunto -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-adset">Conjunto de anúncios</label>
+                            <select id="adl-adset" class="input input-sm" disabled>
+                                <option value="">Selecione uma campanha primeiro</option>
+                            </select>
+                            <!-- Inline form: criar novo conjunto -->
+                            <div class="adl-inline-form" id="adl-new-adset-form" style="display:none">
+                                <label class="adl-inline-field">
+                                    <span>Nome do conjunto</span>
+                                    <input type="text" id="adl-new-adset-name" class="input input-sm" placeholder="Ex: [BR] [H 25-55] [INTERESSES]">
+                                </label>
+                                <div class="adl-inline-grid">
+                                    <label class="adl-inline-field">
+                                        <span>Orçamento diário (R$)</span>
+                                        <input type="number" id="adl-new-adset-budget" class="input input-sm" min="1" step="0.01" value="30.00">
+                                    </label>
+                                    <label class="adl-inline-field">
+                                        <span>Otimização</span>
+                                        <select id="adl-new-adset-optim" class="input input-sm">
+                                            <option value="OFFSITE_CONVERSIONS">Conversões</option>
+                                            <option value="LINK_CLICKS">Cliques no link</option>
+                                            <option value="LANDING_PAGE_VIEWS">Visualizações da landing</option>
+                                            <option value="REACH">Alcance</option>
+                                            <option value="IMPRESSIONS">Impressões</option>
+                                            <option value="POST_ENGAGEMENT">Engajamento</option>
+                                            <option value="VIDEO_VIEWS">Visualizações de vídeo</option>
+                                            <option value="THRUPLAY">ThruPlay</option>
+                                            <option value="VALUE">Valor</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="adl-inline-grid">
+                                    <label class="adl-inline-field">
+                                        <span>Países (ISO)</span>
+                                        <input type="text" id="adl-new-adset-countries" class="input input-sm" value="BR" placeholder="BR, US, PT">
+                                    </label>
+                                    <label class="adl-inline-field">
+                                        <span>Gênero</span>
+                                        <select id="adl-new-adset-genders" class="input input-sm">
+                                            <option value="0">Todos</option>
+                                            <option value="1">Masculino</option>
+                                            <option value="2">Feminino</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="adl-inline-grid">
+                                    <label class="adl-inline-field">
+                                        <span>Idade mínima</span>
+                                        <input type="number" id="adl-new-adset-age-min" class="input input-sm" min="13" max="65" value="18">
+                                    </label>
+                                    <label class="adl-inline-field">
+                                        <span>Idade máxima</span>
+                                        <input type="number" id="adl-new-adset-age-max" class="input input-sm" min="13" max="65" value="65">
+                                    </label>
+                                </div>
+                                <label class="adl-inline-field">
+                                    <span style="display:flex;justify-content:space-between;align-items:center">
+                                        Interesses (opcional)
+                                        <button type="button" id="adl-import-interests-btn" class="adl-lib-btn" title="Importar de campanhas existentes">
+                                            <i data-lucide="copy-plus" style="width:11px;height:11px"></i> Importar de campanhas
+                                        </button>
+                                    </span>
+                                    <div class="adl-interest-picker">
+                                        <div class="adm-interest-chips" id="adl-new-adset-interests-chips"></div>
+                                        <div class="adm-interest-search-wrap">
+                                            <input type="text" id="adl-new-adset-interest-search" class="input input-sm" placeholder="Buscar interesse…" autocomplete="off">
+                                            <div class="adm-interest-suggestions" id="adl-new-adset-interest-sug" style="display:none"></div>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div class="adl-inline-grid">
+                                    <label class="adl-inline-field">
+                                        <span>Pixel</span>
+                                        <select id="adl-new-adset-pixel" class="input input-sm">
+                                            <option value="">Carregando pixels…</option>
+                                        </select>
+                                    </label>
+                                    <label class="adl-inline-field">
+                                        <span>Evento de conversão</span>
+                                        <select id="adl-new-adset-pixel-event" class="input input-sm">
+                                            <option value="PURCHASE">Compra</option>
+                                            <option value="ADD_TO_CART">Adicionar ao carrinho</option>
+                                            <option value="INITIATE_CHECKOUT">Início de checkout</option>
+                                            <option value="LEAD">Lead</option>
+                                            <option value="COMPLETE_REGISTRATION">Cadastro completo</option>
+                                            <option value="VIEW_CONTENT">Visualização de conteúdo</option>
+                                            <option value="ADD_PAYMENT_INFO">Info de pagamento</option>
+                                            <option value="SEARCH">Busca</option>
+                                            <option value="SUBSCRIBE">Inscrição</option>
+                                            <option value="START_TRIAL">Início de trial</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nome do anúncio -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-ad-name">Nome do anúncio</label>
+                            <input type="text" id="adl-ad-name" class="input input-sm" placeholder="Auto: usa o nome do criativo">
+                        </div>
+
+                        <!-- Página -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-page">Página do Facebook</label>
+                            <div class="adl-panel-row">
+                                <select id="adl-page" class="input input-sm" style="flex:1">
+                                    <option value="">Carregando páginas…</option>
+                                </select>
+                                <button id="adl-refresh-pages" class="btn btn-sm btn-secondary" title="Recarregar">
+                                    <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Instagram (opcional) -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-ig">Conta Instagram (opcional)</label>
+                            <select id="adl-ig" class="input input-sm">
+                                <option value="">Usar a vinculada à Página</option>
+                            </select>
+                        </div>
+
+                            </div>
+                        </div>
+                        <!-- ===== FIM SEÇÃO 1 ===== -->
+
+                        <!-- ===== SEÇÃO 2: CONFIGURAÇÃO DO ANÚNCIO ===== -->
+                        <div class="adl-section adl-section-open" data-adl-section="setup">
+                            <div class="adl-section-header" data-adl-section-toggle="setup">
+                                <span class="adl-section-num">2</span>
+                                <span class="adl-section-title">Configuração do anúncio</span>
+                                <i data-lucide="chevron-down" class="adl-section-chevron" style="width:14px;height:14px"></i>
+                            </div>
+                            <div class="adl-section-body">
+
+                        <!-- Copy -->
+                        <div class="adl-panel-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label" for="adl-primary-text">Texto principal</label>
+                                <div class="adl-copy-tools">
+                                    <button type="button" class="adl-lib-btn" data-adl-library="primary_text" title="Ver textos que estão performando nos seus anúncios">
+                                        <i data-lucide="trending-up" style="width:11px;height:11px"></i> Performance
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-saved="primary_text" title="Biblioteca de cópias salvas">
+                                        <i data-lucide="bookmark" style="width:11px;height:11px"></i>
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-ai-variations="primary_text" title="Gerar variações com IA">
+                                        <i data-lucide="sparkles" style="width:11px;height:11px"></i> IA
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-save-copy="primary_text" title="Salvar na biblioteca">
+                                        <i data-lucide="save" style="width:11px;height:11px"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <textarea id="adl-primary-text" class="input" rows="3" placeholder="Texto que aparece acima da imagem do anúncio"></textarea>
+                        </div>
+
+                        <div class="adl-panel-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label" for="adl-headline">Título</label>
+                                <div class="adl-copy-tools">
+                                    <button type="button" class="adl-lib-btn" data-adl-library="headline" title="Ver títulos performando">
+                                        <i data-lucide="trending-up" style="width:11px;height:11px"></i> Performance
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-saved="headline" title="Biblioteca de títulos salvos">
+                                        <i data-lucide="bookmark" style="width:11px;height:11px"></i>
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-ai-variations="headline" title="Gerar variações IA">
+                                        <i data-lucide="sparkles" style="width:11px;height:11px"></i> IA
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-save-copy="headline" title="Salvar na biblioteca">
+                                        <i data-lucide="save" style="width:11px;height:11px"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="text" id="adl-headline" class="input input-sm" placeholder="Título curto (máx 40 chars)" maxlength="40">
+                        </div>
+
+                        <div class="adl-panel-section">
+                            <div class="adl-panel-section-header">
+                                <label class="adl-panel-section-label" for="adl-description">Descrição</label>
+                                <div class="adl-copy-tools">
+                                    <button type="button" class="adl-lib-btn" data-adl-library="description" title="Ver descrições performando">
+                                        <i data-lucide="trending-up" style="width:11px;height:11px"></i> Performance
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-saved="description" title="Biblioteca de descrições salvas">
+                                        <i data-lucide="bookmark" style="width:11px;height:11px"></i>
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-ai-variations="description" title="Gerar variações IA">
+                                        <i data-lucide="sparkles" style="width:11px;height:11px"></i> IA
+                                    </button>
+                                    <button type="button" class="adl-lib-btn" data-adl-save-copy="description" title="Salvar na biblioteca">
+                                        <i data-lucide="save" style="width:11px;height:11px"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="text" id="adl-description" class="input input-sm" placeholder="Descrição opcional" maxlength="30">
+                        </div>
+
+                            </div>
+                        </div>
+                        <!-- ===== FIM SEÇÃO 2 ===== -->
+
+                        <!-- ===== SEÇÃO 3: DESTINO ===== -->
+                        <div class="adl-section adl-section-open" data-adl-section="destination">
+                            <div class="adl-section-header" data-adl-section-toggle="destination">
+                                <span class="adl-section-num">3</span>
+                                <span class="adl-section-title">Destino</span>
+                                <i data-lucide="chevron-down" class="adl-section-chevron" style="width:14px;height:14px"></i>
+                            </div>
+                            <div class="adl-section-body">
+
+                        <!-- URL -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-link-url">URL de destino</label>
+                            <input type="url" id="adl-link-url" class="input input-sm" placeholder="https://www.example.com/page">
+                        </div>
+
+                        <!-- Display Link -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-display-link">Link de exibição</label>
+                            <input type="text" id="adl-display-link" class="input input-sm" placeholder="Ex: minhaloja.com">
+                        </div>
+
+                        <!-- CTA -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-cta">Botão (CTA)</label>
+                            <select id="adl-cta" class="input input-sm">
+                                <option value="LEARN_MORE">Saiba mais</option>
+                                <option value="SHOP_NOW">Comprar agora</option>
+                                <option value="SIGN_UP">Cadastre-se</option>
+                                <option value="SUBSCRIBE">Inscrever-se</option>
+                                <option value="GET_OFFER">Pegar oferta</option>
+                                <option value="ORDER_NOW">Pedir agora</option>
+                                <option value="DOWNLOAD">Baixar</option>
+                                <option value="CONTACT_US">Fale conosco</option>
+                                <option value="BOOK_TRAVEL">Reservar</option>
+                                <option value="APPLY_NOW">Inscrever-se</option>
+                                <option value="GET_QUOTE">Solicitar cotação</option>
+                                <option value="WATCH_MORE">Ver mais</option>
+                            </select>
+                        </div>
+
+                            </div>
+                        </div>
+                        <!-- ===== FIM SEÇÃO 3 ===== -->
+
+                        <!-- ===== SEÇÃO 4: RASTREAMENTO ===== -->
+                        <div class="adl-section" data-adl-section="tracking">
+                            <div class="adl-section-header" data-adl-section-toggle="tracking">
+                                <span class="adl-section-num">4</span>
+                                <span class="adl-section-title">Rastreamento</span>
+                                <i data-lucide="chevron-down" class="adl-section-chevron" style="width:14px;height:14px"></i>
+                            </div>
+                            <div class="adl-section-body">
+
+                        <!-- UTM toggle -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-checkbox">
+                                <input type="checkbox" id="adl-tracking-utm" checked>
+                                <span>Usar parâmetros UTM automáticos</span>
+                            </label>
+                            <p style="font-size:0.7rem;color:var(--text-muted);margin:0.3rem 0 0;line-height:1.4">
+                                Gera <code>utm_source=facebook</code>, <code>utm_medium=paid_social</code>, <code>utm_campaign={{ad_name}}</code>
+                            </p>
+                        </div>
+
+                        <!-- URL parameters manual override -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-url-params">Parâmetros adicionais (opcional)</label>
+                            <input type="text" id="adl-url-params" class="input input-sm" placeholder="key1=value1&key2=value2">
+                        </div>
+
+                        <!-- Status -->
+                        <div class="adl-panel-section">
+                            <label class="adl-panel-section-label" for="adl-status">Status inicial do anúncio</label>
+                            <select id="adl-status" class="input input-sm">
+                                <option value="PAUSED" selected>Pausado (recomendado)</option>
+                                <option value="ACTIVE">Ativo</option>
+                            </select>
+                        </div>
+
+                            </div>
+                        </div>
+                        <!-- ===== FIM SEÇÃO 4 ===== -->
+
+                        <!-- ===== SEÇÃO 5: PRÉ-VISUALIZAÇÃO ===== -->
+                        <div class="adl-section" data-adl-section="preview">
+                            <div class="adl-section-header" data-adl-section-toggle="preview">
+                                <span class="adl-section-num">5</span>
+                                <span class="adl-section-title">Pré-visualização</span>
+                                <i data-lucide="chevron-down" class="adl-section-chevron" style="width:14px;height:14px"></i>
+                            </div>
+                            <div class="adl-section-body">
+                                <div id="adl-preview-card" class="adl-preview-card">
+                                    <div class="adl-preview-empty">Selecione um criativo e preencha os textos para visualizar</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- ===== FIM SEÇÃO 5 ===== -->
+                    </div>
+
+                    <div class="adl-panel-footer">
+                        <button id="adl-btn-launch" class="btn btn-primary" disabled>
+                            <i data-lucide="send" style="width:14px;height:14px"></i>
+                            Lançar
+                        </button>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- ===== Modal: Importar interesses de campanhas existentes ===== -->
+            <div class="modal-overlay" id="adl-import-interests-modal" style="display:none">
+                <div class="modal-content" style="max-width:720px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="copy-plus" style="width:18px;height:18px;color:var(--accent)"></i> Importar interesses de campanhas</h3>
+                        <button class="modal-close" data-close-modal="adl-import-interests-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:0;max-height:60vh;overflow:hidden;display:flex;flex-direction:column">
+                        <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;gap:0.5rem;align-items:center">
+                            <input type="search" id="adl-import-interests-search" class="input input-sm" placeholder="Filtrar…" style="flex:1">
+                            <span id="adl-import-interests-count" style="font-size:0.75rem;color:var(--text-muted)">0 únicos</span>
+                        </div>
+                        <div id="adl-import-interests-list" style="flex:1;overflow-y:auto;padding:0.5rem 0">
+                            <div style="padding:2rem;text-align:center;color:var(--text-muted)"><i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite"></i> Carregando interesses de campanhas ativas…</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div style="flex:1;font-size:0.8rem;color:var(--text-muted)" id="adl-import-interests-selected">0 selecionado(s)</div>
+                        <button class="btn btn-secondary" data-close-modal="adl-import-interests-modal">Cancelar</button>
+                        <button id="adl-import-interests-add" class="btn btn-primary">
+                            <i data-lucide="plus" style="width:13px;height:13px"></i> Adicionar selecionados
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Modal: Library Picker (Ad Copy / Headline / etc) ===== -->
+            <div class="modal-overlay" id="adl-library-modal" style="display:none">
+                <div class="modal-content adl-library-modal-content">
+                    <div class="modal-header">
+                        <h3><i data-lucide="layers" style="width:18px;height:18px;color:var(--accent)"></i> <span id="adl-library-title">Biblioteca</span></h3>
+                        <button class="modal-close" data-close-modal="adl-library-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:0">
+                        <div class="adl-library-toolbar">
+                            <input type="search" id="adl-library-search" class="input input-sm" placeholder="Buscar…" style="flex:1">
+                            <select id="adl-library-sort" class="input input-sm" style="width:160px">
+                                <option value="spend_desc">Mais gasto</option>
+                                <option value="roas_desc">Maior ROAS</option>
+                                <option value="recent">Mais recente</option>
+                            </select>
+                        </div>
+                        <div class="adl-library-list" id="adl-library-list">
+                            <div style="padding:2rem;text-align:center;color:var(--text-muted)">Carregando histórico…</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal: Copy Library Picker -->
+            <div class="modal-overlay" id="copy-lib-modal" style="display:none">
+                <div class="modal-content" style="max-width:560px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="bookmark" style="width:18px;height:18px;color:var(--accent)"></i> <span id="copy-lib-title">Biblioteca</span></h3>
+                        <button class="modal-close" data-close-modal="copy-lib-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:0">
+                        <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border)">
+                            <input type="search" id="copy-lib-search" class="input input-sm" placeholder="Buscar texto…">
+                        </div>
+                        <div id="copy-lib-list" class="copy-lib-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal: AI Variations -->
+            <div class="modal-overlay" id="copy-variations-modal" style="display:none">
+                <div class="modal-content" style="max-width:640px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="sparkles" style="width:18px;height:18px;color:var(--accent)"></i> <span id="copy-variations-title">Variações IA</span></h3>
+                        <button class="modal-close" data-close-modal="copy-variations-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding:0">
+                        <div id="copy-variations-list" class="copy-variations-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de resultado do lançamento -->
+            <div class="modal-overlay" id="adl-result-modal" style="display:none">
+                <div class="modal-content" style="max-width:560px">
+                    <div class="modal-header">
+                        <h3><i data-lucide="check-circle-2" style="width:18px;height:18px;color:var(--success)"></i> Lançamento concluído</h3>
+                        <button class="modal-close" data-close-modal="adl-result-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="adl-result-body"></div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" data-close-modal="adl-result-modal">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ADS MANAGER ==================== -->
+        <section id="tab-ads-manager" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="layout-dashboard" style="width:20px;height:20px;vertical-align:-3px"></i> Ads Manager</h2>
+                <div style="display:flex;gap:0.5rem;align-items:center">
+                    <button id="adm-btn-refresh" class="btn btn-sm btn-secondary">
+                        <i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Atualizar
+                    </button>
+                    <button id="adm-btn-config" class="btn btn-sm btn-secondary">
+                        <i data-lucide="settings" style="width:13px;height:13px"></i> Configurar
+                    </button>
+                    <a id="adm-btn-create" class="btn btn-sm btn-primary" href="#" data-tab="ad-launcher">
+                        <i data-lucide="plus" style="width:13px;height:13px"></i> Criar
+                    </a>
+                </div>
+            </div>
+            <p class="section-subtitle">Gerencie suas campanhas, conjuntos de anúncios e anúncios diretamente daqui.</p>
+
+            <!-- Status FB -->
+            <div class="adl-fb-connection-card" id="adm-fb-card" style="display:none">
+                <div class="adl-fb-connection-header">
+                    <i data-lucide="alert-circle" style="width:20px;height:20px;flex-shrink:0;color:var(--warning)"></i>
+                    <div class="adl-fb-connection-info">
+                        <strong>Facebook Ads não conectado</strong>
+                        <span class="adl-fb-status-text">Configure no menu superior para visualizar suas campanhas</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="adm-toolbar" id="adm-toolbar" style="display:none">
+                <div class="adm-tabs">
+                    <button class="adm-tab adm-tab-active" data-adm-level="campaign">
+                        <i data-lucide="megaphone" style="width:14px;height:14px"></i> Campanhas
+                    </button>
+                    <button class="adm-tab" data-adm-level="adset">
+                        <i data-lucide="users" style="width:14px;height:14px"></i> Conjuntos
+                    </button>
+                    <button class="adm-tab" data-adm-level="ad">
+                        <i data-lucide="image" style="width:14px;height:14px"></i> Anúncios
+                    </button>
+                    <button class="adm-tab" data-adm-level="audience">
+                        <i data-lucide="target" style="width:14px;height:14px"></i> Audiências
+                    </button>
+                </div>
+                <div class="adm-toolbar-right">
+                    <select id="adm-account-select" class="input input-sm" style="min-width:200px"></select>
+                    <input type="search" id="adm-search" class="input input-sm" placeholder="Buscar…" style="width:200px">
+                    <select id="adm-date-range" class="input input-sm">
+                        <option value="today">Hoje</option>
+                        <option value="yesterday">Ontem</option>
+                        <option value="last_3d">Últimos 3 dias</option>
+                        <option value="last_7d" selected>Últimos 7 dias</option>
+                        <option value="last_14d">Últimos 14 dias</option>
+                        <option value="last_30d">Últimos 30 dias</option>
+                        <option value="this_month">Este mês</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Bulk action bar -->
+            <div class="adm-bulk-bar" id="adm-bulk-bar" style="display:none">
+                <span id="adm-bulk-count">0 selecionados</span>
+                <button class="btn btn-sm btn-secondary" data-adm-bulk="activate">
+                    <i data-lucide="play" style="width:12px;height:12px"></i> Ativar
+                </button>
+                <button class="btn btn-sm btn-secondary" data-adm-bulk="pause">
+                    <i data-lucide="pause" style="width:12px;height:12px"></i> Pausar
+                </button>
+                <button class="btn btn-sm btn-secondary" data-adm-bulk="clear">Cancelar</button>
+            </div>
+
+            <!-- Table -->
+            <div class="adm-table-wrap" id="adm-table-wrap" style="display:none">
+                <table class="adm-table" id="adm-table">
+                    <thead id="adm-thead"></thead>
+                    <tbody id="adm-tbody"></tbody>
+                    <tfoot id="adm-tfoot"></tfoot>
+                </table>
+                <div id="adm-loading" class="adm-loading" style="display:none">
+                    <i data-lucide="loader-2" style="width:24px;height:24px;animation:spin 1s linear infinite"></i> Carregando…
+                </div>
+                <div id="adm-empty" class="adm-empty" style="display:none">
+                    <i data-lucide="inbox" style="width:32px;height:32px;color:var(--text-muted)"></i>
+                    <p>Nenhum resultado para os filtros atuais</p>
+                </div>
+            </div>
+
+            <!-- ====== Modal: Edit Campaign / Ad Set / Ad ====== -->
+            <div class="modal-overlay" id="adm-edit-modal" style="display:none">
+                <div class="modal-content adm-edit-modal-content">
+                    <div class="modal-header">
+                        <h3>
+                            <i data-lucide="sliders" style="width:18px;height:18px;color:var(--accent)"></i>
+                            <span id="adm-edit-title">Editar</span>
+                        </h3>
+                        <button class="modal-close" data-close-modal="adm-edit-modal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="adm-edit-body" style="padding:0;max-height:70vh;overflow-y:auto"></div>
+                    <div class="modal-footer">
+                        <a id="adm-edit-fb-link" href="#" target="_blank" class="btn btn-secondary btn-sm">
+                            <i data-lucide="external-link" style="width:13px;height:13px"></i> Abrir no Meta Ads Manager
+                        </a>
+                        <div style="flex:1"></div>
+                        <button class="btn btn-secondary" data-close-modal="adm-edit-modal">Cancelar</button>
+                        <button id="adm-edit-save" class="btn btn-primary">
+                            <i data-lucide="save" style="width:14px;height:14px"></i> Salvar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== AD HIERARCHY (Mapa de Ads) ==================== -->
+        <section id="tab-ad-hierarchy" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="git-fork" style="width:20px;height:20px;vertical-align:-3px"></i> Mapa de Ads</h2>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+                    <span class="adh-status-pill" id="adh-status"></span>
+                    <select id="adh-account" class="input input-sm" style="width:auto;min-width:200px;display:none" title="Conta de anúncio"></select>
+                    <button id="adh-btn-import-csv" class="btn btn-sm btn-primary" title="Importar relatório do FB Ads Manager (CSV/XLSX)">
+                        <i data-lucide="upload" style="width:13px;height:13px"></i> Importar CSV
+                    </button>
+                    <input type="file" id="adh-csv-input" accept=".csv,.xlsx,.xls" style="display:none">
+                    <button id="adh-btn-add-campaign" class="btn btn-sm btn-secondary" title="Adicionar campanha manualmente">
+                        <i data-lucide="plus" style="width:13px;height:13px"></i> Campanha
+                    </button>
+                    <button id="adh-btn-add-adset" class="btn btn-sm btn-secondary" title="Adicionar conjunto manualmente">
+                        <i data-lucide="plus" style="width:13px;height:13px"></i> Conjunto
+                    </button>
+                    <button id="adh-btn-add-ad" class="btn btn-sm btn-secondary" title="Adicionar criativo manualmente">
+                        <i data-lucide="plus" style="width:13px;height:13px"></i> Criativo
+                    </button>
+                    <button id="adh-btn-refresh" class="btn btn-sm btn-secondary" title="Atualizar (sincroniza com FB se conectado)">
+                        <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
+                    </button>
+                    <div class="adh-view-toggle" role="tablist">
+                        <button class="adh-view-tab active" data-view="columns" title="Visão em colunas">
+                            <i data-lucide="columns-3" style="width:13px;height:13px"></i> Colunas
+                        </button>
+                        <button class="adh-view-tab" data-view="board" title="Visão estilo Miro">
+                            <i data-lucide="layout-template" style="width:13px;height:13px"></i> Board
+                        </button>
+                    </div>
+                    <button id="adh-btn-clear" class="btn btn-sm btn-secondary" title="Limpar tudo" style="color:#ef4444">
+                        <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="section-subtitle">Visualize e conecte: <strong>Produto → Campanhas → Conjuntos → Criativos</strong>. Funciona com CSV do FB Ads Manager OU manualmente — não precisa conectar o Facebook.</p>
+
+            <div class="adh-canvas-wrap">
+                <svg class="adh-svg" id="adh-svg" preserveAspectRatio="none"></svg>
+                <div class="adh-columns">
+                    <div class="adh-column" data-level="product">
+                        <div class="adh-col-header">
+                            <i data-lucide="package" style="width:14px;height:14px"></i>
+                            <span>Produtos</span>
+                            <span class="adh-col-count" id="adh-count-product">0</span>
+                        </div>
+                        <div class="adh-col-search">
+                            <input type="text" class="input input-sm adh-filter" data-level="product" placeholder="Filtrar produtos…">
+                        </div>
+                        <div class="adh-col-list" id="adh-list-product"></div>
+                    </div>
+                    <div class="adh-column" data-level="campaign">
+                        <div class="adh-col-header">
+                            <i data-lucide="megaphone" style="width:14px;height:14px"></i>
+                            <span>Campanhas</span>
+                            <span class="adh-col-count" id="adh-count-campaign">0</span>
+                        </div>
+                        <div class="adh-col-search">
+                            <input type="text" class="input input-sm adh-filter" data-level="campaign" placeholder="Filtrar campanhas…">
+                        </div>
+                        <div class="adh-col-list" id="adh-list-campaign">
+                            <div class="adh-empty">Selecione um produto para ver campanhas.</div>
+                        </div>
+                    </div>
+                    <div class="adh-column" data-level="adset">
+                        <div class="adh-col-header">
+                            <i data-lucide="target" style="width:14px;height:14px"></i>
+                            <span>Conjuntos</span>
+                            <span class="adh-col-count" id="adh-count-adset">0</span>
+                        </div>
+                        <div class="adh-col-search">
+                            <input type="text" class="input input-sm adh-filter" data-level="adset" placeholder="Filtrar conjuntos…">
+                        </div>
+                        <div class="adh-col-list" id="adh-list-adset">
+                            <div class="adh-empty">Selecione uma campanha.</div>
+                        </div>
+                    </div>
+                    <div class="adh-column" data-level="ad">
+                        <div class="adh-col-header">
+                            <i data-lucide="image" style="width:14px;height:14px"></i>
+                            <span>Criativos</span>
+                            <span class="adh-col-count" id="adh-count-ad">0</span>
+                        </div>
+                        <div class="adh-col-search">
+                            <input type="text" class="input input-sm adh-filter" data-level="ad" placeholder="Filtrar criativos…">
+                        </div>
+                        <div class="adh-col-list" id="adh-list-ad">
+                            <div class="adh-empty">Selecione um conjunto.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adh-board-wrap" class="adh-board-wrap" style="display:none">
+                <div class="adh-board-toolbar">
+                    <button id="adh-board-zoom-in" class="btn btn-sm btn-secondary" title="Zoom in"><i data-lucide="zoom-in" style="width:13px;height:13px"></i></button>
+                    <button id="adh-board-zoom-out" class="btn btn-sm btn-secondary" title="Zoom out"><i data-lucide="zoom-out" style="width:13px;height:13px"></i></button>
+                    <button id="adh-board-reset" class="btn btn-sm btn-secondary" title="Resetar"><i data-lucide="maximize" style="width:13px;height:13px"></i> Ajustar</button>
+                    <span class="adh-board-zoom-label" id="adh-board-zoom-label">100%</span>
+                    <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">Segure e arraste para mover · Roda do mouse para zoom · Setinha ▼ para recolher</span>
+                </div>
+                <div id="adh-board-viewport" class="adh-board-viewport">
+                    <div id="adh-board-canvas" class="adh-board-canvas">
+                        <svg id="adh-board-svg" class="adh-board-svg"></svg>
+                        <div id="adh-board-nodes"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adh-detail-panel" class="adh-detail-panel" style="display:none"></div>
+
+            <!-- Modal: detalhe / editar item -->
+            <div id="adh-edit-modal" class="modal hidden">
+                <div class="modal-overlay" id="adh-edit-overlay"></div>
+                <div class="modal-content" style="max-width:520px">
+                    <div class="modal-header">
+                        <h3 id="adh-edit-title" style="margin:0">Editar item</h3>
+                        <button class="btn-close" id="adh-edit-close">&times;</button>
+                    </div>
+                    <div style="padding:1rem;display:flex;flex-direction:column;gap:0.85rem">
+                        <div class="form-group">
+                            <label>Nome</label>
+                            <input type="text" id="adh-edit-name" class="input">
+                        </div>
+                        <div class="form-group">
+                            <label>Status</label>
+                            <select id="adh-edit-status" class="input">
+                                <option value="ACTIVE">Ativo</option>
+                                <option value="PAUSED">Pausado</option>
+                                <option value="ARCHIVED">Arquivado</option>
+                                <option value="WITH_ISSUES">Com erros</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="adh-edit-validated-group">
+                            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+                                <input type="checkbox" id="adh-edit-validated" style="width:16px;height:16px">
+                                <span><i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px;color:#10b981"></i> <strong>Validado</strong> — esse item já foi aprovado/testado</span>
+                            </label>
+                        </div>
+                        <div class="form-group" id="adh-edit-image-group" style="display:none">
+                            <label>Imagem do criativo (opcional)</label>
+                            <div style="display:flex;gap:0.5rem;align-items:center">
+                                <img id="adh-edit-thumb" src="" alt="" style="display:none;width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+                                <button type="button" id="adh-edit-upload" class="btn btn-sm btn-secondary"><i data-lucide="upload" style="width:13px;height:13px"></i> Escolher imagem</button>
+                                <button type="button" id="adh-edit-clear-img" class="btn btn-sm btn-secondary" style="display:none;color:#ef4444"><i data-lucide="x" style="width:13px;height:13px"></i></button>
+                                <input type="file" id="adh-edit-image" accept="image/*" style="display:none">
+                            </div>
+                            <small style="color:var(--text-muted);font-size:0.7rem">Redimensionada para 320px de largura para economizar espaço.</small>
+                        </div>
+                    </div>
+                    <div style="padding:0.75rem 1rem;display:flex;gap:0.5rem;justify-content:flex-end;border-top:1px solid var(--border)">
+                        <button id="adh-edit-cancel" class="btn btn-secondary">Cancelar</button>
+                        <button id="adh-edit-save" class="btn btn-primary"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar</button>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -3915,6 +5069,24 @@
                         </div>
                         <div class="form-group"><label>Área/Local</label><input type="text" id="lab-area" class="input" placeholder="Ex: Banner principal, Bio Instagram"></div>
                     </div>
+                    <!-- Tráfego: teste de aumento de orçamento (escala) -->
+                    <div id="lab-budget-scale-section" class="lab-budget-scale" style="display:none">
+                        <div class="lab-budget-scale-title"><i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Teste de escala de orçamento</div>
+                        <p class="lab-budget-scale-hint">Aumentou o orçamento? Preencha quanto era antes e quanto ficou. A ferramenta calcula se o aumento de vendas/lucro compensou o aumento de gasto.</p>
+                        <div class="form-row">
+                            <div class="form-group"><label>Orçamento/dia ANTES</label><input type="text" id="lab-budget-before" class="input" inputmode="decimal" placeholder="Ex: 100"></div>
+                            <div class="form-group"><label>Orçamento/dia DEPOIS</label><input type="text" id="lab-budget-after" class="input" inputmode="decimal" placeholder="Ex: 200"></div>
+                            <div class="form-group" style="max-width:90px"><label>Moeda</label>
+                                <select id="lab-budget-currency" class="input">
+                                    <option value="BRL">BRL</option>
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
+                        </div>
+                        <small style="color:var(--text-muted);font-size:0.7rem">Opcional — se vazio, o gasto é puxado automaticamente do Facebook.</small>
+                    </div>
                     <div class="form-row">
                         <div class="form-group"><label>Produto</label><select id="lab-product" class="input"><option value="">Nenhum</option></select></div>
                         <div class="form-group"><label>Criativo</label><select id="lab-creative" class="input"><option value="">Nenhum</option></select></div>
@@ -4010,9 +5182,9 @@
                     </div>
                 </div>
 
-                <div class="form-row" style="justify-content:space-between">
+                <div class="form-row lab-form-actions" style="justify-content:space-between;position:sticky;bottom:0;background:var(--bg-secondary);padding:0.75rem;margin:0 -1rem -1rem;border-top:1px solid var(--border);z-index:5">
                     <button type="button" id="btn-lab-delete" class="btn btn-secondary" style="color:var(--red);display:none"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️ Excluir</button>
-                    <button type="submit" class="btn btn-primary" style="margin-left:auto"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar</button>
+                    <button type="submit" class="btn btn-primary" style="margin-left:auto"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar Teste</button>
                 </div>
             </form>
         </div>
@@ -4378,6 +5550,7 @@
                 <div class="fb-campaigns-filters">
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-active" checked> Ativas</label>
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-paused" checked> Pausadas</label>
+                    <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-archived" checked> Arquivadas/Inativas</label>
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-mapped"> Só marcadas</label>
                     <span class="fb-campaigns-count" id="fb-campaigns-count"></span>
                 </div>
@@ -4395,17 +5568,17 @@
     <!-- Project Modal -->
     <div id="modal-project" class="modal hidden">
         <div class="modal-overlay" onclick="closeModal('modal-project')"></div>
-        <div class="modal-content" style="max-width:560px;max-height:92vh;overflow-y:auto">
+        <div class="modal-content" style="max-width:760px;width:94vw;max-height:92vh;overflow-y:auto">
             <div class="modal-header">
                 <h3 id="modal-project-title">Novo Projeto</h3>
                 <button class="btn-close" onclick="closeModal('modal-project')">&times;</button>
             </div>
             <form id="form-project" style="padding:1rem;display:flex;flex-direction:column;gap:0.75rem" onsubmit="return false">
+                <div class="form-group">
+                    <label>Nome do Projeto *</label>
+                    <input type="text" name="name" class="input" required placeholder="Ex: Lançar produto X" style="width:100%">
+                </div>
                 <div class="form-row">
-                    <div class="form-group" style="flex:2">
-                        <label>Nome do Projeto *</label>
-                        <input type="text" name="name" class="input" required placeholder="Ex: Lançar produto X">
-                    </div>
                     <div class="form-group">
                         <label>Tipo</label>
                         <select name="type" class="input">
@@ -4633,9 +5806,15 @@
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
     <script src="js/facebook.js"></script>
+    <script src="js/copy-library.js"></script>
+    <script src="js/ad-launcher.js"></script>
+    <script src="js/ads-manager.js"></script>
+    <script src="js/ad-hierarchy.js"></script>
     <script src="js/googleads.js"></script>
     <script src="js/funnel.js"></script>
+    <script src="js/media-store.js"></script>
     <script src="js/creatives.js"></script>
+    <script src="js/pending-approvals.js"></script>
     <script src="js/ai-consultant.js"></script>
     <script src="js/pipeline.js"></script>
     <script src="js/swipe.js"></script>
@@ -4680,6 +5859,27 @@
     </div>
 
     <script src="js/supabase-sync.js"></script>
+
+    <!-- Lab Tests: chart modal -->
+    <div id="lab-chart-modal" class="modal hidden">
+        <div class="modal-overlay" id="lab-chart-modal-overlay"></div>
+        <div class="modal-content lab-chart-modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 id="lab-chart-title" style="margin:0">Resultado do teste</h3>
+                    <p id="lab-chart-subtitle" style="margin:4px 0 0;font-size:0.75rem;color:var(--text-muted)"></p>
+                </div>
+                <button class="btn-close" id="lab-chart-modal-close">&times;</button>
+            </div>
+            <div style="padding:1rem;height:420px;position:relative">
+                <canvas id="lab-chart-canvas"></canvas>
+            </div>
+            <div style="padding:0 1rem 1rem;font-size:0.7rem;color:var(--text-muted);display:flex;gap:1rem;flex-wrap:wrap">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(156,163,175,0.6);vertical-align:-1px"></span> Baseline (3 dias antes)</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#8b5cf6;vertical-align:-1px"></span> Durante teste</span>
+            </div>
+        </div>
+    </div>
 
     <!-- Google APIs loaded AFTER app scripts so gapiLoaded/gisLoaded exist -->
     <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>

@@ -154,6 +154,12 @@ const DashboardModule = {
         EventBus.on('productsChanged', () => this.refresh());
         EventBus.on('goalsChanged', () => this.refresh());
         EventBus.on('tabChanged', (tab) => { if (tab === 'dashboard') this.refresh(); });
+
+        // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
+        document.getElementById('btn-mdgx-ranking-all')?.addEventListener('click', () => {
+            this._mdgxShowAll = !this._mdgxShowAll;
+            this._renderMdgxRanking();
+        });
         EventBus.on('labTestsChanged', () => { this._renderDeadlines(); });
         EventBus.on('projectsChanged', () => { this._renderDeadlines(); });
 
@@ -473,6 +479,7 @@ const DashboardModule = {
         this._renderFunnelDiagnosis();
         this._renderChart();
         this._renderTopProducts();
+        this._renderMdgxRanking();
         this._renderMetricsCalendar();
         this._renderEcommerceDates();
         this._renderOpportunities();
@@ -631,11 +638,18 @@ const DashboardModule = {
         const actions = [];
         const today = todayISO();
 
-        // Tests to validate
+        // Tests to validate — agrupa por produto (evita repetir o mesmo)
+        const pendingTests = new Map();
         (AppState.diary || []).forEach(e => {
             if (e.isTest && e.testEndDate && e.testEndDate <= today && (!e.testValidation || e.testValidation === 'pendente')) {
-                actions.push({ icon: 'flask-conical', text: `Validar teste: ${getProductName(e.productId)}`, type: 'warning' });
+                const cur = pendingTests.get(e.productId) || { count: 0 };
+                cur.count++;
+                pendingTests.set(e.productId, cur);
             }
+        });
+        pendingTests.forEach((info, productId) => {
+            const suffix = info.count > 1 ? ` (${info.count})` : '';
+            actions.push({ icon: 'flask-conical', text: `Validar teste: ${getProductName(productId)}${suffix}`, type: 'warning' });
         });
 
         // ROAS dropping products (current period ROAS < 1.5)
@@ -739,7 +753,20 @@ const DashboardModule = {
         });
 
         if (alerts.length === 0) {
-            container.innerHTML = '<div class="dash-empty">Nenhum produto em risco</div>';
+            const totalEntries = entries.length;
+            const totalBudget = entries.reduce((s, e) => s + (parseFloat(e.budget) || 0), 0);
+            let why;
+            if (totalEntries === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalBudget === 0) {
+                why = 'Entradas sem budget — preencha o gasto em ads no Diário para detectar produtos em risco.';
+            } else {
+                why = '✓ Nenhum produto em risco — tudo dentro dos limites configurados.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
             return;
         }
         container.innerHTML = alerts.slice(0, 8).map(a =>
@@ -974,6 +1001,181 @@ const DashboardModule = {
     },
 
     // Row 3 Right: Top 5 products
+    async _renderMdgxRanking() {
+        const container = document.getElementById('dash-mdgx-ranking-list');
+        const totalEl = document.getElementById('dash-mdgx-ranking-total');
+        if (!container) return;
+
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured?.();
+        const products = (AppState.allProducts || AppState.products || []);
+        const shopifyProds = (hasShopify && ShopifyModule.getShopifyProducts) ? ShopifyModule.getShopifyProducts() : [];
+
+        // Pre-fetch Shopify products list (needed for thumbnails — even when ranking uses orders directly)
+        if (hasShopify && !shopifyProds.length && !this._mdgxFetchingShopify) {
+            this._mdgxFetchingShopify = true;
+            ShopifyModule.fetchShopifyProducts?.().then(() => {
+                this._mdgxFetchingShopify = false;
+                this._renderMdgxRanking();
+            }).catch(() => { this._mdgxFetchingShopify = false; });
+        }
+
+        // ── Primary source: Shopify orders (works even if local products aren't linked) ──
+        let salesByShopifyPid = {}; // { shopify_pid: { sales, revenue, title, currency } }
+        if (hasShopify && this._startDate && this._endDate) {
+            container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
+            try {
+                const orders = await ShopifyModule.fetchOrders(this._startDate, this._endDate, { silent: true });
+                for (const o of (orders || [])) {
+                    const cur = o.currency || ShopifyModule.getConfig?.()?.shopCurrency || 'BRL';
+                    for (const li of (o.line_items || [])) {
+                        const pid = String(li.product_id || '');
+                        if (!pid) continue;
+                        const qty = li.quantity || 0;
+                        const unitPrice = parseFloat(li.price) || 0;
+                        if (!salesByShopifyPid[pid]) salesByShopifyPid[pid] = { sales: 0, revenue: 0, title: li.title || pid, currency: cur };
+                        salesByShopifyPid[pid].sales += qty;
+                        salesByShopifyPid[pid].revenue += unitPrice * qty;
+                    }
+                }
+            } catch (e) {
+                console.warn('[Dashboard mdgx ranking] fetchOrders failed:', e);
+            }
+        }
+
+        // ── Fallback: Diary entries grouped by local product ──
+        const entries = this._getPeriodEntries();
+        const byLocalProduct = this._groupByProduct(entries);
+
+        // Map Shopify pid → local product (when linked)
+        const localFromShopify = (shopifyPid) => {
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.getLink) return null;
+            for (const p of products) {
+                if (String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) return p;
+            }
+            return null;
+        };
+
+        // Build ranked items
+        const items = [];
+        const seenShopify = new Set();
+
+        // 1) From Shopify orders (preferred — has thumbs + real prices)
+        for (const [pid, info] of Object.entries(salesByShopifyPid)) {
+            if (info.sales <= 0) continue;
+            seenShopify.add(pid);
+            const localProd = localFromShopify(pid);
+            const sp = shopifyProds.find(p => String(p.id) === String(pid));
+            items.push({
+                id: pid,
+                name: localProd?.name || sp?.title || info.title,
+                sales: info.sales,
+                price: info.sales > 0 ? info.revenue / info.sales : 0,
+                currency: info.currency,
+                thumb: sp?.image || (localProd && Array.isArray(localProd.images) && localProd.images[0]?.src) || '',
+            });
+        }
+
+        // 2) From diary (for products without Shopify orders, OR if Shopify not connected)
+        for (const p of products) {
+            const linkedShopifyPid = ShopifyModule?.getLink?.(p.id);
+            if (linkedShopifyPid && seenShopify.has(String(linkedShopifyPid))) continue;
+            const dEntries = byLocalProduct[p.id] || [];
+            const diarySales = dEntries.reduce((s, e) => s + (parseFloat(e.sales) || 0), 0);
+            if (diarySales <= 0) continue;
+            const sp = linkedShopifyPid ? shopifyProds.find(x => String(x.id) === String(linkedShopifyPid)) : null;
+            items.push({
+                id: p.id,
+                name: p.name || p.id,
+                sales: diarySales,
+                price: parseFloat(p.price || 0),
+                currency: p.priceCurrency || 'BRL',
+                thumb: sp?.image || (Array.isArray(p.images) && p.images[0]?.src) || '',
+            });
+        }
+
+        const ranked = items.sort((a, b) => b.sales - a.sales);
+
+        // Total sales sum (the big number)
+        const totalSales = ranked.reduce((s, p) => s + p.sales, 0);
+        if (totalEl) totalEl.textContent = totalSales.toLocaleString('pt-BR');
+
+        const total = ranked.length;
+        if (total === 0) {
+            container.innerHTML = '<div class="mdgx-ranking-empty">Sem vendas no período. Conecte o Shopify ou registre vendas no Diário.</div>';
+            return;
+        }
+        const visibleCount = this._mdgxShowAll ? total : Math.min(4, total);
+        const top4 = ranked.slice(0, visibleCount);
+
+        const fmtMoney = (v, cur) => {
+            const sym = { BRL:'R$', USD:'$', EUR:'€', GBP:'£' }[cur] || (cur + ' ');
+            return `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+
+        // Helper: find local product for badge lookup
+        const localProductFor = (id) => {
+            // Try local product by id, then via Shopify link
+            let lp = products.find(x => x.id === id);
+            if (lp) return lp;
+            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                lp = products.find(x => String(ShopifyModule.getLink(x.id)) === String(id));
+                if (lp) return lp;
+            }
+            return null;
+        };
+
+        container.innerHTML = top4.map(p => {
+            const lp = localProductFor(p.id);
+            const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
+            return `
+            <div class="mdgx-ranking-item" data-id="${escapeHtml(p.id)}">
+                ${p.thumb
+                    ? `<img class="mdgx-ranking-thumb" src="${escapeHtml(p.thumb)}" alt="">`
+                    : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
+                }
+                <div class="mdgx-ranking-info">
+                    <div class="mdgx-ranking-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}${badges}</div>
+                    <div class="mdgx-ranking-meta">
+                        <span class="mdgx-ranking-price">${fmtMoney(p.price, p.currency)}</span>
+                        <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+
+        // Inline expand/collapse footer (no page leave)
+        if (total > 4) {
+            const expandBtn = document.createElement('button');
+            expandBtn.type = 'button';
+            expandBtn.className = 'mdgx-ranking-expand';
+            if (this._mdgxShowAll) {
+                expandBtn.innerHTML = '<i data-lucide="chevron-up" style="width:13px;height:13px"></i> Mostrar menos';
+                expandBtn.addEventListener('click', () => {
+                    this._mdgxShowAll = false;
+                    this._renderMdgxRanking();
+                    container.scrollIntoView({ behavior:'smooth', block:'center' });
+                });
+            } else {
+                const hidden = total - visibleCount;
+                expandBtn.innerHTML = `<i data-lucide="chevron-down" style="width:13px;height:13px"></i> Ver mais ${hidden} produto${hidden !== 1 ? 's' : ''}`;
+                expandBtn.addEventListener('click', () => {
+                    this._mdgxShowAll = true;
+                    this._renderMdgxRanking();
+                });
+            }
+            container.appendChild(expandBtn);
+        }
+
+        // Click item → opens products tab (single product detail not implemented, so just go to list)
+        container.querySelectorAll('.mdgx-ranking-item').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('[data-tab="products"]').forEach(b => b.click());
+            });
+        });
+
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
     _renderTopProducts() {
         const container = document.getElementById('dash-top-products');
         if (!container) return;
@@ -1403,10 +1605,28 @@ const DashboardModule = {
             }
         });
 
-        container.innerHTML = opps.length > 0
-            ? opps.slice(0, 6).map(o => `<div class="dash-opp-item"><i data-lucide="lightbulb" style="width:13px;height:13px;color:var(--yellow)"></i> ${o.text}</div>`).join('')
-            : '<div class="dash-empty">Nenhuma oportunidade identificada</div>';
+        if (opps.length > 0) {
+            container.innerHTML = opps.slice(0, 6).map(o => `<div class="dash-opp-item"><i data-lucide="lightbulb" style="width:13px;height:13px;color:var(--yellow)"></i> ${o.text}</div>`).join('');
+        } else {
+            // Detect why it's empty
+            const totalEntries = entries.length;
+            const totalImpressions = entries.reduce((s, e) => s + (parseFloat(e.impressions) || 0), 0);
+            const totalPageViews = entries.reduce((s, e) => s + (parseFloat(e.pageViews) || 0), 0);
+            let why = '';
+            if (totalEntries === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalImpressions === 0 && totalPageViews === 0) {
+                why = 'Entradas do Diário sem impressões/pageviews — importe do Facebook ou preencha manualmente para detectar gargalos.';
+            } else {
+                why = 'Tudo dentro do esperado — nenhum gargalo detectado.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        // Wire links
+        container.querySelectorAll('[data-tab]').forEach(a => {
+            a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+        });
     },
 
     // Portfolio health by pipeline stage
@@ -1673,9 +1893,22 @@ const DashboardModule = {
 
         events.sort((a, b) => a.date.localeCompare(b.date));
 
-        container.innerHTML = events.length > 0
-            ? events.map(e => `<div class="dash-cal-item"><span class="dash-cal-date">${formatDate(e.date)}</span><i data-lucide="${e.icon}" style="width:12px;height:12px;color:${e.color}"></i><span>${e.text}</span></div>`).join('')
-            : '<div class="dash-empty">Nenhum prazo esta semana</div>';
+        if (events.length > 0) {
+            container.innerHTML = events.map(e => `<div class="dash-cal-item"><span class="dash-cal-date">${formatDate(e.date)}</span><i data-lucide="${e.icon}" style="width:12px;height:12px;color:${e.color}"></i><span>${e.text}</span></div>`).join('');
+        } else {
+            const hasTests = (typeof LabTestsModule !== 'undefined' && LabTestsModule._tests?.length > 0);
+            const hasProjects = (typeof PipelineModule !== 'undefined' && (PipelineModule.cards || []).length > 0);
+            let why;
+            if (!hasTests && !hasProjects) {
+                why = 'Nenhum teste ou projeto cadastrado. <a href="#" data-tab="laboratorio" style="color:#8b5cf6">Criar teste →</a>';
+            } else {
+                why = 'Nenhum prazo esta semana. <a href="#" data-tab="laboratorio" style="color:#8b5cf6">Ver Laboratório →</a>';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -1691,9 +1924,23 @@ const DashboardModule = {
             return { name: getProductName(pid), budget: agg.budget };
         }).sort((a, b) => b.budget - a.budget).slice(0, 5);
 
-        container.innerHTML = ranked.length > 0
-            ? ranked.map((p, i) => `<div class="dash-rank-item"><span class="dash-rank-pos">${i+1}</span><span class="dash-rank-name">${p.name}</span><span class="dash-rank-value">${this._fmtCurrency(p.budget)}</span></div>`).join('')
-            : '<div class="dash-empty">Sem dados</div>';
+        if (ranked.length > 0) {
+            container.innerHTML = ranked.map((p, i) => `<div class="dash-rank-item"><span class="dash-rank-pos">${i+1}</span><span class="dash-rank-name">${p.name}</span><span class="dash-rank-value">${this._fmtCurrency(p.budget)}</span></div>`).join('');
+        } else {
+            const totalBudget = entries.reduce((s, e) => s + (parseFloat(e.budget) || 0), 0);
+            let why;
+            if (entries.length === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalBudget === 0) {
+                why = 'Entradas do Diário sem campo "Budget" preenchido. <a href="#" data-tab="diary" style="color:#8b5cf6">Preencher gastos →</a>';
+            } else {
+                why = 'Sem dados.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
+        }
     },
 
     // Helper: group entries by productId
@@ -2128,7 +2375,22 @@ const DashboardModule = {
         // a "R --" placeholder).
         if (metric === 'cpaReal' || metric === 'salesReal' || metric === 'conversionCombined') {
             const pid = this._calProduct || 'todos';
-            const real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            let real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            // Fallback: if live Shopify map has nothing (products not linked, or not fetched yet),
+            // use sales synced into the Diary (salesSource:'shopify' or shopifySales field).
+            if (!real || real.sales === 0) {
+                const shopEntries = dayEntries.filter(e =>
+                    e.salesSource === 'shopify' || (Number(e.shopifySales) || 0) > 0
+                );
+                if (shopEntries.length) {
+                    const s = shopEntries.reduce((a, e) => a + (Number(e.shopifySales ?? e.sales) || 0), 0);
+                    const r = shopEntries.reduce((a, e) => {
+                        const rev = Number(e.shopifyRevenue ?? e.revenue) || 0;
+                        return a + (typeof convertToUSD === 'function' ? convertToUSD(rev, e.shopifyRevenueCurrency || e.revenueCurrency || 'BRL') : rev);
+                    }, 0);
+                    real = { sales: s, revenue: r };
+                }
+            }
             const prefix = this._currency === 'BRL' ? 'R$' : '$';
 
             const renderCombined = (metaVal, realVal, fmt, lowerIsBetter) => {
@@ -2168,7 +2430,10 @@ const DashboardModule = {
 
             if (metric === 'conversionCombined') {
                 const pv = agg.pageViews;
-                const metaConv = pv > 0 ? (agg.sales / pv) * 100 : 0;
+                // Meta (Conversão) = vendas reportadas pelo FB ÷ visitantes (usa fbSales se houver)
+                const fbSalesSum = dayEntries.reduce((a, e) => a + (Number(e.fbSales ?? (e.salesSource === 'shopify' ? 0 : e.sales)) || 0), 0);
+                const metaConv = pv > 0 ? (fbSalesSum / pv) * 100 : 0;
+                // Real = vendas reais Shopify ÷ visitantes
                 const realConv = pv > 0 ? (real.sales / pv) * 100 : 0;
                 return renderCombined(metaConv, realConv, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
             }

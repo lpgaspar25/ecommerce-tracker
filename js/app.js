@@ -3,6 +3,65 @@
    Multi-store support
    =========================== */
 
+// ---- Storage Manager: frees space when localStorage is full ----
+// Purges only REGENERABLE caches (rebuilt from network/derived data) in priority order.
+const StorageManager = {
+    // Keys safe to drop — they get rebuilt on demand. Heaviest / most-disposable first.
+    _purgeable: [
+        'etracker_shopify_orders_day_cache',
+        'etracker_shopify_orders_cache',
+        'etracker_creative_metrics',
+        'etracker_ai_generations',
+        'etracker_adl_uploads',
+        'etracker_usage_data',
+        'etracker_recent_edits',
+        'etracker_funnel_snapshots',
+        'etracker_importer_sessions',
+    ],
+    _sizeOf(key) {
+        try { const v = localStorage.getItem(key); return v ? v.length : 0; } catch { return 0; }
+    },
+    usageBytes() {
+        let total = 0;
+        try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); total += k.length + this._sizeOf(k); } } catch {}
+        return total * 2; // UTF-16 ~2 bytes/char
+    },
+    // Free space by removing purgeable caches + any *_backup* keys. Returns chars freed.
+    reclaim() {
+        let freed = 0;
+        // 1) Old backup snapshots (any key containing "backup")
+        try {
+            const backups = [];
+            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /backup/i.test(k)) backups.push(k); }
+            backups.forEach(k => { freed += this._sizeOf(k); try { localStorage.removeItem(k); } catch {} });
+        } catch {}
+        // 2) Regenerable caches
+        this._purgeable.forEach(k => {
+            const sz = this._sizeOf(k);
+            if (sz > 0) { freed += sz; try { localStorage.removeItem(k); } catch {} }
+        });
+        return freed;
+    },
+    // Run fn (a localStorage write). On QuotaExceeded, reclaim space and retry once.
+    withReclaim(fn, label) {
+        try { fn(); return true; }
+        catch (e) {
+            const freed = this.reclaim();
+            try {
+                fn();
+                if (freed > 0 && typeof showToast === 'function') {
+                    showToast(`Espaço liberado (${Math.round(freed/1024)} KB de cache) — salvo com sucesso.`, 'success');
+                }
+                return true;
+            } catch (e2) {
+                console.error('[StorageManager] still full after reclaim', label || '', e2);
+                return false;
+            }
+        }
+    },
+};
+window.StorageManager = StorageManager;
+
 // ---- Event Bus ----
 const EventBus = {
     _listeners: {},
@@ -105,7 +164,14 @@ function normalizeAllDataStoreIds() {
     const fallbackStoreId = AppState.stores[0]?.id || '';
     if (!fallbackStoreId) return;
 
-    AppState.allProducts = (AppState.allProducts || []).map(item => ({
+    // Defense in depth: apply tombstones to every load path so deleted products never come back
+    AppState.allProducts = (AppState.allProducts || []).filter(p => {
+        if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
+            return !ProductsModule.isTombstoned(p);
+        }
+        return true;
+    });
+    AppState.allProducts = AppState.allProducts.map(item => ({
         ...item,
         storeId: item.storeId || fallbackStoreId,
         language: item.language || item.country || 'Ingles'
@@ -798,6 +864,107 @@ function escapeHtml(raw) {
         .replace(/'/g, '&#039;');
 }
 
+// Real brand SVG icons (small, inline, 14px) so badges show the official logo
+const BRAND_ICONS = {
+    facebook: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>',
+    google: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.16c-.27 1.4-1.07 2.59-2.27 3.39v2.77h3.66c2.14-1.97 3.94-4.89 3.94-8.4z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.66-2.77c-1.02.69-2.32 1.1-3.94 1.1-3.03 0-5.6-2.05-6.52-4.82H1.83v3.03C3.81 21.45 7.6 24 12 24z"/><path fill="#FBBC05" d="M5.48 14.6c-.27-.69-.42-1.42-.42-2.16 0-.74.15-1.47.42-2.16V7.25H1.83C1.06 8.6.62 10.21.62 12c0 1.79.44 3.4 1.21 4.75l3.65-3.15z"/><path fill="#EA4335" d="M12 5.02c1.77 0 3.34.61 4.59 1.79l3.27-3.21C17.96 1.79 15.24.62 12 .62 7.6.62 3.81 3.17 1.83 6.79l3.65 3.03C6.4 7.07 8.97 5.02 12 5.02z"/></svg>',
+    tiktok: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25F4EE" d="M16.86 6.69V5.5c-.55-.08-1.11-.13-1.66-.16v1.27c.55.04 1.1.08 1.66.08z"/><path fill="#FE2C55" d="M14.2 9.4v8.34a3.62 3.62 0 0 1-5.85 2.85 3.62 3.62 0 0 0 6.13-2.6V9.65c-.1-.05-.2-.1-.28-.25z"/><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.3 0 .59.05.88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.81 20.4a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.85-.4z"/></svg>',
+    instagram: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#feda75"/><stop offset="25%" stop-color="#fa7e1e"/><stop offset="50%" stop-color="#d62976"/><stop offset="75%" stop-color="#962fbf"/><stop offset="100%" stop-color="#4f5bd5"/></linearGradient></defs><path fill="url(#ig-grad)" d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.43.36 1.07.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.43.16-1.07.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.71 3.71 0 0 1-1.38-.9 3.71 3.71 0 0 1-.9-1.38c-.16-.43-.36-1.07-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38a3.71 3.71 0 0 1 1.38-.9c.43-.16 1.07-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63a5.87 5.87 0 0 0-2.13 1.38A5.87 5.87 0 0 0 .63 4.14C.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.28.26 2.15.56 2.91.31.79.74 1.46 1.38 2.1.64.64 1.31 1.07 2.1 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.28-.06 2.15-.26 2.91-.56a5.87 5.87 0 0 0 2.1-1.38 5.87 5.87 0 0 0 1.38-2.1c.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.28-.26-2.15-.56-2.91a5.87 5.87 0 0 0-1.38-2.1A5.87 5.87 0 0 0 19.86.63C19.1.33 18.22.13 16.95.07 15.67.01 15.26 0 12 0Z"/><path fill="url(#ig-grad)" d="M12 5.84a6.16 6.16 0 1 0 0 12.32 6.16 6.16 0 0 0 0-12.32M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8"/><circle fill="url(#ig-grad)" cx="18.41" cy="5.59" r="1.44"/></svg>',
+    youtube: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#FF0000" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>',
+    pinterest: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#BD081C" d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.347-.09.375-.293 1.199-.334 1.363-.053.225-.172.273-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.357-.629-2.748-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12.017 24c6.624 0 11.99-5.367 11.99-11.987C24.007 5.367 18.641.001 12.017.001z"/></svg>',
+};
+
+// Returns short label + brand icon HTML for a platform code
+function platformBadgeHtml(code) {
+    const map = {
+        facebook:  { lbl:'Facebook', brand:'facebook' },
+        google:    { lbl:'Google',   brand:'google' },
+        tiktok:    { lbl:'TikTok',   brand:'tiktok' },
+        instagram: { lbl:'Instagram', brand:'instagram' },
+        youtube:   { lbl:'YouTube',   brand:'youtube' },
+        pinterest: { lbl:'Pinterest', brand:'pinterest' },
+    };
+    const m = map[String(code).toLowerCase()];
+    if (!m) return '';
+    const icon = BRAND_ICONS[m.brand] || '';
+    return `<span class="prod-platform-badge" title="${m.lbl}">${icon}${m.lbl}</span>`;
+}
+
+// Returns short label + flag for a language code
+function langBadgeHtml(code) {
+    const map = {
+        'Ingles':           { lbl:'EN',  flag:'🇬🇧' },
+        'Ingles Americano': { lbl:'EN-US', flag:'🇺🇸' },
+        'Portugues':        { lbl:'PT',  flag:'🇧🇷' },
+        'Espanhol':         { lbl:'ES',  flag:'🇪🇸' },
+        'Frances':          { lbl:'FR',  flag:'🇫🇷' },
+        'Alemao':           { lbl:'DE',  flag:'🇩🇪' },
+        'Italiano':         { lbl:'IT',  flag:'🇮🇹' },
+        'Holandes':         { lbl:'NL',  flag:'🇳🇱' },
+        'Polones':          { lbl:'PL',  flag:'🇵🇱' },
+        'Checol':           { lbl:'CZ',  flag:'🇨🇿' },
+        'Dinamarques':      { lbl:'DK',  flag:'🇩🇰' },
+        'Sueco':            { lbl:'SE',  flag:'🇸🇪' },
+        'Noruegues':        { lbl:'NO',  flag:'🇳🇴' },
+    };
+    const m = map[code] || { lbl: code, flag: '' };
+    return `<span class="prod-lang-badge" title="${code}">${m.flag} ${m.lbl}</span>`;
+}
+
+// Resolve FB ad account ID → human-readable name:
+// 1. Per-product label (manual)
+// 2. Connected FacebookAds account name
+// 3. Shortened ID as fallback
+function fbAdAccountName(id, labels) {
+    const idStr = String(id);
+    if (labels && typeof labels === 'object' && labels[idStr]) return labels[idStr];
+    try {
+        const accounts = (typeof FacebookAds !== 'undefined' && FacebookAds.config?.adAccounts) || [];
+        const found = accounts.find(a => String(a.id) === idStr);
+        if (found?.name) return found.name;
+    } catch {}
+    return idStr.length > 8 ? idStr.slice(0, 6) + '…' + idStr.slice(-3) : idStr;
+}
+
+// Resolve Google ad account ID → label or ID itself
+function googleAdAccountName(id, labels) {
+    const idStr = String(id);
+    if (labels && typeof labels === 'object' && labels[idStr]) return labels[idStr];
+    return idStr;
+}
+
+// One badge per ad account — shows the account NAME with real brand icon
+function adAccountBadgeHtml(platform, id, fullId) {
+    const map = {
+        fb:     { brand:'facebook', cls:'prod-account-badge prod-acc-fb',     hint:'Conta Facebook Ads' },
+        google: { brand:'google',   cls:'prod-account-badge prod-acc-google', hint:'Conta Google Ads' },
+    };
+    const m = map[platform];
+    if (!m) return '';
+    const title = fullId ? `${m.hint}: ${fullId}` : m.hint;
+    const icon = BRAND_ICONS[m.brand] || '';
+    return `<span class="${m.cls}" title="${escapeHtml(title)}">${icon}${escapeHtml(id)}</span>`;
+}
+
+// Returns the combined platform + language + ad-account badges for a product
+function renderProductMetaBadges(product) {
+    if (!product) return '';
+    const platforms = Array.isArray(product.platforms) ? product.platforms : [];
+    const languages = Array.isArray(product.languages)
+        ? product.languages
+        : (product.language ? [product.language] : []);
+    const fbAccs = Array.isArray(product.fbAdAccountIds) ? product.fbAdAccountIds : [];
+    const gAccs  = Array.isArray(product.googleAdAccountIds) ? product.googleAdAccountIds : [];
+    if (!platforms.length && !languages.length && !fbAccs.length && !gAccs.length) return '';
+    const platHtml = platforms.map(platformBadgeHtml).join('');
+    const langHtml = languages.map(langBadgeHtml).join('');
+    const fbLabels = product.fbAdAccountLabels || {};
+    const gLabels  = product.googleAdAccountLabels || {};
+    const fbHtml = fbAccs.map(id => adAccountBadgeHtml('fb', fbAdAccountName(id, fbLabels), id)).join('');
+    const gHtml  = gAccs.map(id => adAccountBadgeHtml('google', googleAdAccountName(id, gLabels), id)).join('');
+    return `<span class="prod-meta-badges">${platHtml}${langHtml}${fbHtml}${gHtml}</span>`;
+}
+
 function formatCurrency(value, currency = 'USD') {
     if (value == null || isNaN(value)) return '--';
     const opts = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
@@ -928,9 +1095,13 @@ function getProductName(id) {
 
 // ---- Populate product dropdowns ----
 function populateProductDropdowns() {
+    // diary-product-filter virou multi-select (custom widget); ele é renderizado por DiaryModule
+    if (window.DiaryModule?._renderProductMultiSelect) {
+        try { window.DiaryModule._renderProductMultiSelect(); } catch {}
+    }
     const selectors = [
         'goal-product', 'entry-product', 'calc-product',
-        'dash-product-select', 'diary-product-filter',
+        'dash-product-select',
         'funnel-product', 'creative-product-filter'
     ];
 

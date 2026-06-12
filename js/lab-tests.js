@@ -6,6 +6,7 @@
 const LabTestsModule = {
     _storageKey: 'etracker_lab_tests',
     _tests: [],
+    _selectedIds: new Set(),
     _shopifyByDate: {}, // "YYYY-MM-DD" → { sales, revenue, currency }
     _shopifyMonthKey: null,
 
@@ -75,15 +76,386 @@ const LabTestsModule = {
 
         const merged = this._mergeTests(onDisk, this._tests);
         this._tests = merged;
-        localStorage.setItem(this._storageKey, JSON.stringify(merged));
-        this._writeBackup(merged);
+        try {
+            localStorage.setItem(this._storageKey, JSON.stringify(merged));
+        } catch (err) {
+            // QuotaExceededError ou similar — tenta liberar backups e re-salvar
+            console.warn('[LabTests] persist falhou, tentando limpar backups:', err);
+            this._purgeOldBackups();
+            try {
+                localStorage.setItem(this._storageKey, JSON.stringify(merged));
+            } catch (err2) {
+                console.error('[LabTests] persist falhou de novo:', err2);
+                if (typeof showToast === 'function') {
+                    showToast('Erro ao salvar: armazenamento cheio. Exporte ou apague itens antigos.', 'error');
+                }
+                throw err2;
+            }
+        }
+        try { this._writeBackup(merged); } catch {}
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+    },
+
+    // Apaga TODOS os backups antigos para liberar espaço
+    _purgeOldBackups() {
+        const prefix = `${this._storageKey}_backup_`;
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(prefix)) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
     },
 
     // Used for deletions: write in-memory directly to disk, no merge.
     _persistOverwrite() {
-        localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
-        this._writeBackup(this._tests);
+        try {
+            localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
+        } catch (err) {
+            this._purgeOldBackups();
+            try {
+                localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
+            } catch (err2) {
+                if (typeof showToast === 'function') {
+                    showToast('Erro ao salvar: armazenamento cheio.', 'error');
+                }
+                throw err2;
+            }
+        }
+        try { this._writeBackup(this._tests); } catch {}
+    },
+
+    // ===== Shopify Result Tracker =====
+    // Auto-pulls Shopify revenue from baseline window (3 days before) and during the test,
+    // returns { baselineRevenue, duringRevenue, deltaPct, deltaAbs, verdict, currency, days, ... }
+    async computeShopifyResult(testId) {
+        const test = this._tests.find(t => t.id === testId);
+        if (!test) throw new Error('Teste não encontrado');
+        if (!test.dateStart || !test.dateEnd) throw new Error('Datas do teste vazias');
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            throw new Error('Shopify não conectado');
+        }
+        const start = new Date(test.dateStart);
+        const end = new Date(test.dateEnd);
+        // Janela de baseline: 3 dias ANTES (sem incluir o dia do início)
+        const baselineEnd = new Date(start);
+        baselineEnd.setDate(baselineEnd.getDate() - 1);
+        const baselineStart = new Date(baselineEnd);
+        baselineStart.setDate(baselineStart.getDate() - 2); // total 3 dias
+
+        const fmt = (d) => d.toISOString().slice(0, 10);
+        const baselineFrom = fmt(baselineStart);
+        const baselineTo = fmt(baselineEnd);
+        const duringFrom = fmt(start);
+        const duringTo = fmt(end);
+
+        // Decide se filtra por produto (teste de produto) ou conta total (teste de loja)
+        const isProductTest = !!test.productId && test.category !== 'loja';
+
+        let baselineRevenue = 0, baselineSales = 0;
+        let duringRevenue = 0, duringSales = 0;
+        let currency = (ShopifyModule.getConfig?.()?.shopCurrency) || 'BRL';
+
+        if (isProductTest) {
+            // Filtra por produto específico
+            const baselineMap = await ShopifyModule.getRealSalesMapByDate(baselineFrom, baselineTo);
+            const duringMap = await ShopifyModule.getRealSalesMapByDate(duringFrom, duringTo);
+            Object.entries(baselineMap).forEach(([k, v]) => {
+                if (k.endsWith('|' + test.productId)) {
+                    baselineRevenue += v.revenue || 0;
+                    baselineSales += v.sales || 0;
+                    if (v.currency) currency = v.currency;
+                }
+            });
+            Object.entries(duringMap).forEach(([k, v]) => {
+                if (k.endsWith('|' + test.productId)) {
+                    duringRevenue += v.revenue || 0;
+                    duringSales += v.sales || 0;
+                    if (v.currency) currency = v.currency;
+                }
+            });
+        } else {
+            // Loja inteira
+            const baselineMap = await ShopifyModule.getSalesMapByDate(baselineFrom, baselineTo);
+            const duringMap = await ShopifyModule.getSalesMapByDate(duringFrom, duringTo);
+            Object.values(baselineMap).forEach(v => {
+                baselineRevenue += v.revenue || 0;
+                baselineSales += v.sales || 0;
+                if (v.currency) currency = v.currency;
+            });
+            Object.values(duringMap).forEach(v => {
+                duringRevenue += v.revenue || 0;
+                duringSales += v.sales || 0;
+                if (v.currency) currency = v.currency;
+            });
+        }
+
+        // Normaliza por nº de dias
+        const baselineDays = 3;
+        const duringDays = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
+        const baselinePerDay = baselineRevenue / baselineDays;
+        const duringPerDay = duringRevenue / duringDays;
+        const deltaAbs = duringPerDay - baselinePerDay;
+        const deltaPct = baselinePerDay > 0 ? ((duringPerDay - baselinePerDay) / baselinePerDay) * 100 : 0;
+
+        // ───── Gasto em ads + visitas (clicks) (Facebook) ─────
+        let baselineSpend = 0, duringSpend = 0;
+        let baselineSpendDaily = {}, duringSpendDaily = {};
+        let baselineClicks = 0, duringClicks = 0;
+        let baselineClicksDaily = {}, duringClicksDaily = {};
+        let baselineImpr = 0, duringImpr = 0;
+        let fbHasData = false;
+        try {
+            if (typeof FacebookAds !== 'undefined' && FacebookAds.isConnected && FacebookAds.isConnected()) {
+                const accountId = FacebookAds.config.activeAdAccountId;
+                if (isProductTest) {
+                    const dailyB = await FacebookAds.fetchDailyInsights(test.productId, { since: baselineFrom, until: baselineTo });
+                    const dailyD = await FacebookAds.fetchDailyInsights(test.productId, { since: duringFrom, until: duringTo });
+                    (dailyB || []).forEach(r => {
+                        baselineSpend += r.spend || 0;
+                        baselineSpendDaily[r.date] = r.spend || 0;
+                        baselineClicks += r.clicks || 0;
+                        baselineClicksDaily[r.date] = r.clicks || 0;
+                        baselineImpr += r.impressions || 0;
+                    });
+                    (dailyD || []).forEach(r => {
+                        duringSpend += r.spend || 0;
+                        duringSpendDaily[r.date] = r.spend || 0;
+                        duringClicks += r.clicks || 0;
+                        duringClicksDaily[r.date] = r.clicks || 0;
+                        duringImpr += r.impressions || 0;
+                    });
+                    fbHasData = ((dailyB || []).length + (dailyD || []).length) > 0;
+                } else {
+                    const fetchAllInsights = async (since, until) => {
+                        const params = new URLSearchParams({
+                            access_token: FacebookAds.config.accessToken,
+                            fields: 'date_start,spend,inline_link_clicks,clicks,impressions',
+                            level: 'account',
+                            time_increment: '1',
+                            time_range: JSON.stringify({ since, until }),
+                            limit: '500',
+                        });
+                        const url = `${FacebookAds.BASE_URL}/${FacebookAds.API_VERSION}/act_${accountId}/insights?${params}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        return (data?.data || []).map(r => ({
+                            date: r.date_start,
+                            spend: parseFloat(r.spend || 0),
+                            clicks: parseInt(r.inline_link_clicks || r.clicks || 0),
+                            impressions: parseInt(r.impressions || 0),
+                        }));
+                    };
+                    const sB = await fetchAllInsights(baselineFrom, baselineTo);
+                    const sD = await fetchAllInsights(duringFrom, duringTo);
+                    sB.forEach(r => {
+                        baselineSpend += r.spend;
+                        baselineSpendDaily[r.date] = r.spend;
+                        baselineClicks += r.clicks;
+                        baselineClicksDaily[r.date] = r.clicks;
+                        baselineImpr += r.impressions;
+                    });
+                    sD.forEach(r => {
+                        duringSpend += r.spend;
+                        duringSpendDaily[r.date] = r.spend;
+                        duringClicks += r.clicks;
+                        duringClicksDaily[r.date] = r.clicks;
+                        duringImpr += r.impressions;
+                    });
+                    fbHasData = (sB.length + sD.length) > 0;
+                }
+            }
+        } catch (e) { console.warn('[LabTests] fetch ad data failed:', e); }
+
+        // Manual budget override (escala de orçamento — testes de tráfego).
+        // Se preenchido, usa orçamento/dia × nº de dias em vez do gasto puxado do FB.
+        let manualBudget = false;
+        if (test.budgetBefore != null && test.budgetAfter != null) {
+            manualBudget = true;
+            baselineSpend = parseFloat(test.budgetBefore) * baselineDays;
+            duringSpend = parseFloat(test.budgetAfter) * duringDays;
+        }
+
+        const baselineROAS = baselineSpend > 0 ? baselineRevenue / baselineSpend : 0;
+        const duringROAS = duringSpend > 0 ? duringRevenue / duringSpend : 0;
+        const deltaROAS = duringROAS - baselineROAS;
+
+        // ───── Escala de orçamento (vendas × orçamento) ─────
+        const baselineBudgetPerDay = baselineSpend / baselineDays;
+        const duringBudgetPerDay = duringSpend / duringDays;
+        const deltaBudgetPct = baselineBudgetPerDay > 0
+            ? ((duringBudgetPerDay - baselineBudgetPerDay) / baselineBudgetPerDay) * 100 : 0;
+        const baselineSalesPerDay = baselineSales / baselineDays;
+        const duringSalesPerDay = duringSales / duringDays;
+        const deltaSalesPct = baselineSalesPerDay > 0
+            ? ((duringSalesPerDay - baselineSalesPerDay) / baselineSalesPerDay) * 100 : 0;
+        // Eficiência de escala: vendas cresceram tanto quanto o orçamento?
+        const scaleEfficiency = deltaBudgetPct !== 0 ? (deltaSalesPct / deltaBudgetPct) : null;
+
+        // Visitas (cliques no link do ad) — normalizado por dia
+        const baselineClicksPerDay = baselineClicks / baselineDays;
+        const duringClicksPerDay = duringClicks / duringDays;
+        const deltaClicksPct = baselineClicksPerDay > 0
+            ? ((duringClicksPerDay - baselineClicksPerDay) / baselineClicksPerDay) * 100 : 0;
+
+        // Taxa de conversão = vendas / cliques
+        const baselineCR = baselineClicks > 0 ? (baselineSales / baselineClicks) * 100 : 0;
+        const duringCR = duringClicks > 0 ? (duringSales / duringClicks) * 100 : 0;
+        const deltaCRPct = baselineCR > 0 ? ((duringCR - baselineCR) / baselineCR) * 100 : 0;
+
+        // CPA = gasto / vendas
+        const baselineCPA = baselineSales > 0 ? baselineSpend / baselineSales : 0;
+        const duringCPA = duringSales > 0 ? duringSpend / duringSales : 0;
+        const deltaCPAPct = baselineCPA > 0 ? ((duringCPA - baselineCPA) / baselineCPA) * 100 : 0;
+
+        // ───── Cálculo de lucro ─────
+        // Para teste de produto: usa custo unitário do produto + impostos + var costs
+        // Para teste de loja: usa margem média (default 30% se não informada)
+        let baselineProfit = 0, duringProfit = 0;
+        let marginInfo = '';
+        if (isProductTest && typeof AppState !== 'undefined') {
+            const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
+            if (prod) {
+                // Lucro por venda = preço − custo − (preço × imposto%) − (preço × var%)
+                const price = parseFloat(prod.price || 0);
+                const cost = parseFloat(prod.cost || 0);
+                const tax = parseFloat(prod.tax || 0) / 100;
+                const varCosts = parseFloat(prod.variableCosts || 0) / 100;
+                const profitPerSale = price - cost - (price * tax) - (price * varCosts);
+                baselineProfit = profitPerSale * baselineSales - baselineSpend;
+                duringProfit = profitPerSale * duringSales - duringSpend;
+                marginInfo = `Lucro/venda ≈ ${profitPerSale.toFixed(2)} ${prod.priceCurrency || ''}`;
+            }
+        } else {
+            // Loja inteira — margem default
+            const avgMargin = parseFloat(test.assumedMargin || 30) / 100;
+            baselineProfit = (baselineRevenue * avgMargin) - baselineSpend;
+            duringProfit = (duringRevenue * avgMargin) - duringSpend;
+            marginInfo = `Margem assumida ${(avgMargin * 100).toFixed(0)}% (edite no teste)`;
+        }
+        const baselineProfitPerDay = baselineProfit / baselineDays;
+        const duringProfitPerDay = duringProfit / duringDays;
+        const deltaProfitPct = baselineProfitPerDay !== 0
+            ? ((duringProfitPerDay - baselineProfitPerDay) / Math.abs(baselineProfitPerDay)) * 100 : 0;
+
+        // ───── Daily breakdown para gráfico ─────
+        // Para teste de produto: SEPARA receita/vendas APENAS do produto selecionado (não conta o resto da loja).
+        // Para teste de loja: pega total da loja.
+        const buildDailyMap = async (from, to, isProduct) => {
+            let byDate = {}; // { date: { revenue, sales } }
+            if (isProduct) {
+                const map = await ShopifyModule.getRealSalesMapByDate(from, to);
+                Object.entries(map).forEach(([k, v]) => {
+                    if (k.endsWith('|' + test.productId)) {
+                        const date = k.split('|')[0];
+                        byDate[date] = byDate[date] || { revenue: 0, sales: 0 };
+                        byDate[date].revenue += v.revenue || 0;
+                        byDate[date].sales += v.sales || 0;
+                    }
+                });
+            } else {
+                const map = await ShopifyModule.getSalesMapByDate(from, to);
+                Object.entries(map).forEach(([date, v]) => {
+                    byDate[date] = byDate[date] || { revenue: 0, sales: 0 };
+                    byDate[date].revenue += v.revenue || 0;
+                    byDate[date].sales += v.sales || 0;
+                });
+            }
+            return byDate;
+        };
+        const baselineDailyMap = await buildDailyMap(baselineFrom, baselineTo, isProductTest);
+        const duringDailyMap = await buildDailyMap(duringFrom, duringTo, isProductTest);
+        const allDates = [
+            ...Object.keys(baselineDailyMap),
+            ...Object.keys(duringDailyMap),
+        ].sort();
+
+        // Pré-calcula profit/venda para teste de produto
+        let profitPerSaleProd = 0;
+        if (isProductTest && typeof AppState !== 'undefined') {
+            const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
+            if (prod) {
+                const price = parseFloat(prod.price || 0);
+                const cost = parseFloat(prod.cost || 0);
+                const tax = parseFloat(prod.tax || 0) / 100;
+                const varCosts = parseFloat(prod.variableCosts || 0) / 100;
+                profitPerSaleProd = price - cost - (price * tax) - (price * varCosts);
+            }
+        }
+        const storeMargin = parseFloat(test.assumedMargin || 30) / 100;
+
+        const dailySeries = allDates.map(d => {
+            const isBaseline = baselineDailyMap[d] !== undefined;
+            const day = baselineDailyMap[d] || duringDailyMap[d] || { revenue: 0, sales: 0 };
+            const spend = baselineSpendDaily[d] || duringSpendDaily[d] || 0;
+            const clicks = baselineClicksDaily[d] || duringClicksDaily[d] || 0;
+            // Lucro do dia
+            let profit = 0;
+            if (isProductTest) {
+                // Lucro do PRODUTO (não da loja toda) menos o gasto em ads daquele dia
+                profit = (profitPerSaleProd * day.sales) - spend;
+            } else {
+                profit = (day.revenue * storeMargin) - spend;
+            }
+            const profitPct = day.revenue > 0 ? (profit / day.revenue) * 100 : 0;
+            return {
+                date: d,
+                revenue: day.revenue,
+                sales: day.sales,
+                spend,
+                clicks,
+                profit,
+                profitPct,
+                period: isBaseline ? 'baseline' : 'during',
+            };
+        });
+
+        // ───── Veredicto agora considera LUCRO (não só receita) ─────
+        let verdict = 'neutro';
+        const judgeMetric = deltaProfitPct !== 0 ? deltaProfitPct : deltaPct;
+        if (judgeMetric >= 5) verdict = 'positivo';
+        else if (judgeMetric <= -5) verdict = 'negativo';
+
+        const result = {
+            isProductTest,
+            baselineFrom, baselineTo, duringFrom, duringTo,
+            baselineDays, duringDays,
+            baselineRevenue, baselineSales, baselinePerDay,
+            duringRevenue, duringSales, duringPerDay,
+            deltaAbs, deltaPct,
+            // ROAS
+            baselineSpend, duringSpend,
+            baselineROAS, duringROAS, deltaROAS,
+            fbHasData,
+            // Visitas
+            baselineClicks, duringClicks, baselineClicksPerDay, duringClicksPerDay, deltaClicksPct,
+            baselineImpr, duringImpr,
+            // Conversão
+            baselineCR, duringCR, deltaCRPct,
+            // CPA
+            baselineCPA, duringCPA, deltaCPAPct,
+            // Escala de orçamento (tráfego)
+            manualBudget,
+            baselineBudgetPerDay, duringBudgetPerDay, deltaBudgetPct,
+            baselineSalesPerDay, duringSalesPerDay, deltaSalesPct,
+            scaleEfficiency,
+            // Profit
+            baselineProfit, duringProfit, baselineProfitPerDay, duringProfitPerDay, deltaProfitPct,
+            marginInfo,
+            // Daily breakdown
+            dailySeries,
+            verdict,
+            currency,
+            computedAt: new Date().toISOString(),
+        };
+
+        // Persiste no teste
+        test.shopifyResult = result;
+        test.updatedAt = new Date().toISOString();
+        this._persist();
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+
+        return result;
     },
 
     _mergeTests(a, b) {
@@ -157,7 +529,13 @@ const LabTestsModule = {
         document.getElementById('btn-add-lab-test')?.addEventListener('click', () => this._openModal());
         document.getElementById('lab-modal-close')?.addEventListener('click', () => this._closeModal());
         document.getElementById('lab-modal')?.querySelector('.modal-overlay')?.addEventListener('click', () => this._closeModal());
+
+        // Chart modal
+        document.getElementById('lab-chart-modal-close')?.addEventListener('click', () => this._closeChartModal());
+        document.getElementById('lab-chart-modal-overlay')?.addEventListener('click', () => this._closeChartModal());
         document.getElementById('lab-form')?.addEventListener('submit', (e) => this._handleSave(e));
+        // Show/hide budget-scale section based on category
+        document.getElementById('lab-category')?.addEventListener('change', (e) => this._toggleBudgetScaleSection(e.target.value));
         document.getElementById('btn-lab-add-obs')?.addEventListener('click', () => this._addObservation());
         document.getElementById('btn-lab-add-task')?.addEventListener('click', () => this._addTask());
         document.getElementById('lab-task-text')?.addEventListener('keydown', (e) => {
@@ -171,7 +549,12 @@ const LabTestsModule = {
             if (section) {
                 const show = section.style.display === 'none';
                 section.style.display = show ? '' : 'none';
-                if (btn) btn.textContent = show ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas' : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
+                if (btn) {
+                    btn.innerHTML = show
+                        ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas'
+                        : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
+                    if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+                }
             }
         });
 
@@ -193,21 +576,12 @@ const LabTestsModule = {
         const container = document.getElementById('lab-cards-container');
         if (!container) return;
 
-        // Auto-conclude overdue tests (past end date)
-        const now = new Date();
-        now.setHours(0,0,0,0);
-        let changed = false;
-        this._tests.forEach(t => {
-            if (t.status === 'ativo' && t.dateEnd) {
-                const end = new Date(t.dateEnd + 'T23:59:59');
-                if (now > end) {
-                    t.status = 'concluido';
-                    if (!t.result) t.result = 'neutro';
-                    changed = true;
-                }
-            }
-        });
-        if (changed) this._persist();
+        // (Auto-conclude removido — testes vencidos mostram badge "Vencido" mas
+        // continuam ativos até o usuário decidir concluir. Isso evita testes
+        // "sumirem" pra Concluídos quando o usuário ainda está trabalhando neles.)
+
+        // Auto-recompute results that are stale or missing new fields
+        this._scheduleAutoRefresh();
 
         const active = this._tests.filter(t => t.status === 'ativo');
         const concluded = this._tests.filter(t => t.status === 'concluido');
@@ -283,11 +657,62 @@ const LabTestsModule = {
 
         container.innerHTML = html;
 
+        // Bulk-select bar
+        this._renderBulkBar();
+
+        // Bind checkbox toggle
+        container.querySelectorAll('.lab-card-bulk-check').forEach(cb => {
+            cb.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            cb.addEventListener('change', (e) => {
+                const id = cb.dataset.id;
+                if (cb.checked) this._selectedIds.add(id);
+                else this._selectedIds.delete(id);
+                const card = container.querySelector(`.lab-card[data-id="${id}"]`);
+                if (card) card.classList.toggle('lab-card-bulk-selected', cb.checked);
+                this._renderBulkBar();
+            });
+        });
+
         // Bind card clicks
         container.querySelectorAll('.lab-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('.lab-stage-advance-btn')) return;
+                if (e.target.closest('[data-action="calc-shopify"]')) return;
+                if (e.target.closest('[data-action="open-chart"]')) return;
+                if (e.target.closest('.lab-card-bulk-check')) return;
                 this._openModal(card.dataset.id);
+            });
+        });
+
+        // Click on result box → open chart
+        container.querySelectorAll('[data-action="open-chart"]').forEach(box => {
+            box.addEventListener('click', (e) => {
+                if (e.target.closest('[data-action="calc-shopify"]')) return;
+                e.stopPropagation();
+                this.openChart(box.dataset.testId);
+            });
+        });
+
+        // Shopify result calculation
+        container.querySelectorAll('[data-action="calc-shopify"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const testId = btn.dataset.testId;
+                const orig = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Calculando…';
+                if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+                try {
+                    await this.computeShopifyResult(testId);
+                    this._renderCards();
+                    if (typeof showToast === 'function') showToast('Resultado Shopify atualizado', 'success');
+                } catch (err) {
+                    btn.disabled = false;
+                    btn.innerHTML = orig;
+                    if (typeof showToast === 'function') showToast('Erro: ' + err.message, 'error');
+                }
             });
         });
 
@@ -298,6 +723,90 @@ const LabTestsModule = {
                 this._advanceStage(btn.dataset.testId, btn.dataset.stageId);
             });
         });
+    },
+
+    _toggleBudgetScaleSection(category) {
+        const sec = document.getElementById('lab-budget-scale-section');
+        if (sec) sec.style.display = category === 'trafego' ? '' : 'none';
+    },
+
+    _renderBulkBar() {
+        const container = document.getElementById('lab-cards-container');
+        if (!container) return;
+        let bar = document.getElementById('lab-bulk-bar');
+        const count = this._selectedIds.size;
+        if (count === 0) {
+            if (bar) bar.remove();
+            return;
+        }
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'lab-bulk-bar';
+            bar.className = 'bulk-action-bar';
+            container.parentNode.insertBefore(bar, container);
+        }
+        // Check if any selected is concluded (to show "Reativar")
+        const anyConcluded = Array.from(this._selectedIds).some(id => {
+            const t = this._tests.find(x => x.id === id);
+            return t && t.status === 'concluido';
+        });
+        bar.innerHTML = `
+            <span class="bulk-action-count"><i data-lucide="check-square" style="width:14px;height:14px;vertical-align:-2px"></i> ${count} selecionado(s)</span>
+            <button class="btn btn-sm btn-secondary" id="lab-bulk-clear">Limpar seleção</button>
+            <button class="btn btn-sm btn-secondary" id="lab-bulk-select-all">Selecionar tudo</button>
+            ${anyConcluded ? `<button class="btn btn-sm btn-secondary" id="lab-bulk-reactivate" style="color:#10b981">
+                <i data-lucide="rotate-ccw" style="width:13px;height:13px;vertical-align:-2px"></i> Reativar
+            </button>` : ''}
+            <button class="btn btn-sm bulk-action-danger" id="lab-bulk-delete">
+                <i data-lucide="trash-2" style="width:13px;height:13px;vertical-align:-2px"></i> Excluir ${count}
+            </button>
+        `;
+        document.getElementById('lab-bulk-clear')?.addEventListener('click', () => {
+            this._selectedIds.clear();
+            this._renderCards();
+        });
+        document.getElementById('lab-bulk-select-all')?.addEventListener('click', () => {
+            this._tests.forEach(t => this._selectedIds.add(t.id));
+            this._renderCards();
+        });
+        document.getElementById('lab-bulk-reactivate')?.addEventListener('click', () => this._bulkReactivate());
+        document.getElementById('lab-bulk-delete')?.addEventListener('click', () => this._bulkDelete());
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _bulkReactivate() {
+        const ids = Array.from(this._selectedIds);
+        let reactivated = 0;
+        ids.forEach(id => {
+            const t = this._tests.find(x => x.id === id);
+            if (t && t.status === 'concluido') {
+                t.status = 'ativo';
+                t.updatedAt = new Date().toISOString();
+                reactivated++;
+            }
+        });
+        if (!reactivated) return;
+        this._selectedIds.clear();
+        try {
+            this._persist();
+            this._renderCards();
+            if (typeof showToast === 'function') showToast(`${reactivated} teste(s) reativado(s)`, 'success');
+        } catch (e) { console.error('[LabTests] reactivate failed:', e); }
+    },
+
+    _bulkDelete() {
+        const count = this._selectedIds.size;
+        if (count === 0) return;
+        if (!confirm(`Excluir ${count} teste(s) permanentemente? Esta ação não pode ser desfeita.`)) return;
+        this._tests = this._tests.filter(t => !this._selectedIds.has(t.id));
+        this._selectedIds.clear();
+        try {
+            this._persistOverwrite();
+            this._renderCards();
+            if (typeof showToast === 'function') showToast(`${count} teste(s) excluído(s)`, 'success');
+        } catch (err) {
+            console.error('[LabTests] bulk delete failed:', err);
+        }
     },
 
     _renderCard(test) {
@@ -334,8 +843,10 @@ const LabTestsModule = {
             } catch {}
         }
 
+        const isSelected = this._selectedIds && this._selectedIds.has(test.id);
         return `
-        <div class="lab-card lab-card-${test.status}" data-id="${test.id}">
+        <div class="lab-card lab-card-${test.status} ${isSelected ? 'lab-card-bulk-selected' : ''}" data-id="${test.id}">
+            <input type="checkbox" class="lab-card-bulk-check" data-id="${test.id}" ${isSelected ? 'checked' : ''} title="Selecionar para ação em massa">
             <div class="lab-card-header">
                 <span class="lab-category-badge" style="background:${cat.bg};color:${cat.color}">${cat.icon} ${cat.label}</span>
                 ${resultBadge}
@@ -364,8 +875,393 @@ const LabTestsModule = {
             </div>` : ''}
             ${test.status === 'concluido' && test.conclusion ? `<p class="lab-card-conclusion">${this._esc(test.conclusion)}</p>` : ''}
             ${test.stages && test.stages.length > 0 ? this._renderStagesProgress(test) : ''}
-            <div class="lab-card-dates">${test.dateStart} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${test.dateEnd}</div>
+            ${this._renderShopifyResultBox(test)}
+            <div class="lab-card-dates">${this._fmtBR(test.dateStart)} <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._fmtBR(test.dateEnd)}</div>
         </div>`;
+    },
+
+    _renderShopifyResultBox(test) {
+        const r = test.shopifyResult;
+        const fmtMoney = (v, cur) => {
+            const sym = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£' }[cur] || (cur + ' ');
+            return `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+        if (!r) {
+            return `<button class="lab-shopify-calc-btn" data-test-id="${this._esc(test.id)}" data-action="calc-shopify">
+                <i data-lucide="trending-up" style="width:13px;height:13px;vertical-align:-2px"></i>
+                Comparar com Shopify (baseline 3 dias antes vs durante)
+            </button>`;
+        }
+        // Migration fallback: se faltam campos novos, computa on-the-fly (será sobrescrito pelo auto-refresh).
+        const needsMigration = r.baselineProfit === undefined;
+        if (needsMigration) {
+            const margin = parseFloat(test.assumedMargin || 30) / 100;
+            const spendB = r.baselineSpend || 0, spendD = r.duringSpend || 0;
+            r.baselineProfit = (r.baselineRevenue || 0) * margin - spendB;
+            r.duringProfit = (r.duringRevenue || 0) * margin - spendD;
+            const bpd = r.baselineProfit / Math.max(1, r.baselineDays || 3);
+            const dpd = r.duringProfit / Math.max(1, r.duringDays || 1);
+            r.baselineProfitPerDay = bpd;
+            r.duringProfitPerDay = dpd;
+            r.deltaProfitPct = bpd !== 0 ? ((dpd - bpd) / Math.abs(bpd)) * 100 : 0;
+        }
+        const verdictMap = {
+            positivo: { label: 'Aprovado', bg: 'rgba(34,197,94,0.12)', color: '#10b981', icon: 'check-circle-2' },
+            negativo: { label: 'Reprovado', bg: 'rgba(239,68,68,0.12)', color: '#ef4444', icon: 'x-circle' },
+            neutro: { label: 'Neutro', bg: 'rgba(156,163,175,0.12)', color: '#9ca3af', icon: 'minus-circle' },
+        };
+        const v = verdictMap[r.verdict] || verdictMap.neutro;
+        const deltaProfit = r.deltaProfitPct || 0;
+        const pctSign = deltaProfit >= 0 ? '+' : '';
+        const pctColor = deltaProfit >= 5 ? '#10b981' : deltaProfit <= -5 ? '#ef4444' : '#9ca3af';
+        const revSign = r.deltaPct >= 0 ? '+' : '';
+        const revColor = r.deltaPct >= 5 ? '#10b981' : r.deltaPct <= -5 ? '#ef4444' : '#9ca3af';
+        const hasROAS = (r.baselineSpend || 0) > 0 || (r.duringSpend || 0) > 0;
+        const roasDeltaPct = (r.baselineROAS || 0) > 0 ? ((r.duringROAS - r.baselineROAS) / r.baselineROAS) * 100 : 0;
+        const roasSign = roasDeltaPct >= 0 ? '+' : '';
+        const roasColor = roasDeltaPct >= 5 ? '#10b981' : roasDeltaPct <= -5 ? '#ef4444' : '#9ca3af';
+        const hasClicks = (r.baselineClicks || 0) > 0 || (r.duringClicks || 0) > 0;
+        const clicksSign = (r.deltaClicksPct || 0) >= 0 ? '+' : '';
+        const clicksColor = (r.deltaClicksPct || 0) >= 5 ? '#10b981' : (r.deltaClicksPct || 0) <= -5 ? '#ef4444' : '#9ca3af';
+        const hasCR = (r.baselineCR || 0) > 0 || (r.duringCR || 0) > 0;
+        const crSign = (r.deltaCRPct || 0) >= 0 ? '+' : '';
+        const crColor = (r.deltaCRPct || 0) >= 5 ? '#10b981' : (r.deltaCRPct || 0) <= -5 ? '#ef4444' : '#9ca3af';
+        const hasCPA = (r.baselineCPA || 0) > 0 || (r.duringCPA || 0) > 0;
+        const cpaSign = (r.deltaCPAPct || 0) >= 0 ? '+' : '';
+        // CPA é melhor quanto MENOR → cor invertida
+        const cpaColor = (r.deltaCPAPct || 0) <= -5 ? '#10b981' : (r.deltaCPAPct || 0) >= 5 ? '#ef4444' : '#9ca3af';
+        // Alerta: receita subiu mas lucro caiu → prejuízo escondido
+        const alertHidden = r.deltaPct > 5 && r.deltaProfitPct < -5;
+
+        return `<div class="lab-shopify-result" data-test-id="${this._esc(test.id)}" data-action="open-chart" title="Clique para ver gráfico">
+            <div class="lab-shopify-result-header" style="background:${v.bg};color:${v.color}">
+                <i data-lucide="${v.icon}" style="width:14px;height:14px"></i>
+                <strong>${v.label}</strong>
+                <span class="lab-shopify-delta" style="color:${pctColor}">${pctSign}${deltaProfit.toFixed(1)}% lucro/dia</span>
+                <i data-lucide="bar-chart-3" style="width:12px;height:12px;margin-left:auto;opacity:0.7" title="Ver gráfico"></i>
+                <button class="lab-shopify-refresh" data-test-id="${this._esc(test.id)}" data-action="calc-shopify" title="Recalcular">
+                    <i data-lucide="refresh-cw" style="width:11px;height:11px"></i>
+                </button>
+            </div>
+            <div class="lab-shopify-result-grid">
+                <div>
+                    <small>Baseline (${r.baselineDays}d)</small>
+                    <strong>${fmtMoney(r.baselineRevenue, r.currency)}</strong>
+                    <em>${fmtMoney(r.baselinePerDay, r.currency)}/dia</em>
+                </div>
+                <div>
+                    <small>Durante teste (${r.duringDays}d)</small>
+                    <strong>${fmtMoney(r.duringRevenue, r.currency)}</strong>
+                    <em>${fmtMoney(r.duringPerDay, r.currency)}/dia</em>
+                </div>
+            </div>
+            <div class="lab-shopify-metrics-row">
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">Receita</span>
+                    <span class="lab-shopify-metric-value">${fmtMoney(r.baselinePerDay, r.currency)}/d → ${fmtMoney(r.duringPerDay, r.currency)}/d</span>
+                    <span class="lab-shopify-metric-delta" style="color:${revColor}">${revSign}${r.deltaPct.toFixed(1)}%</span>
+                </div>
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">
+                        Lucro
+                        <span class="lab-shopify-tag" title="Lucro = Receita − custo do produto − impostos − gasto em ads. Métrica mais confiável que faturamento para decidir se vale a pena.">
+                            <i data-lucide="info" style="width:10px;height:10px"></i>
+                        </span>
+                    </span>
+                    <span class="lab-shopify-metric-value">${fmtMoney(r.baselineProfit || 0, r.currency)} → ${fmtMoney(r.duringProfit || 0, r.currency)}</span>
+                    <span class="lab-shopify-metric-delta" style="color:${pctColor}">${pctSign}${deltaProfit.toFixed(1)}%</span>
+                </div>
+                ${hasROAS ? `
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">
+                        ROAS
+                        <span class="lab-shopify-tag" title="ROAS = Receita ÷ Gasto em anúncios. Quanto maior, melhor o retorno. Ex: ROAS 3 = cada R$ 1 investido retornou R$ 3 em vendas.">
+                            <i data-lucide="info" style="width:10px;height:10px"></i>
+                        </span>
+                    </span>
+                    <span class="lab-shopify-metric-value">${(r.baselineROAS || 0).toFixed(2)}x → ${(r.duringROAS || 0).toFixed(2)}x</span>
+                    <span class="lab-shopify-metric-delta" style="color:${roasColor}">${roasSign}${roasDeltaPct.toFixed(1)}%</span>
+                </div>` : ''}
+                ${hasClicks ? `
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">
+                        Visitas
+                        <span class="lab-shopify-tag" title="Visitas = cliques nos anúncios do Facebook (inline_link_clicks). Indica volume de tráfego enviado para a loja.">
+                            <i data-lucide="info" style="width:10px;height:10px"></i>
+                        </span>
+                    </span>
+                    <span class="lab-shopify-metric-value">${Math.round(r.baselineClicksPerDay || 0)}/d → ${Math.round(r.duringClicksPerDay || 0)}/d</span>
+                    <span class="lab-shopify-metric-delta" style="color:${clicksColor}">${clicksSign}${(r.deltaClicksPct || 0).toFixed(1)}%</span>
+                </div>` : ''}
+                ${hasCR ? `
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">
+                        Conv.
+                        <span class="lab-shopify-tag" title="Taxa de Conversão = Vendas ÷ Visitas × 100. Mede a eficiência do funil: dos visitantes que chegaram, quantos compraram.">
+                            <i data-lucide="info" style="width:10px;height:10px"></i>
+                        </span>
+                    </span>
+                    <span class="lab-shopify-metric-value">${(r.baselineCR || 0).toFixed(2)}% → ${(r.duringCR || 0).toFixed(2)}%</span>
+                    <span class="lab-shopify-metric-delta" style="color:${crColor}">${crSign}${(r.deltaCRPct || 0).toFixed(1)}%</span>
+                </div>` : ''}
+                ${hasCPA ? `
+                <div class="lab-shopify-metric">
+                    <span class="lab-shopify-metric-label">
+                        CPA
+                        <span class="lab-shopify-tag" title="Custo por Aquisição = Gasto em ads ÷ Vendas. Quanto MENOR, melhor — significa que cada venda custou menos para ser conquistada.">
+                            <i data-lucide="info" style="width:10px;height:10px"></i>
+                        </span>
+                    </span>
+                    <span class="lab-shopify-metric-value">${fmtMoney(r.baselineCPA || 0, r.currency)} → ${fmtMoney(r.duringCPA || 0, r.currency)}</span>
+                    <span class="lab-shopify-metric-delta" style="color:${cpaColor}">${cpaSign}${(r.deltaCPAPct || 0).toFixed(1)}%</span>
+                </div>` : ''}
+            </div>
+            ${alertHidden ? `
+            <div class="lab-shopify-alert">
+                <i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:-1px"></i>
+                <strong>Atenção:</strong> faturamento subiu (+${r.deltaPct.toFixed(1)}%) mas lucro caiu (${deltaProfit.toFixed(1)}%) — provável aumento de gasto em ads sem retorno proporcional.
+            </div>` : ''}
+            ${this._renderBudgetScaleBlock(test, r, fmtMoney)}
+            <div class="lab-shopify-result-footer">
+                ${r.isProductTest ? `<i data-lucide="package" style="width:11px;height:11px;vertical-align:-1px"></i> Produto específico` : `<i data-lucide="store" style="width:11px;height:11px;vertical-align:-1px"></i> Loja inteira`}
+                · ${r.baselineSales} → ${r.duringSales} vendas
+                ${r.marginInfo ? ` · <span style="opacity:0.7">${this._esc(r.marginInfo)}</span>` : ''}
+            </div>
+        </div>`;
+    },
+
+    // Bloco de escala de orçamento — só para testes de tráfego com dados de gasto.
+    _renderBudgetScaleBlock(test, r, fmtMoney) {
+        if (test.category !== 'trafego') return '';
+        const budgetBefore = r.baselineBudgetPerDay || 0;
+        const budgetAfter = r.duringBudgetPerDay || 0;
+        if (budgetBefore <= 0 && budgetAfter <= 0) return '';
+
+        const dBudget = r.deltaBudgetPct || 0;
+        const dSales = r.deltaSalesPct || 0;
+        const dProfit = r.deltaProfitPct || 0;
+        const sign = (v) => (v >= 0 ? '+' : '');
+
+        // Veredicto de escala: vale escalar se o LUCRO/dia subiu apesar do orçamento maior.
+        let verdict, vColor, vIcon;
+        if (dProfit >= 5) { verdict = 'Vale escalar'; vColor = '#10b981'; vIcon = 'check-circle-2'; }
+        else if (dProfit <= -5) { verdict = 'Não compensou'; vColor = '#ef4444'; vIcon = 'x-circle'; }
+        else { verdict = 'Neutro'; vColor = '#9ca3af'; vIcon = 'minus-circle'; }
+
+        // Eficiência: vendas cresceram proporcionalmente ao orçamento?
+        let effNote = '';
+        if (r.scaleEfficiency != null && dBudget > 0) {
+            const eff = r.scaleEfficiency;
+            if (eff >= 1) effNote = `Vendas cresceram mais rápido que o gasto (eficiência ${eff.toFixed(2)}x) — escala saudável.`;
+            else if (eff > 0) effNote = `Vendas cresceram menos que o gasto (eficiência ${eff.toFixed(2)}x) — escala diluindo retorno.`;
+            else effNote = `Gasto subiu mas vendas caíram — escala negativa.`;
+        }
+
+        return `<div class="lab-budget-scale-result">
+            <div class="lab-budget-scale-result-head" style="color:${vColor}">
+                <i data-lucide="${vIcon}" style="width:14px;height:14px"></i>
+                <strong>Escala: ${verdict}</strong>
+            </div>
+            <div class="lab-budget-scale-grid">
+                <div class="lab-budget-scale-cell">
+                    <small>Orçamento/dia</small>
+                    <span>${fmtMoney(budgetBefore, r.currency)} → ${fmtMoney(budgetAfter, r.currency)}</span>
+                    <em style="color:${dBudget > 0 ? '#f59e0b' : '#9ca3af'}">${sign(dBudget)}${dBudget.toFixed(0)}%</em>
+                </div>
+                <div class="lab-budget-scale-cell">
+                    <small>Vendas/dia</small>
+                    <span>${(r.baselineSalesPerDay || 0).toFixed(1)} → ${(r.duringSalesPerDay || 0).toFixed(1)}</span>
+                    <em style="color:${dSales >= 0 ? '#10b981' : '#ef4444'}">${sign(dSales)}${dSales.toFixed(0)}%</em>
+                </div>
+                <div class="lab-budget-scale-cell lab-budget-scale-cell-profit">
+                    <small>Lucro/dia</small>
+                    <span>${fmtMoney(r.baselineProfitPerDay || 0, r.currency)} → ${fmtMoney(r.duringProfitPerDay || 0, r.currency)}</span>
+                    <em style="color:${dProfit >= 0 ? '#10b981' : '#ef4444'};font-weight:800">${sign(dProfit)}${dProfit.toFixed(1)}%</em>
+                </div>
+            </div>
+            ${effNote ? `<div class="lab-budget-scale-eff">${effNote}</div>` : ''}
+        </div>`;
+    },
+
+    // Recomputa em background:
+    //   1) testes com shopifyResult FALTANDO campos novos (versão antiga)
+    //   2) testes ATIVOS com computedAt > 1h
+    // Roda 1 por vez em série, com pequeno delay, sem travar UI.
+    _scheduleAutoRefresh() {
+        if (this._autoRefreshRunning) return;
+        const now = Date.now();
+        const ONE_HOUR = 60 * 60 * 1000;
+        const queue = this._tests.filter(t => {
+            if (!t.dateStart || !t.dateEnd) return false;
+            const r = t.shopifyResult;
+            if (!r) return false; // nunca calculou → não força (usuário clica)
+            const needsMigration = r.baselineProfit === undefined || r.dailySeries === undefined;
+            if (needsMigration) return true;
+            if (t.status !== 'ativo') return false;
+            const last = r.computedAt ? Date.parse(r.computedAt) : 0;
+            return (now - last) > ONE_HOUR;
+        }).map(t => t.id);
+
+        if (!queue.length) return;
+        this._autoRefreshRunning = true;
+        const runNext = async () => {
+            const id = queue.shift();
+            if (!id) { this._autoRefreshRunning = false; return; }
+            try {
+                await this.computeShopifyResult(id);
+                this._renderCards();
+            } catch (e) { console.warn('[LabTests] auto-refresh failed for', id, e); }
+            setTimeout(runNext, 500);
+        };
+        setTimeout(runNext, 800);
+    },
+
+    openChart(testId) {
+        const test = this._tests.find(t => t.id === testId);
+        if (!test || !test.shopifyResult) return;
+        const r = test.shopifyResult;
+        const modal = document.getElementById('lab-chart-modal');
+        if (!modal) return;
+        const titleEl = document.getElementById('lab-chart-title');
+        const subEl = document.getElementById('lab-chart-subtitle');
+        if (titleEl) titleEl.textContent = test.title;
+        if (subEl) {
+            const sym = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£' }[r.currency] || r.currency;
+            subEl.innerHTML = `Baseline ${this._fmtBR(r.baselineFrom)} → ${this._fmtBR(r.baselineTo)} · Durante ${this._fmtBR(r.duringFrom)} → ${this._fmtBR(r.duringTo)}
+                <span style="margin-left:12px;opacity:0.7">Moeda: ${sym}</span>`;
+        }
+        modal.classList.remove('hidden');
+
+        const canvas = document.getElementById('lab-chart-canvas');
+        if (!canvas || typeof Chart === 'undefined') return;
+        if (this._chartInstance) { try { this._chartInstance.destroy(); } catch {} }
+
+        const series = r.dailySeries || [];
+        const labels = series.map(s => this._fmtBR(s.date));
+        const revData = series.map(s => s.revenue || 0);
+        const spendData = series.map(s => s.spend || 0);
+        const clicksData = series.map(s => s.clicks || 0);
+        const profitPctData = series.map(s => s.profitPct || 0);
+        const profitData = series.map(s => s.profit || 0);
+        const hasClicks = clicksData.some(v => v > 0);
+        const hasProfit = series.some(s => s.profitPct !== undefined);
+        const periodColors = series.map(s => s.period === 'baseline' ? 'rgba(156,163,175,0.6)' : 'rgba(139,92,246,1)');
+
+        const ctx = canvas.getContext('2d');
+        const isDark = !document.body.classList.contains('light-theme');
+        const textColor = isDark ? '#d1d5db' : '#374151';
+        const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+        this._chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Receita',
+                        data: revData,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        pointBackgroundColor: periodColors,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    },
+                    {
+                        label: 'Gasto em ads',
+                        data: spendData,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        borderDash: [4, 4],
+                        pointRadius: 3,
+                    },
+                    ...(hasClicks ? [{
+                        label: 'Visitas (cliques)',
+                        data: clicksData,
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139,92,246,0.08)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        pointRadius: 3,
+                    }] : []),
+                    ...(hasProfit ? [{
+                        label: '% Lucro do dia',
+                        data: profitPctData,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,0.10)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y2',
+                        pointRadius: 4,
+                        borderWidth: 2.5,
+                    }] : []),
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: textColor } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const v = ctx.parsed.y;
+                                if (ctx.dataset.label === '% Lucro do dia') {
+                                    const item = series[ctx.dataIndex];
+                                    const profit = item?.profit || 0;
+                                    const sym = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£' }[r.currency] || r.currency;
+                                    return `% Lucro: ${v.toFixed(1)}% (${sym} ${profit.toFixed(2)})`;
+                                }
+                                return `${ctx.dataset.label}: ${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`;
+                            },
+                            afterLabel: (ctx) => {
+                                if (ctx.datasetIndex !== 0) return '';
+                                const item = series[ctx.dataIndex];
+                                return item ? `Período: ${item.period === 'baseline' ? 'Baseline' : 'Durante teste'}` : '';
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: { ticks: { color: textColor }, grid: { color: gridColor } },
+                    y: {
+                        position: 'left',
+                        title: { display: true, text: 'Moeda', color: textColor },
+                        ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true,
+                    },
+                    ...(hasClicks ? { y1: {
+                        position: 'right',
+                        title: { display: true, text: 'Visitas', color: textColor },
+                        ticks: { color: textColor }, grid: { display: false }, beginAtZero: true,
+                    } } : {}),
+                    ...(hasProfit ? { y2: {
+                        position: 'right',
+                        title: { display: true, text: '% Lucro', color: '#f59e0b' },
+                        ticks: {
+                            color: '#f59e0b',
+                            callback: (v) => v + '%',
+                        },
+                        grid: { display: false },
+                        offset: hasClicks,
+                    } } : {}),
+                },
+            },
+        });
+
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _closeChartModal() {
+        const modal = document.getElementById('lab-chart-modal');
+        if (modal) modal.classList.add('hidden');
+        if (this._chartInstance) { try { this._chartInstance.destroy(); } catch {} this._chartInstance = null; }
     },
 
     // ── Modal ─────────────────────────────────────────────────────────
@@ -382,6 +1278,11 @@ const LabTestsModule = {
         get('lab-title').value = test?.title || '';
         get('lab-category').value = test?.category || 'loja';
         get('lab-area').value = test?.area || '';
+        // Budget-scale fields (traffic tests)
+        if (get('lab-budget-before')) get('lab-budget-before').value = test?.budgetBefore != null ? test.budgetBefore : '';
+        if (get('lab-budget-after')) get('lab-budget-after').value = test?.budgetAfter != null ? test.budgetAfter : '';
+        if (get('lab-budget-currency')) get('lab-budget-currency').value = test?.budgetCurrency || 'BRL';
+        this._toggleBudgetScaleSection(test?.category || 'loja');
         get('lab-date-start').value = test?.dateStart || new Date().toISOString().slice(0, 10);
         get('lab-date-end').value = test?.dateEnd || '';
         get('lab-hypothesis').value = test?.hypothesis || '';
@@ -402,7 +1303,12 @@ const LabTestsModule = {
         const metricsSection = document.getElementById('lab-metrics-section');
         const metricsBtn = document.getElementById('btn-lab-toggle-metrics');
         if (metricsSection) metricsSection.style.display = hasMetrics ? '' : 'none';
-        if (metricsBtn) metricsBtn.textContent = hasMetrics ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas' : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
+        if (metricsBtn) {
+            metricsBtn.innerHTML = hasMetrics
+                ? '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Esconder métricas'
+                : '<i data-lucide="trending-up" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar métricas';
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
 
         // Populate product dropdown from AppState
         const prodSelect = get('lab-product');
@@ -516,7 +1422,7 @@ const LabTestsModule = {
         container.innerHTML = observations.map((obs, i) => {
             const sentimentIcon = { positive: '<i data-lucide="circle" style="width:10px;height:10px;fill:#10b981;color:#10b981"></i>', negative: '<i data-lucide="circle" style="width:10px;height:10px;fill:#ef4444;color:#ef4444"></i>', neutral: '<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i>' }[obs.sentiment] || '<i data-lucide="circle" style="width:10px;height:10px;fill:#f59e0b;color:#f59e0b"></i>';
             return `<div class="lab-obs-item">
-                <span class="lab-obs-date">${obs.date}</span>
+                <span class="lab-obs-date">${this._fmtBR(obs.date)}</span>
                 <span class="lab-obs-sentiment">${sentimentIcon}</span>
                 <span class="lab-obs-text">${this._esc(obs.text)}</span>
                 <button class="lab-obs-del" data-idx="${i}" title="Remover"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
@@ -585,13 +1491,13 @@ const LabTestsModule = {
                     else if (diff <= 2) { dueClass = 'lab-task-due-soon'; dueLabel = `${diff}d`; }
                     else { dueLabel = `${diff}d`; }
                 } else {
-                    dueLabel = due;
+                    dueLabel = this._fmtBR(due);
                 }
             }
             return `<div class="lab-task-item">
                 <input type="checkbox" class="lab-task-check" data-idx="${i}" ${task.done ? 'checked' : ''}>
                 <span class="lab-task-text ${task.done ? 'lab-task-done' : ''}">${this._esc(task.text)}</span>
-                ${due ? `<span class="lab-task-due ${dueClass}" title="${due}"><i data-lucide="calendar-clock" style="width:12px;height:12px;vertical-align:-2px"></i> ${dueLabel}</span>` : ''}
+                ${due ? `<span class="lab-task-due ${dueClass}" title="${this._fmtBR(due)}"><i data-lucide="calendar-clock" style="width:12px;height:12px;vertical-align:-2px"></i> ${dueLabel}</span>` : ''}
                 <input type="date" class="input input-sm lab-task-due-input" data-idx="${i}" value="${due}" title="Prazo">
                 <button class="lab-task-del" data-idx="${i}" title="Remover"><i data-lucide="x" style="width:14px;height:14px;vertical-align:-2px"></i></button>
             </div>`;
@@ -682,6 +1588,11 @@ const LabTestsModule = {
         e.preventDefault();
         const get = (id) => document.getElementById(id)?.value?.trim() || '';
 
+        const parseNum = (id) => {
+            const v = get(id).replace(/[^0-9.,-]/g, '').replace(',', '.');
+            const n = parseFloat(v);
+            return isNaN(n) ? null : n;
+        };
         const data = {
             title: get('lab-title'),
             category: get('lab-category'),
@@ -691,6 +1602,9 @@ const LabTestsModule = {
             hypothesis: get('lab-hypothesis'),
             expectedMetric: get('lab-expected-metric'),
             baselineValue: get('lab-baseline'),
+            budgetBefore: parseNum('lab-budget-before'),
+            budgetAfter: parseNum('lab-budget-after'),
+            budgetCurrency: get('lab-budget-currency') || 'BRL',
             productId: get('lab-product'),
             creativeId: get('lab-creative'),
             region: get('lab-region'),
@@ -727,7 +1641,7 @@ const LabTestsModule = {
             const reason = !data.region && !conflict.region && !data.creativeId && !conflict.creativeId && !data.interest && !conflict.interest
                 ? 'Defina País, Criativo ou Interesse em pelo menos um deles pra evitar mistura de dados.'
                 : 'Os filtros de País/Criativo/Interesse desses dois testes batem — eles vão computar os mesmos lançamentos.';
-            showToast(`Conflito: já existe teste ativo "${conflict.title}" (${conflict.dateStart} até ${conflict.dateEnd || '—'}) sobreposto. ${reason}`, 'warning');
+            showToast(`Conflito: já existe teste ativo "${conflict.title}" (${this._fmtBR(conflict.dateStart)} até ${this._fmtBR(conflict.dateEnd) || '—'}) sobreposto. ${reason}`, 'warning');
         }
 
         let savedTest;
@@ -752,8 +1666,14 @@ const LabTestsModule = {
             savedTest = newTest;
         }
 
-        this._persist();
-        if (savedTest) this._syncTestToDiary(savedTest);
+        try {
+            this._persist();
+        } catch (err) {
+            // _persist já mostrou toast de erro. Não fecha o modal pra usuário editar/exportar.
+            console.error('[LabTests] save failed:', err);
+            return;
+        }
+        try { if (savedTest) this._syncTestToDiary(savedTest); } catch (e) { console.warn('[LabTests] sync to diary failed:', e); }
         this._closeModal();
         this._renderCards();
         showToast(this._editingId ? 'Teste atualizado!' : 'Teste criado!', 'success');
@@ -1292,6 +2212,14 @@ const LabTestsModule = {
         const d = document.createElement('div');
         d.textContent = str || '';
         return d.innerHTML;
+    },
+
+    // Converte yyyy-mm-dd → dd/mm/yyyy (formato BR)
+    _fmtBR(iso) {
+        if (!iso || typeof iso !== 'string') return iso || '';
+        const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return iso;
+        return `${m[3]}/${m[2]}/${m[1]}`;
     },
 
     // ── Multi-Stage support ───────────────────────────────────────────

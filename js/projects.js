@@ -4,6 +4,7 @@
    =========================== */
 
 const ProjectsModule = {
+    _selectedIds: new Set(),
 
     init() {
         EventBus.on('dataLoaded', () => this.render());
@@ -245,9 +246,24 @@ const ProjectsModule = {
     },
 
     _bindListEvents(list) {
+        // Bulk-select
+        this._renderBulkBar();
+        list.querySelectorAll('.proj-card-bulk-check').forEach(cb => {
+            cb.addEventListener('click', (e) => e.stopPropagation());
+            cb.addEventListener('change', () => {
+                const id = cb.dataset.id;
+                if (cb.checked) this._selectedIds.add(id);
+                else this._selectedIds.delete(id);
+                const card = list.querySelector(`.proj-card[data-pid="${id}"]`);
+                if (card) card.classList.toggle('proj-card-bulk-selected', cb.checked);
+                this._renderBulkBar();
+            });
+        });
+
         list.querySelectorAll('.proj-card-header').forEach(hdr => {
             hdr.addEventListener('click', (e) => {
                 if (e.target.closest('button')) return;
+                if (e.target.closest('.proj-card-bulk-check')) return;
                 this.toggleCard(hdr.dataset.id);
             });
         });
@@ -856,8 +872,10 @@ const ProjectsModule = {
             ? `<span class="proj-chip proj-chip-budget" title="Budget de validação"><i data-lucide="banknote" style="width:12px;height:12px;vertical-align:-2px"></i> ${sym} ${this._fmtBR(totalBudget)}</span>`
             : '';
 
+        const isSelected = this._selectedIds && this._selectedIds.has(p.id);
         return `
-        <div class="proj-card" id="projcard-${p.id}" draggable="true" data-pid="${p.id}">
+        <div class="proj-card ${isSelected ? 'proj-card-bulk-selected' : ''}" id="projcard-${p.id}" draggable="true" data-pid="${p.id}">
+            <input type="checkbox" class="proj-card-bulk-check" data-id="${p.id}" ${isSelected ? 'checked' : ''} title="Selecionar para ação em massa">
             <div class="proj-card-header" data-id="${p.id}">
                 <span class="proj-card-grip" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                 <span class="proj-type-icon">${this._renderProjectIcon(p)}</span>
@@ -1220,6 +1238,53 @@ const ProjectsModule = {
         EventBus.emit('projectsChanged');
         this._syncAndRender();
         showToast('Projeto excluído', 'success');
+    },
+
+    _renderBulkBar() {
+        const list = document.getElementById('projects-list');
+        if (!list) return;
+        let bar = document.getElementById('proj-bulk-bar');
+        const count = this._selectedIds.size;
+        if (count === 0) {
+            if (bar) bar.remove();
+            return;
+        }
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'proj-bulk-bar';
+            bar.className = 'bulk-action-bar';
+            list.parentNode.insertBefore(bar, list);
+        }
+        bar.innerHTML = `
+            <span class="bulk-action-count"><i data-lucide="check-square" style="width:14px;height:14px;vertical-align:-2px"></i> ${count} selecionado(s)</span>
+            <button class="btn btn-sm btn-secondary" id="proj-bulk-clear">Limpar seleção</button>
+            <button class="btn btn-sm btn-secondary" id="proj-bulk-select-all">Selecionar tudo</button>
+            <button class="btn btn-sm bulk-action-danger" id="proj-bulk-delete">
+                <i data-lucide="trash-2" style="width:13px;height:13px;vertical-align:-2px"></i> Excluir ${count}
+            </button>
+        `;
+        document.getElementById('proj-bulk-clear')?.addEventListener('click', () => {
+            this._selectedIds.clear();
+            this.render();
+        });
+        document.getElementById('proj-bulk-select-all')?.addEventListener('click', () => {
+            (AppState.projects || []).forEach(p => this._selectedIds.add(p.id));
+            this.render();
+        });
+        document.getElementById('proj-bulk-delete')?.addEventListener('click', () => this._bulkDelete());
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _bulkDelete() {
+        const count = this._selectedIds.size;
+        if (count === 0) return;
+        if (!confirm(`Excluir ${count} projeto(s) permanentemente? Esta ação não pode ser desfeita.`)) return;
+        const idsToDelete = new Set(this._selectedIds);
+        AppState.allProjects = (AppState.allProjects || []).filter(p => !idsToDelete.has(p.id));
+        this._selectedIds.clear();
+        EventBus.emit('projectsChanged');
+        this._syncAndRender();
+        showToast(`${count} projeto(s) excluído(s)`, 'success');
     },
 
     // ── Task Operations ───────────────────────────────────────────

@@ -28,8 +28,7 @@ const AIAdGenerator = {
         // Provider change → update UI
         const providerEl = document.getElementById('aiad-provider');
         if (providerEl) {
-            // Restore last used provider
-            const saved = localStorage.getItem('aiad_provider') || 'openai';
+            const saved = localStorage.getItem('aiad_provider') || 'gpt-image-2';
             providerEl.value = saved;
             providerEl.addEventListener('change', () => {
                 localStorage.setItem('aiad_provider', providerEl.value);
@@ -48,19 +47,31 @@ const AIAdGenerator = {
 
     _onProviderChange() {
         const provider = this._getProvider();
-        // Quality only applies to DALL-E 3
         const qualityEl = document.getElementById('aiad-quality');
         if (qualityEl) {
-            qualityEl.disabled = (provider === 'google');
-            qualityEl.style.opacity = (provider === 'google') ? '0.45' : '';
-            qualityEl.title = provider === 'google'
-                ? 'Qualidade não se aplica ao Google Imagen'
-                : 'Apenas para DALL-E 3';
+            const isGoogle = provider === 'google' || provider === 'google-imagen2';
+            qualityEl.disabled = isGoogle;
+            qualityEl.style.opacity = isGoogle ? '0.45' : '';
+
+            if (provider === 'gpt-image-2' || provider === 'gpt-image-1') {
+                qualityEl.innerHTML = `
+                    <option value="high" selected>Alta qualidade</option>
+                    <option value="medium">Média</option>
+                    <option value="low">Rascunho</option>`;
+                qualityEl.title = `Qualidade para ${provider === 'gpt-image-2' ? 'GPT Image 2' : 'GPT Image 1'}`;
+            } else if (provider === 'openai') {
+                qualityEl.innerHTML = `
+                    <option value="hd">HD</option>
+                    <option value="standard">Padrão</option>`;
+                qualityEl.title = 'Qualidade para DALL-E 3';
+            } else {
+                qualityEl.title = 'Qualidade não se aplica ao Google Imagen';
+            }
         }
         // Update config button label
         const configBtn = document.getElementById('btn-aiad-config');
         if (configBtn) {
-            const label = provider === 'google' ? 'Configurar Google AI' : 'Configurar OpenAI';
+            const label = (provider === 'google' || provider === 'google-imagen2') ? 'Configurar Google AI' : 'Configurar OpenAI';
             configBtn.innerHTML = `<i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> ${label}`;
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch(e) {}
         }
@@ -69,7 +80,7 @@ const AIAdGenerator = {
     // ── Provider ─────────────────────────────────────────────────────
     _getProvider() {
         const sel = document.getElementById('aiad-provider');
-        return (sel ? sel.value : null) || localStorage.getItem('aiad_provider') || 'openai';
+        return (sel ? sel.value : null) || localStorage.getItem('aiad_provider') || 'gpt-image-2';
     },
 
     // ── OpenAI key ───────────────────────────────────────────────────
@@ -144,7 +155,7 @@ const AIAdGenerator = {
         const quality = opts.quality || document.getElementById('aiad-quality')?.value || 'standard';
         const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
 
-        const providerLabel = provider === 'google' ? 'Google Imagen 3' : 'DALL-E 3';
+        const providerLabel = { 'google': 'Google Imagen 3', 'google-imagen2': 'Google Imagen 2', 'gpt-image-2': 'GPT Image 2', 'gpt-image-1': 'GPT Image 1', 'openai': 'DALL-E 3' }[provider] || provider;
         const results = document.getElementById('aiad-results');
         if (results) {
             results.innerHTML = `<div class="aiad-loading">Gerando ${count} imagem(ns) com ${providerLabel}…</div>`;
@@ -155,6 +166,12 @@ const AIAdGenerator = {
             let items;
             if (provider === 'google') {
                 items = await this._generateWithGoogle(prompt, size, count);
+            } else if (provider === 'google-imagen2') {
+                items = await this._generateWithGoogleImagen2(prompt, size, count);
+            } else if (provider === 'gpt-image-2') {
+                items = await this._generateWithGPTImage(prompt, size, count, quality, 'gpt-image-2');
+            } else if (provider === 'gpt-image-1') {
+                items = await this._generateWithGPTImage(prompt, size, count, quality, 'gpt-image-1');
             } else {
                 items = await this._generateWithOpenAI(prompt, size, count, quality);
             }
@@ -234,6 +251,38 @@ const AIAdGenerator = {
         }));
     },
 
+    // ── GPT Image 1 / 2 (OpenAI) ─────────────────────────────────────
+    async _generateWithGPTImage(prompt, size, count, quality, model) {
+        const key = this._getOpenAIKey();
+        if (!key) {
+            this._configOpenAI();
+            throw new Error('Chave OpenAI não configurada');
+        }
+
+        const sizeMap = { '1792x1024': '1536x1024', '1024x1792': '1024x1536', '1024x1024': '1024x1024' };
+        const mappedSize = sizeMap[size] || '1024x1024';
+
+        const res = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+            body: JSON.stringify({ model, prompt, n: count, size: mappedSize, quality: quality || 'high' })
+        });
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message || `Erro ${model}`);
+        if (!data.data?.length) throw new Error(`${model} não retornou imagens`);
+
+        return data.data.map(d => ({
+            id: 'gen_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            provider: model,
+            prompt,
+            size: mappedSize,
+            createdAt: new Date().toISOString(),
+            dataUrl: `data:image/png;base64,${d.b64_json}`,
+            revisedPrompt: null
+        }));
+    },
+
     // ── Google Imagen 3 ────────────────────────────────────────────────
     async _generateWithGoogle(prompt, size, count) {
         const key = this._getGoogleKey();
@@ -284,6 +333,50 @@ const AIAdGenerator = {
         }));
     },
 
+    // ── Google Imagen 2 ────────────────────────────────────────────────
+    async _generateWithGoogleImagen2(prompt, size, count) {
+        const key = this._getGoogleKey();
+        if (!key) {
+            this._configGoogle();
+            throw new Error('Chave Google AI não configurada');
+        }
+
+        const aspectMap = { '1024x1024': '1:1', '1024x1792': '9:16', '1792x1024': '16:9' };
+        const aspectRatio = aspectMap[size] || '1:1';
+
+        const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/imagen-2.0-generate-001:predict?key=${key}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instances: [{ prompt }],
+                    parameters: {
+                        sampleCount: Math.min(count, 4),
+                        aspectRatio,
+                        safetyFilterLevel: 'block_some',
+                        personGeneration: 'allow_adult'
+                    }
+                })
+            }
+        );
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message || 'Erro Google Imagen 2');
+        const predictions = data.predictions || [];
+        if (!predictions.length) throw new Error('Google Imagen 2 não retornou imagens. Verifique sua chave e região.');
+
+        const now = Date.now();
+        return predictions.map((p, i) => ({
+            id: 'gen_' + (now + i) + '_' + Math.random().toString(36).slice(2, 7),
+            provider: 'google-imagen2',
+            prompt,
+            size,
+            createdAt: new Date().toISOString(),
+            dataUrl: `data:${p.mimeType || 'image/png'};base64,${p.bytesBase64Encoded}`
+        }));
+    },
+
     // ── WebP compression via canvas ────────────────────────────────────
     async _compressToWebP(dataUrl, quality = 0.85) {
         return new Promise(resolve => {
@@ -319,8 +412,8 @@ const AIAdGenerator = {
         results.innerHTML = items.map(item => `
             <div class="aiad-result-item" data-id="${item.id}">
                 <img src="${item.dataUrl}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
-                <div class="aiad-result-badge ${item.provider === 'google' ? 'aiad-badge-google' : 'aiad-badge-openai'}">
-                    ${item.provider === 'google' ? 'Google Imagen 3' : 'DALL-E 3'}
+                <div class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
+                    ${ {'google':'Google Imagen 3','google-imagen2':'Google Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
                 </div>
                 <div class="aiad-result-actions">
                     <button class="btn btn-secondary btn-sm" data-action="download" data-id="${item.id}" title="Baixar WebP"><i data-lucide="download" style="width:13px;height:13px"></i></button>
@@ -466,14 +559,26 @@ const AIAdGenerator = {
     _saveGenerations(items) {
         const all = this._getAllGenerations();
         all.unshift(...items);
-        const trimmed = all.slice(0, 50); // cap — b64/WebP ocupa espaço
-        try {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(trimmed));
-        } catch {
+        // Cap progressivo para evitar QuotaExceeded — começa em 50, reduz se falhar
+        const tryCaps = [50, 25, 10, 5, items.length];
+        for (const cap of tryCaps) {
             try {
-                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all.slice(0, 10)));
-            } catch {}
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all.slice(0, cap)));
+                if (cap < 50) {
+                    if (typeof showToast === 'function') {
+                        showToast(`Armazenamento cheio — mantendo só as ${cap} mais recentes. Clique "Limpar" para liberar espaço.`, 'warning');
+                    }
+                }
+                return;
+            } catch (e) {
+                console.warn(`[AIAdGenerator] save failed at cap=${cap}:`, e?.name || e?.message);
+            }
         }
+        // Falhou em todos os caps
+        if (typeof showToast === 'function') {
+            showToast('Erro: localStorage cheio. Vá em AI Generations → botão "Limpar" para apagar gerações antigas.', 'error');
+        }
+        throw new Error('localStorage cheio — não consegui salvar a geração');
     },
 
     _getAllGenerations() {
@@ -507,7 +612,8 @@ const AIAdGenerator = {
                 <div class="aigen-card-meta">
                     <span class="aigen-card-prompt" title="${this._esc(item.revisedPrompt || item.prompt)}">${this._esc((item.prompt || '').slice(0, 80))}${(item.prompt || '').length > 80 ? '…' : ''}</span>
                     <div class="aigen-card-actions">
-                        <span class="aiad-result-badge ${item.provider === 'google' ? 'aiad-badge-google' : 'aiad-badge-openai'}">${item.provider === 'google' ? 'Imagen 3' : 'DALL-E 3'}</span>
+                        <span class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">${ {'google':'Imagen 3','google-imagen2':'Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }</span>
+                        <button class="btn-icon" data-action="save-creative" data-id="${item.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="dl" data-id="${item.id}" title="Baixar"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="cp" data-id="${item.id}" title="Copiar prompt"><i data-lucide="copy" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="del" data-id="${item.id}" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
@@ -544,8 +650,93 @@ const AIAdGenerator = {
                         promptEl.dispatchEvent(new Event('input'));
                         promptEl.focus();
                     }
+                } else if (action === 'save-creative') {
+                    this._openSaveCreativeModal(item);
                 }
             });
+        });
+    },
+
+    _openSaveCreativeModal(item) {
+        const products = (AppState.allProducts || AppState.products || []).filter(p => p.status !== 'inativo');
+        if (!products.length) {
+            if (typeof showToast === 'function') showToast('Crie um produto antes de salvar criativos', 'error');
+            return;
+        }
+        // Build modal HTML
+        const opts = products.map(p => `<option value="${this._esc(p.id)}">${this._esc(p.name)}</option>`).join('');
+        const defaultName = (item.prompt || '').slice(0, 60).trim() || 'AI Creative';
+        const modalHtml = `
+            <div id="modal-save-creative-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:min(420px,90vw);display:flex;flex-direction:column;gap:1rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                        <img src="${item.dataUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0">
+                        <div>
+                            <strong style="font-size:1rem">Salvar em Criativos</strong>
+                            <p style="margin:0.2rem 0 0;font-size:0.8rem;color:var(--text-muted)">Escolha um produto e dê um nome ao criativo.</p>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                        <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary)">Produto *</label>
+                        <select id="sc-product-select" class="input" style="width:100%">
+                            <option value="">-- Selecione o produto --</option>
+                            ${opts}
+                        </select>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                        <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary)">Nome do criativo</label>
+                        <input id="sc-name-input" class="input" type="text" value="${this._esc(defaultName)}" style="width:100%">
+                    </div>
+                    <div style="display:flex;gap:0.6rem;justify-content:flex-end">
+                        <button id="sc-cancel-btn" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="sc-save-btn" class="btn btn-primary btn-sm"><i data-lucide="bookmark-plus" style="width:13px;height:13px;vertical-align:-1px"></i> Salvar</button>
+                    </div>
+                </div>
+            </div>`;
+        const el = document.createElement('div');
+        el.innerHTML = modalHtml;
+        document.body.appendChild(el.firstElementChild);
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch(e) {}
+
+        const overlay = document.getElementById('modal-save-creative-overlay');
+        const close = () => overlay?.remove();
+
+        document.getElementById('sc-cancel-btn')?.addEventListener('click', close);
+        overlay?.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        document.getElementById('sc-save-btn')?.addEventListener('click', () => {
+            const productId = document.getElementById('sc-product-select')?.value;
+            const name = document.getElementById('sc-name-input')?.value.trim() || defaultName;
+            if (!productId) { if (typeof showToast === 'function') showToast('Selecione um produto', 'error'); return; }
+
+            const product = products.find(p => p.id === productId);
+            const creative = {
+                id: 'crtv_ai_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+                productId,
+                name,
+                type: 'Imagem',
+                angle: '',
+                hookText: (item.prompt || '').slice(0, 120),
+                hookType: 'Curiosidade',
+                platform: 'Meta Ads',
+                status: 'ativo',
+                launchDate: (typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10)),
+                primaryText: '',
+                headline: '',
+                adDescription: '',
+                imageUrl: item.dataUrl,
+                variations: [],
+                storeId: product?.storeId || (typeof getWritableStoreId === 'function' ? getWritableStoreId(productId) : ''),
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+
+            if (!AppState.allCreatives) AppState.allCreatives = [];
+            AppState.allCreatives.push(creative);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            if (typeof LocalStore !== 'undefined') LocalStore.save('creatives', AppState.allCreatives);
+            if (typeof EventBus !== 'undefined') EventBus.emit('creativesChanged');
+            if (typeof showToast === 'function') showToast(`Criativo salvo em "${name}"`, 'success');
+            close();
         });
     },
 

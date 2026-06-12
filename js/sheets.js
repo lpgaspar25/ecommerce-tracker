@@ -357,7 +357,13 @@ const SheetsAPI = {
                 status: row[10] || 'ativo',
                 storeId: row[11] || fallbackStoreId,
                 language: row[12] || 'Ingles'
-            }));
+            })).filter(p => {
+                // Skip products that user has tombstoned (deleted locally)
+                if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
+                    return !ProductsModule.isTombstoned(p);
+                }
+                return true;
+            });
 
             // Parse goals
             AppState.allGoals = (ranges[1].values || []).map(row => ({
@@ -1003,7 +1009,16 @@ const SheetsAPI = {
 // ---- Fallback: LocalStorage if no Sheets ----
 const LocalStore = {
     save(key, data) {
-        localStorage.setItem(`etracker_${key}`, JSON.stringify(data));
+        const str = JSON.stringify(data);
+        const write = () => localStorage.setItem(`etracker_${key}`, str);
+        if (typeof StorageManager !== 'undefined') {
+            const ok = StorageManager.withReclaim(write, `localstore:${key}`);
+            if (!ok && typeof showToast === 'function') {
+                showToast('Armazenamento cheio. Limpe testes/projetos antigos ou exporte um backup.', 'error');
+            }
+            return;
+        }
+        write();
     },
     load(key) {
         const raw = localStorage.getItem(`etracker_${key}`);
@@ -1021,7 +1036,12 @@ document.addEventListener('DOMContentLoaded', () => {
         : (LocalStore.load('stores') || []);
     ensureStoreSetup();
 
-    AppState.allProducts = LocalStore.load('products') || [];
+    AppState.allProducts = (LocalStore.load('products') || []).filter(p => {
+        if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
+            return !ProductsModule.isTombstoned(p);
+        }
+        return true;
+    });
     AppState.allGoals = LocalStore.load('goals') || [];
     AppState.allDiary = LocalStore.load('diary') || [];
     AppState.allCreatives = LocalStore.load('creatives') || [];

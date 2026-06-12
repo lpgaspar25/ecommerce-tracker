@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Designer Portal — E-commerce Tracker</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: linear-gradient(135deg, #0a0a0f, #14141d);
+        color: #fff;
+        min-height: 100vh;
+    }
+    .auth-wrap, .portal-wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+    .auth-wrap { max-width: 420px; padding-top: 8vh; }
+
+    .card {
+        background: rgba(20, 20, 29, 0.85);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: 14px;
+        padding: 1.5rem;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+    }
+    .card + .card { margin-top: 1rem; }
+
+    h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.5rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #fff, #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    h2 { margin: 0 0 1rem; font-size: 1.1rem; font-weight: 600; }
+    .sub { color: rgba(255,255,255,0.55); font-size: 0.85rem; margin: 0 0 1.5rem; }
+
+    label {
+        display: block;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(255,255,255,0.5);
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+        margin-top: 1rem;
+    }
+    input, select, textarea {
+        width: 100%;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        padding: 0.65rem 0.85rem;
+        color: #fff;
+        font-size: 0.92rem;
+        outline: none;
+        font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+        border-color: #8b5cf6;
+        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.18);
+    }
+    textarea { resize: vertical; min-height: 70px; }
+
+    .btn {
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        color: #fff;
+        border: none;
+        padding: 0.7rem 1.25rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+        background: rgba(255,255,255,0.06);
+        color: rgba(255,255,255,0.85);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .btn-full { width: 100%; justify-content: center; }
+    .btn-sm { padding: 0.45rem 0.8rem; font-size: 0.8rem; }
+
+    .dropzone {
+        border: 2px dashed rgba(139, 92, 246, 0.35);
+        border-radius: 10px;
+        padding: 1.5rem;
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+        margin-top: 0.5rem;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+        background: rgba(139, 92, 246, 0.06);
+        border-color: rgba(139, 92, 246, 0.6);
+    }
+    .dropzone-text { color: rgba(255,255,255,0.7); font-size: 0.88rem; margin-top: 0.5rem; }
+    .dropzone-hint { color: rgba(255,255,255,0.4); font-size: 0.72rem; margin-top: 0.25rem; }
+    .preview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+    .preview-item {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.4);
+    }
+    .preview-item img, .preview-item video {
+        width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .preview-item .vid-badge {
+        position: absolute; bottom: 4px; left: 4px;
+        background: rgba(0,0,0,0.75); color: #fff;
+        font-size: 0.6rem; padding: 1px 5px; border-radius: 3px;
+    }
+    .preview-item button {
+        position: absolute; top: 2px; right: 2px;
+        background: rgba(0,0,0,0.75); border: none; color: #fff;
+        width: 20px; height: 20px; border-radius: 50%;
+        cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+    }
+
+    .success {
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        color: #4ade80;
+        padding: 0.65rem 0.85rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        margin-top: 1rem;
+    }
+    .error {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: #f87171;
+        padding: 0.65rem 0.85rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        margin-top: 1rem;
+    }
+    .info {
+        background: rgba(59, 130, 246, 0.12);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #93c5fd;
+        padding: 0.65rem 0.85rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        margin-top: 1rem;
+    }
+
+    .header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+    }
+    .user-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255,255,255,0.06);
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+    }
+    .user-pill-avatar {
+        width: 22px; height: 22px; border-radius: 50%;
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 0.7rem; font-weight: 700;
+    }
+    .logout-btn {
+        background: transparent; border: none; color: rgba(255,255,255,0.5);
+        cursor: pointer; font-size: 0.78rem; padding: 0.2rem 0.5rem;
+    }
+    .logout-btn:hover { color: #f87171; }
+
+    .pipeline-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.85rem;
+        margin-top: 1rem;
+    }
+    .pipeline-card {
+        background: rgba(20, 20, 29, 0.6);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        overflow: hidden;
+        transition: border-color 0.15s;
+    }
+    .pipeline-card:hover { border-color: rgba(139, 92, 246, 0.3); }
+    .pipeline-card-imgs {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 2px;
+        background: rgba(0,0,0,0.3);
+    }
+    .pipeline-card-imgs img, .pipeline-card-imgs video {
+        width: 100%; height: 70px; object-fit: cover; display: block;
+    }
+    .pipeline-card-body { padding: 0.65rem 0.85rem; }
+    .pipeline-card-name {
+        font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pipeline-card-meta {
+        display: flex; gap: 0.5rem; flex-wrap: wrap;
+        font-size: 0.7rem; color: rgba(255,255,255,0.5);
+    }
+    .status-pill {
+        display: inline-block; font-size: 0.65rem;
+        padding: 0.15rem 0.5rem; border-radius: 10px; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .status-pendente { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .status-aprovado { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .status-rejeitado { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    .tabs {
+        display: flex; gap: 0.25rem; margin-bottom: 1rem;
+        background: rgba(255,255,255,0.04);
+        border-radius: 8px; padding: 4px;
+    }
+    .tabs button {
+        flex: 1; background: transparent; border: none;
+        padding: 0.5rem 1rem; border-radius: 6px;
+        color: rgba(255,255,255,0.6); cursor: pointer;
+        font-size: 0.85rem; font-weight: 500;
+    }
+    .tabs button.active {
+        background: rgba(139, 92, 246, 0.18);
+        color: #a78bfa;
+    }
+
+    .empty {
+        text-align: center; padding: 2.5rem 1rem;
+        color: rgba(255,255,255,0.45); font-size: 0.85rem;
+    }
+    .empty strong { color: rgba(255,255,255,0.7); display: block; margin-bottom: 0.3rem; }
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN VIEW ===== -->
+<div class="auth-wrap" id="view-auth" style="display:none">
+    <div class="card">
+        <h1>🎨 Designer Portal</h1>
+        <p class="sub">Faça login para enviar criativos pro gestor.</p>
+        <form id="form-login">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required autocomplete="email">
+            <label for="login-password">Senha</label>
+            <input type="password" id="login-password" required autocomplete="current-password">
+            <button type="submit" class="btn btn-full" style="margin-top:1.25rem">Entrar</button>
+        </form>
+        <button id="btn-signup-mode" class="btn btn-secondary btn-full" style="margin-top:0.5rem">Criar conta</button>
+        <div id="auth-msg-error" class="error" style="display:none"></div>
+        <div id="auth-msg-info" class="info" style="display:none"></div>
+    </div>
+</div>
+
+<!-- ===== PORTAL (logged in) ===== -->
+<div class="portal-wrap" id="view-portal" style="display:none">
+    <div class="header-bar">
+        <h1>🎨 Designer Portal</h1>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+            <span class="user-pill">
+                <span class="user-pill-avatar" id="user-avatar">D</span>
+                <span id="user-email"></span>
+            </span>
+            <button class="logout-btn" id="btn-logout">Sair</button>
+        </div>
+    </div>
+
+    <!-- No access yet -->
+    <div class="card" id="card-no-access" style="display:none">
+        <h2>Aguardando autorização</h2>
+        <p class="sub">Você precisa ser autorizado por um gestor pra começar a enviar criativos.<br>
+        Peça pro gestor incluir o seu email <strong id="my-email-display"></strong> na lista de designers.</p>
+    </div>
+
+    <!-- Has access -->
+    <div id="card-has-access" style="display:none">
+        <div class="tabs">
+            <button class="active" data-tab="pipeline">📋 Minha Pipeline</button>
+            <button data-tab="new">➕ Nova Submissão</button>
+        </div>
+
+        <!-- Pipeline -->
+        <div class="card" id="tab-pipeline">
+            <h2>Suas submissões</h2>
+            <div id="pipeline-list" class="pipeline-list"></div>
+        </div>
+
+        <!-- New submission -->
+        <div class="card" id="tab-new" style="display:none">
+            <h2>Nova submissão</h2>
+            <form id="form-submission">
+                <label for="sub-product">Produto *</label>
+                <select id="sub-product" required>
+                    <option value="">Selecione um produto…</option>
+                </select>
+
+                <label for="sub-name">Nome do criativo *</label>
+                <input type="text" id="sub-name" required placeholder="Ex: AMG Aviator — Hook Cidade">
+
+                <label for="sub-angle">Ângulo / Ideia</label>
+                <input type="text" id="sub-angle" placeholder="Ex: Lifestyle noturno, urgência">
+
+                <label for="sub-notes">Observações para o gestor</label>
+                <textarea id="sub-notes" placeholder="Copy sugerida, referências, variações…"></textarea>
+
+                <label>Imagens & Vídeos *</label>
+                <div class="dropzone" id="dropzone">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <div class="dropzone-text">Arraste arquivos aqui ou clique para selecionar</div>
+                    <div class="dropzone-hint">Imagens (PNG/JPG/WEBP) até 5 MB · Vídeos (MP4/WEBM) até 50 MB</div>
+                    <input type="file" id="file-input" accept="image/*,video/*" multiple style="display:none">
+                </div>
+                <div class="preview-grid" id="preview-grid"></div>
+
+                <button type="submit" class="btn btn-full" id="btn-submit" disabled style="margin-top:1.25rem">Enviar para aprovação</button>
+            </form>
+            <div id="submit-msg" style="display:none"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+    const SUPA_URL = 'https://clqsjcestdvmdxsemwdc.supabase.co';
+    const SUPA_KEY = 'sb_publishable_zFJQV-ChQ6vOxpYrYfN8UA_jNe7tJqQ';
+    const STORAGE_BUCKET = 'designer-uploads';
+
+    let client = null;
+    let user = null;
+    let accesses = [];      // [{ owner_id, allowed_product_ids, ... }]
+    let products = [];      // [{ id, name, user_id }]
+    let mySubmissions = []; // pipeline
+
+    const files = []; // { id, name, file, dataUrl, isVideo, size }
+
+    // ── Helpers
+    const $ = id => document.getElementById(id);
+    const show = (id) => { $(id).style.display = ''; };
+    const hide = (id) => { $(id).style.display = 'none'; };
+
+    function showError(msg, container) {
+        const el = container ? $(container) : $('auth-msg-error');
+        el.textContent = msg;
+        el.className = 'error';
+        el.style.display = '';
+    }
+    function showInfo(msg, container) {
+        const el = container ? $(container) : $('auth-msg-info');
+        el.textContent = msg;
+        el.className = 'info';
+        el.style.display = '';
+    }
+    function clearMsgs() {
+        $('auth-msg-error').style.display = 'none';
+        $('auth-msg-info').style.display = 'none';
+    }
+
+    // ── Init
+    async function init() {
+        if (!window.supabase) {
+            showError('Supabase SDK não carregou. Tente recarregar.');
+            show('view-auth');
+            return;
+        }
+        client = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+        // Restore session
+        const { data: { session } } = await client.auth.getSession();
+        if (session?.user) {
+            user = session.user;
+            await loadPortal();
+        } else {
+            show('view-auth');
+        }
+
+        client.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                user = session.user;
+                hide('view-auth');
+                await loadPortal();
+            }
+            if (event === 'SIGNED_OUT') {
+                user = null;
+                accesses = []; products = []; mySubmissions = [];
+                hide('view-portal');
+                show('view-auth');
+            }
+        });
+    }
+
+    async function loadPortal() {
+        show('view-portal');
+        $('user-email').textContent = user.email;
+        $('user-avatar').textContent = (user.email[0] || 'D').toUpperCase();
+        $('my-email-display').textContent = user.email;
+
+        // Auto-claim access (vincula designer_id se ainda for null)
+        await client.from('designer_access')
+            .update({ designer_id: user.id })
+            .eq('designer_email', user.email)
+            .is('designer_id', null);
+
+        await loadAccess();
+        if (accesses.length === 0) {
+            show('card-no-access');
+            hide('card-has-access');
+            return;
+        }
+        hide('card-no-access');
+        show('card-has-access');
+        await Promise.all([loadProducts(), loadMySubmissions()]);
+        renderProductPicker();
+        renderPipeline();
+    }
+
+    async function loadAccess() {
+        const { data, error } = await client.from('designer_access')
+            .select('*')
+            .or(`designer_id.eq.${user.id},designer_email.eq.${user.email}`)
+            .eq('status', 'ativo');
+        if (error) { console.error(error); return; }
+        accesses = data || [];
+    }
+
+    async function loadProducts() {
+        const productIds = new Set();
+        const ownerIds = new Set();
+        accesses.forEach(a => {
+            (a.allowed_product_ids || []).forEach(pid => productIds.add(pid));
+            ownerIds.add(a.owner_id);
+        });
+        if (productIds.size === 0) { products = []; return; }
+        const { data, error } = await client.from('products')
+            .select('id,name,user_id')
+            .in('id', Array.from(productIds))
+            .in('user_id', Array.from(ownerIds));
+        if (error) { console.error(error); products = []; return; }
+        products = data || [];
+    }
+
+    async function loadMySubmissions() {
+        const { data, error } = await client.from('designer_submissions')
+            .select('*')
+            .eq('designer_id', user.id)
+            .order('submitted_at', { ascending: false })
+            .limit(100);
+        if (error) { console.error(error); mySubmissions = []; return; }
+        mySubmissions = data || [];
+    }
+
+    function renderProductPicker() {
+        const sel = $('sub-product');
+        // Mapeia product_id → owner_id pra mandar a submissão certa
+        const productOwnerMap = {};
+        accesses.forEach(a => {
+            (a.allowed_product_ids || []).forEach(pid => { productOwnerMap[pid] = a.owner_id; });
+        });
+        window._productOwnerMap = productOwnerMap;
+
+        sel.innerHTML = '<option value="">Selecione um produto…</option>' +
+            products.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+    }
+
+    function renderPipeline() {
+        const list = $('pipeline-list');
+        if (mySubmissions.length === 0) {
+            list.innerHTML = '<div class="empty"><strong>Nenhuma submissão ainda</strong>Comece criando sua primeira na aba "Nova Submissão"</div>';
+            return;
+        }
+        list.innerHTML = mySubmissions.map(s => {
+            const product = products.find(p => p.id === s.product_id);
+            const productName = product?.name || '—';
+            const date = new Date(s.submitted_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+            const imgs = s.images || [];
+            const vids = s.videos || [];
+            const previews = [
+                ...imgs.slice(0, 4).map(i => `<img src="${escapeAttr(i.dataUrl || i.url)}" alt="">`),
+                ...vids.slice(0, 4 - imgs.length).filter(v => v.url || v.dataUrl).map(v => `<video src="${escapeAttr(v.url || v.dataUrl)}" muted></video>`)
+            ].join('');
+            return `<div class="pipeline-card">
+                <div class="pipeline-card-imgs">${previews || '<div style="height:70px"></div>'}</div>
+                <div class="pipeline-card-body">
+                    <div class="pipeline-card-name">${escapeHtml(s.name)}</div>
+                    <div class="pipeline-card-meta">
+                        <span>📦 ${escapeHtml(productName)}</span>
+                        <span>📅 ${date}</span>
+                        <span>${imgs.length}🖼️ ${vids.length}🎬</span>
+                    </div>
+                    <div style="margin-top:0.45rem"><span class="status-pill status-${s.status}">${s.status}</span></div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Auth handlers
+    let signupMode = false;
+    $('btn-signup-mode').addEventListener('click', () => {
+        signupMode = !signupMode;
+        const btn = $('btn-signup-mode');
+        const submitBtn = $('form-login').querySelector('button[type="submit"]');
+        if (signupMode) {
+            btn.textContent = 'Já tem conta? Entrar';
+            submitBtn.textContent = 'Criar conta';
+        } else {
+            btn.textContent = 'Criar conta';
+            submitBtn.textContent = 'Entrar';
+        }
+        clearMsgs();
+    });
+
+    $('form-login').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearMsgs();
+        const email = $('login-email').value.trim();
+        const password = $('login-password').value;
+        try {
+            if (signupMode) {
+                const { data, error } = await client.auth.signUp({ email, password });
+                if (error) throw error;
+                if (!data.session) {
+                    showInfo('Conta criada! Verifique seu email para confirmar antes de entrar.');
+                    return;
+                }
+                user = data.user;
+                hide('view-auth');
+                await loadPortal();
+            } else {
+                const { data, error } = await client.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+                user = data.user;
+                hide('view-auth');
+                await loadPortal();
+            }
+        } catch (err) {
+            showError(err.message || 'Erro ao autenticar');
+        }
+    });
+
+    $('btn-logout').addEventListener('click', async () => {
+        await client.auth.signOut();
+    });
+
+    // ── Tabs
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+            const tab = btn.dataset.tab;
+            $('tab-pipeline').style.display = tab === 'pipeline' ? '' : 'none';
+            $('tab-new').style.display = tab === 'new' ? '' : 'none';
+        });
+    });
+
+    // ── Upload UI
+    const dropzone = $('dropzone');
+    const fileInput = $('file-input');
+    const previewGrid = $('preview-grid');
+    const btnSubmit = $('btn-submit');
+
+    function updateSubmit() {
+        const productOk = !!$('sub-product').value;
+        const nameOk = !!$('sub-name').value.trim();
+        btnSubmit.disabled = !(productOk && nameOk && files.length > 0);
+    }
+
+    function renderPreviews() {
+        previewGrid.innerHTML = files.map((f, idx) => {
+            if (f.isVideo) {
+                return `<div class="preview-item">
+                    <video src="${escapeAttr(f.dataUrl)}" muted></video>
+                    <span class="vid-badge">VIDEO</span>
+                    <button type="button" data-idx="${idx}">&times;</button>
+                </div>`;
+            }
+            return `<div class="preview-item">
+                <img src="${escapeAttr(f.dataUrl)}" alt="">
+                <button type="button" data-idx="${idx}">&times;</button>
+            </div>`;
+        }).join('');
+        previewGrid.querySelectorAll('button').forEach(b => {
+            b.addEventListener('click', () => {
+                files.splice(parseInt(b.dataset.idx, 10), 1);
+                renderPreviews();
+                updateSubmit();
+            });
+        });
+        updateSubmit();
+    }
+
+    function handleFiles(list) {
+        const arr = Array.from(list).filter(f => {
+            if (f.type.startsWith('image/') && f.size < 5 * 1024 * 1024) return true;
+            if (f.type.startsWith('video/') && f.size < 50 * 1024 * 1024) return true;
+            return false;
+        });
+        if (arr.length === 0) {
+            showError('Selecione imagens (até 5 MB) ou vídeos (até 50 MB)', 'submit-msg');
+            return;
+        }
+        let pending = arr.length;
+        arr.forEach(f => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                files.push({
+                    id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+                    name: f.name,
+                    file: f,
+                    dataUrl: reader.result,
+                    isVideo: f.type.startsWith('video/'),
+                    size: f.size,
+                    mime: f.type,
+                });
+                pending--;
+                if (pending === 0) renderPreviews();
+            };
+            reader.readAsDataURL(f);
+        });
+    }
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach(ev => {
+        dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+        dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag-over'); });
+    });
+    dropzone.addEventListener('drop', e => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
+
+    ['sub-product', 'sub-name'].forEach(id => {
+        $(id).addEventListener('input', updateSubmit);
+        $(id).addEventListener('change', updateSubmit);
+    });
+
+    // ── Submit handler
+    $('form-submission').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msgEl = $('submit-msg');
+        msgEl.style.display = 'none';
+
+        const productId = $('sub-product').value;
+        const ownerId = window._productOwnerMap?.[productId];
+        if (!ownerId) {
+            showError('Produto inválido ou sem acesso.', 'submit-msg');
+            return;
+        }
+
+        btnSubmit.disabled = true;
+        const origText = btnSubmit.textContent;
+        btnSubmit.textContent = 'Enviando…';
+
+        try {
+            const submissionId = 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+
+            // Separa imagens (vão como base64 inline) e vídeos (vão pro Storage)
+            const imagePayload = [];
+            const videoPayload = [];
+            for (const f of files) {
+                if (f.isVideo) {
+                    btnSubmit.textContent = `Enviando vídeo ${videoPayload.length + 1}/${files.filter(x => x.isVideo).length}…`;
+                    const path = `${user.id}/${submissionId}/${f.id}_${f.name}`;
+                    const { error: upErr } = await client.storage
+                        .from(STORAGE_BUCKET)
+                        .upload(path, f.file, { cacheControl: '3600', upsert: false, contentType: f.mime });
+                    if (upErr) throw new Error('Upload vídeo falhou: ' + upErr.message);
+                    const { data: pub } = client.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+                    videoPayload.push({ name: f.name, url: pub.publicUrl, size: f.size, path });
+                } else {
+                    imagePayload.push({ name: f.name, dataUrl: f.dataUrl, size: f.size });
+                }
+            }
+
+            btnSubmit.textContent = 'Salvando submissão…';
+            const { error: insErr } = await client.from('designer_submissions').insert({
+                id: submissionId,
+                owner_id: ownerId,
+                designer_id: user.id,
+                designer: user.email.split('@')[0],
+                name: $('sub-name').value.trim(),
+                angle: $('sub-angle').value.trim() || null,
+                notes: $('sub-notes').value.trim() || null,
+                product_id: productId,
+                images: imagePayload,
+                videos: videoPayload,
+                status: 'pendente',
+                submitted_at: new Date().toISOString(),
+            });
+            if (insErr) throw new Error(insErr.message);
+
+            // Sucesso
+            msgEl.textContent = '✓ Enviado! Aguardando aprovação do gestor.';
+            msgEl.className = 'success';
+            msgEl.style.display = '';
+            $('form-submission').reset();
+            files.length = 0;
+            renderPreviews();
+            await loadMySubmissions();
+            renderPipeline();
+            // Auto-switch para pipeline
+            setTimeout(() => {
+                document.querySelector('[data-tab="pipeline"]').click();
+                msgEl.style.display = 'none';
+            }, 1200);
+        } catch (err) {
+            msgEl.textContent = 'Erro: ' + err.message;
+            msgEl.className = 'error';
+            msgEl.style.display = '';
+        } finally {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = origText;
+            updateSubmit();
+        }
+    });
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeAttr(s) {
+        return String(s ?? '').replace(/"/g, '&quot;');
+    }
+
+    init();
+})();
+</script>
+</body>
+</html>

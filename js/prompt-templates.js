@@ -60,6 +60,30 @@
             prompt: 'Split-screen ad showing BEFORE (problem) and AFTER ([PRODUCT] solution) with subtle annotations. Clean, modern editorial style, high contrast between the two states.',
             icon: 'contrast',
         },
+        {
+            id: 'tpl_studio_shot',
+            name: 'Studio Product Shot',
+            tags: ['studio', 'product', 'clean'],
+            description: 'Clean studio product photograph with controlled lighting and neutral background.',
+            prompt: 'Professional studio product photograph of [PRODUCT] on a [BACKGROUND COLOR] seamless backdrop. Use [LIGHTING STYLE] (soft diffused softbox or dramatic side lighting). Sharp focus, shallow depth of field, 50mm lens, no distracting elements. Premium e-commerce style.',
+            icon: 'camera',
+        },
+        {
+            id: 'tpl_ugc',
+            name: 'UGC Style Photo',
+            tags: ['ugc', 'authentic', 'mobile'],
+            description: 'Authentic mobile-shot user-generated content featuring the product.',
+            prompt: 'Authentic UGC-style smartphone photograph of [PERSON] holding/using [PRODUCT] at [LOCATION]. Imperfect framing, natural lighting, slight motion blur, mobile camera aesthetic. Looks unstaged and real — like a satisfied customer Instagram post.',
+            icon: 'smartphone',
+        },
+        {
+            id: 'tpl_hero_banner',
+            name: 'Hero Banner',
+            tags: ['banner', 'hero', 'landing'],
+            description: 'Wide composition for top-of-page banners and landing hero sections.',
+            prompt: 'Cinematic wide hero banner (16:9) featuring [PRODUCT] with negative space on the left for headline overlay. Dramatic lighting, strong product hero shot, premium brand aesthetic, vibrant but controlled color palette. Suited for landing page or web banner ad.',
+            icon: 'layout',
+        },
     ];
 
     const PromptTemplates = {

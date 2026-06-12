@@ -54,6 +54,28 @@ const FacebookAds = {
         return (this.config.adAccounts || []).find(a => a.id === this.config.activeAdAccountId) || null;
     },
 
+    activeAccountCurrency() {
+        const acc = this.activeAccount();
+        return (acc?.currency || '').toUpperCase() || 'USD';
+    },
+
+    // Atualiza currencies de contas que não têm (legacy) buscando da Graph API
+    async ensureAccountCurrencies() {
+        if (!this.config.accessToken) return;
+        const missing = (this.config.adAccounts || []).filter(a => !a.currency);
+        if (missing.length === 0) return;
+        try {
+            const all = await this.fetchMyAdAccounts();
+            const byId = {};
+            all.forEach(a => { byId[a.id] = a.currency || ''; });
+            this.config.adAccounts = this.config.adAccounts.map(a => ({
+                ...a,
+                currency: a.currency || byId[a.id] || '',
+            }));
+            this.saveConfig();
+        } catch (e) { console.warn('[FB] ensureAccountCurrencies', e); }
+    },
+
     // Conveniência: ID da conta ativa (compatibilidade com chamadas antigas)
     get activeAdAccountId() { return this.config.activeAdAccountId; },
 
@@ -103,7 +125,8 @@ const FacebookAds = {
                 if (checks.length > 0) {
                     this.config.adAccounts = checks.map(c => ({
                         id: c.value,
-                        name: c.dataset.name || c.value
+                        name: c.dataset.name || c.value,
+                        currency: c.dataset.currency || ''
                     }));
                     if (!this.config.adAccounts.some(a => a.id === this.config.activeAdAccountId)) {
                         this.config.activeAdAccountId = this.config.adAccounts[0].id;
@@ -173,23 +196,9 @@ const FacebookAds = {
             });
         }
 
-        // Botão: Configurar Facebook
+        // Botão: Configurar Facebook (dentro do Diagnóstico)
         const btnConfig = document.getElementById('btn-fb-config');
-        if (btnConfig) {
-            btnConfig.addEventListener('click', () => {
-                document.getElementById('fb-access-token').value = this.config.accessToken;
-                const manual = document.getElementById('fb-ad-account-id');
-                if (manual) manual.value = this.config.activeAdAccountId || '';
-                // Re-popula lista com o que já temos salvo (todas marcadas)
-                if ((this.config.adAccounts || []).length > 0) {
-                    this._populateAccountList(this.config.adAccounts, /*allChecked*/ true);
-                } else {
-                    const list = document.getElementById('fb-account-list');
-                    if (list) list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Cole o token e clique em "Buscar minhas contas" para listar suas contas de anúncio.</p>';
-                }
-                openModal('fb-config-modal');
-            });
-        }
+        if (btnConfig) btnConfig.addEventListener('click', () => this._openConfigModal());
 
         // Botão: Mapear Campanhas
         const btnMap = document.getElementById('btn-fb-map-campaigns');
@@ -212,26 +221,89 @@ const FacebookAds = {
             });
         }
 
+        // Botão: Importar TODOS os produtos
+        const btnFetchAll = document.getElementById('btn-fb-fetch-all');
+        if (btnFetchAll) {
+            btnFetchAll.addEventListener('click', () => {
+                if (typeof FunnelModule !== 'undefined' && FunnelModule.loadAllProductsFromFacebook) {
+                    FunnelModule.loadAllProductsFromFacebook();
+                } else {
+                    showToast('Módulo do Diagnóstico não carregado', 'error');
+                }
+            });
+        }
+
+        // Botão global: dropdown do perfil
+        const btnGlobal = document.getElementById('btn-fb-global-config');
+        if (btnGlobal) btnGlobal.addEventListener('click', () => this._openConfigModal());
+
+        // Botão no Ad Launcher
+        const btnAdl = document.getElementById('adl-btn-fb-config');
+        if (btnAdl) btnAdl.addEventListener('click', () => this._openConfigModal());
+
         // Update status on load
         this._updateStatusBadge();
         this._renderActiveAccountSelector();
     },
 
-    _updateStatusBadge() {
-        const badge = document.getElementById('fb-status');
-        if (!badge) return;
-        if (this.isConnected()) {
-            const n = this.config.adAccounts.length;
-            const active = this.activeAccount();
-            badge.textContent = n === 1
-                ? `FB · ${active?.name || 'conectado'}`
-                : `FB · ${n} contas`;
-            badge.className = 'status-badge status-connected';
-            badge.title = active ? `Conta ativa: ${active.name} (${active.id})` : '';
+    _openConfigModal() {
+        document.getElementById('fb-access-token').value = this.config.accessToken;
+        const manual = document.getElementById('fb-ad-account-id');
+        if (manual) manual.value = this.config.activeAdAccountId || '';
+        if ((this.config.adAccounts || []).length > 0) {
+            this._populateAccountList(this.config.adAccounts, true);
         } else {
-            badge.textContent = 'FB Desconectado';
-            badge.className = 'status-badge status-disconnected';
-            badge.title = '';
+            const list = document.getElementById('fb-account-list');
+            if (list) list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Cole o token e clique em "Buscar minhas contas" para listar suas contas de anúncio.</p>';
+        }
+        openModal('fb-config-modal');
+    },
+
+    _updateStatusBadge() {
+        const connected = this.isConnected();
+        const n = connected ? this.config.adAccounts.length : 0;
+        const active = connected ? this.activeAccount() : null;
+        const label = connected
+            ? (n === 1 ? `FB · ${active?.name || 'conectado'}` : `FB · ${n} contas`)
+            : 'FB Desconectado';
+        const cls = connected ? 'status-badge status-connected' : 'status-badge status-disconnected';
+
+        // Badge dentro do Diagnóstico/Funil
+        const badge = document.getElementById('fb-status');
+        if (badge) { badge.textContent = label; badge.className = cls; badge.title = active ? `Conta ativa: ${active.name} (${active.id})` : ''; }
+
+        // Badge no dropdown global
+        const globalBadge = document.getElementById('fb-global-status');
+        if (globalBadge) {
+            globalBadge.textContent = connected ? 'Conectado' : 'Desconectado';
+            globalBadge.className = cls + ' profile-dropdown-badge';
+        }
+
+        // Card no Ad Launcher
+        this._updateAdLauncherCard();
+    },
+
+    _updateAdLauncherCard() {
+        const statusText = document.getElementById('adl-fb-status-text');
+        const accountsList = document.getElementById('adl-fb-accounts-list');
+        if (!statusText) return;
+        if (this.isConnected()) {
+            const accounts = this.config.adAccounts || [];
+            statusText.textContent = `${accounts.length} conta(s) conectada(s)`;
+            statusText.style.color = 'var(--green)';
+            if (accountsList) {
+                accountsList.style.display = 'flex';
+                accountsList.innerHTML = accounts.map(a =>
+                    `<span class="adl-fb-account-pill${a.id === this.config.activeAdAccountId ? ' adl-fb-account-active' : ''}">
+                        <i data-lucide="check-circle" style="width:11px;height:11px"></i> ${this._esc(a.name || a.id)}
+                    </span>`
+                ).join('');
+                if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+            }
+        } else {
+            statusText.textContent = 'Desconectado — clique em Configurar';
+            statusText.style.color = 'var(--text-muted)';
+            if (accountsList) accountsList.style.display = 'none';
         }
     },
 
@@ -272,7 +344,7 @@ const FacebookAds = {
             const checked = allChecked || tracked.has(a.id) ? 'checked' : '';
             const meta = [a.currency, a.timezone].filter(Boolean).join(' · ');
             return `<label class="fb-account-item">
-                <input type="checkbox" value="${this._esc(a.id)}" data-name="${this._esc(a.name)}" ${checked}>
+                <input type="checkbox" value="${this._esc(a.id)}" data-name="${this._esc(a.name)}" data-currency="${this._esc(a.currency || '')}" ${checked}>
                 <span class="fb-account-name">${this._esc(a.name)}</span>
                 <span class="fb-account-meta">${this._esc(a.id)}${meta ? ' · ' + this._esc(meta) : ''}</span>
             </label>`;
@@ -304,15 +376,17 @@ const FacebookAds = {
     },
 
     // ---- API: Buscar campanhas da conta ativa ----
+    // Inclui ACTIVE, PAUSED, ARCHIVED, DELETED, IN_PROCESS — pra permitir mapear
+    // campanhas que foram desativadas/arquivadas mas que tiveram spend no período.
     async fetchCampaigns() {
         if (!this.isConnected()) throw new Error('Facebook não configurado');
         const accountId = this.config.activeAdAccountId;
 
         const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/campaigns`
             + `?access_token=${this.config.accessToken}`
-            + `&fields=id,name,status,effective_status`
-            + `&filtering=${encodeURIComponent('[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED"]}]')}`
-            + `&limit=200`;
+            + `&fields=id,name,status,effective_status,created_time`
+            + `&filtering=${encodeURIComponent('[{"field":"effective_status","operator":"IN","value":["ACTIVE","PAUSED","ARCHIVED","DELETED","IN_PROCESS","WITH_ISSUES"]}]')}`
+            + `&limit=500`;
 
         const res = await fetch(url);
         const data = await res.json();
@@ -323,6 +397,96 @@ const FacebookAds = {
         }
 
         return data.data || [];
+    },
+
+    // ---- Buscar Ad Sets (Conjuntos) de uma campanha ----
+    async fetchAdsetsForCampaign(campaignId) {
+        if (!this.isConnected()) throw new Error('Facebook não configurado');
+        if (!campaignId) return [];
+        const url = `${this.BASE_URL}/${this.API_VERSION}/${campaignId}/adsets`
+            + `?access_token=${this.config.accessToken}`
+            + `&fields=id,name,status,effective_status,daily_budget,lifetime_budget,billing_event,optimization_goal,targeting`
+            + `&limit=500`;
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.error) {
+                this._handleApiError(data.error);
+                return [];
+            }
+            return data.data || [];
+        } catch (e) {
+            console.warn('[FB] fetchAdsetsForCampaign failed:', e);
+            return [];
+        }
+    },
+
+    // ---- Buscar Ads (Criativos) de um conjunto ----
+    async fetchAdsForAdset(adsetId) {
+        if (!this.isConnected()) throw new Error('Facebook não configurado');
+        if (!adsetId) return [];
+        const url = `${this.BASE_URL}/${this.API_VERSION}/${adsetId}/ads`
+            + `?access_token=${this.config.accessToken}`
+            + `&fields=id,name,status,effective_status,creative{id,name,thumbnail_url,object_story_spec,image_url,video_id}`
+            + `&limit=500`;
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.error) {
+                this._handleApiError(data.error);
+                return [];
+            }
+            return data.data || [];
+        } catch (e) {
+            console.warn('[FB] fetchAdsForAdset failed:', e);
+            return [];
+        }
+    },
+
+    // ---- Account-level totals (link clicks, spend, purchases) for a date range ----
+    // Used for "Conversão FB" = compras ÷ cliques no link enviados pelos ads.
+    async fetchAccountTotals(dateRange) {
+        if (!this.isConnected()) return null;
+        const accountId = this.config.activeAdAccountId;
+        const since = dateRange?.since;
+        const until = dateRange?.until;
+        if (!since || !until) return null;
+        const params = new URLSearchParams({
+            access_token: this.config.accessToken,
+            fields: 'spend,inline_link_clicks,clicks,impressions,actions,action_values',
+            level: 'account',
+            time_range: JSON.stringify({ since, until }),
+            limit: '500',
+        });
+        const firstUrl = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights?${params}`;
+        try {
+            let totals = { spend: 0, linkClicks: 0, allClicks: 0, impressions: 0, purchases: 0, purchaseValue: 0 };
+            let nextUrl = firstUrl;
+            let safety = 0;
+            while (nextUrl && safety < 20) {
+                const res = await fetch(nextUrl);
+                const data = await res.json();
+                if (data.error) { this._handleApiError(data.error); break; }
+                (data.data || []).forEach(row => {
+                    totals.spend += parseFloat(row.spend || 0);
+                    totals.linkClicks += parseInt(row.inline_link_clicks || 0);
+                    totals.allClicks += parseInt(row.clicks || 0);
+                    totals.impressions += parseInt(row.impressions || 0);
+                    (row.actions || []).forEach(a => {
+                        if (a.action_type === 'offsite_conversion.fb_pixel_purchase') totals.purchases += parseInt(a.value) || 0;
+                    });
+                    (row.action_values || []).forEach(a => {
+                        if (a.action_type === 'offsite_conversion.fb_pixel_purchase') totals.purchaseValue += parseFloat(a.value) || 0;
+                    });
+                });
+                nextUrl = data.paging?.next || null;
+                safety++;
+            }
+            return totals;
+        } catch (e) {
+            console.warn('[FB] fetchAccountTotals failed:', e);
+            return null;
+        }
     },
 
     // ---- API: Buscar insights de campanhas mapeadas a um produto (na conta ativa) ----
@@ -343,22 +507,31 @@ const FacebookAds = {
             { field: 'campaign.id', operator: 'IN', value: campaignIds }
         ]));
 
-        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
+        const firstUrl = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
             + `?access_token=${this.config.accessToken}`
-            + `&fields=impressions,clicks,spend,actions,action_values`
+            + `&fields=impressions,clicks,inline_link_clicks,spend,cpc,cost_per_inline_link_click,actions,action_values`
             + `&level=campaign`
             + `&time_range=${timeRange}`
-            + `&filtering=${filtering}`;
+            + `&filtering=${filtering}`
+            + `&limit=500`;
 
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.error) {
-            this._handleApiError(data.error);
-            throw new Error(data.error.message);
+        // Pagination: FB retorna 25 por página por padrão
+        const allRows = [];
+        let nextUrl = firstUrl;
+        let safety = 0;
+        while (nextUrl && safety < 20) {
+            const res = await fetch(nextUrl);
+            const data = await res.json();
+            if (data.error) {
+                this._handleApiError(data.error);
+                throw new Error(data.error.message);
+            }
+            if (Array.isArray(data.data)) allRows.push(...data.data);
+            nextUrl = data.paging?.next || null;
+            safety++;
         }
 
-        return this._aggregateInsights(data.data || []);
+        return this._aggregateInsights(allRows);
     },
 
     // ---- Daily breakdown (time_increment=1) ----
@@ -376,19 +549,34 @@ const FacebookAds = {
             { field: 'campaign.id', operator: 'IN', value: campaignIds }
         ]));
 
-        const url = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
+        // BUGFIX: FB API retorna 25 dias por padrão. Para 30+ dias precisamos
+        // de limit alto E paginação via cursor `paging.next`.
+        const firstUrl = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights`
             + `?access_token=${this.config.accessToken}`
-            + `&fields=date_start,impressions,clicks,spend,actions,action_values`
+            + `&fields=date_start,impressions,clicks,inline_link_clicks,spend,cpc,cost_per_inline_link_click,actions,action_values`
             + `&level=account`
             + `&time_increment=1`
             + `&time_range=${timeRange}`
-            + `&filtering=${filtering}`;
+            + `&filtering=${filtering}`
+            + `&limit=500`;
 
         try {
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.error) return [];
-            return (data.data || []).map(row => {
+            // Pagina até cobrir todos os dias do range
+            const allRows = [];
+            let nextUrl = firstUrl;
+            let safety = 0;
+            while (nextUrl && safety < 20) {
+                const res = await fetch(nextUrl);
+                const data = await res.json();
+                if (data.error) {
+                    console.warn('[FacebookAds] fetchDailyInsights error:', data.error);
+                    break;
+                }
+                if (Array.isArray(data.data)) allRows.push(...data.data);
+                nextUrl = data.paging?.next || null;
+                safety++;
+            }
+            return allRows.map(row => {
                 let viewContent = 0, addToCart = 0, checkout = 0, purchase = 0, purchaseValue = 0;
                 (row.actions || []).forEach(a => {
                     const v = parseInt(a.value) || 0;
@@ -402,11 +590,18 @@ const FacebookAds = {
                 (row.action_values || []).forEach(a => {
                     if (a.action_type === 'offsite_conversion.fb_pixel_purchase') purchaseValue += parseFloat(a.value) || 0;
                 });
+                // Usar inline_link_clicks (cliques no link) que é o que Ads Manager mostra como CPC default
+                const allClicks = parseInt(row.clicks) || 0;
+                const linkClicks = parseInt(row.inline_link_clicks) || 0;
                 return {
                     date: row.date_start,
                     impressions: parseInt(row.impressions) || 0,
-                    clicks: parseInt(row.clicks) || 0,
+                    // "clicks" = link clicks (alinha com FB Ads Manager)
+                    clicks: linkClicks > 0 ? linkClicks : allClicks,
+                    allClicks,
+                    linkClicks,
                     spend: parseFloat(row.spend) || 0,
+                    cpc: parseFloat(row.cost_per_inline_link_click || row.cpc) || 0,
                     viewContent,
                     addToCart,
                     checkout,
@@ -421,7 +616,9 @@ const FacebookAds = {
     _aggregateInsights(rows) {
         const totals = {
             impressions: 0,
-            clicks: 0,
+            clicks: 0,        // = linkClicks (alinhado com FB Ads Manager)
+            allClicks: 0,     // todos os cliques (não usado pra CPC mas guardado)
+            linkClicks: 0,
             spend: 0,
             viewContent: 0,
             addToCart: 0,
@@ -432,7 +629,12 @@ const FacebookAds = {
 
         rows.forEach(row => {
             totals.impressions += parseInt(row.impressions) || 0;
-            totals.clicks += parseInt(row.clicks) || 0;
+            const allC = parseInt(row.clicks) || 0;
+            const linkC = parseInt(row.inline_link_clicks) || 0;
+            totals.allClicks += allC;
+            totals.linkClicks += linkC;
+            // "clicks" canonical = link clicks (cai pra all clicks se link não disponível)
+            totals.clicks += linkC > 0 ? linkC : allC;
             totals.spend += parseFloat(row.spend) || 0;
 
             // Extrair actions (funnel events)
@@ -684,6 +886,7 @@ const FacebookAds = {
         const q = (document.getElementById('fb-campaigns-search')?.value || '').trim().toLowerCase();
         const showActive = !!document.getElementById('fb-campaigns-filter-active')?.checked;
         const showPaused = !!document.getElementById('fb-campaigns-filter-paused')?.checked;
+        const showArchived = document.getElementById('fb-campaigns-filter-archived')?.checked !== false;
         const onlyMapped = !!document.getElementById('fb-campaigns-filter-mapped')?.checked;
         // Use per-account selection set
         if (!st.selectedByAccount[st.accountId]) st.selectedByAccount[st.accountId] = new Set();
@@ -693,8 +896,10 @@ const FacebookAds = {
             const status = (c.effective_status || '').toUpperCase();
             const isActive = status === 'ACTIVE';
             const isPaused = status === 'PAUSED';
+            const isArchived = !isActive && !isPaused;
             if (isActive && !showActive) return false;
             if (isPaused && !showPaused) return false;
+            if (isArchived && !showArchived) return false;
             if (onlyMapped && !selected.has(c.id)) return false;
             if (q) {
                 const hay = `${c.name || ''} ${status} ${c.id || ''}`.toLowerCase();
@@ -714,10 +919,12 @@ const FacebookAds = {
                 const otherBadge = others.length > 0
                     ? `<span class="fb-campaign-other" title="Já mapeada em ${others.map(p => getProductName(p) || p).join(', ')}"><i data-lucide="link-2" style="width:11px;height:11px;vertical-align:-1px"></i> ${others.length === 1 ? this._esc(getProductName(others[0]) || others[0]) : others.length + ' produtos'}</span>`
                     : '';
+                const amsUrl = `https://www.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(st.accountId)}&selected_campaign_ids=${encodeURIComponent(c.id)}`;
                 return `<label class="fb-campaign-item">
                     <input type="checkbox" value="${this._esc(c.id)}" ${checked}>
                     <span class="fb-campaign-name">${this._highlightMatch(c.name || '', q)}</span>
                     ${otherBadge}
+                    <a class="fb-campaign-link" href="${amsUrl}" target="_blank" rel="noopener" title="Abrir no Ads Manager" onclick="event.stopPropagation()"><i data-lucide="external-link" style="width:12px;height:12px"></i></a>
                     <span class="fb-campaign-status status-fb-${status.toLowerCase()}">${this._esc(status)}</span>
                 </label>`;
             }).join('');
@@ -746,6 +953,7 @@ const FacebookAds = {
         const clear = document.getElementById('fb-campaigns-search-clear');
         const activeChk = document.getElementById('fb-campaigns-filter-active');
         const pausedChk = document.getElementById('fb-campaigns-filter-paused');
+        const archivedChk = document.getElementById('fb-campaigns-filter-archived');
         const mappedChk = document.getElementById('fb-campaigns-filter-mapped');
 
         let timer = null;
@@ -759,7 +967,7 @@ const FacebookAds = {
             if (e.key === 'Escape') { e.preventDefault(); search.value = ''; this._renderCampaignList(); }
         });
         clear?.addEventListener('click', (e) => { e.preventDefault(); search.value = ''; search.focus(); this._renderCampaignList(); });
-        [activeChk, pausedChk, mappedChk].forEach(el => el?.addEventListener('change', () => this._renderCampaignList()));
+        [activeChk, pausedChk, archivedChk, mappedChk].forEach(el => el?.addEventListener('change', () => this._renderCampaignList()));
 
         // Captura toggle de checkbox e atualiza Set ao vivo (por conta)
         const listEl = document.getElementById('fb-campaigns-list');
