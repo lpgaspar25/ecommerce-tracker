@@ -49,6 +49,17 @@ const CreativesModule = {
         });
         document.getElementById('btn-creative-csv-template')?.addEventListener('click', () => this.downloadCsvTemplate());
 
+        // Bulk upload (multiple files at once)
+        document.getElementById('btn-bulk-upload-creatives')?.addEventListener('click', () => this.openBulkModal());
+        document.getElementById('bulk-files-pick')?.addEventListener('click', () => document.getElementById('creative-bulk-input')?.click());
+        document.getElementById('creative-bulk-input')?.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files || []);
+            if (files.length) this._bulkAddFiles(files);
+            // don't reset .value here — user may want to inspect what they picked. Reset on modal close.
+        });
+        document.getElementById('creative-bulk-form')?.addEventListener('submit', (e) => this.handleBulkSubmit(e));
+        document.getElementById('bulk-product')?.addEventListener('change', () => this._bulkRefreshCampaignList());
+
         // Quick-view lightbox
         document.getElementById('creative-lightbox-close')?.addEventListener('click', () => this.closeLightbox());
         document.getElementById('creative-media-lightbox')?.addEventListener('click', (e) => {
@@ -487,6 +498,227 @@ const CreativesModule = {
         closeModal('creative-modal');
         LocalStore.save('creatives', AppState.allCreatives);
         EventBus.emit('creativesChanged');
+    },
+
+    // ============================================================
+    //  BULK UPLOAD — sobe vários arquivos de uma vez
+    // ============================================================
+    _bulkFiles: [],
+
+    openBulkModal() {
+        this._bulkFiles = [];
+        const modal = document.getElementById('creative-bulk-modal');
+        if (!modal) return;
+
+        // Populate product dropdown
+        const prodSel = document.getElementById('bulk-product');
+        if (prodSel) {
+            prodSel.innerHTML = '<option value="">— Selecione um produto —</option>';
+            (AppState.products || []).forEach(p => {
+                if (p.status === 'ativo') {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.name;
+                    prodSel.appendChild(opt);
+                }
+            });
+        }
+
+        // Populate country dropdown
+        const cSel = document.getElementById('bulk-country');
+        if (cSel) cSel.innerHTML = '<option value="">— (sem país) —</option>' + this._countryOptionsHtml('');
+
+        // Reset form fields
+        document.getElementById('creative-bulk-form')?.reset();
+        const preview = document.getElementById('bulk-files-preview');
+        if (preview) preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Nenhum arquivo escolhido ainda.</span>';
+        const progress = document.getElementById('bulk-progress');
+        if (progress) progress.style.display = 'none';
+        const submit = document.getElementById('bulk-submit-btn');
+        if (submit) { submit.disabled = true; submit.textContent = 'Subir 0 criativos'; }
+
+        modal.classList.remove('hidden');
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    closeBulkModal() {
+        const modal = document.getElementById('creative-bulk-modal');
+        if (modal) modal.classList.add('hidden');
+        this._bulkFiles = [];
+        const inp = document.getElementById('creative-bulk-input');
+        if (inp) inp.value = '';
+    },
+
+    _bulkRefreshCampaignList() {
+        const prodSel = document.getElementById('bulk-product');
+        const dl = document.getElementById('bulk-campaign-list');
+        if (!prodSel || !dl) return;
+        const names = this._campaignNamesForProduct(prodSel.value);
+        dl.innerHTML = names.map(n => `<option value="${this._escapeHtml(n)}">`).join('');
+    },
+
+    _bulkAddFiles(files) {
+        const MAX = 60 * 1024 * 1024; // 60MB per file
+        const accepted = [];
+        let skipped = 0;
+        for (const f of files) {
+            if (!f) continue;
+            if (f.size > MAX) { skipped++; continue; }
+            const type = (f.type || '').toLowerCase();
+            if (!type.startsWith('image') && !type.startsWith('video')) { skipped++; continue; }
+            accepted.push(f);
+        }
+        this._bulkFiles = this._bulkFiles.concat(accepted);
+        if (skipped > 0) showToast(`${skipped} arquivo(s) ignorados (formato ou > 60MB).`, 'warning');
+        this._renderBulkFilesPreview();
+    },
+
+    _bulkRemoveFile(idx) {
+        this._bulkFiles.splice(idx, 1);
+        this._renderBulkFilesPreview();
+    },
+
+    _renderBulkFilesPreview() {
+        const box = document.getElementById('bulk-files-preview');
+        const submit = document.getElementById('bulk-submit-btn');
+        if (!box) return;
+        const n = this._bulkFiles.length;
+        if (n === 0) {
+            box.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Nenhum arquivo escolhido ainda.</span>';
+            if (submit) { submit.disabled = true; submit.textContent = 'Subir 0 criativos'; }
+            return;
+        }
+        const totalMB = (this._bulkFiles.reduce((s, f) => s + (f.size || 0), 0) / 1024 / 1024).toFixed(1);
+        const items = this._bulkFiles.map((f, i) => {
+            const isVid = (f.type || '').startsWith('video');
+            const icon = isVid ? 'video' : 'image';
+            const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+            return `<div class="bulk-file-item">
+                <i data-lucide="${icon}" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0"></i>
+                <span class="bulk-file-name" title="${this._escapeHtml(f.name)}">${this._escapeHtml(f.name)}</span>
+                <span class="bulk-file-size">${sizeMB} MB</span>
+                <button type="button" class="bulk-file-x" onclick="CreativesModule._bulkRemoveFile(${i})" title="Remover">&times;</button>
+            </div>`;
+        }).join('');
+        box.innerHTML = `<div class="bulk-files-header">${n} arquivo(s) · ${totalMB} MB total</div>${items}`;
+        if (submit) { submit.disabled = false; submit.textContent = `Subir ${n} criativo${n > 1 ? 's' : ''}`; }
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    async handleBulkSubmit(e) {
+        e.preventDefault();
+        const productId = document.getElementById('bulk-product').value;
+        if (!productId) { showToast('Selecione um produto.', 'error'); return; }
+        if (!this._bulkFiles.length) { showToast('Escolha pelo menos um arquivo.', 'error'); return; }
+
+        const defaults = {
+            country: (document.getElementById('bulk-country').value || '').toUpperCase(),
+            campaign: (document.getElementById('bulk-campaign').value || '').trim(),
+            type: document.getElementById('bulk-type').value || '',
+            angle: (document.getElementById('bulk-angle').value || '').trim(),
+            platform: document.getElementById('bulk-platform').value || 'Meta Ads',
+        };
+
+        const total = this._bulkFiles.length;
+        const progress = document.getElementById('bulk-progress');
+        const fill = document.getElementById('bulk-progress-fill');
+        const text = document.getElementById('bulk-progress-text');
+        const submitBtn = document.getElementById('bulk-submit-btn');
+        if (progress) progress.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = true;
+
+        let ok = 0, fail = 0;
+        const createdCreatives = [];
+
+        for (let i = 0; i < total; i++) {
+            const file = this._bulkFiles[i];
+            try {
+                const isVideo = (file.type || '').startsWith('video');
+                const mediaType = defaults.type || (isVideo ? 'video' : 'imagem');
+                const mediaTypeStored = isVideo ? 'video' : 'image';
+
+                // Generate thumbnail
+                let thumb = '';
+                try {
+                    thumb = isVideo ? await this._videoThumb(file) : await this._imageThumb(file);
+                } catch (err) { console.warn('thumb failed for', file.name, err); }
+
+                // Store blob in IndexedDB
+                let mediaId = '';
+                if (typeof MediaStore !== 'undefined' && MediaStore.isSupported()) {
+                    mediaId = generateId('media');
+                    try {
+                        await MediaStore.put(mediaId, file, { type: mediaTypeStored, name: file.name });
+                    } catch (err) {
+                        console.warn('MediaStore put failed', err);
+                        mediaId = '';
+                    }
+                }
+
+                // Build creative name from filename (without extension)
+                const nameWithoutExt = (file.name || '').replace(/\.[^.]+$/, '').trim() || `Criativo ${i + 1}`;
+
+                const data = {
+                    id: generateId('crtv'),
+                    productId,
+                    name: nameWithoutExt,
+                    type: mediaType,
+                    angle: defaults.angle,
+                    hookText: '',
+                    hookType: '',
+                    platform: defaults.platform,
+                    status: 'ativo',
+                    launchDate: todayISO(),
+                    primaryText: '',
+                    headline: '',
+                    adDescription: '',
+                    country: defaults.country,
+                    campaign: defaults.campaign,
+                    mediaId,
+                    mediaType: mediaTypeStored,
+                    mediaThumb: thumb || '',
+                    mediaName: file.name || '',
+                    imageUrl: '',
+                    variations: [],
+                    storeId: getWritableStoreId(productId),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                };
+
+                AppState.allCreatives.push(data);
+                createdCreatives.push(data);
+                ok++;
+            } catch (err) {
+                console.error('bulk upload error for', file?.name, err);
+                fail++;
+            }
+
+            // Update progress
+            const pct = Math.round(((i + 1) / total) * 100);
+            if (fill) fill.style.width = pct + '%';
+            if (text) text.textContent = `Processando ${i + 1} de ${total}… (${ok} ok${fail ? ', ' + fail + ' falha' : ''})`;
+        }
+
+        // Persist all at once (uses StorageManager auto-reclaim if needed)
+        filterDataByStore();
+        LocalStore.save('creatives', AppState.allCreatives);
+
+        // Sync to Sheets (optional)
+        if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined' && SheetsAPI.TABS.CREATIVES) {
+            for (const c of createdCreatives) {
+                try { await SheetsAPI.appendRow(SheetsAPI.TABS.CREATIVES, SheetsAPI.creativeToRow(c)); }
+                catch (err) { console.warn('Sheets sync failed for', c.id, err); }
+            }
+        }
+
+        EventBus.emit('creativesChanged');
+
+        if (text) text.textContent = `Concluído! ${ok} criativo${ok !== 1 ? 's' : ''} adicionado${ok !== 1 ? 's' : ''}${fail ? `, ${fail} falha${fail > 1 ? 's' : ''}` : ''}.`;
+        if (fail > 0) showToast(`${ok} criativos adicionados, ${fail} falharam.`, 'warning');
+        else showToast(`✅ ${ok} criativo${ok !== 1 ? 's' : ''} adicionado${ok !== 1 ? 's' : ''} com sucesso!`, 'success');
+
+        // Close modal after a short delay so user sees completion
+        setTimeout(() => this.closeBulkModal(), 1200);
     },
 
     async deleteCreative(id) {

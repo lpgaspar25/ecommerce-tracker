@@ -2256,9 +2256,11 @@
                 <h2>Criativos & Testes</h2>
                 <div id="creatives-actions">
                     <button id="btn-import-creatives" class="btn btn-secondary" title="Importar criativos de uma planilha (CSV)"><i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Importar planilha</button>
+                    <button id="btn-bulk-upload-creatives" class="btn btn-secondary" title="Subir vários arquivos de uma vez"><i data-lucide="upload-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Subir em massa</button>
                     <button id="btn-compare-creatives" class="btn btn-secondary">Comparar</button>
                     <button id="btn-add-creative" class="btn btn-primary">+ Novo Criativo</button>
                     <input type="file" id="creative-csv-input" accept=".csv,.tsv,.txt" style="display:none">
+                    <input type="file" id="creative-bulk-input" accept="image/*,video/*" multiple style="display:none">
                 </div>
                 <div id="swipe-actions" style="display:none">
                     <button id="btn-swipe-settings" class="btn btn-secondary" title="Configurar API Keys"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i>️ Config.</button>
@@ -2562,6 +2564,85 @@
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" id="creative-cancel">Cancelar</button>
                             <button type="submit" class="btn btn-primary">Salvar Criativo</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Bulk Upload Modal (subir vários criativos de uma vez) -->
+            <div id="creative-bulk-modal" class="modal hidden">
+                <div class="modal-overlay" onclick="CreativesModule.closeBulkModal && CreativesModule.closeBulkModal()"></div>
+                <div class="modal-content" style="max-width:640px">
+                    <div class="modal-header">
+                        <h3>Subir criativos em massa</h3>
+                        <button class="btn-close" onclick="CreativesModule.closeBulkModal && CreativesModule.closeBulkModal()">&times;</button>
+                    </div>
+                    <p style="margin:0 0 1rem;color:var(--text-muted);font-size:0.9rem">
+                        Escolha vários arquivos. Cada arquivo vira um criativo separado — o nome vem do arquivo.
+                        Você define produto, país e campanha uma única vez (vale pra todos).
+                    </p>
+                    <form id="creative-bulk-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bulk-product">Produto <span style="color:#d33">*</span></label>
+                                <select id="bulk-product" required></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bulk-country">País / Mercado</label>
+                                <select id="bulk-country">
+                                    <option value="">— (sem país) —</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bulk-campaign">Campanha</label>
+                                <input type="text" id="bulk-campaign" list="bulk-campaign-list" placeholder="(opcional) nome ou ID da campanha">
+                                <datalist id="bulk-campaign-list"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label for="bulk-type">Tipo</label>
+                                <select id="bulk-type">
+                                    <option value="">— (auto: imagem/vídeo) —</option>
+                                    <option value="imagem">Imagem</option>
+                                    <option value="video">Vídeo</option>
+                                    <option value="carrossel">Carrossel</option>
+                                    <option value="ugc">UGC</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bulk-angle">Ângulo (opcional, vale pra todos)</label>
+                                <input type="text" id="bulk-angle" placeholder="ex.: prova social, escassez, autoridade">
+                            </div>
+                            <div class="form-group">
+                                <label for="bulk-platform">Plataforma</label>
+                                <select id="bulk-platform">
+                                    <option value="">— qualquer —</option>
+                                    <option value="facebook">Facebook</option>
+                                    <option value="instagram">Instagram</option>
+                                    <option value="tiktok">TikTok</option>
+                                    <option value="google">Google</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Arquivos selecionados</label>
+                            <div id="bulk-files-preview" class="bulk-files-preview">
+                                <span style="color:var(--text-muted);font-size:0.85rem">Nenhum arquivo escolhido ainda.</span>
+                            </div>
+                            <button type="button" id="bulk-files-pick" class="btn btn-secondary btn-sm" style="margin-top:0.5rem">
+                                <i data-lucide="image-plus" style="width:13px;height:13px;vertical-align:-2px"></i> Escolher arquivos
+                            </button>
+                        </div>
+                        <div id="bulk-progress" class="bulk-progress" style="display:none">
+                            <div class="bulk-progress-bar"><div class="bulk-progress-fill" id="bulk-progress-fill"></div></div>
+                            <div class="bulk-progress-text" id="bulk-progress-text">Processando…</div>
+                        </div>
+                        <div class="form-actions" style="margin-top:1rem">
+                            <button type="button" class="btn btn-secondary" onclick="CreativesModule.closeBulkModal && CreativesModule.closeBulkModal()">Cancelar</button>
+                            <button type="submit" id="bulk-submit-btn" class="btn btn-primary" disabled>Subir 0 criativos</button>
                         </div>
                     </form>
                 </div>
