@@ -8205,6 +8205,75 @@ thead:hover .diary-check-col input[type="checkbox"],
 .creative-lightbox-close { position: absolute; top: 16px; right: 22px; background: none; border: none; color: #fff; font-size: 2.2rem; line-height: 1; cursor: pointer; }
 
 /* ── Bulk Upload Modal ── */
+
+/* Refinar os campos do modal pra combinar com o seletor de período (estilo claro, arredondado) */
+#creative-bulk-modal .form-group label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    margin-bottom: 0.15rem;
+}
+#creative-bulk-modal .form-group .input,
+#creative-bulk-modal .form-group input.input,
+#creative-bulk-modal .form-group select.input {
+    height: 42px;
+    padding: 0 0.85rem;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    width: 100%;
+}
+#creative-bulk-modal .form-group input.input::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+#creative-bulk-modal .form-group .input:hover,
+#creative-bulk-modal .form-group input.input:hover,
+#creative-bulk-modal .form-group select.input:hover {
+    border-color: var(--accent);
+}
+#creative-bulk-modal .form-group .input:focus,
+#creative-bulk-modal .form-group input.input:focus,
+#creative-bulk-modal .form-group select.input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+    outline: none;
+}
+
+/* Custom dropdown arrow (some-icons-replace nativo do macOS) */
+#creative-bulk-modal .form-group select.input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 2.4rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237c3aed' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    cursor: pointer;
+}
+
+#creative-bulk-modal .form-row {
+    gap: 1rem;
+    margin-bottom: 1.1rem;
+}
+#creative-bulk-modal .form-group {
+    gap: 0.4rem;
+}
+
+/* O título e a descrição também ganham mais respiro */
+#creative-bulk-modal .modal-header h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
 .bulk-dropzone {
     border: 2px dashed var(--border-color, #cbd5e1);
     border-radius: 14px;
