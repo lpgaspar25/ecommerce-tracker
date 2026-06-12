@@ -51,14 +51,47 @@ const CreativesModule = {
 
         // Bulk upload (multiple files at once)
         document.getElementById('btn-bulk-upload-creatives')?.addEventListener('click', () => this.openBulkModal());
-        document.getElementById('bulk-files-pick')?.addEventListener('click', () => document.getElementById('creative-bulk-input')?.click());
         document.getElementById('creative-bulk-input')?.addEventListener('change', (e) => {
             const files = Array.from(e.target.files || []);
             if (files.length) this._bulkAddFiles(files);
-            // don't reset .value here — user may want to inspect what they picked. Reset on modal close.
+            e.target.value = ''; // allow picking the same file again later
         });
         document.getElementById('creative-bulk-form')?.addEventListener('submit', (e) => this.handleBulkSubmit(e));
         document.getElementById('bulk-product')?.addEventListener('change', () => this._bulkRefreshCampaignList());
+
+        // Dropzone: click anywhere + keyboard + drag & drop
+        const dz = document.getElementById('bulk-dropzone');
+        const fileInput = document.getElementById('creative-bulk-input');
+        if (dz && fileInput) {
+            const openPicker = (e) => {
+                // ignore clicks on the X buttons or "add more" (they have their own handlers)
+                if (e.target.closest('.bulk-file-x') || e.target.closest('.bulk-add-more')) return;
+                fileInput.click();
+            };
+            dz.addEventListener('click', openPicker);
+            dz.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+            });
+            ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                dz.classList.add('bulk-dropzone-hover');
+            }));
+            ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (ev === 'dragleave' && dz.contains(e.relatedTarget)) return;
+                dz.classList.remove('bulk-dropzone-hover');
+            }));
+            dz.addEventListener('drop', (e) => {
+                const files = Array.from(e.dataTransfer?.files || []);
+                if (files.length) this._bulkAddFiles(files);
+            });
+        }
+        // Prevent the browser from navigating away if the user drops a file outside the dropzone
+        ['dragover', 'drop'].forEach(ev => window.addEventListener(ev, (e) => {
+            // only prevent default while bulk modal is open
+            const modal = document.getElementById('creative-bulk-modal');
+            if (modal && !modal.classList.contains('hidden')) e.preventDefault();
+        }));
 
         // Quick-view lightbox
         document.getElementById('creative-lightbox-close')?.addEventListener('click', () => this.closeLightbox());
@@ -530,8 +563,7 @@ const CreativesModule = {
 
         // Reset form fields
         document.getElementById('creative-bulk-form')?.reset();
-        const preview = document.getElementById('bulk-files-preview');
-        if (preview) preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Nenhum arquivo escolhido ainda.</span>';
+        this._renderBulkFilesPreview(); // resets to empty state
         const progress = document.getElementById('bulk-progress');
         if (progress) progress.style.display = 'none';
         const submit = document.getElementById('bulk-submit-btn');
@@ -580,14 +612,27 @@ const CreativesModule = {
 
     _renderBulkFilesPreview() {
         const box = document.getElementById('bulk-files-preview');
+        const empty = document.getElementById('bulk-dropzone-empty');
+        const more = document.getElementById('bulk-add-more');
         const submit = document.getElementById('bulk-submit-btn');
+        const dz = document.getElementById('bulk-dropzone');
         if (!box) return;
         const n = this._bulkFiles.length;
+
         if (n === 0) {
-            box.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Nenhum arquivo escolhido ainda.</span>';
+            if (empty) empty.style.display = '';
+            box.style.display = 'none';
+            if (more) more.style.display = 'none';
+            if (dz) dz.classList.remove('bulk-dropzone-filled');
             if (submit) { submit.disabled = true; submit.textContent = 'Subir 0 criativos'; }
             return;
         }
+
+        if (empty) empty.style.display = 'none';
+        box.style.display = '';
+        if (more) more.style.display = '';
+        if (dz) dz.classList.add('bulk-dropzone-filled');
+
         const totalMB = (this._bulkFiles.reduce((s, f) => s + (f.size || 0), 0) / 1024 / 1024).toFixed(1);
         const items = this._bulkFiles.map((f, i) => {
             const isVid = (f.type || '').startsWith('video');
@@ -597,10 +642,20 @@ const CreativesModule = {
                 <i data-lucide="${icon}" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0"></i>
                 <span class="bulk-file-name" title="${this._escapeHtml(f.name)}">${this._escapeHtml(f.name)}</span>
                 <span class="bulk-file-size">${sizeMB} MB</span>
-                <button type="button" class="bulk-file-x" onclick="CreativesModule._bulkRemoveFile(${i})" title="Remover">&times;</button>
+                <button type="button" class="bulk-file-x" onclick="event.stopPropagation();CreativesModule._bulkRemoveFile(${i})" title="Remover">&times;</button>
             </div>`;
         }).join('');
-        box.innerHTML = `<div class="bulk-files-header">${n} arquivo(s) · ${totalMB} MB total</div>${items}`;
+        box.innerHTML = `<div class="bulk-files-header">${n} arquivo${n > 1 ? 's' : ''} · ${totalMB} MB total</div>${items}`;
+
+        // Re-wire "add more" button (innerHTML didn't replace it but make sure)
+        if (more && !more._wired) {
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('creative-bulk-input')?.click();
+            });
+            more._wired = true;
+        }
+
         if (submit) { submit.disabled = false; submit.textContent = `Subir ${n} criativo${n > 1 ? 's' : ''}`; }
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     },
