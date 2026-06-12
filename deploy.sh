@@ -15,6 +15,10 @@ set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAC_BACKUP="$HOME/Documents/Claude/Projects/ecommerce-tracker"
+# Cópias legadas que o Lucas costumava abrir — também serão espelhadas pra ficar tudo igual.
+LEGACY_MIRRORS=(
+  "$HOME/Downloads/_Duplicatas-Para-Revisar/APP CALCULADORA - cópia"
+)
 DEPLOY_TMP="/tmp/deploy-app-calculadora"
 CF_PROJECT="app-calculadora-lucas"
 BRANCH="main"
@@ -61,6 +65,26 @@ if [ -d "$HOME/Documents/Claude/Projects" ]; then
   ok "Backup local pronto → $MAC_BACKUP"
 fi
 
+# ── 3b. Espelhar cópias legadas (pra quando o usuário abre o caminho antigo) ──
+for MIRROR in "${LEGACY_MIRRORS[@]}"; do
+  if [ -d "$MIRROR" ]; then
+    log "Espelhando cópia legada: $MIRROR"
+    rsync -a --delete \
+      --exclude='node_modules' \
+      --exclude='.tools' \
+      --exclude='.wrangler' \
+      --exclude='.git' \
+      --exclude='.claude' \
+      --exclude='._*' \
+      --exclude='.DS_Store' \
+      --exclude='auth_info_baileys' \
+      --exclude='data/*.db' \
+      --exclude='deploy.sh' \
+      "$PROJECT_DIR/" "$MIRROR/"
+    ok "Espelho atualizado → $MIRROR"
+  fi
+done
+
 # ── 4. Cloudflare Pages: deploy ────────────────────────────
 log "Preparando bundle de deploy..."
 rm -rf "$DEPLOY_TMP"
@@ -89,5 +113,8 @@ echo ""
 echo -e "${GREEN}🚀 Tudo sincronizado!${NC}"
 echo "   📁 SSD     → $PROJECT_DIR"
 echo "   💾 Mac     → $MAC_BACKUP"
+for MIRROR in "${LEGACY_MIRRORS[@]}"; do
+  [ -d "$MIRROR" ] && echo "   🪞 Espelho → $MIRROR"
+done
 echo "   🐙 GitHub  → https://github.com/lpgaspar25/ecommerce-tracker"
 echo "   ☁️  Nuvem   → https://app-calculadora-lucas.pages.dev"
