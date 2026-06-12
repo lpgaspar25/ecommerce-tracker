@@ -3282,25 +3282,41 @@ body {
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    transition: color 0.12s;
+    transition: color 0.12s, background 0.12s;
+    position: relative;
 }
 .sales-table th[data-sort]:hover {
     color: var(--accent);
+    background: var(--accent-light);
 }
 .sales-table th[data-sort]::after {
     content: ' ↕';
-    opacity: 0.35;
-    font-size: 0.7em;
+    opacity: 0.55;
+    font-size: 0.78em;
+    margin-left: 0.2em;
+    color: var(--text-muted);
+}
+.sales-table th[data-sort]:hover::after {
+    opacity: 0.85;
+    color: var(--accent);
 }
 .sales-table th[data-sort].sort-asc::after {
     content: ' ↑';
     opacity: 1;
     color: var(--accent);
+    font-weight: 700;
 }
 .sales-table th[data-sort].sort-desc::after {
     content: ' ↓';
     opacity: 1;
     color: var(--accent);
+    font-weight: 700;
+}
+/* Highlight the column header that's currently sorted */
+.sales-table th[data-sort].sort-asc,
+.sales-table th[data-sort].sort-desc {
+    color: var(--accent);
+    background: var(--accent-light);
 }
 
 .aiad-result-badge {

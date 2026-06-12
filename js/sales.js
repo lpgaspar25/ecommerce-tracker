@@ -1272,13 +1272,35 @@ const SalesModule = (() => {
     function _sortFiltered() {
         const key = _state.sortKey || 'created_at';
         const dir = _state.sortDir === 'asc' ? 1 : -1;
+
+        // Helper: parse order number ("#14175") → 14175 for numeric sort
+        const orderNum = (o) => {
+            const s = String(o.name || '').replace(/[^\d]/g, '');
+            return s ? Number(s) : 0;
+        };
+        // Helper: extract the hour-of-day (0-23) in the customer's local timezone
+        const customerHour = (o) => {
+            try {
+                const addr = o.shipping_address || {};
+                const tz = (window.CountryTZ?.tzForOrder?.(addr));
+                if (!tz || !o.created_at) return -1;
+                const s = new Date(o.created_at).toLocaleString('en-US', { timeZone: tz, hour: '2-digit', hour12: false });
+                const h = parseInt(s, 10);
+                return Number.isNaN(h) ? -1 : h;
+            } catch { return -1; }
+        };
+
         _state.filtered.sort((a, b) => {
             let av, bv;
             switch (key) {
+                case 'name':
+                    return (orderNum(a) - orderNum(b)) * dir;
                 case 'created_at':
                     av = a.created_at || '';
                     bv = b.created_at || '';
                     return av < bv ? -dir : av > bv ? dir : 0;
+                case 'customer_local':
+                    return (customerHour(a) - customerHour(b)) * dir;
                 case 'total_price':
                     return ((Number(a.total_price) || 0) - (Number(b.total_price) || 0)) * dir;
                 case 'country':
@@ -1289,10 +1311,18 @@ const SalesModule = (() => {
                     av = (a.shipping_address?.city || '').toLowerCase();
                     bv = (b.shipping_address?.city || '').toLowerCase();
                     return av < bv ? -dir : av > bv ? dir : 0;
+                case 'product':
+                    av = ((a.line_items?.[0]?.title) || '').toLowerCase();
+                    bv = ((b.line_items?.[0]?.title) || '').toLowerCase();
+                    return av < bv ? -dir : av > bv ? dir : 0;
                 case 'items':
                     av = (a.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
                     bv = (b.line_items || []).reduce((s, li) => s + (li.quantity || 0), 0);
                     return (av - bv) * dir;
+                case 'status':
+                    av = (a.financial_status || '').toLowerCase();
+                    bv = (b.financial_status || '').toLowerCase();
+                    return av < bv ? -dir : av > bv ? dir : 0;
                 default:
                     return 0;
             }
@@ -2442,8 +2472,9 @@ const SalesModule = (() => {
                     _state.sortDir = _state.sortDir === 'asc' ? 'desc' : 'asc';
                 } else {
                     _state.sortKey = key;
-                    // Default direction: desc for date/value, asc for text
-                    _state.sortDir = (key === 'created_at' || key === 'total_price' || key === 'items') ? 'desc' : 'asc';
+                    // Default direction: desc for date/value/numeric, asc for text
+                    const numericKeys = ['created_at', 'total_price', 'items', 'name', 'customer_local'];
+                    _state.sortDir = numericKeys.includes(key) ? 'desc' : 'asc';
                 }
                 _applyFilters();
                 _renderTable();
