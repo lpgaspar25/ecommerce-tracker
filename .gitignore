@@ -6,3 +6,9 @@ node_modules/
 .cf-pages/
 .claude/
 .tools/
+
+# macOS AppleDouble (gerado em SSDs exFAT/FAT)
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
