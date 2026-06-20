@@ -9,12 +9,29 @@
             if (chrome.runtime.lastError) return;
             const queue = resp?.queue || [];
             if (!queue.length && !force) return;
-            // Send to the page (importer.js listens for this)
-            window.postMessage({
-                source: 'etracker-extension',
-                type: 'importer-product-data',
-                products: queue,
-            }, location.origin);
+
+            // Separa os tipos
+            const captures = queue.filter(item => item && item.tipo === 'remote-capture');
+            const products = queue.filter(item => !item || item.tipo !== 'remote-capture');
+
+            // Produtos → módulo Importer (comportamento original)
+            if (products.length || force) {
+                window.postMessage({
+                    source: 'etracker-extension',
+                    type: 'importer-product-data',
+                    products,
+                }, location.origin);
+            }
+
+            // Capturas BK/Payoneer → módulo RemoteCaptures
+            if (captures.length) {
+                window.postMessage({
+                    source: 'etracker-extension',
+                    type: 'remote-capture-data',
+                    captures,
+                }, location.origin);
+            }
+
             // Clear the queue once delivered
             if (queue.length) {
                 chrome.runtime.sendMessage({ type: 'etracker-ext-clear-queue' }, () => {});

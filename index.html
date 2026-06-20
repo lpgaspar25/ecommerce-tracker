@@ -53,6 +53,7 @@
         <button class="tab-btn" data-tab="importador">Importador</button>
         <button class="tab-btn" data-tab="vendas">Vendas</button>
         <button class="tab-btn" data-tab="fiscal"><i data-lucide="building-2" style="width:14px;height:14px;vertical-align:-2px"></i> Fiscal</button>
+        <button class="tab-btn" data-tab="captures"><i data-lucide="download-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Capturas</button>
     </nav>
 
     <!-- App Body: Sidebar + Main -->
@@ -84,6 +85,7 @@
             <a href="#" class="sidebar-link active" data-tab="dashboard"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Dashboard</span></a>
             <a href="#" class="sidebar-link" data-tab="vendas"><i data-lucide="line-chart" class="sidebar-icon"></i><span>Vendas</span></a>
             <a href="#" class="sidebar-link" data-tab="fiscal"><i data-lucide="building-2" class="sidebar-icon"></i><span>Fiscal</span></a>
+            <a href="#" class="sidebar-link" data-tab="captures"><i data-lucide="download-cloud" class="sidebar-icon"></i><span>Capturas</span></a>
         </div>
 
         <div class="sidebar-group">
@@ -3854,6 +3856,11 @@
             <!-- Conteúdo renderizado pelo FiscalModule.render() -->
         </section>
 
+        <!-- ==================== CAPTURAS (BK / Payoneer via extensão) ==================== -->
+        <section id="tab-captures" class="tab-panel">
+            <!-- Conteúdo renderizado pelo RemoteCapturesModule.render() -->
+        </section>
+
         <!-- ==================== AI AD GENERATOR ==================== -->
         <section id="tab-ai-ad-generator" class="tab-panel">
             <div class="section-header">
@@ -5925,6 +5932,7 @@
     <script src="js/country-tz.js"></script>
     <script src="js/sales.js"></script>
     <script src="js/fiscal.js"></script>
+    <script src="js/remote-captures.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">

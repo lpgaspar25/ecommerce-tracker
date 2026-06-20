@@ -1281,6 +1281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof PageComparisonModule !== 'undefined') PageComparisonModule.init();
     if (typeof ScaleSimModule !== 'undefined') ScaleSimModule.init();
     if (typeof FiscalModule !== 'undefined') FiscalModule.init();
+    if (typeof RemoteCapturesModule !== 'undefined') RemoteCapturesModule.init();
 
     // Load stores from localStorage
     AppState.stores = JSON.parse(localStorage.getItem('etracker_stores') || '[]');

@@ -1,13 +1,13 @@
 {
     "manifest_version": 3,
-    "name": "ETracker Product Scraper",
-    "version": "0.1.0",
-    "description": "Captura produtos de qualquer página e envia para o Importador do ETracker.",
+    "name": "ETracker — Captura BK / Payoneer / Produtos",
+    "version": "0.2.0",
+    "description": "Captura produtos de qualquer página + snapshots de BK Dashboard e Payoneer pro ETracker.",
     "permissions": ["activeTab", "scripting", "storage", "tabs"],
     "host_permissions": ["<all_urls>"],
     "action": {
         "default_popup": "popup/popup.html",
-        "default_title": "ETracker — Capturar produto"
+        "default_title": "ETracker — Capturar"
     },
     "background": {
         "service_worker": "background.js"
@@ -22,6 +22,23 @@
             ],
             "js": ["content/app-bridge.js"],
             "run_at": "document_idle"
+        },
+        {
+            "matches": [
+                "https://bkdash.com.br/*",
+                "https://*.bkdash.com.br/*",
+                "https://*.payoneer.com/*",
+                "https://payoneer.com/*"
+            ],
+            "js": ["content/remote-capture.js"],
+            "css": ["content/remote-capture.css"],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["content/remote-capture.css"],
+            "matches": ["https://bkdash.com.br/*", "https://*.bkdash.com.br/*", "https://*.payoneer.com/*", "https://payoneer.com/*"]
         }
     ]
 }

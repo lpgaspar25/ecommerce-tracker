@@ -14814,6 +14814,88 @@ body:not([data-theme]) .adh-board-viewport {
 .fiscal-empresa-presets {
     display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;
 }
+
+/* ============================================================
+   Capturas (BK Dashboard / Payoneer via extensão)
+   ============================================================ */
+.captures-intro { color: var(--text-secondary); font-size: 0.88rem; margin: 0 0 1.25rem; line-height: 1.5; }
+.captures-empty {
+    text-align: center; padding: 3rem 1rem; max-width: 520px; margin: 2rem auto;
+    background: var(--bg-card); border: 1px dashed var(--border); border-radius: 14px;
+}
+.captures-empty-icon { margin-bottom: 1rem; }
+.captures-empty h3 { margin: 0 0 0.5rem; font-size: 1.1rem; color: var(--text-primary); }
+.captures-empty p { color: var(--text-muted); font-size: 0.88rem; line-height: 1.55; margin: 0; }
+.captures-empty a { color: var(--accent); }
+
+.captures-list {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem; margin-top: 1rem;
+}
+.capture-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem 1.1rem; transition: border-color 0.15s, transform 0.1s;
+}
+.capture-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.capture-card-header {
+    display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+}
+.cap-plat {
+    font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 999px;
+    background: var(--accent-light); color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em;
+}
+.cap-plat-bk { background: rgba(59, 130, 246, 0.15); color: rgb(37, 99, 235); }
+.cap-plat-payoneer { background: rgba(245, 158, 11, 0.15); color: rgb(217, 119, 6); }
+.capture-moeda {
+    background: var(--bg-input); color: var(--text-secondary);
+    font-size: 0.7rem; font-weight: 600; padding: 0.18rem 0.45rem; border-radius: 4px;
+}
+.capture-x {
+    margin-left: auto; background: none; border: none; color: var(--text-muted);
+    font-size: 1.3rem; line-height: 1; cursor: pointer; padding: 0 0.25rem;
+}
+.capture-x:hover { color: var(--red, #d33); }
+
+.capture-title { font-size: 0.92rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; }
+.capture-url {
+    font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.65rem;
+}
+.capture-meta {
+    display: flex; gap: 0.85rem; flex-wrap: wrap;
+    font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.75rem;
+}
+.capture-actions { display: flex; gap: 0.4rem; }
+.capture-actions .btn { flex: 1; }
+
+.capture-detail-section {
+    background: var(--bg-input); padding: 0.75rem 1rem; border-radius: 8px;
+    margin-bottom: 1rem; font-size: 0.85rem; line-height: 1.7;
+}
+.capture-detail-section div { margin-bottom: 0.25rem; }
+.capture-detail-h {
+    font-size: 0.95rem; margin: 1.25rem 0 0.5rem; color: var(--text-primary);
+}
+.capture-detail-table {
+    width: 100%; border-collapse: collapse; font-size: 0.8rem;
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.capture-detail-table thead th {
+    background: var(--bg-input); padding: 0.5rem 0.65rem; text-align: left;
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.capture-detail-table tbody td {
+    padding: 0.4rem 0.65rem; border-bottom: 1px solid var(--border);
+}
+.capture-detail-table tbody tr:last-child td { border-bottom: none; }
+.capture-money { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.capture-tab-block { margin-bottom: 1rem; }
+.capture-dates { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.capture-date-pill {
+    background: var(--bg-input); padding: 0.2rem 0.55rem; border-radius: 6px;
+    font-size: 0.74rem; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
 .fiscal-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
 .fiscal-check input { accent-color: var(--accent); }
 .fiscal-footer { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
