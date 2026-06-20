@@ -14699,3 +14699,101 @@ body:not([data-theme]) .adh-board-viewport {
     .adh-columns { grid-template-columns: 1fr; }
     .adh-svg { display: none; }
 }
+
+/* ============================================================
+   Fiscal & Empresa
+   ============================================================ */
+.fiscal-intro { margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.88rem; line-height: 1.5; }
+.fiscal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1rem; }
+.fiscal-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.1rem 1.15rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s;
+}
+.fiscal-card:hover { border-color: var(--accent-light); }
+.fiscal-card-wide { grid-column: 1 / -1; }
+.fiscal-card-title {
+    margin: 0 0 0.5rem; font-size: 0.98rem; font-weight: 700; display: flex;
+    align-items: center; gap: 0.45rem; color: var(--text-primary); flex-wrap: wrap;
+}
+.fiscal-card-hint { margin: 0 0 0.85rem; color: var(--text-muted); font-size: 0.78rem; line-height: 1.4; }
+.fiscal-pill {
+    display: inline-block; background: var(--accent-light); color: var(--accent);
+    font-size: 0.7rem; font-weight: 600; padding: 0.18rem 0.5rem; border-radius: 999px; margin-left: auto;
+}
+.fiscal-pill-good { background: rgba(34, 197, 94, 0.12); color: rgb(34, 197, 94); }
+
+.fiscal-radio-grid { display: flex; flex-direction: column; gap: 0.5rem; }
+.fiscal-radio {
+    display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.7rem 0.85rem;
+    border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.15s;
+}
+.fiscal-radio:hover { border-color: var(--accent); background: rgba(124, 58, 237, 0.03); }
+.fiscal-radio-checked { border-color: var(--accent); background: var(--accent-light); }
+.fiscal-radio input { margin-top: 2px; accent-color: var(--accent); }
+.fiscal-radio-title { font-weight: 600; font-size: 0.86rem; color: var(--text-primary); }
+.fiscal-radio-desc { font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; }
+
+.fiscal-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.fiscal-chip {
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+    padding: 0.35rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; transition: all 0.12s;
+}
+.fiscal-chip:hover { border-color: var(--accent); }
+.fiscal-chip-on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.fiscal-gw-item {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.75rem 0.85rem 0.85rem; background: var(--bg-card); margin-bottom: 0.5rem;
+}
+.fiscal-gw-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.65rem; font-size: 0.92rem; }
+.fiscal-gw-moeda {
+    background: var(--accent-light); color: var(--accent); font-size: 0.68rem; font-weight: 700;
+    padding: 0.12rem 0.45rem; border-radius: 4px;
+}
+.fiscal-gw-x {
+    margin-left: auto; background: none; border: none; color: var(--text-muted);
+    font-size: 1.2rem; cursor: pointer; line-height: 1; padding: 0 0.25rem;
+}
+.fiscal-gw-x:hover { color: var(--red, #d33); }
+.fiscal-gw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem 0.7rem; }
+.fiscal-gw-grid label {
+    display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.7rem; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.02em;
+}
+.fiscal-gw-grid input {
+    padding: 0.4rem 0.55rem; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.84rem; background: var(--bg-input, var(--bg-card)); color: var(--text-primary);
+}
+.fiscal-gw-grid input:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light);
+}
+.fiscal-gateway-add { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.fiscal-gateway-add select { flex: 1; }
+
+.fiscal-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.fiscal-table thead th {
+    text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--text-muted); padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border);
+}
+.fiscal-table tbody td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+.fiscal-table tbody tr:last-child td { border-bottom: none; }
+.fiscal-table input, .fiscal-table select {
+    width: 100%; padding: 0.35rem 0.5rem; border: 1px solid transparent; border-radius: 6px;
+    background: transparent; font-size: 0.84rem; color: var(--text-primary);
+}
+.fiscal-table input:hover, .fiscal-table select:hover { border-color: var(--border); }
+.fiscal-table input:focus, .fiscal-table select:focus {
+    outline: none; border-color: var(--accent); background: var(--bg-card); box-shadow: 0 0 0 2px var(--accent-light);
+}
+.fiscal-row-x { background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 0 0.25rem; }
+.fiscal-row-x:hover { color: var(--red, #d33); }
+
+.fiscal-socios-sum { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+.fiscal-empty {
+    text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;
+    font-style: italic; background: var(--bg-input, rgba(0,0,0,0.02)); border-radius: 8px; margin-bottom: 0.5rem;
+}
+.fiscal-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
+.fiscal-check input { accent-color: var(--accent); }
+.fiscal-footer { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }

@@ -1280,6 +1280,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof ShopifyModule !== 'undefined') ShopifyModule.init();
     if (typeof PageComparisonModule !== 'undefined') PageComparisonModule.init();
     if (typeof ScaleSimModule !== 'undefined') ScaleSimModule.init();
+    if (typeof FiscalModule !== 'undefined') FiscalModule.init();
 
     // Load stores from localStorage
     AppState.stores = JSON.parse(localStorage.getItem('etracker_stores') || '[]');
