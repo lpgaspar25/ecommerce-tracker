@@ -228,7 +228,13 @@ const RemoteCapturesModule = (() => {
 
     function _wireEvents() {
         const $ = id => document.getElementById(id);
-        $('cap-refresh-btn')?.addEventListener('click', () => { _loadIndex(); render(); });
+        $('cap-refresh-btn')?.addEventListener('click', () => {
+            // Pede pra extensao (app-bridge) re-puxar a fila de capturas
+            try { window.postMessage({ source: 'etracker-app', type: 'request-ext-pull' }, location.origin); } catch (e) {}
+            _loadIndex();
+            render();
+            if (typeof showToast === 'function') showToast('Buscando capturas da extensão…', 'info');
+        });
         $('cap-clear-btn')?.addEventListener('click', () => clearAll());
 
         document.querySelectorAll('[data-cap-del]').forEach(b => {
