@@ -17,50 +17,36 @@ const FiscalModule = (() => {
     const STORAGE_KEY = 'etracker_fiscal_config';
 
     const DEFAULT_CONFIG = {
-        version: 1,
+        version: 2,
+        // ─── EMPRESAS — array multi-jurisdição (UK Operação + BR Serviços etc.) ───
+        empresas: [
+            // { id, nome, identificador, pais, regime, anexoSimples, atividade, uf, municipio, moedaFuncional, papel }
+        ],
+        // Mantido temporariamente pra migração v1 → v2
         empresa: {
-            nome: '',
-            cnpj: '',
-            regime: '',              // simples | presumido | real | mei | offshore
-            anexoSimples: '',        // I, II, III, IV, V (só se regime=simples)
-            atividade: 'comercio',   // comercio | servico | industria
-            uf: '',
-            municipio: '',
+            nome: '', cnpj: '', regime: '', anexoSimples: '', atividade: 'comercio', uf: '', municipio: '',
         },
-        reconhecimento: {
-            criterio: 'caixa',       // competencia | caixa | nf
+        reconhecimento: { criterio: 'caixa', obs: '' },
+        moeda: { funcional: 'BRL', operadas: ['BRL'] },
+        // ─── REMESSA — modelo de transferência entre empresas (ex.: UK → BR) ───
+        remessa: {
+            habilitado: false,
+            origemEmpresaId: '',
+            destinoEmpresaId: '',
+            modalidade: 'faturamento_servicos',
+            percentualTributacaoNaRemessa: 6.15,
+            frequencia: 'mensal',
             obs: '',
         },
-        moeda: {
-            funcional: 'BRL',
-            operadas: ['BRL'],
-        },
-        gateways: [
-            // { id, nome, ativo, taxaTransacaoPct, taxaTransacaoFixa, taxaInternacionalPct, taxaFxPct, taxaChargeback, reservaPct, reservaDias, planoMensal, moeda }
-        ],
-        banco: {
-            taxaPix: 0,
-            taxaTed: 0,
-            taxaBoleto: 0,
-            taxaOutros: 0,
-        },
-        custosFixos: [
-            // { id, nome, valor, recorrencia: mensal|trimestral|anual, rateio: faturamento|pedidos|fixo|manual, lojasIds: [], obs }
-        ],
-        socios: [
-            // { id, nome, percentual, modalidade: prolabore|distribuicao|hibrido, valorProlabore, frequenciaDistribuicao: mensal|trimestral|anual }
-        ],
+        // ─── SHOPIFY — taxa extra de FX que a Shopify cobra além do gateway (1.5–1.9%) ───
+        shopify: { fxAdicionalPct: 1.7 },
+        gateways: [],
+        banco: { taxaPix: 0, taxaTed: 0, taxaBoleto: 0, taxaOutros: 0 },
+        custosFixos: [],
+        socios: [],
         tributos: {
-            aliquotaEfetiva: null,    // calculado ou manual
-            aliquotaManual: false,
-            faturamentoAcumulado12m: 0, // pra calcular alíquota efetiva do Simples
-            irpjPct: 0,
-            csllPct: 0,
-            pisPct: 0,
-            cofinsPct: 0,
-            issPct: 0,
-            icmsPct: 0,
-            obs: '',
+            aliquotaEfetiva: null, aliquotaManual: false, faturamentoAcumulado12m: 0,
+            irpjPct: 0, csllPct: 0, pisPct: 0, cofinsPct: 0, issPct: 0, icmsPct: 0, obs: '',
         },
         ultimaAtualizacao: null,
     };
@@ -75,12 +61,31 @@ const FiscalModule = (() => {
                 const parsed = JSON.parse(raw);
                 _state = Object.assign({}, JSON.parse(JSON.stringify(DEFAULT_CONFIG)), parsed);
                 // Sanity-merge sections (in case schema evolves)
-                ['empresa','reconhecimento','moeda','banco','tributos'].forEach(k => {
+                ['empresa','reconhecimento','moeda','banco','tributos','remessa','shopify'].forEach(k => {
                     _state[k] = Object.assign({}, DEFAULT_CONFIG[k], parsed[k] || {});
                 });
+                _state.empresas = Array.isArray(parsed.empresas) ? parsed.empresas : [];
                 _state.gateways = Array.isArray(parsed.gateways) ? parsed.gateways : [];
                 _state.custosFixos = Array.isArray(parsed.custosFixos) ? parsed.custosFixos : [];
                 _state.socios = Array.isArray(parsed.socios) ? parsed.socios : [];
+
+                // ─── Migração v1 → v2: mover empresa singular pra empresas[] ───
+                if ((!parsed.version || parsed.version < 2) && _state.empresa && _state.empresa.nome) {
+                    _state.empresas.push({
+                        id: _genId('emp'),
+                        nome: _state.empresa.nome,
+                        identificador: _state.empresa.cnpj || '',
+                        pais: 'BR',
+                        regime: _state.empresa.regime || '',
+                        anexoSimples: _state.empresa.anexoSimples || '',
+                        atividade: _state.empresa.atividade || 'comercio',
+                        uf: _state.empresa.uf || '',
+                        municipio: _state.empresa.municipio || '',
+                        moedaFuncional: 'BRL',
+                        papel: 'operacao',
+                    });
+                    _state.version = 2;
+                }
             }
         } catch (e) { console.warn('Fiscal load failed', e); }
     }
@@ -102,9 +107,27 @@ const FiscalModule = (() => {
 
     // Public API — used by other modules (sales, dashboard) when calculating profit
     function getConfig() { return JSON.parse(JSON.stringify(_state)); }
-    function getRegime() { return _state.empresa.regime; }
+    function getEmpresas() { return (_state.empresas || []).slice(); }
+    function getEmpresaPrincipal() {
+        // 1ª empresa de papel 'operacao' (a Shopify roda nela), ou primeira da lista
+        return (_state.empresas || []).find(e => e.papel === 'operacao') || (_state.empresas || [])[0] || null;
+    }
+    function getEmpresaServicos() {
+        // Empresa que presta serviços (ex.: BR Serviços)
+        return (_state.empresas || []).find(e => e.papel === 'servicos') || null;
+    }
+    function getEmpresaById(id) { return (_state.empresas || []).find(e => e.id === id) || null; }
+    function getRemessa() { return Object.assign({}, _state.remessa); }
+    function getShopifyFx() { return Number(_state.shopify?.fxAdicionalPct) || 0; }
+    function getRegime() {
+        const principal = getEmpresaPrincipal();
+        return principal?.regime || _state.empresa.regime || '';
+    }
     function getReconhecimento() { return _state.reconhecimento.criterio; }
-    function getMoedaFuncional() { return _state.moeda.funcional || 'BRL'; }
+    function getMoedaFuncional() {
+        const principal = getEmpresaPrincipal();
+        return principal?.moedaFuncional || _state.moeda.funcional || 'BRL';
+    }
     function getGateways() { return _state.gateways.slice(); }
     function getGatewayById(id) { return _state.gateways.find(g => g.id === id); }
     function getCustosFixosMensal() {
@@ -125,9 +148,12 @@ const FiscalModule = (() => {
     // Calcula alíquota efetiva do Simples Nacional pelo anexo + faturamento acumulado 12m
     // Fórmula oficial: ((RBT12 × alíquota_nominal) − dedução) / RBT12
     function _calcularAliquotaEfetivaAuto() {
-        if (_state.empresa.regime !== 'simples') return null;
+        // Prefere a empresa principal; cai pro legacy single-empresa se vazio
+        const principal = getEmpresaPrincipal();
+        const regime = principal?.regime || _state.empresa.regime;
+        const anexo = principal?.anexoSimples || _state.empresa.anexoSimples;
+        if (regime !== 'simples') return null;
         const rbt = Number(_state.tributos.faturamentoAcumulado12m) || 0;
-        const anexo = _state.empresa.anexoSimples;
         if (!rbt || !anexo) return null;
 
         // Tabelas Simples Nacional 2024/2025
@@ -225,17 +251,49 @@ const FiscalModule = (() => {
         { id: 'pix', nome: 'PIX direto', taxaTransacaoPct: 0, taxaTransacaoFixa: 0, taxaInternacionalPct: 0, taxaFxPct: 0, taxaChargeback: 0, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'BRL' },
     ];
 
+    const PAISES = [
+        { id: 'BR', label: '🇧🇷 Brasil' },
+        { id: 'UK', label: '🇬🇧 Reino Unido' },
+        { id: 'US', label: '🇺🇸 Estados Unidos' },
+        { id: 'PT', label: '🇵🇹 Portugal' },
+        { id: 'IE', label: '🇮🇪 Irlanda' },
+        { id: 'DE', label: '🇩🇪 Alemanha' },
+        { id: 'NL', label: '🇳🇱 Holanda' },
+        { id: 'EE', label: '🇪🇪 Estônia' },
+        { id: 'AE', label: '🇦🇪 Emirados Árabes' },
+        { id: 'OUTRO', label: '🌍 Outro' },
+    ];
+    const PAPEIS = [
+        { id: 'operacao', label: 'Operação (Shopify, e-com)' },
+        { id: 'servicos', label: 'Serviços (presta pra outra empresa)' },
+        { id: 'holding', label: 'Holding' },
+        { id: 'pessoal', label: 'Pessoa física / autônomo' },
+    ];
+    const MODALIDADES_REMESSA = [
+        { id: 'faturamento_servicos', label: 'Faturamento de serviços (NF da BR p/ UK)' },
+        { id: 'dividendos', label: 'Dividendos / distribuição de lucros' },
+        { id: 'mutuo', label: 'Mútuo (empréstimo entre empresas)' },
+        { id: 'salario', label: 'Salário / Prolabore' },
+        { id: 'outros', label: 'Outros' },
+    ];
+
     function _esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
     function _genId(prefix) { return `${prefix}_${Math.random().toString(36).slice(2,9)}${Date.now().toString(36).slice(-4)}`; }
     function _fmtMoney(n) {
         const v = Number(n) || 0;
         return v.toLocaleString('pt-BR', { style: 'currency', currency: _state.moeda.funcional || 'BRL' });
     }
+    function _paisLabel(id) { return PAISES.find(p => p.id === id)?.label || id; }
+    function _papelLabel(id) { return PAPEIS.find(p => p.id === id)?.label || id; }
 
     function render() {
         const panel = document.getElementById('tab-fiscal');
         if (!panel) return;
-        const e = _state.empresa, r = _state.reconhecimento, m = _state.moeda, b = _state.banco, t = _state.tributos;
+        const empresas = _state.empresas || [];
+        // Empresa principal (1ª como referência pra tributos quando há apenas 1)
+        const e = empresas[0] || _state.empresa;
+        const r = _state.reconhecimento, m = _state.moeda, b = _state.banco, t = _state.tributos;
+        const remessa = _state.remessa, shopify = _state.shopify;
         const aliqEf = getAliquotaEfetiva();
         const custosMensal = getCustosFixosMensal();
 
@@ -255,51 +313,95 @@ const FiscalModule = (() => {
             </p>
 
             <div class="fiscal-grid">
-                <!-- ─── 1. EMPRESA ─── -->
+                <!-- ─── 1. EMPRESAS (multi-jurisdição) ─── -->
+                <div class="fiscal-card fiscal-card-wide">
+                    <h3 class="fiscal-card-title"><i data-lucide="building" style="width:14px;height:14px;vertical-align:-2px"></i> Empresas
+                        <span class="fiscal-pill">${empresas.length} cadastrada${empresas.length === 1 ? '' : 's'}</span>
+                    </h3>
+                    <p class="fiscal-card-hint">Cadastre cada empresa que faz parte da estrutura (ex.: UK Operação + BR Serviços). O dashboard usa essas configurações pra calcular o lucro correto por jurisdição.</p>
+                    <div id="fiscal-empresas-list"></div>
+                    <div class="fiscal-empresa-presets">
+                        <button type="button" class="btn btn-secondary btn-sm" id="f-emp-add-preset" data-preset="uk_operacao"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> + UK Operação (Ltd)</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="f-emp-add-preset-2" data-preset="br_servicos"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> + BR Serviços (Simples)</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="f-emp-add-blank"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Adicionar vazia</button>
+                    </div>
+                </div>
+
+                <!-- ─── 1b. REMESSA entre empresas (UK → BR etc.) ─── -->
+                <div class="fiscal-card fiscal-card-wide">
+                    <h3 class="fiscal-card-title"><i data-lucide="arrow-right-left" style="width:14px;height:14px;vertical-align:-2px"></i> Remessa entre empresas
+                        ${remessa.habilitado ? '<span class="fiscal-pill fiscal-pill-good">Ativa</span>' : '<span class="fiscal-pill" style="background:rgba(150,150,150,0.15);color:var(--text-muted)">Desativada</span>'}
+                    </h3>
+                    <p class="fiscal-card-hint">Modela o fluxo de dinheiro entre empresas (ex.: lucro da UK Ltd que vira faturamento de serviços da PJ BR). <strong>Imposto BR só conta no momento da remessa.</strong></p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="fiscal-check">
+                                <input type="checkbox" id="f-rem-on" ${remessa.habilitado ? 'checked' : ''}>
+                                Habilitar remessa entre empresas
+                            </label>
+                        </div>
+                    </div>
+                    <div id="f-rem-wrap" style="${remessa.habilitado ? '' : 'display:none'}">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Empresa origem (onde o lucro está)</label>
+                                <select class="input" id="f-rem-origem">
+                                    <option value="">— Selecione —</option>
+                                    ${empresas.map(emp => `<option value="${emp.id}" ${remessa.origemEmpresaId === emp.id ? 'selected' : ''}>${_esc(emp.nome || 'Sem nome')} (${emp.pais || '?'})</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Empresa destino (onde vai entrar)</label>
+                                <select class="input" id="f-rem-destino">
+                                    <option value="">— Selecione —</option>
+                                    ${empresas.map(emp => `<option value="${emp.id}" ${remessa.destinoEmpresaId === emp.id ? 'selected' : ''}>${_esc(emp.nome || 'Sem nome')} (${emp.pais || '?'})</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Modalidade da remessa</label>
+                                <select class="input" id="f-rem-modalidade">
+                                    ${MODALIDADES_REMESSA.map(o => `<option value="${o.id}" ${remessa.modalidade === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Frequência</label>
+                                <select class="input" id="f-rem-freq">
+                                    <option value="mensal" ${remessa.frequencia === 'mensal' ? 'selected' : ''}>Mensal</option>
+                                    <option value="trimestral" ${remessa.frequencia === 'trimestral' ? 'selected' : ''}>Trimestral</option>
+                                    <option value="anual" ${remessa.frequencia === 'anual' ? 'selected' : ''}>Anual</option>
+                                    <option value="on_demand" ${remessa.frequencia === 'on_demand' ? 'selected' : ''}>Quando precisar</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>% Tributação na remessa <span style="font-weight:400;font-size:0.7rem;color:var(--text-muted)">(ex: Simples Anexo III ~6%)</span></label>
+                                <input type="number" step="0.01" class="input" id="f-rem-pct" value="${remessa.percentualTributacaoNaRemessa}">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Observações</label>
+                                <textarea class="input" id="f-rem-obs" placeholder="Ex.: NF emitida toda quinta-feira, câmbio comercial do banco" style="min-height:50px">${_esc(remessa.obs || '')}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ─── 1c. SHOPIFY — FX adicional ─── -->
                 <div class="fiscal-card">
-                    <h3 class="fiscal-card-title"><i data-lucide="building" style="width:14px;height:14px;vertical-align:-2px"></i> Empresa</h3>
+                    <h3 class="fiscal-card-title"><i data-lucide="store" style="width:14px;height:14px;vertical-align:-2px"></i> Shopify — taxa de FX adicional
+                        <span class="fiscal-pill">${shopify.fxAdicionalPct}%</span>
+                    </h3>
+                    <p class="fiscal-card-hint">Quando a Shopify converte da moeda da venda para a moeda do payout, ela cobra essa taxa ALÉM da do gateway. Tipicamente 1,5–1,9%.</p>
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Razão social / Nome</label>
-                            <input type="text" class="input" id="f-emp-nome" value="${_esc(e.nome)}" placeholder="Ex.: Lucas Sunglasses LTDA">
-                        </div>
-                        <div class="form-group">
-                            <label>CNPJ</label>
-                            <input type="text" class="input" id="f-emp-cnpj" value="${_esc(e.cnpj)}" placeholder="00.000.000/0001-00">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Regime tributário</label>
-                            <select class="input" id="f-emp-regime">
-                                <option value="">— Selecione —</option>
-                                ${REGIMES.map(o => `<option value="${o.id}" ${e.regime === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="form-group" id="f-anexo-wrap" style="${e.regime === 'simples' ? '' : 'display:none'}">
-                            <label>Anexo do Simples</label>
-                            <select class="input" id="f-emp-anexo">
-                                <option value="">— Selecione —</option>
-                                ${ANEXOS.map(o => `<option value="${o.id}" ${e.anexoSimples === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Atividade principal</label>
-                            <select class="input" id="f-emp-ativ">
-                                <option value="comercio" ${e.atividade === 'comercio' ? 'selected' : ''}>Comércio</option>
-                                <option value="servico" ${e.atividade === 'servico' ? 'selected' : ''}>Serviço</option>
-                                <option value="industria" ${e.atividade === 'industria' ? 'selected' : ''}>Indústria</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>UF</label>
-                            <input type="text" class="input" id="f-emp-uf" value="${_esc(e.uf)}" placeholder="SP" maxlength="2">
-                        </div>
-                        <div class="form-group">
-                            <label>Município</label>
-                            <input type="text" class="input" id="f-emp-mun" value="${_esc(e.municipio)}" placeholder="São Paulo">
+                            <label>% FX adicional Shopify</label>
+                            <div style="display:flex;gap:0.75rem;align-items:center">
+                                <input type="range" min="0" max="3" step="0.05" id="f-shopify-fx-range" value="${shopify.fxAdicionalPct}" style="flex:1">
+                                <input type="number" step="0.01" min="0" max="10" class="input" id="f-shopify-fx-num" value="${shopify.fxAdicionalPct}" style="max-width:90px">
+                            </div>
+                            <small style="font-size:0.7rem;color:var(--text-muted)">Padrão 1,7%. Confere no relatório de payout Shopify pra ajustar.</small>
                         </div>
                     </div>
                 </div>
@@ -465,11 +567,78 @@ const FiscalModule = (() => {
             </div>
         `;
 
+        _renderEmpresasList();
         _renderGatewaysList();
         _renderCustosList();
         _renderSociosList();
         _wireEvents();
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    }
+
+    function _renderEmpresasList() {
+        const box = document.getElementById('fiscal-empresas-list');
+        if (!box) return;
+        const empresas = _state.empresas || [];
+        if (!empresas.length) {
+            box.innerHTML = '<div class="fiscal-empty">Nenhuma empresa cadastrada. Use os botões abaixo pra começar.</div>';
+            return;
+        }
+        box.innerHTML = empresas.map(emp => `
+            <div class="fiscal-empresa-item" data-emp="${emp.id}">
+                <div class="fiscal-empresa-header">
+                    <span class="fiscal-empresa-flag">${_paisLabel(emp.pais).split(' ')[0]}</span>
+                    <strong class="fiscal-empresa-name">${_esc(emp.nome || 'Sem nome')}</strong>
+                    <span class="fiscal-empresa-role">${_esc(_papelLabel(emp.papel))}</span>
+                    <button type="button" class="fiscal-row-x" data-emp-del="${emp.id}" title="Remover">&times;</button>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Razão social / Nome</label>
+                        <input type="text" class="input" data-emp-field="nome" value="${_esc(emp.nome || '')}" placeholder="Ex.: Lucas Sunglasses Ltd">
+                    </div>
+                    <div class="form-group">
+                        <label>${emp.pais === 'BR' ? 'CNPJ' : emp.pais === 'UK' ? 'Company Number' : emp.pais === 'US' ? 'EIN' : 'Identificador'}</label>
+                        <input type="text" class="input" data-emp-field="identificador" value="${_esc(emp.identificador || '')}" placeholder="${emp.pais === 'BR' ? '00.000.000/0001-00' : '12345678'}">
+                    </div>
+                    <div class="form-group">
+                        <label>País</label>
+                        <select class="input" data-emp-field="pais">
+                            ${PAISES.map(p => `<option value="${p.id}" ${emp.pais === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Papel</label>
+                        <select class="input" data-emp-field="papel">
+                            ${PAPEIS.map(p => `<option value="${p.id}" ${emp.papel === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Regime tributário</label>
+                        <select class="input" data-emp-field="regime">
+                            <option value="">— Selecione —</option>
+                            ${REGIMES.map(o => `<option value="${o.id}" ${emp.regime === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
+                        </select>
+                    </div>
+                    ${emp.regime === 'simples' ? `
+                        <div class="form-group">
+                            <label>Anexo do Simples</label>
+                            <select class="input" data-emp-field="anexoSimples">
+                                <option value="">— Selecione —</option>
+                                ${ANEXOS.map(o => `<option value="${o.id}" ${emp.anexoSimples === o.id ? 'selected' : ''}>${o.label}</option>`).join('')}
+                            </select>
+                        </div>
+                    ` : ''}
+                    <div class="form-group">
+                        <label>Moeda funcional</label>
+                        <select class="input" data-emp-field="moedaFuncional">
+                            ${MOEDAS.map(c => `<option value="${c}" ${emp.moedaFuncional === c ? 'selected' : ''}>${c}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `).join('');
     }
 
     function _renderGatewaysList() {
@@ -581,18 +750,101 @@ const FiscalModule = (() => {
     function _wireEvents() {
         const $ = id => document.getElementById(id);
 
-        // ── Empresa
-        const bindText = (id, sec, field) => $(id)?.addEventListener('input', (e) => { _state[sec][field] = e.target.value; });
-        bindText('f-emp-nome', 'empresa', 'nome');
-        bindText('f-emp-cnpj', 'empresa', 'cnpj');
-        bindText('f-emp-uf', 'empresa', 'uf');
-        bindText('f-emp-mun', 'empresa', 'municipio');
-        $('f-emp-regime')?.addEventListener('change', (e) => {
-            _state.empresa.regime = e.target.value;
-            render(); // re-render to show/hide anexo & tributos
+        // ── Empresas (multi) — eventos delegados na lista
+        document.getElementById('fiscal-empresas-list')?.addEventListener('input', (ev) => {
+            const tgt = ev.target.closest('[data-emp-field]');
+            if (!tgt) return;
+            const item = ev.target.closest('.fiscal-empresa-item');
+            const id = item?.dataset.emp;
+            const emp = _state.empresas.find(e => e.id === id);
+            if (emp) emp[tgt.dataset.empField] = tgt.value;
         });
-        $('f-emp-anexo')?.addEventListener('change', (e) => { _state.empresa.anexoSimples = e.target.value; });
-        $('f-emp-ativ')?.addEventListener('change', (e) => { _state.empresa.atividade = e.target.value; });
+        document.getElementById('fiscal-empresas-list')?.addEventListener('change', (ev) => {
+            const tgt = ev.target.closest('[data-emp-field]');
+            if (!tgt) return;
+            const item = ev.target.closest('.fiscal-empresa-item');
+            const id = item?.dataset.emp;
+            const emp = _state.empresas.find(e => e.id === id);
+            if (!emp) return;
+            const field = tgt.dataset.empField;
+            emp[field] = tgt.value;
+            // Re-render se mudou pais ou regime (mostra/esconde Anexo)
+            if (field === 'pais' || field === 'regime') render();
+        });
+        document.getElementById('fiscal-empresas-list')?.addEventListener('click', (ev) => {
+            const x = ev.target.closest('[data-emp-del]');
+            if (!x) return;
+            _state.empresas = _state.empresas.filter(e => e.id !== x.dataset.empDel);
+            render();
+        });
+        // Botões de preset (UK Operação / BR Serviços / Vazia)
+        $('f-emp-add-preset')?.addEventListener('click', () => {
+            _state.empresas.push({
+                id: _genId('emp'),
+                nome: 'UK Operação Ltd',
+                identificador: '',
+                pais: 'UK',
+                regime: 'offshore',
+                anexoSimples: '',
+                atividade: 'comercio',
+                uf: '',
+                municipio: 'London',
+                moedaFuncional: 'GBP',
+                papel: 'operacao',
+            });
+            render();
+        });
+        $('f-emp-add-preset-2')?.addEventListener('click', () => {
+            _state.empresas.push({
+                id: _genId('emp'),
+                nome: 'BR Serviços ME',
+                identificador: '',
+                pais: 'BR',
+                regime: 'simples',
+                anexoSimples: 'III',
+                atividade: 'servico',
+                uf: '',
+                municipio: '',
+                moedaFuncional: 'BRL',
+                papel: 'servicos',
+            });
+            render();
+        });
+        $('f-emp-add-blank')?.addEventListener('click', () => {
+            _state.empresas.push({
+                id: _genId('emp'),
+                nome: '', identificador: '', pais: 'BR', regime: '', anexoSimples: '',
+                atividade: 'comercio', uf: '', municipio: '', moedaFuncional: 'BRL', papel: 'operacao',
+            });
+            render();
+        });
+
+        // ── Remessa entre empresas
+        $('f-rem-on')?.addEventListener('change', (e) => {
+            _state.remessa.habilitado = e.target.checked;
+            const w = $('f-rem-wrap');
+            if (w) w.style.display = e.target.checked ? '' : 'none';
+        });
+        $('f-rem-origem')?.addEventListener('change', (e) => { _state.remessa.origemEmpresaId = e.target.value; });
+        $('f-rem-destino')?.addEventListener('change', (e) => { _state.remessa.destinoEmpresaId = e.target.value; });
+        $('f-rem-modalidade')?.addEventListener('change', (e) => { _state.remessa.modalidade = e.target.value; });
+        $('f-rem-freq')?.addEventListener('change', (e) => { _state.remessa.frequencia = e.target.value; });
+        $('f-rem-pct')?.addEventListener('input', (e) => { _state.remessa.percentualTributacaoNaRemessa = parseFloat(e.target.value) || 0; });
+        $('f-rem-obs')?.addEventListener('input', (e) => { _state.remessa.obs = e.target.value; });
+
+        // ── Shopify FX (slider + número espelham um ao outro)
+        const fxRange = $('f-shopify-fx-range');
+        const fxNum = $('f-shopify-fx-num');
+        const updateFx = (v) => {
+            const val = Math.max(0, Math.min(10, parseFloat(v) || 0));
+            _state.shopify.fxAdicionalPct = val;
+            if (fxRange && Math.abs(parseFloat(fxRange.value) - val) > 0.001) fxRange.value = val;
+            if (fxNum && Math.abs(parseFloat(fxNum.value) - val) > 0.001) fxNum.value = val;
+            const pill = document.querySelector('.fiscal-card-title .fiscal-pill');
+            // (pill is updated on next render)
+        };
+        fxRange?.addEventListener('input', (e) => updateFx(e.target.value));
+        fxNum?.addEventListener('input', (e) => updateFx(e.target.value));
 
         // ── Reconhecimento
         document.querySelectorAll('input[name="f-criterio"]').forEach(rb => {
@@ -772,6 +1024,8 @@ const FiscalModule = (() => {
     return {
         init, render, load, save,
         getConfig, getRegime, getReconhecimento, getMoedaFuncional,
+        getEmpresas, getEmpresaPrincipal, getEmpresaServicos, getEmpresaById,
+        getRemessa, getShopifyFx,
         getGateways, getGatewayById, getCustosFixosMensal, getAliquotaEfetiva,
     };
 })();

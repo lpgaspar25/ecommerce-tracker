@@ -14794,6 +14794,26 @@ body:not([data-theme]) .adh-board-viewport {
     text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;
     font-style: italic; background: var(--bg-input, rgba(0,0,0,0.02)); border-radius: 8px; margin-bottom: 0.5rem;
 }
+
+/* Multi-empresa */
+.fiscal-empresa-item {
+    border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1rem 1rem;
+    background: var(--bg-card); margin-bottom: 0.75rem; transition: border-color 0.15s;
+}
+.fiscal-empresa-item:hover { border-color: var(--accent-light); }
+.fiscal-empresa-header {
+    display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.7rem;
+    padding-bottom: 0.5rem; border-bottom: 1px dashed var(--border);
+}
+.fiscal-empresa-flag { font-size: 1.3rem; line-height: 1; }
+.fiscal-empresa-name { font-size: 0.95rem; flex: 1; color: var(--text-primary); }
+.fiscal-empresa-role {
+    background: var(--accent-light); color: var(--accent);
+    font-size: 0.68rem; font-weight: 600; padding: 0.18rem 0.5rem; border-radius: 999px;
+}
+.fiscal-empresa-presets {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;
+}
 .fiscal-check { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
 .fiscal-check input { accent-color: var(--accent); }
 .fiscal-footer { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
