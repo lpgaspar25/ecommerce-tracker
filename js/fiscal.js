@@ -209,6 +209,14 @@ const FiscalModule = (() => {
     ];
     const MOEDAS = ['BRL', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'MXN', 'ARS', 'CLP', 'COP'];
     const GATEWAYS_PRESET = [
+        // ── UK Setup (Lucas) ────────────────────────────────────────
+        { id: 'shopify_payments_uk_gbp', nome: 'Shopify Payments UK — Visa/MC (venda GBP)', taxaTransacaoPct: 2.0, taxaTransacaoFixa: 0.25, taxaInternacionalPct: 0, taxaFxPct: 0, taxaChargeback: 15, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        { id: 'shopify_payments_uk_eur_in_gbp', nome: 'Shopify Payments UK — Visa/MC (venda EUR, payout GBP)', taxaTransacaoPct: 3.1, taxaTransacaoFixa: 0.25, taxaInternacionalPct: 0, taxaFxPct: 1.5, taxaChargeback: 15, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        { id: 'shopify_payments_uk_amex', nome: 'Shopify Payments UK — American Express (EUR→GBP)', taxaTransacaoPct: 5.9, taxaTransacaoFixa: 0.25, taxaInternacionalPct: 0, taxaFxPct: 0, taxaChargeback: 15, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        { id: 'klarna_uk', nome: 'Klarna (EUR→GBP)', taxaTransacaoPct: 4.99, taxaTransacaoFixa: 0.30, taxaInternacionalPct: 0, taxaFxPct: 1.5, taxaChargeback: 0, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        { id: 'shopify_fx_extra', nome: 'Shopify FX Conversion (camada extra)', taxaTransacaoPct: 0, taxaTransacaoFixa: 0, taxaInternacionalPct: 0, taxaFxPct: 1.7, taxaChargeback: 0, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        { id: 'payoneer', nome: 'Payoneer (saque/transferência)', taxaTransacaoPct: 0, taxaTransacaoFixa: 0, taxaInternacionalPct: 0, taxaFxPct: 2.0, taxaChargeback: 0, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'GBP' },
+        // ── BR Setup ────────────────────────────────────────────────
         { id: 'shopify_payments_br', nome: 'Shopify Payments (BR)', taxaTransacaoPct: 3.99, taxaTransacaoFixa: 0.39, taxaInternacionalPct: 2.0, taxaFxPct: 1.5, taxaChargeback: 100, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'BRL' },
         { id: 'stripe', nome: 'Stripe (US/EU)', taxaTransacaoPct: 2.9, taxaTransacaoFixa: 0.30, taxaInternacionalPct: 1.5, taxaFxPct: 1.0, taxaChargeback: 15, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'USD' },
         { id: 'pagar_me', nome: 'Pagar.me', taxaTransacaoPct: 3.79, taxaTransacaoFixa: 0.39, taxaInternacionalPct: 0, taxaFxPct: 0, taxaChargeback: 0, reservaPct: 0, reservaDias: 0, planoMensal: 0, moeda: 'BRL' },
