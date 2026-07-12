@@ -53,6 +53,7 @@
         <button class="tab-btn" data-tab="importador">Importador</button>
         <button class="tab-btn" data-tab="vendas">Vendas</button>
         <button class="tab-btn" data-tab="fiscal"><i data-lucide="building-2" style="width:14px;height:14px;vertical-align:-2px"></i> Fiscal</button>
+        <button class="tab-btn" data-tab="reconciliation"><i data-lucide="scale" style="width:14px;height:14px;vertical-align:-2px"></i> Conciliação</button>
         <button class="tab-btn" data-tab="captures"><i data-lucide="download-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Capturas</button>
     </nav>
 
@@ -85,6 +86,7 @@
             <a href="#" class="sidebar-link active" data-tab="dashboard"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Dashboard</span></a>
             <a href="#" class="sidebar-link" data-tab="vendas"><i data-lucide="line-chart" class="sidebar-icon"></i><span>Vendas</span></a>
             <a href="#" class="sidebar-link" data-tab="fiscal"><i data-lucide="building-2" class="sidebar-icon"></i><span>Fiscal</span></a>
+            <a href="#" class="sidebar-link" data-tab="reconciliation"><i data-lucide="scale" class="sidebar-icon"></i><span>Conciliação</span></a>
             <a href="#" class="sidebar-link" data-tab="captures"><i data-lucide="download-cloud" class="sidebar-icon"></i><span>Capturas</span></a>
         </div>
 
@@ -3856,6 +3858,11 @@
             <!-- Conteúdo renderizado pelo FiscalModule.render() -->
         </section>
 
+        <!-- ==================== CONCILIAÇÃO DE CAIXA ==================== -->
+        <section id="tab-reconciliation" class="tab-panel">
+            <!-- Conteúdo renderizado pelo ReconciliationModule.render() -->
+        </section>
+
         <!-- ==================== CAPTURAS (BK / Payoneer via extensão) ==================== -->
         <section id="tab-captures" class="tab-panel">
             <!-- Conteúdo renderizado pelo RemoteCapturesModule.render() -->
@@ -5932,6 +5939,7 @@
     <script src="js/country-tz.js"></script>
     <script src="js/sales.js"></script>
     <script src="js/fiscal.js"></script>
+    <script src="js/reconciliation.js"></script>
     <script src="js/remote-captures.js"></script>
 
     <!-- Full-Screen Login Page -->
