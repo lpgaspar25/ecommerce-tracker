@@ -14205,6 +14205,111 @@ body:not([data-theme]) .adh-board-viewport {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
+
+/* ── Canvas de funil (estilo Miro) ── */
+/* O svg do board tem pointer-events:none; os alvos de clique das arestas manuais precisam reativar */
+.adh-board-svg [data-edge-id] { pointer-events: stroke; }
+.adh-board-svg [data-edge-del] { pointer-events: auto; }
+.adh-node-dragging {
+    box-shadow: 0 10px 28px rgba(139, 92, 246, 0.35) !important;
+    z-index: 30;
+    opacity: 0.92;
+}
+.adh-node-port {
+    position: absolute;
+    right: -11px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid #8b5cf6;
+    background: var(--bg-secondary, #fff);
+    color: #8b5cf6;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: crosshair;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    z-index: 5;
+}
+.adh-board-node:hover .adh-node-port { display: flex; }
+.adh-node-port:hover { background: #8b5cf6; color: #fff; }
+.adh-connecting, .adh-connecting .adh-board-node { cursor: crosshair !important; }
+.adh-connecting .adh-board-node:hover {
+    border-color: #f59e0b !important;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35) !important;
+}
+.adh-board-node-funnel {
+    background: color-mix(in srgb, var(--bg-secondary, #fff) 92%, #8b5cf6);
+    border-style: dashed;
+}
+.adh-funnel-text {
+    white-space: pre-wrap;
+    font-size: 0.68rem;
+    line-height: 1.25;
+}
+.adh-funnel-del {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.adh-funnel-del:hover { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.adh-funnel-menu { position: relative; }
+.adh-funnel-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 60;
+    background: var(--bg-secondary, #fff);
+    border: 1px solid var(--border, rgba(0, 0, 0, 0.1));
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    padding: 0.3rem;
+    display: flex;
+    flex-direction: column;
+    min-width: 175px;
+}
+.adh-funnel-dropdown.hidden { display: none; }
+.adh-funnel-dropdown button {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: transparent;
+    border: none;
+    padding: 0.42rem 0.55rem;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-radius: 6px;
+    text-align: left;
+}
+.adh-funnel-dropdown button:hover { background: rgba(139, 92, 246, 0.1); }
+.adh-node-links {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.15rem;
+}
+.adh-node-links button {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(139, 92, 246, 0.08);
+    border: none;
+    border-radius: 5px;
+    padding: 2px 5px;
+    color: #8b5cf6;
+    cursor: pointer;
+    font-size: 0.6rem;
+}
+.adh-node-links button:hover { background: rgba(139, 92, 246, 0.22); }
+.adh-link-count { font-weight: 700; font-size: 0.6rem; }
 .adh-board-node-body {
     display: flex;
     gap: 0.5rem;

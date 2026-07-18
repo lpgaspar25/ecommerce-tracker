@@ -4762,7 +4762,7 @@
                     </button>
                 </div>
             </div>
-            <p class="section-subtitle">Visualize e conecte: <strong>Produto → Campanhas → Conjuntos → Criativos</strong>. Funciona com CSV do FB Ads Manager OU manualmente — não precisa conectar o Facebook.</p>
+            <p class="section-subtitle">Visualize e conecte: <strong>Produto → Campanhas → Conjuntos → Criativos</strong> — e monte seu <strong>funil estilo Miro</strong> no Board: arraste nós, adicione etapas (Topo/Meio/Fundo, Página, Checkout, Upsell) e conecte tudo com ⊕. Os nós têm atalhos pra <strong>Lista, Pipeline, My Creatives, Ad Launcher e Ads Manager</strong>.</p>
 
             <div class="adh-canvas-wrap">
                 <svg class="adh-svg" id="adh-svg" preserveAspectRatio="none"></svg>
@@ -4826,7 +4826,24 @@
                     <button id="adh-board-zoom-out" class="btn btn-sm btn-secondary" title="Zoom out"><i data-lucide="zoom-out" style="width:13px;height:13px"></i></button>
                     <button id="adh-board-reset" class="btn btn-sm btn-secondary" title="Resetar"><i data-lucide="maximize" style="width:13px;height:13px"></i> Ajustar</button>
                     <span class="adh-board-zoom-label" id="adh-board-zoom-label">100%</span>
-                    <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">Segure e arraste para mover · Roda do mouse para zoom · Setinha ▼ para recolher</span>
+                    <div class="adh-funnel-menu">
+                        <button id="adh-btn-funnel" class="btn btn-sm btn-primary" title="Adicionar etapa de funil ou nota ao canvas">
+                            <i data-lucide="git-fork" style="width:13px;height:13px"></i> + Etapa de funil
+                        </button>
+                        <div id="adh-funnel-dropdown" class="adh-funnel-dropdown hidden">
+                            <button data-funnel-kind="topo"><i data-lucide="flame" style="width:12px;height:12px;color:#8b5cf6"></i> Topo de Funil</button>
+                            <button data-funnel-kind="meio"><i data-lucide="filter" style="width:12px;height:12px;color:#6366f1"></i> Meio de Funil</button>
+                            <button data-funnel-kind="fundo"><i data-lucide="crosshair" style="width:12px;height:12px;color:#3b82f6"></i> Fundo de Funil</button>
+                            <button data-funnel-kind="pagina"><i data-lucide="panel-top" style="width:12px;height:12px;color:#10b981"></i> Página / LP</button>
+                            <button data-funnel-kind="checkout"><i data-lucide="credit-card" style="width:12px;height:12px;color:#f59e0b"></i> Checkout</button>
+                            <button data-funnel-kind="upsell"><i data-lucide="trending-up" style="width:12px;height:12px;color:#ec4899"></i> Upsell</button>
+                            <button data-funnel-kind="nota"><i data-lucide="sticky-note" style="width:12px;height:12px;color:#eab308"></i> Nota livre</button>
+                        </div>
+                    </div>
+                    <button id="adh-board-autolayout" class="btn btn-sm btn-secondary" title="Reorganizar nós automaticamente (nós de funil não mudam)">
+                        <i data-lucide="layout-grid" style="width:13px;height:13px"></i> Auto-layout
+                    </button>
+                    <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">Arraste nós pra posicionar · ⊕ conecta dois nós · Esc cancela · clique na linha tracejada pra apagar</span>
                 </div>
                 <div id="adh-board-viewport" class="adh-board-viewport">
                     <div id="adh-board-canvas" class="adh-board-canvas">

@@ -31,6 +31,12 @@
             collapsed: {},
             // Edit modal target
             editing: null, // { level, id }
+            // ── Canvas livre (funil estilo Miro) ──
+            nodePos: {},       // "type:id" -> {x,y} posição customizada (arrasto manual)
+            customEdges: [],   // [{id, from:"type:id", to:"type:id"}] conexões manuais
+            funnelNodes: [],   // [{id, kind, title, text, color, x, y}] etapas de funil / notas
+            connectFrom: null, // "type:id" origem enquanto conecta
+            selectedEdgeId: null,
         },
 
         init() {
@@ -49,6 +55,9 @@
                 if (Array.isArray(data.campaigns)) this._state.campaigns = data.campaigns;
                 if (Array.isArray(data.adsets)) this._state.adsets = data.adsets;
                 if (Array.isArray(data.ads)) this._state.ads = data.ads;
+                if (data.nodePos && typeof data.nodePos === 'object') this._state.nodePos = data.nodePos;
+                if (Array.isArray(data.customEdges)) this._state.customEdges = data.customEdges;
+                if (Array.isArray(data.funnelNodes)) this._state.funnelNodes = data.funnelNodes;
             } catch (e) { console.warn('[AdHierarchy] load failed:', e); }
         },
 
@@ -57,6 +66,9 @@
                 campaigns: this._state.campaigns,
                 adsets: this._state.adsets,
                 ads: this._state.ads,
+                nodePos: this._state.nodePos,
+                customEdges: this._state.customEdges,
+                funnelNodes: this._state.funnelNodes,
             });
             try {
                 localStorage.setItem(STORAGE_KEY, payload);
@@ -74,6 +86,9 @@
                         campaigns: this._state.campaigns,
                         adsets: this._state.adsets,
                         ads: this._state.ads.map(a => ({ ...a, thumbnail: a.thumbnail && a.thumbnail.length < 200 ? a.thumbnail : '' })),
+                        nodePos: this._state.nodePos,
+                        customEdges: this._state.customEdges,
+                        funnelNodes: this._state.funnelNodes,
                     };
                     const liteStr = JSON.stringify(lite);
                     const okLite = (typeof StorageManager !== 'undefined')
@@ -140,6 +155,28 @@
             document.getElementById('adh-board-zoom-out')?.addEventListener('click', () => this._zoomBoard(1/1.2));
             document.getElementById('adh-board-reset')?.addEventListener('click', () => this._resetBoard());
 
+            // Funil: dropdown de etapas + auto-layout
+            document.getElementById('adh-btn-funnel')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('adh-funnel-dropdown')?.classList.toggle('hidden');
+            });
+            document.querySelectorAll('#adh-funnel-dropdown [data-funnel-kind]').forEach(b => {
+                b.addEventListener('click', () => {
+                    document.getElementById('adh-funnel-dropdown')?.classList.add('hidden');
+                    this._addFunnelNode(b.dataset.funnelKind);
+                });
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.adh-funnel-menu')) document.getElementById('adh-funnel-dropdown')?.classList.add('hidden');
+            });
+            document.getElementById('adh-board-autolayout')?.addEventListener('click', () => {
+                // Reorganiza os nós hierárquicos (nós de funil ficam onde você deixou)
+                Object.keys(this._state.nodePos).forEach(k => { if (!k.startsWith('funnel:')) delete this._state.nodePos[k]; });
+                try { this._persist(); } catch (err) {}
+                this._renderBoard();
+                if (typeof showToast === 'function') showToast('Auto-layout aplicado', 'info');
+            });
+
             // Board: pan + zoom
             const vp = document.getElementById('adh-board-viewport');
             if (vp) {
@@ -148,20 +185,30 @@
                     const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
                     this._zoomBoardAt(factor, e.clientX, e.clientY);
                 }, { passive: false });
-                // Drag-to-pan: works from ANY element inside the viewport (including nodes).
-                // Threshold distinguishes click vs drag. If user clicks (no move), the node's
-                // click handler fires normally. If user drags > 4px, we pan and suppress the click.
+                // Interação estilo Miro:
+                //   arrasto em nó  → MOVE o nó (posição salva)
+                //   arrasto no vazio → PAN do canvas
+                //   clique (sem mover) → seleção normal
                 let pressed = false, didMove = false, sx=0, sy=0, sTx=0, sTy=0;
+                let dragNodeEl = null, dragKey = null, nStartX = 0, nStartY = 0;
                 const DRAG_THRESHOLD = 4;
 
                 vp.addEventListener('mousedown', (e) => {
                     if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
-                    // Don't initiate pan if user clicked the validate/collapse buttons explicitly
                     if (e.target.closest('button')) return;
                     pressed = true; didMove = false;
                     sx = e.clientX; sy = e.clientY;
-                    sTx = this._state.board.tx;
-                    sTy = this._state.board.ty;
+                    const nodeEl = (e.button === 0) ? e.target.closest('.adh-board-node') : null;
+                    if (nodeEl) {
+                        dragNodeEl = nodeEl;
+                        dragKey = nodeEl.dataset.type + ':' + nodeEl.dataset.id;
+                        nStartX = parseFloat(nodeEl.style.left) || 0;
+                        nStartY = parseFloat(nodeEl.style.top) || 0;
+                    } else {
+                        dragNodeEl = null; dragKey = null;
+                        sTx = this._state.board.tx;
+                        sTy = this._state.board.ty;
+                    }
                     if (e.button === 1 || e.button === 2) e.preventDefault();
                 });
 
@@ -170,9 +217,16 @@
                     const dx = e.clientX - sx, dy = e.clientY - sy;
                     if (!didMove && (Math.abs(dx) + Math.abs(dy)) >= DRAG_THRESHOLD) {
                         didMove = true;
-                        vp.style.cursor = 'grabbing';
+                        vp.style.cursor = dragNodeEl ? 'move' : 'grabbing';
+                        if (dragNodeEl) dragNodeEl.classList.add('adh-node-dragging');
                     }
-                    if (didMove) {
+                    if (!didMove) return;
+                    if (dragNodeEl) {
+                        const z = this._state.board.zoom || 1;
+                        dragNodeEl.style.left = Math.max(0, nStartX + dx / z) + 'px';
+                        dragNodeEl.style.top = Math.max(0, nStartY + dy / z) + 'px';
+                        this._drawBoardEdges(); // edges seguem o nó em tempo real
+                    } else {
                         this._state.board.tx = sTx + dx;
                         this._state.board.ty = sTy + dy;
                         this._applyBoardTransform();
@@ -183,18 +237,55 @@
                     if (!pressed) return;
                     pressed = false;
                     vp.style.cursor = '';
+                    if (dragNodeEl) dragNodeEl.classList.remove('adh-node-dragging');
+                    if (didMove && dragNodeEl && dragKey) {
+                        // Salva a posição customizada do nó
+                        this._state.nodePos[dragKey] = {
+                            x: parseFloat(dragNodeEl.style.left) || 0,
+                            y: parseFloat(dragNodeEl.style.top) || 0,
+                        };
+                        try { this._persist(); } catch (err) {}
+                    }
+                    dragNodeEl = null; dragKey = null;
                     if (didMove) {
-                        // suppress the click that follows a drag
+                        // Suprime o click que segue o arrasto. Se soltar FORA do viewport,
+                        // o click não passa por aqui — o timeout remove o supressor pra não
+                        // engolir o próximo clique legítimo.
+                        let t = null;
                         const suppressOnce = (ev) => {
                             ev.stopPropagation();
                             ev.preventDefault();
+                            cleanup();
+                        };
+                        const cleanup = () => {
                             vp.removeEventListener('click', suppressOnce, true);
+                            if (t) clearTimeout(t);
                         };
                         vp.addEventListener('click', suppressOnce, true);
+                        t = setTimeout(cleanup, 300);
                     }
                 });
 
                 vp.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                // Esc cancela modo conectar / desseleciona edge
+                window.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        if (this._state.connectFrom || this._state.selectedEdgeId) {
+                            this._state.connectFrom = null;
+                            this._state.selectedEdgeId = null;
+                            vp.classList.remove('adh-connecting');
+                            this._drawBoardEdges();
+                        }
+                    }
+                    const ae = document.activeElement;
+                    if ((e.key === 'Delete' || e.key === 'Backspace') && this._state.selectedEdgeId
+                        && document.getElementById('tab-ad-hierarchy')?.classList.contains('active')
+                        && !/input|textarea|select/i.test(ae?.tagName || '')
+                        && !(ae && ae.isContentEditable)) {
+                        this._deleteCustomEdge(this._state.selectedEdgeId);
+                    }
+                });
             }
 
             // Edit modal
@@ -622,19 +713,31 @@
 
         _deleteItem(level, id) {
             if (!confirm('Remover este item e seus filhos?')) return;
+            const removedKeys = [];
             if (level === 'campaign') {
                 this._state.campaigns = this._state.campaigns.filter(c => c.id !== id);
                 const adsetIds = this._state.adsets.filter(a => a.campaignId === id).map(a => a.id);
+                const adIds = this._state.ads.filter(x => adsetIds.includes(x.adsetId)).map(x => x.id);
                 this._state.adsets = this._state.adsets.filter(a => a.campaignId !== id);
                 this._state.ads = this._state.ads.filter(x => !adsetIds.includes(x.adsetId));
+                removedKeys.push('campaign:' + id, ...adsetIds.map(a => 'adset:' + a), ...adIds.map(a => 'ad:' + a));
                 if (this._state.selectedCampaignId === id) this._state.selectedCampaignId = null;
             } else if (level === 'adset') {
+                const adIds = this._state.ads.filter(x => x.adsetId === id).map(x => x.id);
                 this._state.adsets = this._state.adsets.filter(a => a.id !== id);
                 this._state.ads = this._state.ads.filter(x => x.adsetId !== id);
+                removedKeys.push('adset:' + id, ...adIds.map(a => 'ad:' + a));
                 if (this._state.selectedAdsetId === id) this._state.selectedAdsetId = null;
             } else if (level === 'ad') {
                 this._state.ads = this._state.ads.filter(x => x.id !== id);
+                removedKeys.push('ad:' + id);
                 if (this._state.selectedAdId === id) this._state.selectedAdId = null;
+            }
+            // Limpa posições e conexões manuais órfãs
+            if (removedKeys.length) {
+                const gone = new Set(removedKeys);
+                removedKeys.forEach(k => delete this._state.nodePos[k]);
+                this._state.customEdges = (this._state.customEdges || []).filter(e => !gone.has(e.from) && !gone.has(e.to));
             }
             this._persist();
             this.render();
@@ -1117,64 +1220,67 @@
                 curY += ROW_GAP * 2;
             }
 
+            // ── Posições customizadas (arrasto) sobrescrevem o auto-layout ──
+            nodes.forEach(n => {
+                const pos = this._state.nodePos[n.type + ':' + n.item.id];
+                if (pos) { n.x = pos.x; n.y = pos.y; }
+            });
+
+            // ── Nós de funil / notas (canvas livre) ──
+            let fy = 40;
+            (this._state.funnelNodes || []).forEach(f => {
+                const key = 'funnel:' + f.id;
+                const pos = this._state.nodePos[key];
+                const x = pos ? pos.x : COL_X(4) + 40;
+                const y = pos ? pos.y : (fy += NODE_H + ROW_GAP, fy - NODE_H - ROW_GAP + 40);
+                nodes.push({ x, y, type: 'funnel', item: f });
+            });
+
             // Render nodes
             nodesEl.innerHTML = nodes.map(n => this._renderBoardNode(n, NODE_W, NODE_H)).join('');
 
-            // Render lines (use approximate y position; pair by node ids)
-            const totalW = COL_X(3) + NODE_W + 40;
-            const totalH = curY + 40;
-            const canvas = document.getElementById('adh-board-canvas');
-            if (canvas) {
-                canvas.style.width = totalW + 'px';
-                canvas.style.height = totalH + 'px';
-            }
-            svg.setAttribute('width', totalW);
-            svg.setAttribute('height', totalH);
-
-            const allNodes = nodes;
-            const findNode = (type, id) => allNodes.find(n => n.type === type && n.item.id === id);
-            const connections = [];
-            // Only draw lines if BOTH parent and child are present (i.e. not collapsed)
+            // ── Guarda os pares hierárquicos; o desenho fica em _drawBoardEdges (lê o DOM) ──
+            const hier = [];
             visibleProducts.forEach(p => {
                 if (isCollapsed('product', p.id)) return;
-                this._campaignsForProduct(p.id).forEach(c => {
-                    const a = findNode('product', p.id), b = findNode('campaign', c.id);
-                    if (a && b) connections.push({ a, b });
-                });
+                this._campaignsForProduct(p.id).forEach(c => hier.push({ from: 'product:' + p.id, to: 'campaign:' + c.id }));
             });
             this._state.campaigns.forEach(c => {
                 if (isCollapsed('campaign', c.id)) return;
-                this._state.adsets.filter(a => a.campaignId === c.id).forEach(a => {
-                    const x = findNode('campaign', c.id), y = findNode('adset', a.id);
-                    if (x && y) connections.push({ a:x, b:y });
-                });
+                this._state.adsets.filter(a => a.campaignId === c.id).forEach(a => hier.push({ from: 'campaign:' + c.id, to: 'adset:' + a.id }));
             });
             this._state.adsets.forEach(a => {
                 if (isCollapsed('adset', a.id)) return;
-                this._state.ads.filter(x => x.adsetId === a.id).forEach(x => {
-                    const p = findNode('adset', a.id), q = findNode('ad', x.id);
-                    if (p && q) connections.push({ a:p, b:q });
-                });
+                this._state.ads.filter(x => x.adsetId === a.id).forEach(x => hier.push({ from: 'adset:' + a.id, to: 'ad:' + x.id }));
             });
-
-            svg.innerHTML = connections.filter(c => c.a && c.b).map(c => {
-                const x1 = c.a.x + NODE_W, y1 = c.a.y + NODE_H/2;
-                const x2 = c.b.x, y2 = c.b.y + NODE_H/2;
-                const mx = (x1 + x2) / 2;
-                return `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" stroke="#8b5cf6" stroke-width="1.5" fill="none" opacity="0.45"/>`;
-            }).join('');
+            this._boardHierEdges = hier;
+            this._boardNodeSize = { w: NODE_W, h: NODE_H };
+            this._drawBoardEdges();
 
             // Bind clicks
+            const vp = document.getElementById('adh-board-viewport');
             nodesEl.querySelectorAll('.adh-board-node').forEach(el => {
                 el.addEventListener('click', () => {
                     const lvl = el.dataset.type, id = el.dataset.id;
+                    const key = lvl + ':' + id;
+                    // Modo conectar: 2º clique fecha a conexão
+                    if (this._state.connectFrom) {
+                        if (this._state.connectFrom !== key) this._addCustomEdge(this._state.connectFrom, key);
+                        this._state.connectFrom = null;
+                        vp?.classList.remove('adh-connecting');
+                        this._drawBoardEdges();
+                        return;
+                    }
                     if (lvl === 'product') this._selectProduct(id);
                     else if (lvl === 'campaign') this._selectCampaign(id);
                     else if (lvl === 'adset') this._selectAdset(id);
                     else if (lvl === 'ad') this._selectAd(id);
-                    this._renderBoard();
+                    if (lvl !== 'funnel') this._renderBoard();
                 });
-                el.addEventListener('dblclick', () => this._openEditModal(el.dataset.type, el.dataset.id));
+                el.addEventListener('dblclick', () => {
+                    if (el.dataset.type === 'funnel') this._editFunnelNode(el.dataset.id);
+                    else this._openEditModal(el.dataset.type, el.dataset.id);
+                });
                 // "Validate" toggle
                 const validBtn = el.querySelector('.adh-board-validate');
                 if (validBtn) validBtn.addEventListener('click', (e) => {
@@ -1187,14 +1293,247 @@
                     e.stopPropagation();
                     this._toggleCollapsed(el.dataset.type, el.dataset.id);
                 });
+                // Porta de conexão (⊕): inicia o modo conectar
+                const portBtn = el.querySelector('.adh-node-port');
+                if (portBtn) portBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const key = el.dataset.type + ':' + el.dataset.id;
+                    // Já conectando e clicou no ⊕ do destino? Fecha a conexão aqui mesmo.
+                    if (this._state.connectFrom && this._state.connectFrom !== key) {
+                        this._addCustomEdge(this._state.connectFrom, key);
+                        this._state.connectFrom = null;
+                        vp?.classList.remove('adh-connecting');
+                        this._drawBoardEdges();
+                        return;
+                    }
+                    this._state.connectFrom = key;
+                    this._state.selectedEdgeId = null;
+                    vp?.classList.add('adh-connecting');
+                    if (typeof showToast === 'function') showToast('Clique em outro nó pra conectar (Esc cancela)', 'info');
+                });
+                // Deletar nó de funil
+                const fnDel = el.querySelector('.adh-funnel-del');
+                if (fnDel) fnDel.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._deleteFunnelNode(el.dataset.id);
+                });
+                // Chips de navegação cruzada (Lista / Pipeline / Criativos / Launcher / Ads Manager)
+                el.querySelectorAll('[data-golink]').forEach(chip => {
+                    chip.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this._followLink(chip.dataset.golink, el.dataset.type, el.dataset.id);
+                    });
+                });
             });
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
             this._applyBoardTransform();
         },
 
+        // Desenha TODAS as arestas lendo posição real dos nós no DOM.
+        // Chamado no render e a cada frame de arrasto — precisa ser barato.
+        _drawBoardEdges() {
+            const svg = document.getElementById('adh-board-svg');
+            const nodesEl = document.getElementById('adh-board-nodes');
+            const canvas = document.getElementById('adh-board-canvas');
+            if (!svg || !nodesEl) return;
+            const { w: NODE_W, h: NODE_H } = this._boardNodeSize || { w: 220, h: 90 };
+
+            const elFor = (key) => {
+                const i = key.indexOf(':');
+                return nodesEl.querySelector(`.adh-board-node[data-type="${key.slice(0, i)}"][data-id="${this._cssEsc(key.slice(i + 1))}"]`);
+            };
+            const rectFor = (key) => {
+                const el = elFor(key);
+                if (!el) return null;
+                return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth || NODE_W, h: el.offsetHeight || NODE_H };
+            };
+
+            let maxX = 0, maxY = 0;
+            const parts = [];
+
+            const bezier = (a, b) => {
+                // Sai do lado mais próximo (direita→esquerda ou vice-versa)
+                const aRight = a.x + a.w <= b.x;
+                const x1 = aRight ? a.x + a.w : a.x;
+                const x2 = aRight ? b.x : b.x + b.w;
+                const y1 = a.y + a.h / 2, y2 = b.y + b.h / 2;
+                const mx = (x1 + x2) / 2;
+                maxX = Math.max(maxX, a.x + a.w, b.x + b.w);
+                maxY = Math.max(maxY, a.y + a.h, b.y + b.h);
+                return { d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`, midX: (x1 + x2) / 2, midY: (y1 + y2) / 2 };
+            };
+
+            // Arestas hierárquicas (produto→campanha→conjunto→criativo)
+            (this._boardHierEdges || []).forEach(e => {
+                const a = rectFor(e.from), b = rectFor(e.to);
+                if (!a || !b) return;
+                const p = bezier(a, b);
+                parts.push(`<path d="${p.d}" stroke="#8b5cf6" stroke-width="1.5" fill="none" opacity="0.45"/>`);
+            });
+
+            // Arestas manuais (funil) — clicáveis, deletáveis
+            (this._state.customEdges || []).forEach(e => {
+                const a = rectFor(e.from), b = rectFor(e.to);
+                if (!a || !b) return;
+                const p = bezier(a, b);
+                const sel = e.id === this._state.selectedEdgeId;
+                parts.push(`<path d="${p.d}" stroke="${sel ? '#ef4444' : '#f59e0b'}" stroke-width="${sel ? 3 : 2}" stroke-dasharray="7 5" fill="none" opacity="0.9" pointer-events="none"/>`);
+                // pointer-events explícito: o svg pai tem pointer-events:none (herdado) — sem isso o clique atravessa
+                parts.push(`<path d="${p.d}" stroke="transparent" stroke-width="14" fill="none" data-edge-id="${e.id}" pointer-events="stroke" style="cursor:pointer"/>`);
+                if (sel) {
+                    parts.push(`<g data-edge-del="${e.id}" pointer-events="auto" style="cursor:pointer">
+                        <circle cx="${p.midX}" cy="${p.midY}" r="11" fill="#ef4444"/>
+                        <text x="${p.midX}" y="${p.midY + 4.5}" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">×</text>
+                    </g>`);
+                }
+            });
+
+            const totalW = Math.max(maxX + 60, 900);
+            const totalH = Math.max(maxY + 60, 500);
+            if (canvas) { canvas.style.width = totalW + 'px'; canvas.style.height = totalH + 'px'; }
+            svg.setAttribute('width', totalW);
+            svg.setAttribute('height', totalH);
+            svg.innerHTML = parts.join('');
+
+            svg.querySelectorAll('[data-edge-id]').forEach(pathEl => {
+                pathEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._state.selectedEdgeId = pathEl.dataset.edgeId;
+                    this._drawBoardEdges();
+                });
+            });
+            svg.querySelectorAll('[data-edge-del]').forEach(g => {
+                g.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._deleteCustomEdge(g.dataset.edgeDel);
+                });
+            });
+        },
+
+        _addCustomEdge(from, to) {
+            const dup = (this._state.customEdges || []).some(e =>
+                (e.from === from && e.to === to) || (e.from === to && e.to === from));
+            if (dup) { if (typeof showToast === 'function') showToast('Esses nós já estão conectados', 'info'); return; }
+            this._state.customEdges.push({ id: this._genId('edge'), from, to });
+            try { this._persist(); } catch (err) {}
+            if (typeof showToast === 'function') showToast('✓ Conexão criada', 'success');
+        },
+
+        _deleteCustomEdge(id) {
+            this._state.customEdges = (this._state.customEdges || []).filter(e => e.id !== id);
+            if (this._state.selectedEdgeId === id) this._state.selectedEdgeId = null;
+            try { this._persist(); } catch (err) {}
+            this._drawBoardEdges();
+        },
+
+        // ── Nós de funil (etapas/notas soltas no canvas) ──
+        FUNNEL_KINDS: {
+            topo:     { label: 'Topo de Funil',  icon: 'flame',        color: '#8b5cf6' },
+            meio:     { label: 'Meio de Funil',  icon: 'filter',       color: '#6366f1' },
+            fundo:    { label: 'Fundo de Funil', icon: 'crosshair',    color: '#3b82f6' },
+            pagina:   { label: 'Página / LP',    icon: 'panel-top',    color: '#10b981' },
+            checkout: { label: 'Checkout',       icon: 'credit-card',  color: '#f59e0b' },
+            upsell:   { label: 'Upsell',         icon: 'trending-up',  color: '#ec4899' },
+            nota:     { label: 'Nota',           icon: 'sticky-note',  color: '#eab308' },
+        },
+
+        _addFunnelNode(kind) {
+            const k = this.FUNNEL_KINDS[kind] || this.FUNNEL_KINDS.nota;
+            const id = this._genId('fn');
+            const f = { id, kind, title: k.label, text: '' };
+            this._state.funnelNodes.push(f);
+            // Solta o nó no centro visível do viewport (compensa pan/zoom)
+            const vp = document.getElementById('adh-board-viewport');
+            const { zoom, tx, ty } = this._state.board;
+            const cx = vp ? ((vp.clientWidth / 2 - tx) / zoom) : 300;
+            const cy = vp ? ((vp.clientHeight / 2 - ty) / zoom) : 200;
+            const jitter = (this._state.funnelNodes.length % 6) * 30;
+            this._state.nodePos['funnel:' + id] = { x: Math.max(0, cx - 110 + jitter), y: Math.max(0, cy - 45 + jitter) };
+            try { this._persist(); } catch (err) {}
+            this._renderBoard();
+            if (typeof showToast === 'function') showToast(`Nó "${k.label}" adicionado — arraste pra posicionar e use ⊕ pra conectar`, 'success');
+        },
+
+        _editFunnelNode(id) {
+            const f = (this._state.funnelNodes || []).find(x => x.id === id);
+            if (!f) return;
+            const title = prompt('Título do nó:', f.title || '');
+            if (title === null) return;
+            const text = prompt('Descrição (opcional):', f.text || '');
+            f.title = (title || '').trim() || f.title;
+            if (text !== null) f.text = text.trim();
+            try { this._persist(); } catch (err) {}
+            this._renderBoard();
+        },
+
+        _deleteFunnelNode(id) {
+            if (!confirm('Remover este nó do funil? (as conexões dele também somem)')) return;
+            this._state.funnelNodes = (this._state.funnelNodes || []).filter(f => f.id !== id);
+            const key = 'funnel:' + id;
+            this._state.customEdges = (this._state.customEdges || []).filter(e => e.from !== key && e.to !== key);
+            delete this._state.nodePos[key];
+            try { this._persist(); } catch (err) {}
+            this._renderBoard();
+        },
+
+        // ── Navegação cruzada: pula pro módulo certo já focado no item ──
+        _goTab(tab, fn) {
+            // Sair do mapa cancela modo conectar / seleção de aresta
+            this._state.connectFrom = null;
+            this._state.selectedEdgeId = null;
+            document.getElementById('adh-board-viewport')?.classList.remove('adh-connecting');
+            document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.click();
+            if (fn) setTimeout(fn, 320);
+        },
+
+        _followLink(link, type, id) {
+            if (link === 'lista') {
+                const prod = this._products().find(p => p.id === id);
+                this._goTab('products', () => {
+                    if (prod && typeof ProductsModule !== 'undefined' && ProductsModule.openForm) ProductsModule.openForm(prod);
+                });
+            } else if (link === 'pipeline') {
+                const card = (typeof PipelineModule !== 'undefined' && PipelineModule.cards || []).find(c => c.productId === id);
+                this._goTab('pipeline', () => {
+                    if (card && PipelineModule.openModal) PipelineModule.openModal(card.columnId, card.id);
+                });
+            } else if (link === 'creatives') {
+                this._goTab('creatives');
+            } else if (link === 'launcher') {
+                this._goTab('ad-launcher');
+            } else if (link === 'adsmanager') {
+                this._goTab('ads-manager');
+            }
+        },
+
         _renderBoardNode(n, w, h) {
             const item = n.item;
+            const port = `<button class="adh-node-port" title="Conectar este nó a outro (funil)">⊕</button>`;
+
+            // ── Nó de funil / nota (canvas livre) ──
+            if (n.type === 'funnel') {
+                const k = this.FUNNEL_KINDS[item.kind] || this.FUNNEL_KINDS.nota;
+                return `<div class="adh-board-node adh-board-node-funnel"
+                    data-type="funnel" data-id="${this._esc(item.id)}"
+                    style="left:${n.x}px;top:${n.y}px;width:${w}px;min-height:${h}px;border-left:4px solid ${k.color}">
+                    <div class="adh-board-node-hdr">
+                        <i data-lucide="${k.icon}" style="width:12px;height:12px;color:${k.color}"></i>
+                        <span class="adh-board-node-type" style="color:${k.color}">${k.label}</span>
+                        <div class="adh-board-node-actions">
+                            <button class="adh-funnel-del" title="Remover nó">×</button>
+                        </div>
+                    </div>
+                    <div class="adh-board-node-body">
+                        <div style="flex:1;min-width:0">
+                            <div class="adh-board-node-title">${this._esc(item.title)}</div>
+                            ${item.text ? `<div class="adh-board-node-meta adh-funnel-text">${this._esc(item.text)}</div>` : '<div class="adh-board-node-meta" style="opacity:.55">2× clique pra editar</div>'}
+                        </div>
+                    </div>
+                    ${port}
+                </div>`;
+            }
+
             const selected = (n.type === 'product' && item.id === this._state.selectedProductId)
                 || (n.type === 'campaign' && item.id === this._state.selectedCampaignId)
                 || (n.type === 'adset' && item.id === this._state.selectedAdsetId)
@@ -1219,9 +1558,30 @@
                     <span class="adh-board-child-count">${childCount}</span>
                 </button>` : '';
 
+            // ── Chips de navegação cruzada (conecta com o resto da ferramenta) ──
+            let links = '';
+            if (n.type === 'product') {
+                const nCreat = (typeof AppState !== 'undefined' && AppState.allCreatives || []).filter(c => c.productId === item.id).length;
+                const hasPipe = !!((typeof PipelineModule !== 'undefined' && PipelineModule.cards || []).find(c => c.productId === item.id));
+                links = `<div class="adh-node-links">
+                    <button data-golink="lista" title="Abrir na Lista de produtos"><i data-lucide="list" style="width:11px;height:11px"></i></button>
+                    ${hasPipe ? `<button data-golink="pipeline" title="Abrir card no Pipeline"><i data-lucide="git-branch" style="width:11px;height:11px"></i></button>` : ''}
+                    <button data-golink="creatives" title="My Creatives (${nCreat} criativo${nCreat !== 1 ? 's' : ''} deste produto)"><i data-lucide="images" style="width:11px;height:11px"></i>${nCreat ? `<span class="adh-link-count">${nCreat}</span>` : ''}</button>
+                    <button data-golink="launcher" title="Lançar ads (Ad Launcher)"><i data-lucide="rocket" style="width:11px;height:11px"></i></button>
+                </div>`;
+            } else if (n.type === 'campaign') {
+                links = `<div class="adh-node-links">
+                    <button data-golink="adsmanager" title="Ver métricas no Ads Manager"><i data-lucide="bar-chart-3" style="width:11px;height:11px"></i></button>
+                </div>`;
+            } else if (n.type === 'ad') {
+                links = `<div class="adh-node-links">
+                    <button data-golink="launcher" title="Lançar no Ad Launcher"><i data-lucide="rocket" style="width:11px;height:11px"></i></button>
+                </div>`;
+            }
+
             return `<div class="adh-board-node ${selected ? 'adh-board-node-selected' : ''} ${item.validated ? 'adh-board-node-validated' : ''} adh-board-node-${n.type}"
                 data-type="${n.type}" data-id="${this._esc(item.id)}"
-                style="left:${n.x}px;top:${n.y}px;width:${w}px;height:${h}px">
+                style="left:${n.x}px;top:${n.y}px;width:${w}px;min-height:${h}px">
                 <div class="adh-board-node-hdr">
                     <i data-lucide="${icons[n.type]}" style="width:12px;height:12px"></i>
                     <span class="adh-board-node-type">${labels[n.type]}</span>
@@ -1240,6 +1600,8 @@
                         <div class="adh-board-node-meta">${status}</div>
                     </div>
                 </div>
+                ${links}
+                ${port}
             </div>`;
         },
 
@@ -1429,8 +1791,24 @@
                 panel.innerHTML = '';
                 return;
             }
+            // Atalhos pros outros módulos (mesmos chips do board)
+            let links = '';
+            if (selectedProductId && selectedProductId !== '__unassigned__') {
+                const nCreat = (typeof AppState !== 'undefined' && AppState.allCreatives || []).filter(c => c.productId === selectedProductId).length;
+                const hasPipe = !!((typeof PipelineModule !== 'undefined' && PipelineModule.cards || []).find(c => c.productId === selectedProductId));
+                links = `<div class="adh-node-links" style="margin-left:auto">
+                    <button data-golink="lista" title="Abrir na Lista"><i data-lucide="list" style="width:11px;height:11px"></i> Lista</button>
+                    ${hasPipe ? `<button data-golink="pipeline" title="Card no Pipeline"><i data-lucide="git-branch" style="width:11px;height:11px"></i> Pipeline</button>` : ''}
+                    <button data-golink="creatives" title="My Creatives"><i data-lucide="images" style="width:11px;height:11px"></i> Criativos${nCreat ? ` (${nCreat})` : ''}</button>
+                    <button data-golink="launcher" title="Ad Launcher"><i data-lucide="rocket" style="width:11px;height:11px"></i> Lançar</button>
+                    <button data-golink="adsmanager" title="Ads Manager"><i data-lucide="bar-chart-3" style="width:11px;height:11px"></i> Ads Manager</button>
+                </div>`;
+            }
             panel.style.display = '';
-            panel.innerHTML = `<div class="adh-breadcrumbs">${parts.join('<i data-lucide="chevron-right" style="width:12px;height:12px;opacity:0.5"></i>')}</div>`;
+            panel.innerHTML = `<div class="adh-breadcrumbs" style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">${parts.join('<i data-lucide="chevron-right" style="width:12px;height:12px;opacity:0.5"></i>')}${links}</div>`;
+            panel.querySelectorAll('[data-golink]').forEach(chip => {
+                chip.addEventListener('click', () => this._followLink(chip.dataset.golink, 'product', selectedProductId));
+            });
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
         },
 
