@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "ETracker — Captura BK / Payoneer / Produtos",
-    "version": "0.2.0",
-    "description": "Captura produtos de qualquer página + snapshots de BK Dashboard e Payoneer pro ETracker.",
+    "name": "ETracker — Captura BK / Payoneer / Fornecedores / Produtos",
+    "version": "0.3.0",
+    "description": "Captura produtos de qualquer página + snapshots de BK Dashboard, Payoneer, Flowborder e Wiio pro ETracker.",
     "permissions": ["activeTab", "scripting", "storage", "tabs"],
     "host_permissions": ["<all_urls>"],
     "action": {
@@ -28,7 +28,11 @@
                 "https://bkdash.com.br/*",
                 "https://*.bkdash.com.br/*",
                 "https://*.payoneer.com/*",
-                "https://payoneer.com/*"
+                "https://payoneer.com/*",
+                "https://app.flowborder.com/*",
+                "https://*.flowborder.com/*",
+                "https://app.wiio.io/*",
+                "https://*.wiio.io/*"
             ],
             "js": ["content/remote-capture.js"],
             "css": ["content/remote-capture.css"],
@@ -38,7 +42,16 @@
     "web_accessible_resources": [
         {
             "resources": ["content/remote-capture.css"],
-            "matches": ["https://bkdash.com.br/*", "https://*.bkdash.com.br/*", "https://*.payoneer.com/*", "https://payoneer.com/*"]
+            "matches": [
+                "https://bkdash.com.br/*",
+                "https://*.bkdash.com.br/*",
+                "https://*.payoneer.com/*",
+                "https://payoneer.com/*",
+                "https://app.flowborder.com/*",
+                "https://*.flowborder.com/*",
+                "https://app.wiio.io/*",
+                "https://*.wiio.io/*"
+            ]
         }
     ]
 }

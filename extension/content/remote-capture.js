@@ -18,6 +18,10 @@
     let plataforma = 'desconhecida';
     if (/bkdash\.com\.br/i.test(host)) plataforma = 'bkdash';
     else if (/payoneer\.com/i.test(host)) plataforma = 'payoneer';
+    else if (/flowborder\.com/i.test(host)) plataforma = 'flowborder';
+    else if (/wiio\.io/i.test(host)) plataforma = 'wiio';
+
+    const PLAT_LABEL = { bkdash: 'BK', payoneer: 'Payoneer', flowborder: 'Flowborder', wiio: 'Wiio' };
 
     // ── Detecta moeda dominante na página ────────────────────
     function detectarMoeda() {
@@ -64,11 +68,12 @@
                 const matches = text.match(moneyRegex);
                 if (matches) {
                     // Pega label do ancestral mais próximo (parent ou sibling anterior)
+                    const moneyTest = /(?:R\$|£|€|\$|GBP|EUR|USD|BRL)\s*[\d.,]+/;
                     let label = '';
                     let cur = el.previousElementSibling;
                     while (cur && !label) {
                         const t = cur.innerText?.trim() || '';
-                        if (t && t.length < 80 && !moneyRegex.test(t)) { label = t; break; }
+                        if (t && t.length < 80 && !moneyTest.test(t)) { label = t; break; }
                         cur = cur.previousElementSibling;
                     }
                     if (!label && el.parentElement) {
@@ -125,7 +130,7 @@
             valoresComLabel: extrairValoresComLabel(),
             datasVisiveis: extrairDatas(),
             // Texto bruto reduzido (pra IA conseguir interpretar depois)
-            textoResumo: document.body.innerText?.slice(0, 8000) || '',
+            textoResumo: document.body.innerText?.slice(0, 12000) || '',
         };
     }
 
@@ -151,7 +156,7 @@
             <button id="etracker-cap-btn" title="Capturar dados desta página pro ETracker">
                 <span class="et-cap-icon">📥</span>
                 <span class="et-cap-label">Capturar p/ ETracker</span>
-                <span class="et-cap-plat">${plataforma === 'bkdash' ? 'BK' : plataforma === 'payoneer' ? 'Payoneer' : '?'}</span>
+                <span class="et-cap-plat">${PLAT_LABEL[plataforma] || '?'}</span>
             </button>
             <div id="etracker-cap-feedback" style="display:none"></div>
         `;
@@ -187,10 +192,42 @@
         });
     }
 
+    // ── AUTO-CAPTURA: 1x por dia por plataforma, ao visitar logado ──
+    const AUTOCAP_KEY = 'etracker_autocap_log';
+    function _hojeStr() { return new Date().toISOString().slice(0, 10); }
+
+    function autoCapturarSePreciso() {
+        if (plataforma === 'desconhecida') return;
+        chrome.storage.local.get(AUTOCAP_KEY, (data) => {
+            const log = data[AUTOCAP_KEY] || {};
+            if (log[plataforma] === _hojeStr()) return; // já capturou hoje
+            const snap = snapshot();
+            // Só captura se a página tem conteúdo real (logado, dados carregados).
+            // Evita capturar tela de login / página vazia.
+            if ((snap.valoresComLabel || []).length < 3 && (snap.tabelas || []).length < 1) return;
+            enviar(snap).then(() => {
+                log[plataforma] = _hojeStr();
+                chrome.storage.local.set({ [AUTOCAP_KEY]: log });
+                const fb = document.getElementById('etracker-cap-feedback');
+                if (fb) {
+                    fb.style.display = 'block';
+                    fb.className = 'et-cap-success';
+                    fb.textContent = `✓ Captura automática do dia enviada (${PLAT_LABEL[plataforma]})`;
+                    setTimeout(() => { fb.style.display = 'none'; }, 5000);
+                }
+            }).catch(() => {});
+        });
+    }
+
     // Atrasa um pouco pra DOM da SPA carregar
+    function _boot() {
+        montarOverlay();
+        // SPA demora a popular os dados — espera mais pra auto-captura
+        setTimeout(autoCapturarSePreciso, 6000);
+    }
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(montarOverlay, 1500);
+        setTimeout(_boot, 1500);
     } else {
-        window.addEventListener('DOMContentLoaded', () => setTimeout(montarOverlay, 1500));
+        window.addEventListener('DOMContentLoaded', () => setTimeout(_boot, 1500));
     }
 })();

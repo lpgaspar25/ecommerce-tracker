@@ -87,6 +87,148 @@ const RemoteCapturesModule = (() => {
 
     function _genId() { return 'cap_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
 
+    /* =====================================================
+       PARSER — interpreta o snapshot bruto e extrai números
+       prontos pra Conciliação (lucro BK, saldo Payoneer,
+       total pago em fornecedores Flowborder/Wiio).
+       ===================================================== */
+
+    // "R$ 68.365,12" | "£1,234.56" | "$123.45" | "229.435" → número
+    function _parseMoney(str) {
+        if (str == null) return null;
+        let s = String(str).replace(/[^\d.,-]/g, '');
+        if (!s || !/\d/.test(s)) return null;
+        const neg = /-/.test(String(str));
+        s = s.replace(/-/g, '');
+        if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');       // pt-BR: 68.365,12
+        else if (/\.\d{1,2}$/.test(s)) s = s.replace(/,/g, '');                     // en: 1,234.56
+        else s = s.replace(/[.,]/g, '');                                            // inteiro: 229.435
+        const n = parseFloat(s);
+        return isFinite(n) ? (neg ? -n : n) : null;
+    }
+
+    const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+    // Detecta o período (mês/ano) da captura: datas visíveis → nome do mês no texto → data da captura
+    function _detectarPeriodo(snap) {
+        const freq = {};
+        (snap.datasVisiveis || []).forEach(d => {
+            let m = null, y = null;
+            let mm = d.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+            if (mm) { m = parseInt(mm[2], 10); y = parseInt(mm[3], 10); if (y < 100) y += 2000; }
+            else { mm = d.match(/\b(\d{4})-(\d{2})-\d{2}\b/); if (mm) { y = parseInt(mm[1], 10); m = parseInt(mm[2], 10); } }
+            if (m >= 1 && m <= 12 && y > 2000) { const k = m + '/' + y; freq[k] = (freq[k] || 0) + 1; }
+        });
+        const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+        if (top) { const [m, y] = top[0].split('/').map(Number); return { mes: m, ano: y, label: MESES_ABREV[m - 1] + '/' + y }; }
+        const nm = (snap.textoResumo || '').match(new RegExp('\\b(' + MESES_NOME.join('|') + ')\\s+(?:de\\s+)?(\\d{4})\\b', 'i'));
+        if (nm) { const m = MESES_NOME.indexOf(nm[1].toLowerCase()) + 1; return { mes: m, ano: +nm[2], label: MESES_ABREV[m - 1] + '/' + nm[2] }; }
+        const d = new Date(snap.capturadoEm || Date.now());
+        return { mes: d.getMonth() + 1, ano: d.getFullYear(), label: MESES_ABREV[d.getMonth()] + '/' + d.getFullYear() };
+    }
+
+    // Campos do BK Dashboard por label (primeiro match ganha = cards do topo)
+    const BK_CAMPOS = [
+        ['metaLucro',        /meta\s*de\s*lucro/i],
+        ['lucro',            /^lucro\b/i],
+        ['faturamento',      /faturamento/i],
+        ['custoProduto',     /c\.?\s*(?:de\s*)?produto|custo\s*de\s*produto/i],
+        ['custoMarketing',   /an[úu]ncios|custo\s*de\s*marketing/i],
+        ['taxas',            /^taxas?\b/i],
+        ['impostos',         /impostos?/i],
+        ['chargeback',       /chargeback/i],
+        ['reembolso',        /reembolso/i],
+        ['custosAdicionais', /custos\s*adicionais/i],
+        ['ticketMedio',      /ticket\s*m[ée]dio/i],
+        ['cpa',              /^cpa\b/i],
+    ];
+
+    function _parseBk(snap) {
+        const campos = {};
+        (snap.valoresComLabel || []).forEach(v => {
+            const label = (v.label || '').trim();
+            if (!label) return;
+            for (const [key, re] of BK_CAMPOS) {
+                if (re.test(label) && campos[key] === undefined) {
+                    const n = _parseMoney(v.valor);
+                    if (n !== null) campos[key] = n;
+                    break; // label casa com no máx. 1 campo (ordem importa: metaLucro antes de lucro)
+                }
+            }
+        });
+        delete campos.metaLucro; // só serviu pra não contaminar "lucro"
+        return campos;
+    }
+
+    function _parsePayoneer(snap) {
+        const cands = (snap.valoresComLabel || []).filter(v =>
+            /balance|saldo|dispon[íi]vel|available/i.test(v.label || ''));
+        // prioriza GBP (moeda funcional da operação)
+        const gbp = cands.find(v => /£|GBP/.test(v.valor)) || cands[0];
+        const out = {};
+        if (gbp) { out.saldoGBP = _parseMoney(gbp.valor); out.saldoLabel = gbp.label; out.saldoRaw = gbp.valor; }
+        return out;
+    }
+
+    // Flowborder / Wiio: soma pedidos das tabelas (valor = última célula monetária da linha)
+    function _parseFornecedor(snap) {
+        let totalUSD = 0, pedidos = 0, totalPagoUSD = 0, pedidosPagos = 0;
+        (snap.tabelas || []).forEach(t => {
+            (t.rows || []).forEach(row => {
+                let valor = null;
+                for (let i = row.length - 1; i >= 0; i--) {
+                    if (/(?:US?\$|USD|\$)\s*[\d.,]+/.test(row[i])) { valor = _parseMoney(row[i]); break; }
+                }
+                if (valor === null || valor <= 0) return;
+                totalUSD += valor; pedidos++;
+                if (row.some(c => /\b(paid|pago|completed|conclu[íi]d|shipped|enviado)\b/i.test(c))) {
+                    totalPagoUSD += valor; pedidosPagos++;
+                }
+            });
+        });
+        if (!pedidos) return {};
+        return {
+            totalUSD: +totalUSD.toFixed(2), pedidos,
+            totalPagoUSD: +(pedidosPagos ? totalPagoUSD : totalUSD).toFixed(2),
+            pedidosPagos: pedidosPagos || pedidos,
+            statusDetectado: pedidosPagos > 0,
+        };
+    }
+
+    // Snapshot bruto → objeto interpretado pronto pra Conciliação
+    function parseSnapshot(snap) {
+        if (!snap) return null;
+        const periodo = _detectarPeriodo(snap);
+        const base = { plataforma: snap.plataforma, periodoLabel: periodo.label, mes: periodo.mes, ano: periodo.ano, capturadoEm: snap.capturadoEm };
+        if (snap.plataforma === 'bkdash') return { ...base, campos: _parseBk(snap) };
+        if (snap.plataforma === 'payoneer') return { ...base, campos: _parsePayoneer(snap) };
+        if (snap.plataforma === 'flowborder' || snap.plataforma === 'wiio') return { ...base, campos: _parseFornecedor(snap) };
+        return null;
+    }
+
+    // Resumo de 1 linha pro card da lista
+    function _resumoLinha(parsed) {
+        if (!parsed || !parsed.campos) return '';
+        const c = parsed.campos;
+        const fmt = (v) => (v == null ? null : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        if (parsed.plataforma === 'bkdash' && c.lucro != null)
+            return `⚡ Lucro R$ ${fmt(c.lucro)} · ${parsed.periodoLabel}`;
+        if (parsed.plataforma === 'payoneer' && c.saldoGBP != null)
+            return `⚡ Saldo £ ${fmt(c.saldoGBP)}`;
+        if ((parsed.plataforma === 'flowborder' || parsed.plataforma === 'wiio') && c.totalPagoUSD != null)
+            return `⚡ ${c.pedidosPagos} pedido${c.pedidosPagos !== 1 ? 's' : ''} · $ ${fmt(c.totalPagoUSD)}${c.statusDetectado ? ' (pagos)' : ''}`;
+        return '';
+    }
+
+    // Última captura de uma plataforma, já interpretada
+    async function getLatestParsed(plataforma) {
+        const entry = _captures.find(c => c.plataforma === plataforma);
+        if (!entry) return null;
+        const snap = await _loadSnapshot(entry.id);
+        return snap ? parseSnapshot(snap) : null;
+    }
+
     // ── Recebe captures vindas da extensão (postMessage) ──
     async function _onCapturesReceived(captures) {
         if (!Array.isArray(captures) || !captures.length) return;
@@ -95,6 +237,7 @@ const RemoteCapturesModule = (() => {
             const id = _genId();
             try {
                 await _saveSnapshot(id, snap);
+                const parsed = parseSnapshot(snap);
                 _captures.unshift({
                     id,
                     plataforma: snap.plataforma || 'desconhecida',
@@ -104,8 +247,15 @@ const RemoteCapturesModule = (() => {
                     capturadoEm: snap.capturadoEm || new Date().toISOString(),
                     tabelasCount: (snap.tabelas || []).length,
                     valoresCount: (snap.valoresComLabel || []).length,
+                    resumo: _resumoLinha(parsed),
                 });
                 novosCount++;
+                // ⚡ Aplica direto na Conciliação (lucro BK, saldo Payoneer, fornecedores)
+                try {
+                    if (parsed && typeof ReconciliationModule !== 'undefined' && ReconciliationModule.applyCapture) {
+                        ReconciliationModule.applyCapture(parsed);
+                    }
+                } catch (err) { console.error('applyCapture falhou', err); }
             } catch (err) {
                 console.error('falha ao salvar snapshot', err);
             }
@@ -151,6 +301,8 @@ const RemoteCapturesModule = (() => {
         const map = {
             bkdash: '<span class="cap-plat cap-plat-bk">BK Dashboard</span>',
             payoneer: '<span class="cap-plat cap-plat-payoneer">Payoneer</span>',
+            flowborder: '<span class="cap-plat cap-plat-flowborder">Flowborder</span>',
+            wiio: '<span class="cap-plat cap-plat-wiio">Wiio</span>',
         };
         return map[p] || `<span class="cap-plat">${_esc(p)}</span>`;
     }
@@ -173,8 +325,9 @@ const RemoteCapturesModule = (() => {
                 </div>
             </div>
             <p class="captures-intro">
-                Snapshots do <strong>BK Dashboard</strong> e <strong>Payoneer</strong> capturados pela extensão Chrome.
-                Pra capturar: instale a extensão, abra a página externa, e clique no botão flutuante <em>"Capturar p/ ETracker"</em>.
+                Snapshots de <strong>BK Dashboard</strong>, <strong>Payoneer</strong>, <strong>Flowborder</strong> e <strong>Wiio</strong> capturados pela extensão Chrome.
+                Ao visitar essas páginas logado, a extensão <strong>captura sozinha 1x por dia</strong> — ou clique no botão flutuante <em>"Capturar p/ ETracker"</em> a qualquer momento.
+                Lucro, saldos e pedidos pagos são aplicados automaticamente na <strong>Conciliação</strong>.
                 ${total > 0 ? `<br><small style="color:var(--text-muted)">${total} captura${total > 1 ? 's' : ''} no total · ${Object.entries(porPlataforma).map(([p, n]) => `${n} ${p}`).join(' · ')}</small>` : ''}
             </p>
 
@@ -182,7 +335,7 @@ const RemoteCapturesModule = (() => {
                 <div class="captures-empty">
                     <div class="captures-empty-icon"><i data-lucide="inbox" style="width:48px;height:48px;color:var(--text-muted)"></i></div>
                     <h3>Sem capturas ainda</h3>
-                    <p>Abra <a href="https://bkdash.com.br/app" target="_blank">BK Dashboard</a> ou <a href="https://payoneer.com" target="_blank">Payoneer</a>, faça login, e clique no botão flutuante da extensão pra fazer a 1ª captura.</p>
+                    <p>Abra <a href="https://bkdash.com.br/app" target="_blank">BK Dashboard</a>, <a href="https://payoneer.com" target="_blank">Payoneer</a>, <a href="https://app.flowborder.com/CustomOrder/Pending" target="_blank">Flowborder</a> ou <a href="https://app.wiio.io/CustomOrder/Pending" target="_blank">Wiio</a>, faça login, e a extensão captura sozinha (ou clique no botão flutuante).</p>
                 </div>
             ` : `
                 <div class="captures-list">
@@ -194,6 +347,7 @@ const RemoteCapturesModule = (() => {
                                 <button class="capture-x" data-cap-del="${c.id}" title="Remover">&times;</button>
                             </div>
                             <div class="capture-title">${_esc(c.titulo || 'Sem título')}</div>
+                            ${c.resumo ? `<div class="capture-resumo">${_esc(c.resumo)}</div>` : ''}
                             <div class="capture-url" title="${_esc(c.url)}">${_esc((c.url || '').slice(0, 80))}${c.url && c.url.length > 80 ? '…' : ''}</div>
                             <div class="capture-meta">
                                 <span><i data-lucide="clock" style="width:11px;height:11px;vertical-align:-1px"></i> ${_fmtDate(c.capturadoEm)}</span>
@@ -277,12 +431,39 @@ const RemoteCapturesModule = (() => {
         }
         title.textContent = `${snap.plataforma || 'Captura'} — ${_fmtDate(snap.capturadoEm)}`;
 
+        const parsed = parseSnapshot(snap);
+        const camposKeys = parsed && parsed.campos ? Object.keys(parsed.campos).filter(k => parsed.campos[k] != null && typeof parsed.campos[k] !== 'boolean') : [];
+        const NOMES = {
+            lucro: 'Lucro', faturamento: 'Faturamento', custoProduto: 'Custo de Produto',
+            custoMarketing: 'Anúncios / Marketing', taxas: 'Taxas', impostos: 'Impostos',
+            chargeback: 'Chargeback', reembolso: 'Reembolso', custosAdicionais: 'Custos Adicionais',
+            ticketMedio: 'Ticket Médio', cpa: 'CPA', saldoGBP: 'Saldo (£)', saldoLabel: 'Label do saldo',
+            saldoRaw: 'Valor bruto', totalUSD: 'Total ($)', pedidos: 'Pedidos', totalPagoUSD: 'Total pago ($)',
+            pedidosPagos: 'Pedidos pagos',
+        };
+
         body.innerHTML = `
             <div class="capture-detail-section">
                 <div><strong>URL:</strong> <a href="${_esc(snap.url)}" target="_blank">${_esc(snap.url)}</a></div>
                 <div><strong>Título:</strong> ${_esc(snap.titulo || '—')}</div>
                 <div><strong>Moeda dominante:</strong> ${_esc(snap.moeda || '—')}</div>
             </div>
+
+            ${camposKeys.length ? `
+                <div class="capture-parsed">
+                    <h4 class="capture-detail-h">⚡ Interpretação automática — ${_esc(parsed.periodoLabel)}</h4>
+                    <table class="capture-detail-table">
+                        <tbody>
+                        ${camposKeys.map(k => `
+                            <tr><td>${_esc(NOMES[k] || k)}</td><td class="capture-money">${typeof parsed.campos[k] === 'number' ? parsed.campos[k].toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : _esc(parsed.campos[k])}</td></tr>
+                        `).join('')}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-primary btn-sm" id="cap-apply-btn" style="margin-top:.5rem">
+                        <i data-lucide="zap" style="width:13px;height:13px;vertical-align:-2px"></i> Aplicar na Conciliação (${_esc(parsed.periodoLabel)})
+                    </button>
+                </div>
+            ` : ''}
 
             ${(snap.valoresComLabel || []).length ? `
                 <h4 class="capture-detail-h">💰 Valores monetários encontrados (${snap.valoresComLabel.length})</h4>
@@ -326,6 +507,13 @@ const RemoteCapturesModule = (() => {
                 <pre style="background:var(--bg-input);padding:0.75rem;border-radius:6px;font-size:0.7rem;max-height:300px;overflow:auto;margin-top:0.5rem">${_esc((snap.textoResumo || '').slice(0, 4000))}</pre>
             </details>
         `;
+        document.getElementById('cap-apply-btn')?.addEventListener('click', () => {
+            if (parsed && typeof ReconciliationModule !== 'undefined' && ReconciliationModule.applyCapture) {
+                ReconciliationModule.applyCapture(parsed, { manual: true });
+            } else if (typeof showToast === 'function') {
+                showToast('Módulo de Conciliação não carregado.', 'error');
+            }
+        });
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     }
 
@@ -355,6 +543,7 @@ const RemoteCapturesModule = (() => {
 
     return {
         init, render, listCaptures, getCapture, removeCapture, clearAll, openDetail, closeDetail,
+        parseSnapshot, getLatestParsed,
     };
 })();
 
