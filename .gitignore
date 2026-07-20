@@ -12,3 +12,4 @@ node_modules/
 .Spotlight-V100
 .Trashes
 .fseventsd
+.cloudflare-token

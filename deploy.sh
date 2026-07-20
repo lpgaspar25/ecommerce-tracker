@@ -103,9 +103,34 @@ rsync -a \
 
 log "Fazendo deploy no Cloudflare..."
 cd "$DEPLOY_TMP"
+
+# Auth: usa CLOUDFLARE_API_TOKEN do ambiente, ou de um arquivo .cloudflare-token
+# na raiz do projeto (fica gitignored). Sem isso o wrangler tenta OAuth — que só
+# funciona em terminal interativo e expira depois de um tempo.
+if [ -z "$CLOUDFLARE_API_TOKEN" ] && [ -f "$PROJECT_DIR/.cloudflare-token" ]; then
+  export CLOUDFLARE_API_TOKEN="$(tr -d '[:space:]' < "$PROJECT_DIR/.cloudflare-token")"
+fi
+
+set +e
 npx wrangler@latest pages deploy . \
   --project-name "$CF_PROJECT" \
-  --branch "$BRANCH" 2>&1 | grep -E '(Uploading|Deploying|Deployment complete|ERROR|Error)'
+  --branch "$BRANCH" 2>&1 | grep -E '(Uploading|Deploying|Deployment complete|ERROR|Error|CLOUDFLARE_API_TOKEN)'
+WRANGLER_EXIT=${PIPESTATUS[0]}
+set -e
+
+if [ "$WRANGLER_EXIT" -ne 0 ]; then
+  echo ""
+  echo -e "${RED}❌ Deploy no Cloudflare FALHOU (exit $WRANGLER_EXIT).${NC}"
+  echo -e "${YELLOW}GitHub e espelhos locais já foram atualizados — só a NUVEM não subiu.${NC}"
+  echo -e "${YELLOW}Causa provável: o login do wrangler expirou e este ambiente não é interativo.${NC}"
+  echo ""
+  echo -e "Resolva de UMA destas formas e rode ${CYAN}./deploy.sh${NC} de novo:"
+  echo -e "  1) No SEU Terminal:  ${CYAN}npx wrangler login${NC}   (abre o navegador pra reautenticar)"
+  echo -e "  2) Ou crie um token em ${CYAN}dash.cloudflare.com → My Profile → API Tokens${NC}"
+  echo -e "     (permissão ${CYAN}Cloudflare Pages: Edit${NC}) e salve o valor em:"
+  echo -e "     ${CYAN}$PROJECT_DIR/.cloudflare-token${NC}"
+  exit 1
+fi
 
 ok "Cloudflare Pages atualizado → https://app-calculadora-lucas.pages.dev"
 
