@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "ETracker — Captura BK / Payoneer / Fornecedores / Produtos",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "Captura produtos de qualquer página + snapshots de BK Dashboard, Payoneer, Flowborder e Wiio pro ETracker.",
     "permissions": ["activeTab", "scripting", "storage", "tabs"],
     "host_permissions": ["<all_urls>"],
@@ -17,6 +17,7 @@
             "matches": [
                 "https://app-calculadora-lucas.pages.dev/*",
                 "https://*.app-calculadora-lucas.pages.dev/*",
+                "https://lpgaspar25.github.io/ecommerce-tracker/*",
                 "http://localhost:*/*",
                 "http://127.0.0.1:*/*"
             ],

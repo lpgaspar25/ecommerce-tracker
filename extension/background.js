@@ -1,12 +1,13 @@
 /* Service worker — relays the queue to the app via tab messaging. */
 
 const APP_URL_PATTERN = /^https:\/\/(?:[^.]+\.)?app-calculadora-lucas\.pages\.dev\//;
+const GHPAGES_PATTERN = /^https:\/\/lpgaspar25\.github\.io\/ecommerce-tracker\//;
 const LOCAL_PATTERN = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\//;
 
 const QUEUE_KEY = 'etracker_ext_queue';
 
 function isAppUrl(url) {
-    return APP_URL_PATTERN.test(url) || LOCAL_PATTERN.test(url);
+    return APP_URL_PATTERN.test(url) || GHPAGES_PATTERN.test(url) || LOCAL_PATTERN.test(url);
 }
 
 // When the app-bridge content script asks for queue, hand it over and clear.
