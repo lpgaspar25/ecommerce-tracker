@@ -1202,19 +1202,7 @@ const DiaryModule = {
     },
 
     getEntryProfit(entry) {
-        if (!entry.productId || entry.productId === '__STORE__') return 0;
-        const product = getProductById(entry.productId);
-        if (!product) return 0;
-
-        const revenueUSD = convertToUSD(entry.revenue, entry.revenueCurrency);
-        const budgetUSD = convertToUSD(entry.budget, entry.budgetCurrency);
-        const costUSD = convertToUSD(product.cost, product.costCurrency);
-
-        return revenueUSD
-            - (costUSD * entry.sales)
-            - (revenueUSD * product.tax / 100)
-            - (revenueUSD * product.variableCosts / 100)
-            - budgetUSD;
+        return calculateEntryProfit(entry);
     },
 
     _escapeHtml(raw) {

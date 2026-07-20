@@ -25,6 +25,29 @@ const GoalsModule = {
         return totalSales > 0 ? { cpa: totalBudget / totalSales, currency: 'USD' } : null;
     },
 
+    // Média real (últimos 14 dias, todos os produtos): lucro líquido por venda e CPA.
+    // Usada nas metas "todos" para estimar vendas/budget restantes.
+    _getBlendedRealMetrics() {
+        const today = todayISO();
+        const d = new Date();
+        d.setDate(d.getDate() - 13);
+        const startDate = d.toISOString().split('T')[0];
+
+        const entries = (AppState.diary || []).filter(e =>
+            !e.isCampaign && !e.parentId && e.date >= startDate && e.date <= today && e.sales > 0
+        );
+        if (entries.length === 0) return null;
+
+        let totalProfit = 0, totalSales = 0, totalBudget = 0;
+        entries.forEach(e => {
+            totalProfit += calculateEntryProfit(e);
+            totalSales += e.sales;
+            totalBudget += convertToUSD(e.budget, e.budgetCurrency);
+        });
+        if (totalSales <= 0) return null;
+        return { profitPerSale: totalProfit / totalSales, cpa: totalBudget / totalSales };
+    },
+
     init() {
         document.getElementById('btn-add-goal').addEventListener('click', () => this.openForm());
         document.getElementById('goal-form').addEventListener('submit', (e) => this.handleSubmit(e));
@@ -213,23 +236,10 @@ const GoalsModule = {
         let totalRevenue = 0;
 
         entries.forEach(entry => {
-            const product = getProductById(entry.productId);
-            if (!product) return;
-
-            const revenueUSD = convertToUSD(entry.revenue, entry.revenueCurrency);
-            const budgetUSD = convertToUSD(entry.budget, entry.budgetCurrency);
-            const costUSD = convertToUSD(product.cost, product.costCurrency);
-
-            const entryProfit = revenueUSD
-                - (costUSD * entry.sales)
-                - (revenueUSD * product.tax / 100)
-                - (revenueUSD * product.variableCosts / 100)
-                - budgetUSD;
-
-            totalProfit += entryProfit;
-            totalSales += entry.sales;
-            totalBudget += budgetUSD;
-            totalRevenue += revenueUSD;
+            totalProfit += calculateEntryProfit(entry);
+            totalSales += entry.sales || 0;
+            totalBudget += convertToUSD(entry.budget, entry.budgetCurrency);
+            totalRevenue += convertToUSD(entry.revenue, entry.revenueCurrency);
         });
 
         const targetTotalUSD = convertToUSD(goal.dailyTarget, goal.currency) * totalDays;
@@ -257,6 +267,15 @@ const GoalsModule = {
                         ? (salesRemaining * cpaVal) / remaining.days
                         : salesRemaining * cpaVal;
                 }
+            }
+        } else if (profitRemaining > 0) {
+            // Meta "todos": usa a média real (14d) de lucro/venda e CPA de todos os produtos
+            const blended = this._getBlendedRealMetrics();
+            if (blended && blended.profitPerSale > 0) {
+                salesRemaining = Math.ceil(profitRemaining / blended.profitPerSale);
+                budgetPerDayNeeded = remaining.days > 0
+                    ? (salesRemaining * blended.cpa) / remaining.days
+                    : salesRemaining * blended.cpa;
             }
         }
 

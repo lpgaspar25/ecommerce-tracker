@@ -3779,7 +3779,7 @@ const FunnelModule = {
     _chartMetricDefs: {
         faturamento: [
             { key: 'revenue',  label: 'Total',              color: '#60a5fa', compute: (e) => Number(e.revenue || 0) },
-            { key: 'profit',   label: 'Lucro',              color: '#34d399', compute: (e) => Number(e.revenue || 0) - Number(e.budget || 0) },
+            { key: 'profit',   label: 'Lucro',              color: '#34d399', compute: (e) => convertCurrency(calculateEntryProfit(e), 'USD', e.revenueCurrency || 'BRL') },
             { key: 'budget',   label: 'Custo de Marketing',  color: '#a78bfa', compute: (e) => Number(e.budget || 0) },
         ],
         funnel: [

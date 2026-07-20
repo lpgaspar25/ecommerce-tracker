@@ -561,14 +561,11 @@ const DashboardModule = {
             pageViews += e.pageViews || 0;
             addToCart += e.addToCart || 0;
             checkout += e.checkout || 0;
-            if (typeof DiaryModule !== 'undefined' && DiaryModule.getEntryProfit) {
-                profit += DiaryModule.getEntryProfit(e);
-            } else {
-                profit += rUSD - bUSD;
-            }
+            profit += calculateEntryProfit(e);
         });
         return {
             budget, revenue, sales, impressions, pageViews, addToCart, checkout, profit,
+            profitBRL: convertToBRL(profit, 'USD'),
             budgetBRL, revenueBRL,
             roas: budget > 0 ? revenue / budget : 0,
             cpa: sales > 0 ? budget / sales : 0,
@@ -783,7 +780,7 @@ const DashboardModule = {
     _chartMetricDefs: {
         faturamento: [
             { key: 'revenue', label: 'Total',              color: '#60a5fa', compute: e => convertToBRL(e.revenue||0, e.revenueCurrency||'BRL') },
-            { key: 'profit',  label: 'Lucro',              color: '#34d399', compute: e => convertToBRL(e.revenue||0, e.revenueCurrency||'BRL') - convertToBRL(e.budget||0, e.budgetCurrency||'BRL') },
+            { key: 'profit',  label: 'Lucro',              color: '#34d399', compute: e => convertToBRL(calculateEntryProfit(e), 'USD') },
             { key: 'budget',  label: 'Custo de Marketing', color: '#a78bfa', compute: e => convertToBRL(e.budget||0, e.budgetCurrency||'BRL') },
         ],
         funnel: [
@@ -2184,9 +2181,9 @@ const DashboardModule = {
             }
             case 'profit':
                 label = 'Lucro do período';
-                const profit = this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
+                const profit = this._currency === 'BRL' ? agg.profitBRL : agg.profit;
                 value = (profit < 0 ? '-' : '') + fmtMoney(Math.abs(profit));
-                prevValue = this._currency === 'BRL' ? (prevAgg.revenueBRL - prevAgg.budgetBRL) : prevAgg.profit;
+                prevValue = this._currency === 'BRL' ? prevAgg.profitBRL : prevAgg.profit;
                 break;
             case 'revenue':
                 label = 'Receita total';
@@ -2286,7 +2283,7 @@ const DashboardModule = {
         if (typeof value === 'string' && value !== '--') {
             // For delta we need the numeric value — recompute from prev logic where needed
             numericCur = (() => {
-                if (metric === 'profit') return this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
+                if (metric === 'profit') return this._currency === 'BRL' ? agg.profitBRL : agg.profit;
                 if (metric === 'revenue') return this._currency === 'BRL' ? agg.revenueBRL : agg.revenue;
                 if (metric === 'sales') return agg.sales;
                 if (metric === 'salesReal') return realCur.sales;
@@ -2461,7 +2458,7 @@ const DashboardModule = {
         }
 
         if (metric === 'profit') {
-            const val    = this._currency === 'BRL' ? (agg.revenueBRL - agg.budgetBRL) : agg.profit;
+            const val    = this._currency === 'BRL' ? agg.profitBRL : agg.profit;
             const prefix = this._currency === 'BRL' ? 'R$' : '$';
             const isNeg  = val < 0;
             const text   = (isNeg ? '-' : '') + prefix + this._compactNum(Math.abs(val));
