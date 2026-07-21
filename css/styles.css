@@ -14351,6 +14351,24 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .adh-node-links button:hover { background: rgba(139, 92, 246, 0.22); }
 .adh-link-count { font-weight: 700; font-size: 0.6rem; }
+
+/* Criativo expandido no board — imagem grande */
+.adh-board-node-ad { width: 220px; }
+.adh-board-ad-img {
+    width: 100%;
+    height: 165px;
+    object-fit: contain;
+    background: var(--bg-input, rgba(0,0,0,0.04));
+    border-radius: 8px;
+    margin: 2px 0 6px;
+    display: block;
+}
+.adh-board-ad-noimg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
 .adh-board-node-body {
     display: flex;
     gap: 0.5rem;

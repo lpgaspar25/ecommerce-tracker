@@ -1151,6 +1151,7 @@
 
             // Layout: 4 columns × N rows, each node 220×85 with 40px gap
             const NODE_W = 220, NODE_H = 90, COL_GAP = 80, ROW_GAP = 20;
+            const AD_NODE_H = 290; // Criativos expandidos (imagem grande) — cobre o nó real (~273px) + título em 2 linhas
             const COL_X = (i) => i * (NODE_W + COL_GAP) + 40;
 
             const productId = this._state.selectedProductId;
@@ -1203,7 +1204,7 @@
                             } else {
                                 for (const ad of ads) {
                                     nodes.push({ x: COL_X(3), y: curY, type: 'ad', item: ad });
-                                    curY += NODE_H + ROW_GAP;
+                                    curY += AD_NODE_H + ROW_GAP; // criativo expandido ocupa mais altura
                                 }
                                 const adsetY = (adsetStart + curY - ROW_GAP - NODE_H) / 2;
                                 nodes.push({ x: COL_X(2), y: adsetY, type: 'adset', item: adset });
@@ -1237,7 +1238,7 @@
             });
 
             // Render nodes
-            nodesEl.innerHTML = nodes.map(n => this._renderBoardNode(n, NODE_W, NODE_H)).join('');
+            nodesEl.innerHTML = nodes.map(n => this._renderBoardNode(n, NODE_W, n.type === 'ad' ? AD_NODE_H : NODE_H)).join('');
 
             // ── Guarda os pares hierárquicos; o desenho fica em _drawBoardEdges (lê o DOM) ──
             const hier = [];
@@ -1542,7 +1543,12 @@
             const labels = { product:'Produto', campaign:'Campanha', adset:'Conjunto', ad:'Criativo' };
             const status = (n.type === 'product') ? '' : (this._statusBadge(item.status) + (item.region ? this._regionBadge(item.region) : ''));
             const valid = item.validated ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;color:#10b981" title="Validado"></i>' : '';
-            const thumb = n.type === 'ad' && item.thumbnail ? `<img src="${this._esc(item.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0">` : '';
+            // Criativo expandido: imagem grande (ou placeholder)
+            const adImage = n.type === 'ad'
+                ? (item.thumbnail
+                    ? `<img class="adh-board-ad-img" src="${this._esc(item.thumbnail)}" alt="">`
+                    : `<div class="adh-board-ad-img adh-board-ad-noimg"><i data-lucide="image" style="width:32px;height:32px"></i></div>`)
+                : '';
 
             // Children count (for collapse badge)
             let childCount = 0;
@@ -1593,8 +1599,8 @@
                         ${collapseBtn}
                     </div>
                 </div>
+                ${adImage}
                 <div class="adh-board-node-body">
-                    ${thumb}
                     <div style="flex:1;min-width:0">
                         <div class="adh-board-node-title">${this._esc(item.name)}</div>
                         <div class="adh-board-node-meta">${status}</div>
