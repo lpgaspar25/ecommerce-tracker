@@ -2015,7 +2015,7 @@ const DashboardModule = {
         if (!container) return;
 
         // Trigger async Shopify fetch for real-metric tabs
-        const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal';
+        const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal' || this._calMetric === 'conversionCombined';
         if (needsReal && this._realSalesMap === null) {
             container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
             this._loadRealSalesMaps().then(() => this._renderMetricsCalendar());
