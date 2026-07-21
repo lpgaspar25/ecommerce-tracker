@@ -11169,16 +11169,28 @@ thead:hover .diary-check-col input[type="checkbox"],
 .proj-task-text:hover, .proj-subtask-text:hover {
     background: var(--bg-hover, rgba(139, 92, 246, 0.06));
 }
-/* Botões editar/copiar só aparecem no hover da linha (menos poluição) */
-.btn-copy-task, .btn-edit-task, .btn-copy-subtask, .btn-edit-subtask {
+/* Botões editar/copiar/mover só aparecem no hover da linha (menos poluição) */
+.btn-copy-task, .btn-edit-task, .btn-move-task,
+.btn-copy-subtask, .btn-edit-subtask, .btn-move-subtask {
     opacity: 0;
     transition: opacity 0.12s;
 }
 .proj-task-item:hover .btn-copy-task,
 .proj-task-item:hover .btn-edit-task,
+.proj-task-item:hover .btn-move-task,
 .proj-subtask-item:hover .btn-copy-subtask,
-.proj-subtask-item:hover .btn-edit-subtask {
+.proj-subtask-item:hover .btn-edit-subtask,
+.proj-subtask-item:hover .btn-move-subtask {
     opacity: 1;
+}
+.btn-move-task[disabled], .btn-move-subtask[disabled] {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+.proj-task-item:hover .btn-move-task[disabled],
+.proj-subtask-item:hover .btn-move-subtask[disabled] {
+    opacity: 0.25 !important;
+    cursor: default;
 }
 
 .proj-done {

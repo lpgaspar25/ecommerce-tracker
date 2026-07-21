@@ -243,6 +243,9 @@ const ProjectsModule = {
 
         list.innerHTML = projects.map(p => this._renderCard(p)).join('');
         this._bindListEvents(list);
+        // Recria os ícones lucide após o re-render (senão os botões de ícone ficam vazios
+        // depois de qualquer mudança in-place: toggle, add, mover, editar…).
+        if (typeof lucide !== 'undefined') { try { lucide.createIcons(); } catch (e) {} }
     },
 
     _bindListEvents(list) {
@@ -395,6 +398,13 @@ const ProjectsModule = {
         });
         list.querySelectorAll('.proj-subtask-text').forEach(span => {
             span.addEventListener('dblclick', (e) => { e.stopPropagation(); this._startInlineEdit(span.dataset.proj, span.dataset.task, span.dataset.sub); });
+        });
+        // Reordenar por botões ↑/↓
+        list.querySelectorAll('.btn-move-task').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.moveTask(btn.dataset.proj, btn.dataset.task, parseInt(btn.dataset.dir, 10)); });
+        });
+        list.querySelectorAll('.btn-move-subtask').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this.moveSubtask(btn.dataset.proj, btn.dataset.task, btn.dataset.sub, parseInt(btn.dataset.dir, 10)); });
         });
         // Drag & drop reorder — tasks
         list.querySelectorAll('.proj-task-item').forEach(item => {
@@ -772,17 +782,19 @@ const ProjectsModule = {
             </div>` : '';
 
         // Tasks HTML
-        const tasksHtml = tasks.map(task => {
+        const tasksHtml = tasks.map((task, tIdx) => {
             const subs = task.subitems || [];
             const subsDone = subs.filter(s => s.done).length;
             const subsTotal = subs.length;
             const subProgressTxt = subsTotal > 0 ? `<span class="proj-sub-progress">${subsDone}/${subsTotal}</span>` : '';
 
-            const subitems = subs.map(sub => `
+            const subitems = subs.map((sub, sIdx) => `
                 <div class="proj-subtask-item" draggable="true" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}">
                     <span class="proj-drag-handle" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:12px;height:12px;vertical-align:-2px"></i></span>
                     <input type="checkbox" class="proj-task-check" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" ${sub.done ? 'checked' : ''}>
                     <span class="proj-subtask-text ${sub.done ? 'proj-done' : ''}" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="2× clique para editar" style="flex:1">${this._esc(sub.text)}</span>
+                    <button class="btn-move-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" data-dir="-1" title="Mover para cima" ${sIdx === 0 ? 'disabled' : ''}><i data-lucide="chevron-up" style="width:12px;height:12px"></i></button>
+                    <button class="btn-move-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" data-dir="1" title="Mover para baixo" ${sIdx === subsTotal - 1 ? 'disabled' : ''}><i data-lucide="chevron-down" style="width:12px;height:12px"></i></button>
                     <button class="btn-copy-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Copiar texto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
                     <button class="btn-edit-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Editar"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
                     <button class="btn-del-subtask proj-icon-btn proj-del-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Excluir">×</button>
@@ -806,6 +818,8 @@ const ProjectsModule = {
                     ${this._timingBadge(task.timing, p.id, task.id)}
                     ${this._priorityBadge(task.priority)}
                     <input type="date" class="input input-sm proj-task-due-input" data-proj="${p.id}" data-task="${task.id}" value="${task.dueDate || ''}" title="Agendar tarefa">
+                    <button class="btn-move-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-dir="-1" title="Mover para cima" ${tIdx === 0 ? 'disabled' : ''}><i data-lucide="chevron-up" style="width:12px;height:12px"></i></button>
+                    <button class="btn-move-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-dir="1" title="Mover para baixo" ${tIdx === tasks.length - 1 ? 'disabled' : ''}><i data-lucide="chevron-down" style="width:12px;height:12px"></i></button>
                     <button class="btn-copy-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="Copiar texto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
                     <button class="btn-edit-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="Editar tarefa"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
                     <button class="btn-add-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="+ Sub-tarefa">+sub</button>
@@ -1436,6 +1450,34 @@ const ProjectsModule = {
         list.querySelectorAll('.proj-card-drop-before, .proj-card-drop-after').forEach(el => {
             el.classList.remove('proj-card-drop-before', 'proj-card-drop-after');
         });
+    },
+
+    // Mover 1 posição via botão ↑/↓ (dir = -1 sobe, +1 desce)
+    moveTask(projId, taskId, dir) {
+        const proj = (AppState.allProjects || []).find(p => p.id === projId);
+        if (!proj || !proj.tasks) return;
+        const idx = proj.tasks.findIndex(t => t.id === taskId);
+        if (idx < 0) return;
+        const swap = idx + dir;
+        if (swap < 0 || swap >= proj.tasks.length) return;
+        [proj.tasks[idx], proj.tasks[swap]] = [proj.tasks[swap], proj.tasks[idx]];
+        proj.updatedAt = new Date().toISOString();
+        EventBus.emit('projectsChanged');
+        this._syncAndRerenderCard(projId);
+    },
+
+    moveSubtask(projId, taskId, subId, dir) {
+        const proj = (AppState.allProjects || []).find(p => p.id === projId);
+        const task = (proj?.tasks || []).find(t => t.id === taskId);
+        if (!task || !task.subitems) return;
+        const idx = task.subitems.findIndex(s => s.id === subId);
+        if (idx < 0) return;
+        const swap = idx + dir;
+        if (swap < 0 || swap >= task.subitems.length) return;
+        [task.subitems[idx], task.subitems[swap]] = [task.subitems[swap], task.subitems[idx]];
+        proj.updatedAt = new Date().toISOString();
+        EventBus.emit('projectsChanged');
+        this._syncAndRerenderCard(projId);
     },
 
     reorderTask(projId, fromId, toId, before) {
