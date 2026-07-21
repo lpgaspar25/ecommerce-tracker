@@ -375,6 +375,27 @@ const ProjectsModule = {
         list.querySelectorAll('.btn-del-subtask').forEach(btn => {
             btn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteSubtask(btn.dataset.proj, btn.dataset.task, btn.dataset.sub); });
         });
+        // Copiar texto de tarefa / sub-tarefa
+        list.querySelectorAll('.btn-copy-task').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this._copyTaskText(btn.dataset.proj, btn.dataset.task, null, btn); });
+        });
+        list.querySelectorAll('.btn-copy-subtask').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this._copyTaskText(btn.dataset.proj, btn.dataset.task, btn.dataset.sub, btn); });
+        });
+        // Editar (botão lápis)
+        list.querySelectorAll('.btn-edit-task').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this._startInlineEdit(btn.dataset.proj, btn.dataset.task, null); });
+        });
+        list.querySelectorAll('.btn-edit-subtask').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this._startInlineEdit(btn.dataset.proj, btn.dataset.task, btn.dataset.sub); });
+        });
+        // Editar por duplo-clique no texto
+        list.querySelectorAll('.proj-task-text').forEach(span => {
+            span.addEventListener('dblclick', (e) => { e.stopPropagation(); this._startInlineEdit(span.dataset.proj, span.dataset.task, null); });
+        });
+        list.querySelectorAll('.proj-subtask-text').forEach(span => {
+            span.addEventListener('dblclick', (e) => { e.stopPropagation(); this._startInlineEdit(span.dataset.proj, span.dataset.task, span.dataset.sub); });
+        });
         // Drag & drop reorder — tasks
         list.querySelectorAll('.proj-task-item').forEach(item => {
             item.addEventListener('dragstart', (e) => {
@@ -761,7 +782,9 @@ const ProjectsModule = {
                 <div class="proj-subtask-item" draggable="true" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}">
                     <span class="proj-drag-handle" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:12px;height:12px;vertical-align:-2px"></i></span>
                     <input type="checkbox" class="proj-task-check" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" ${sub.done ? 'checked' : ''}>
-                    <span class="${sub.done ? 'proj-done' : ''}" style="flex:1">${this._esc(sub.text)}</span>
+                    <span class="proj-subtask-text ${sub.done ? 'proj-done' : ''}" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="2× clique para editar" style="flex:1">${this._esc(sub.text)}</span>
+                    <button class="btn-copy-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Copiar texto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
+                    <button class="btn-edit-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Editar"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
                     <button class="btn-del-subtask proj-icon-btn proj-del-btn" data-proj="${p.id}" data-task="${task.id}" data-sub="${sub.id}" title="Excluir">×</button>
                 </div>`).join('');
 
@@ -777,12 +800,14 @@ const ProjectsModule = {
                 <div class="proj-task-row">
                     <span class="proj-drag-handle" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:14px;height:14px;vertical-align:-2px"></i></span>
                     <input type="checkbox" class="proj-task-check" data-proj="${p.id}" data-task="${task.id}" ${task.done ? 'checked' : ''}>
-                    <span class="${task.done ? 'proj-done' : ''}" style="flex:1">${this._esc(task.text)}</span>
+                    <span class="proj-task-text ${task.done ? 'proj-done' : ''}" data-proj="${p.id}" data-task="${task.id}" title="2× clique para editar" style="flex:1">${this._esc(task.text)}</span>
                     ${dueChip}
                     ${subProgressTxt}
                     ${this._timingBadge(task.timing, p.id, task.id)}
                     ${this._priorityBadge(task.priority)}
                     <input type="date" class="input input-sm proj-task-due-input" data-proj="${p.id}" data-task="${task.id}" value="${task.dueDate || ''}" title="Agendar tarefa">
+                    <button class="btn-copy-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="Copiar texto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
+                    <button class="btn-edit-task proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="Editar tarefa"><i data-lucide="pencil" style="width:12px;height:12px"></i></button>
                     <button class="btn-add-subtask proj-icon-btn" data-proj="${p.id}" data-task="${task.id}" title="+ Sub-tarefa">+sub</button>
                     <button class="btn-del-task proj-icon-btn proj-del-btn" data-proj="${p.id}" data-task="${task.id}" title="Excluir tarefa">×</button>
                 </div>
@@ -1462,6 +1487,111 @@ const ProjectsModule = {
         if (sub) this._addAutoHistory(proj, `Sub-tarefa removida: "${sub.text}"`);
         EventBus.emit('projectsChanged');
         this._syncAndRerenderCard(projId);
+    },
+
+    // ── Editar texto de tarefa / sub-tarefa ───────────────────────
+    editTask(projId, taskId, newText) {
+        const proj = (AppState.allProjects || []).find(p => p.id === projId);
+        if (!proj) return;
+        const task = (proj.tasks || []).find(t => t.id === taskId);
+        if (!task) return;
+        const t = (newText || '').trim();
+        if (!t || t === task.text) { this._syncAndRerenderCard(projId); return; }
+        const old = task.text;
+        task.text = t;
+        proj.updatedAt = new Date().toISOString();
+        this._addAutoHistory(proj, `Tarefa editada: "${old}" → "${t}"`);
+        EventBus.emit('projectsChanged');
+        this._syncAndRerenderCard(projId);
+    },
+
+    editSubtask(projId, taskId, subId, newText) {
+        const proj = (AppState.allProjects || []).find(p => p.id === projId);
+        if (!proj) return;
+        const task = (proj.tasks || []).find(t => t.id === taskId);
+        if (!task) return;
+        const sub = (task.subitems || []).find(s => s.id === subId);
+        if (!sub) return;
+        const t = (newText || '').trim();
+        if (!t || t === sub.text) { this._syncAndRerenderCard(projId); return; }
+        const old = sub.text;
+        sub.text = t;
+        proj.updatedAt = new Date().toISOString();
+        this._addAutoHistory(proj, `Sub-tarefa editada: "${old}" → "${t}"`);
+        EventBus.emit('projectsChanged');
+        this._syncAndRerenderCard(projId);
+    },
+
+    // Troca o <span> do texto por um <input> inline; salva no Enter/blur, cancela no Esc.
+    _startInlineEdit(projId, taskId, subId) {
+        const sel = subId
+            ? `.proj-subtask-text[data-proj="${projId}"][data-task="${taskId}"][data-sub="${subId}"]`
+            : `.proj-task-text[data-proj="${projId}"][data-task="${taskId}"]`;
+        const span = document.querySelector(sel);
+        if (!span || span.dataset.editing === '1') return;
+        span.dataset.editing = '1';
+
+        const current = subId
+            ? (((AppState.allProjects || []).find(p => p.id === projId)?.tasks || []).find(t => t.id === taskId)?.subitems || []).find(s => s.id === subId)?.text
+            : (((AppState.allProjects || []).find(p => p.id === projId)?.tasks || []).find(t => t.id === taskId))?.text;
+
+        // Desliga o drag do item enquanto edita (senão o navegador rouba a seleção do texto)
+        const dragItem = span.closest('.proj-task-item, .proj-subtask-item');
+        const prevDraggable = dragItem ? dragItem.getAttribute('draggable') : null;
+        if (dragItem) dragItem.setAttribute('draggable', 'false');
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'input input-sm proj-inline-edit';
+        input.value = current || '';
+        input.style.flex = '1';
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let done = false;
+        const finish = (save) => {
+            if (done) return;
+            done = true;
+            if (dragItem && prevDraggable !== null) dragItem.setAttribute('draggable', prevDraggable);
+            if (save) {
+                if (subId) this.editSubtask(projId, taskId, subId, input.value);
+                else this.editTask(projId, taskId, input.value);
+            } else {
+                this._syncAndRerenderCard(projId); // restaura o span original
+            }
+        };
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+        });
+        input.addEventListener('blur', () => finish(true));
+        input.addEventListener('mousedown', (e) => e.stopPropagation());
+        input.addEventListener('click', (e) => e.stopPropagation());
+    },
+
+    async _copyTaskText(projId, taskId, subId, btn) {
+        const proj = (AppState.allProjects || []).find(p => p.id === projId);
+        const task = (proj?.tasks || []).find(t => t.id === taskId);
+        let text = task?.text || '';
+        if (subId) text = (task?.subitems || []).find(s => s.id === subId)?.text || '';
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            if (typeof showToast === 'function') showToast('Texto copiado!', 'success');
+            if (btn) { btn.classList.add('proj-copied'); setTimeout(() => btn.classList.remove('proj-copied'), 800); }
+        } catch (err) {
+            // Fallback pra navegadores sem clipboard API
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); ta.remove();
+                if (typeof showToast === 'function') showToast('Texto copiado!', 'success');
+            } catch (e2) {
+                if (typeof showToast === 'function') showToast('Falha ao copiar', 'error');
+            }
+        }
     },
 
     // ── Notes & History ───────────────────────────────────────────

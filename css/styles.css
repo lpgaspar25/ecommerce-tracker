@@ -11152,6 +11152,35 @@ thead:hover .diary-check-col input[type="checkbox"],
     color: var(--red) !important;
 }
 
+/* Editar/copiar tarefa */
+.proj-copied {
+    color: #10b981 !important;
+    background: rgba(16, 185, 129, 0.12) !important;
+}
+.proj-inline-edit {
+    min-width: 0;
+    font-size: 0.85rem;
+}
+.proj-task-text, .proj-subtask-text {
+    cursor: text;
+    border-radius: 3px;
+    transition: background 0.12s;
+}
+.proj-task-text:hover, .proj-subtask-text:hover {
+    background: var(--bg-hover, rgba(139, 92, 246, 0.06));
+}
+/* Botões editar/copiar só aparecem no hover da linha (menos poluição) */
+.btn-copy-task, .btn-edit-task, .btn-copy-subtask, .btn-edit-subtask {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.proj-task-item:hover .btn-copy-task,
+.proj-task-item:hover .btn-edit-task,
+.proj-subtask-item:hover .btn-copy-subtask,
+.proj-subtask-item:hover .btn-edit-subtask {
+    opacity: 1;
+}
+
 .proj-done {
     text-decoration: line-through;
     color: var(--text-muted);
