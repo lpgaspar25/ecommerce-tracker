@@ -1417,7 +1417,7 @@
             if (dup) { if (typeof showToast === 'function') showToast('Esses nós já estão conectados', 'info'); return; }
             this._state.customEdges.push({ id: this._genId('edge'), from, to });
             try { this._persist(); } catch (err) {}
-            if (typeof showToast === 'function') showToast('✓ Conexão criada', 'success');
+            if (typeof showToast === 'function') showToast('<i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Conexão criada', 'success');
         },
 
         _deleteCustomEdge(id) {

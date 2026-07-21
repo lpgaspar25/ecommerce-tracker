@@ -124,7 +124,7 @@ const AIAdGenerator = {
             return;
         }
         this._setOpenAIKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave OpenAI salva ✓' : 'Chave OpenAI removida', 'success');
+        if (typeof showToast === 'function') showToast(trimmed ? 'Chave OpenAI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave OpenAI removida', 'success');
     },
 
     _configGoogle() {
@@ -137,7 +137,7 @@ const AIAdGenerator = {
         if (newKey === null) return;
         const trimmed = newKey.trim();
         this._setGoogleKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave Google AI salva ✓' : 'Chave Google AI removida', 'success');
+        if (typeof showToast === 'function') showToast(trimmed ? 'Chave Google AI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave Google AI removida', 'success');
     },
 
     // ── Generate images ───────────────────────────────────────────────
@@ -190,7 +190,7 @@ const AIAdGenerator = {
             if (onProgress) onProgress('done', { items: compressed });
             if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
             this.renderGenerationsGallery();
-            if (typeof showToast === 'function') showToast(`${compressed.length} imagem(ns) gerada(s) ✓`, 'success');
+            if (typeof showToast === 'function') showToast(`${compressed.length} imagem(ns) gerada(s) <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`, 'success');
 
         } catch (err) {
             console.error('[AIAdGenerator]', err);

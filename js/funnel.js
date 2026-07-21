@@ -1162,10 +1162,10 @@ const FunnelModule = {
                 const totalSpend = daily.reduce((s, r) => s + (r.spend || 0), 0);
                 const totalClicks = daily.reduce((s, r) => s + (r.clicks || 0), 0);
                 okCount++;
-                summary.push(`✓ ${name}: ${daily.length}d · ${totalClicks} clicks · ${totalSpend.toFixed(2)}`);
+                summary.push(`${name}: ${daily.length}d · ${totalClicks} clicks · ${totalSpend.toFixed(2)}`);
             } catch (err) {
                 failCount++;
-                summary.push(`✗ ${name}: ${err.message}`);
+                summary.push(`${name}: ${err.message}`);
                 console.error('[BulkImport]', name, err);
             }
         }

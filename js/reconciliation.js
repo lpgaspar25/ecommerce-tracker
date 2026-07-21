@@ -241,7 +241,7 @@ const ReconciliationModule = (() => {
         p.autoAtualizadoEm = new Date().toISOString();
         save();
         if (typeof showToast === 'function') {
-            showToast(`⚡ Conciliação ${p.label}: ${mudancas.join(' · ')}`, 'success');
+            showToast(`<i data-lucide="zap" style="width:13px;height:13px;vertical-align:-2px"></i> Conciliação ${p.label}: ${mudancas.join(' · ')}`, 'success');
         }
         if (document.querySelector('#tab-reconciliation.active')) render();
         return true;
@@ -316,8 +316,8 @@ const ReconciliationModule = (() => {
         ];
         if (c.custoProdutoBK > 0 && c.fornTotalBRL > 0) {
             linhas.push(`Diferença vs BK: <b>${fmtBRL(c.fornDiffBRL)}</b> ${c.fornBate
-                ? '<span style="color:var(--success,#10b981)">✓ bate</span>'
-                : '<span style="color:var(--warning,#f59e0b)">⚠️ divergente</span>'}`);
+                ? '<span style="color:var(--success,#10b981)"><i data-lucide="check" style="width:12px;height:12px;vertical-align:-2px"></i> bate</span>'
+                : '<span style="color:var(--warning,#f59e0b)"><i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:-2px"></i> divergente</span>'}`);
         }
         return linhas.join('<br>');
     }
@@ -336,10 +336,10 @@ const ReconciliationModule = (() => {
             </table>
             <div class="rec-verdict">
                 ${_bate(c)
-                    ? '✅ <b>Bate.</b> O lucro está distribuído entre as contas — não é prejuízo, é dinheiro que ainda não chegou no banco BR.'
-                    : '⚠️ <b>Não fecha.</b> Há uma diferença que os saldos não explicam. Reveja payout, taxas reais (FX) e lançamentos do banco.'}
+                    ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> <b>Bate.</b> O lucro está distribuído entre as contas — não é prejuízo, é dinheiro que ainda não chegou no banco BR.'
+                    : '<i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px"></i> <b>Não fecha.</b> Há uma diferença que os saldos não explicam. Reveja payout, taxas reais (FX) e lançamentos do banco.'}
             </div>
-            ${c.aumentoTotalBRL !== 0 ? `<div class="rec-insight">📊 Do caixa gerado, <b>${c.pctNoBanco.toFixed(0)}%</b> chegou no banco BR (${fmtBRL(c.dBancoBRL)}). O resto — ${fmtBRL(c.aumentoLaForaBRL)} — está retido em £ (Shopify/Payoneer) lá fora.</div>` : ''}
+            ${c.aumentoTotalBRL !== 0 ? `<div class="rec-insight"><i data-lucide="bar-chart-3" style="width:13px;height:13px;vertical-align:-2px"></i> Do caixa gerado, <b>${c.pctNoBanco.toFixed(0)}%</b> chegou no banco BR (${fmtBRL(c.dBancoBRL)}). O resto — ${fmtBRL(c.aumentoLaForaBRL)} — está retido em £ (Shopify/Payoneer) lá fora.</div>` : ''}
         `;
     }
 
@@ -373,7 +373,7 @@ const ReconciliationModule = (() => {
             <input id="rec-fx-usd" type="number" step="0.0001" class="input" style="width:100px" value="${state.fxUsdBrl}">
             <button id="rec-fx-auto" class="btn btn-secondary btn-sm" title="Buscar câmbio do dia (frankfurter.app / BCE)"><i data-lucide="refresh-cw" style="width:13px;height:13px;vertical-align:-2px"></i> Câmbio de hoje</button>
             <span id="rec-fx-label" style="color:var(--text-muted);font-size:.78rem">
-                ${state.fxMeta && state.fxMeta.ts ? `✓ auto ${new Date(state.fxMeta.ts).toLocaleDateString('pt-BR')} (${_esc(state.fxMeta.fonte || '')})` : 'manual'}
+                ${state.fxMeta && state.fxMeta.ts ? `<i data-lucide="check" style="width:12px;height:12px;vertical-align:-2px"></i> auto ${new Date(state.fxMeta.ts).toLocaleDateString('pt-BR')} (${_esc(state.fxMeta.fonte || '')})` : 'manual'}
             </span>
             <button id="rec-import-btn" class="btn btn-secondary btn-sm"><i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Importar extrato (OFX/CSV)</button>
             <input id="rec-import-file" type="file" accept=".ofx,.csv,.txt" style="display:none">
@@ -399,7 +399,7 @@ const ReconciliationModule = (() => {
         </div>
 
         <div class="rec-col rec-col-forn" style="margin-top:1rem">
-            <h3>🏭 Custo de produto — BK diz × você pagou (fornecedores)</h3>
+            <h3><i data-lucide="factory" style="width:13px;height:13px;vertical-align:-2px"></i> Custo de produto — BK diz × você pagou (fornecedores)</h3>
             <p style="color:var(--text-muted);font-size:.8rem;margin:.1rem 0 .7rem">
                 Capturas do <b>Flowborder</b> e <b>Wiio</b> preenchem sozinhas. Se o BK diz um custo e você pagou outro, algum pedido não foi cobrado (ou o BK está com CPA errado).
             </p>
@@ -419,7 +419,7 @@ const ReconciliationModule = (() => {
             ${_campo('Lucro contábil (BK Dashboard)', 'lucroBKBRL', p.lucroBKBRL, 'R$')}
             <button id="rec-puxar-bk" class="btn btn-secondary btn-sm" title="Puxar da última captura do BK"><i data-lucide="download-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Puxar do BK</button>
         </div>
-        ${p.autoAtualizadoEm ? `<div style="color:var(--text-muted);font-size:.75rem;margin:.3rem 0 0">⚡ Preenchido por captura em ${new Date(p.autoAtualizadoEm).toLocaleString('pt-BR')}</div>` : ''}
+        ${p.autoAtualizadoEm ? `<div style="color:var(--text-muted);font-size:.75rem;margin:.3rem 0 0"><i data-lucide="zap" style="width:12px;height:12px;vertical-align:-2px"></i> Preenchido por captura em ${new Date(p.autoAtualizadoEm).toLocaleString('pt-BR')}</div>` : ''}
 
         <div class="rec-bridge ${_bate(c) ? 'rec-ok' : 'rec-warn'}" id="rec-bridge">${_bridgeHtml(c)}</div>
 

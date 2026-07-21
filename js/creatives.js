@@ -770,7 +770,7 @@ const CreativesModule = {
 
         if (text) text.textContent = `Concluído! ${ok} criativo${ok !== 1 ? 's' : ''} adicionado${ok !== 1 ? 's' : ''}${fail ? `, ${fail} falha${fail > 1 ? 's' : ''}` : ''}.`;
         if (fail > 0) showToast(`${ok} criativos adicionados, ${fail} falharam.`, 'warning');
-        else showToast(`✅ ${ok} criativo${ok !== 1 ? 's' : ''} adicionado${ok !== 1 ? 's' : ''} com sucesso!`, 'success');
+        else showToast(`<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> ${ok} criativo${ok !== 1 ? 's' : ''} adicionado${ok !== 1 ? 's' : ''} com sucesso!`, 'success');
 
         // Close modal after a short delay so user sees completion
         setTimeout(() => this.closeBulkModal(), 1200);
@@ -1145,7 +1145,7 @@ const CreativesModule = {
             const c = x.c, s = x.sc.stats;
             const thumb = this._thumbForCreative(c);
             const cc = this._creativeCountry(c);
-            const medal = ['🥇', '🥈', '🥉'][i] || '';
+            const medal = ['<i data-lucide="award" style="width:13px;height:13px;vertical-align:-2px"></i>', '<i data-lucide="medal" style="width:13px;height:13px;vertical-align:-2px"></i>', '<i data-lucide="medal" style="width:13px;height:13px;vertical-align:-2px"></i>'][i] || '';
             return `<div class="creative-best-card" ${c.mediaId || c.imageUrl || c.mediaThumb ? `data-lightbox="${c.id}"` : ''}>
                 <div class="creative-best-rank">${medal}</div>
                 ${thumb ? `<div class="creative-best-thumb"><img src="${this._escapeHtml(thumb)}" alt="">${c.mediaType === 'video' ? '<span class="creative-thumb-play"><i data-lucide="play" style="width:14px;height:14px"></i></span>' : ''}</div>` : '<div class="creative-best-thumb creative-best-thumb-empty"><i data-lucide="image" style="width:20px;height:20px"></i></div>'}
@@ -1209,7 +1209,7 @@ const CreativesModule = {
             ${thumbHtml}
             <div class="creative-card-header">
                 <div>
-                    <strong class="creative-card-name">${isBest ? '<span class="creative-best-flag" title="Melhor desempenho neste grupo">🏆</span> ' : ''}${this._escapeHtml(creative.name)}</strong>
+                    <strong class="creative-card-name">${isBest ? '<span class="creative-best-flag" title="Melhor desempenho neste grupo"><i data-lucide="trophy" style="width:13px;height:13px;vertical-align:-2px"></i></span> ' : ''}${this._escapeHtml(creative.name)}</strong>
                 </div>
                 <div class="creative-card-badges">
                     <span class="creative-status-badge" style="background:${statusObj.color}">${statusObj.label}</span>

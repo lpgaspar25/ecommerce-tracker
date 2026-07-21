@@ -297,7 +297,7 @@ const SalesModule = (() => {
             if (targetConvPct > 0) {
                 if (realConvPct >= targetConvPct) {
                     convColor = '#059669'; convArrow = '↑';
-                    convNote = ` (alvo ${targetConvPct}% ✓)`;
+                    convNote = ` (alvo ${targetConvPct}% <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>)`;
                 } else {
                     convColor = '#dc2626'; convArrow = '↓';
                     const gap = (targetConvPct - realConvPct).toFixed(2);
@@ -432,7 +432,7 @@ const SalesModule = (() => {
 
             let color = '#1877F2', arrow = '', note = '';
             if (targetConv > 0) {
-                if (convFb >= targetConv) { color = '#059669'; arrow = '↑'; note = ` (alvo ${targetConv}% ✓)`; }
+                if (convFb >= targetConv) { color = '#059669'; arrow = '↑'; note = ` (alvo ${targetConv}% <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>)`; }
                 else { color = '#dc2626'; arrow = '↓'; note = ` (alvo ${targetConv}% · faltam ${(targetConv - convFb).toFixed(2)}pp)`; }
             }
 
@@ -442,6 +442,7 @@ const SalesModule = (() => {
                     ${fbIcon} Conversão FB: <strong>${arrow} ${convFb.toFixed(2)}%</strong>
                 </span>
                 <span class="sales-calc-conv-detail">${_fmtNumber(fbPurchases)} compras (pixel FB) ÷ ${_fmtNumber(clicks)} cliques no link${note}</span>`;
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         } catch (e) {
             const el3 = document.getElementById('sales-calc-fbconv');
             if (el3) el3.innerHTML = `<span class="sales-calc-conv-hint">Erro ao buscar dados do FB.</span>`;
@@ -490,7 +491,7 @@ const SalesModule = (() => {
             const target = _state.calc.targetConvPct || 0;
             let color = '#95BF47', arrow = '', note = '';
             if (target > 0) {
-                if (conv >= target) { color = '#059669'; arrow = '↑'; note = ` (alvo ${target}% ✓)`; }
+                if (conv >= target) { color = '#059669'; arrow = '↑'; note = ` (alvo ${target}% <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>)`; }
                 else { color = '#dc2626'; arrow = '↓'; note = ` (alvo ${target}% · faltam ${(target - conv).toFixed(2)}pp)`; }
             }
             el2.innerHTML = `
@@ -498,6 +499,7 @@ const SalesModule = (() => {
                     ${shopIcon} Conversão Shopify: <strong>${arrow} ${conv.toFixed(2)}%</strong>
                 </span>
                 <span class="sales-calc-conv-detail">${_fmtNumber(actualSales)} vendas ÷ ${_fmtNumber(views)} visualizações${note}</span>`;
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         } catch (e) {
             const el3 = document.getElementById('sales-calc-shopconv');
             if (el3) el3.innerHTML = `<span class="sales-calc-conv-hint">${shopIcon} ${(e.message || 'Erro ao buscar visualizações Shopify.')}</span>`;
@@ -1070,7 +1072,7 @@ const SalesModule = (() => {
             const conv = convForProduct(lp?.id);
             const convHtml = `<span class="mdgx-conv-chips">
                 ${conv.fb != null ? `<span class="mdgx-conv-chip mdgx-conv-fb" title="Conversão Facebook = compras FB ÷ cliques FB"><svg class="brand-icon" viewBox="0 0 24 24" style="width:11px;height:11px;vertical-align:-2px"><path fill="#1877F2" d="M24 12.07C24 5.44 18.63.07 12 .07S0 5.44 0 12.07c0 5.99 4.39 10.95 10.13 11.85v-8.38H7.08v-3.47h3.05V9.43c0-3.01 1.79-4.67 4.53-4.67 1.31 0 2.69.24 2.69.24v2.95h-1.52c-1.49 0-1.96.93-1.96 1.87v2.25h3.33l-.53 3.47h-2.8v8.38C19.61 23.02 24 18.06 24 12.07z"/></svg> ${conv.fb.toFixed(1)}%</span>` : ''}
-                ${conv.shopify != null ? `<span class="mdgx-conv-chip mdgx-conv-shop" title="Conversão Shopify = vendas ÷ visitas">🛍️ ${conv.shopify.toFixed(1)}%</span>` : ''}
+                ${conv.shopify != null ? `<span class="mdgx-conv-chip mdgx-conv-shop" title="Conversão Shopify = vendas ÷ visitas"><i data-lucide="shopping-bag" style="width:12px;height:12px;vertical-align:-2px"></i> ${conv.shopify.toFixed(1)}%</span>` : ''}
             </span>`;
             // Campaign access buttons — open the campaign in a NEW TAB (no Mapa de Ads).
             // Country context = active País filter. Without filter, show one chip per country link.
@@ -1189,7 +1191,7 @@ const SalesModule = (() => {
             });
         });
 
-        // "🔗 / ✏️ / ➕" paste/edit the campaign link directly here → saved on the product.
+        // " / / " paste/edit the campaign link directly here → saved on the product.
         // data-set-camp-country carries the active País filter (per-country campaign).
         listEl.querySelectorAll('[data-set-camp-url]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1844,7 +1846,7 @@ const SalesModule = (() => {
                     const pct = need > 0 ? Math.min(999, (todayBucket.count / need) * 100) : 0;
                     const color = pct >= 100 ? '#059669' : (pct >= 60 ? '#2563eb' : (pct >= 30 ? '#d97706' : '#dc2626'));
                     breakevenLine = `<div class="dash-sales-be">
-                        <span>Breakeven hoje: <strong>${todayBucket.count}/${need}</strong> (${pct.toFixed(0)}%)${remaining ? ` · faltam <strong>${remaining}</strong>` : ' · ✓'}</span>
+                        <span>Breakeven hoje: <strong>${todayBucket.count}/${need}</strong> (${pct.toFixed(0)}%)${remaining ? ` · faltam <strong>${remaining}</strong>` : ' · <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>'}</span>
                         <div class="dash-sales-be-bar"><div style="width:${Math.min(100, pct)}%;background:${color}"></div></div>
                     </div>`;
                 }
@@ -1898,6 +1900,7 @@ const SalesModule = (() => {
                 </div>`;
             wrap.dataset.rendered = '1';
             _dashState.lastFetched = Date.now();
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         } catch (err) {
             console.error('[sales-dash] error', err);
             wrap.innerHTML = `<p class="sales-warn">Falha ao carregar: ${err.message}</p>`;

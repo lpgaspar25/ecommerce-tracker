@@ -107,7 +107,7 @@
                 list.innerHTML = `<div class="copy-lib-empty">
                     <i data-lucide="bookmark" style="width:32px;height:32px;color:var(--text-muted)"></i>
                     <p>Nenhuma cópia salva${q ? ' para "' + this._esc(q) + '"' : ''}.</p>
-                    <p style="font-size:0.75rem;opacity:0.7">Use o botão 💾 ao lado de cada campo no Ad Launcher para salvar.</p>
+                    <p style="font-size:0.75rem;opacity:0.7">Use o botão <i data-lucide="save" style="width:12px;height:12px;vertical-align:-2px"></i> ao lado de cada campo no Ad Launcher para salvar.</p>
                 </div>`;
                 if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
                 return;
@@ -116,7 +116,7 @@
                 <div class="copy-lib-row" data-id="${this._esc(it.id)}">
                     <div class="copy-lib-row-content">${this._esc(it.content)}</div>
                     <div class="copy-lib-row-meta">
-                        <span title="Vezes usada">${it.useCount || 0}× ${(it.useCount || 0) > 5 ? '🔥' : ''}</span>
+                        <span title="Vezes usada">${it.useCount || 0}× ${(it.useCount || 0) > 5 ? '<i data-lucide="flame" style="width:13px;height:13px;vertical-align:-2px"></i>' : ''}</span>
                         <button class="copy-lib-row-del" data-id="${this._esc(it.id)}" title="Remover">&times;</button>
                     </div>
                 </div>

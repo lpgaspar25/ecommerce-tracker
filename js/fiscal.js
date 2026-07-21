@@ -261,7 +261,7 @@ const FiscalModule = (() => {
         { id: 'NL', label: '🇳🇱 Holanda' },
         { id: 'EE', label: '🇪🇪 Estônia' },
         { id: 'AE', label: '🇦🇪 Emirados Árabes' },
-        { id: 'OUTRO', label: '🌍 Outro' },
+        { id: 'OUTRO', label: 'Outro' },
     ];
     const PAPEIS = [
         { id: 'operacao', label: 'Operação (Shopify, e-com)' },
@@ -716,7 +716,7 @@ const FiscalModule = (() => {
         }
         const totalPct = _state.socios.reduce((s, x) => s + (Number(x.percentual) || 0), 0);
         box.innerHTML = `
-            <div class="fiscal-socios-sum">Soma dos % de participação: <strong>${totalPct.toFixed(1)}%</strong> ${totalPct === 100 ? '✓' : (totalPct > 100 ? '⚠ excede 100' : '⚠ faltam ' + (100 - totalPct).toFixed(1) + '%')}</div>
+            <div class="fiscal-socios-sum">Soma dos % de participação: <strong>${totalPct.toFixed(1)}%</strong> ${totalPct === 100 ? '<i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : (totalPct > 100 ? '<i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px"></i> excede 100' : '<i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px"></i> faltam ' + (100 - totalPct).toFixed(1) + '%')}</div>
             <table class="fiscal-table">
                 <thead><tr><th>Nome</th><th>% Participação</th><th>Modalidade</th><th>Prolabore mensal</th><th>Distribuição</th><th></th></tr></thead>
                 <tbody>

@@ -213,11 +213,11 @@ const RemoteCapturesModule = (() => {
         const c = parsed.campos;
         const fmt = (v) => (v == null ? null : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
         if (parsed.plataforma === 'bkdash' && c.lucro != null)
-            return `⚡ Lucro R$ ${fmt(c.lucro)} · ${parsed.periodoLabel}`;
+            return `Lucro R$ ${fmt(c.lucro)} · ${parsed.periodoLabel}`;
         if (parsed.plataforma === 'payoneer' && c.saldoGBP != null)
-            return `⚡ Saldo £ ${fmt(c.saldoGBP)}`;
+            return `Saldo £ ${fmt(c.saldoGBP)}`;
         if ((parsed.plataforma === 'flowborder' || parsed.plataforma === 'wiio') && c.totalPagoUSD != null)
-            return `⚡ ${c.pedidosPagos} pedido${c.pedidosPagos !== 1 ? 's' : ''} · $ ${fmt(c.totalPagoUSD)}${c.statusDetectado ? ' (pagos)' : ''}`;
+            return `${c.pedidosPagos} pedido${c.pedidosPagos !== 1 ? 's' : ''} · $ ${fmt(c.totalPagoUSD)}${c.statusDetectado ? ' (pagos)' : ''}`;
         return '';
     }
 
@@ -250,7 +250,7 @@ const RemoteCapturesModule = (() => {
                     resumo: _resumoLinha(parsed),
                 });
                 novosCount++;
-                // ⚡ Aplica direto na Conciliação (lucro BK, saldo Payoneer, fornecedores)
+                // Aplica direto na Conciliação (lucro BK, saldo Payoneer, fornecedores)
                 try {
                     if (parsed && typeof ReconciliationModule !== 'undefined' && ReconciliationModule.applyCapture) {
                         ReconciliationModule.applyCapture(parsed);
@@ -263,7 +263,7 @@ const RemoteCapturesModule = (() => {
         if (novosCount > 0) {
             _saveIndex();
             if (typeof showToast === 'function') {
-                showToast(`✓ ${novosCount} captura${novosCount > 1 ? 's' : ''} recebida${novosCount > 1 ? 's' : ''} da extensão`, 'success');
+                showToast(`<i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> ${novosCount} captura${novosCount > 1 ? 's' : ''} recebida${novosCount > 1 ? 's' : ''} da extensão`, 'success');
             }
             if (typeof EventBus !== 'undefined') EventBus.emit('remoteCapturesChanged');
             render();
@@ -451,7 +451,7 @@ const RemoteCapturesModule = (() => {
 
             ${camposKeys.length ? `
                 <div class="capture-parsed">
-                    <h4 class="capture-detail-h">⚡ Interpretação automática — ${_esc(parsed.periodoLabel)}</h4>
+                    <h4 class="capture-detail-h"><i data-lucide="zap" style="width:13px;height:13px;vertical-align:-2px"></i> Interpretação automática — ${_esc(parsed.periodoLabel)}</h4>
                     <table class="capture-detail-table">
                         <tbody>
                         ${camposKeys.map(k => `
@@ -466,7 +466,7 @@ const RemoteCapturesModule = (() => {
             ` : ''}
 
             ${(snap.valoresComLabel || []).length ? `
-                <h4 class="capture-detail-h">💰 Valores monetários encontrados (${snap.valoresComLabel.length})</h4>
+                <h4 class="capture-detail-h"><i data-lucide="dollar-sign" style="width:13px;height:13px;vertical-align:-2px"></i> Valores monetários encontrados (${snap.valoresComLabel.length})</h4>
                 <table class="capture-detail-table">
                     <thead><tr><th>Label</th><th>Valor</th></tr></thead>
                     <tbody>
@@ -481,7 +481,7 @@ const RemoteCapturesModule = (() => {
             ` : ''}
 
             ${(snap.tabelas || []).length ? `
-                <h4 class="capture-detail-h">📊 Tabelas encontradas (${snap.tabelas.length})</h4>
+                <h4 class="capture-detail-h"><i data-lucide="bar-chart-3" style="width:13px;height:13px;vertical-align:-2px"></i> Tabelas encontradas (${snap.tabelas.length})</h4>
                 ${snap.tabelas.slice(0, 3).map(t => `
                     <div class="capture-tab-block">
                         <table class="capture-detail-table">
@@ -498,7 +498,7 @@ const RemoteCapturesModule = (() => {
             ` : ''}
 
             ${(snap.datasVisiveis || []).length ? `
-                <h4 class="capture-detail-h">📅 Datas detectadas</h4>
+                <h4 class="capture-detail-h"><i data-lucide="calendar" style="width:13px;height:13px;vertical-align:-2px"></i> Datas detectadas</h4>
                 <div class="capture-dates">${snap.datasVisiveis.map(d => `<span class="capture-date-pill">${_esc(d)}</span>`).join('')}</div>
             ` : ''}
 

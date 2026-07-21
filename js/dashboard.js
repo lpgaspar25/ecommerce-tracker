@@ -761,7 +761,7 @@ const DashboardModule = {
             } else if (totalBudget === 0) {
                 why = 'Entradas sem budget — preencha o gasto em ads no Diário para detectar produtos em risco.';
             } else {
-                why = '✓ Nenhum produto em risco — tudo dentro dos limites configurados.';
+                why = '<i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Nenhum produto em risco — tudo dentro dos limites configurados.';
             }
             container.innerHTML = `<div class="dash-empty">${why}</div>`;
             container.querySelectorAll('[data-tab]').forEach(a => {

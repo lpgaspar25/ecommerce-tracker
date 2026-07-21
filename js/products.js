@@ -303,7 +303,7 @@ const ProductsModule = {
 
         info.style.display = '';
         info.innerHTML = `
-            <strong style="color:#95bf47">✓ ${this._esc(sp.title)}</strong><br>
+            <strong style="color:#95bf47"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> ${this._esc(sp.title)}</strong><br>
             Preço Shopify: <strong>${this._esc(price)}</strong> · Estoque: <strong>${stock}</strong><br>
             <span style="opacity:0.7">Ao salvar, o preço será sincronizado automaticamente.</span>
             <div class="prod-shopify-links">
@@ -740,11 +740,11 @@ const ProductsModule = {
             if (!html) throw new Error('Resposta vazia da IA');
             const descEl = document.getElementById('product-description');
             if (descEl) descEl.innerHTML = html;
-            if (statusEl) { statusEl.textContent = '✓ Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
+            if (statusEl) { statusEl.textContent = 'Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
             setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
         } catch (err) {
             console.error('[generateDescription]', err);
-            if (statusEl) { statusEl.textContent = '✗ ' + err.message; statusEl.style.color = '#dc2626'; }
+            if (statusEl) { statusEl.textContent = '' + err.message; statusEl.style.color = '#dc2626'; }
             if (typeof showToast === 'function') showToast('Erro ao gerar: ' + err.message, 'error');
         } finally {
             if (btn) btn.disabled = false;
