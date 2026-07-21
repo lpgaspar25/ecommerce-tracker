@@ -5605,19 +5605,35 @@
             </div>
             <form id="fb-config-form">
                 <div class="form-group">
-                    <label>Access Token (Long-Lived)</label>
-                    <input type="text" id="fb-access-token" class="input" required placeholder="Cole seu Access Token aqui">
-                    <small>Gere em <strong>developers.facebook.com</strong> <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Tools <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i> Access Token Tool (token de 60 dias)</small>
+                    <label>Perfis do Facebook</label>
+                    <small style="display:block;margin-bottom:0.4rem">Um perfil para cada conta do Facebook / Business Manager — cada um com seu próprio Access Token.</small>
+                    <div id="fb-profile-list" class="fb-profile-list"></div>
+                    <button type="button" class="btn btn-sm btn-secondary" id="fb-add-profile" style="margin-top:0.4rem"><i data-lucide="plus" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar perfil</button>
                 </div>
                 <div class="form-group">
                     <label>Suas contas de anúncio</label>
-                    <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
-                        <button type="button" class="btn btn-sm btn-secondary" id="fb-discover-accounts"><i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Buscar minhas contas</button>
-                        <small style="color:var(--text-muted)">Consulta /me/adaccounts e lista todas.</small>
-                    </div>
+                    <small style="display:block;margin-bottom:0.4rem;color:var(--text-muted)">Use "Buscar contas" em cada perfil acima — as contas aparecem aqui com o perfil dono.</small>
                     <div id="fb-account-list" class="fb-account-list">
-                        <p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Cole o token e clique em "Buscar minhas contas" para listar suas contas de anúncio.</p>
+                        <p style="font-size:0.8rem;color:var(--text-muted);padding:0.5rem">Cole o token de um perfil e clique em "Buscar contas" para listar as contas de anúncio dele.</p>
                     </div>
+                </div>
+                <div class="form-group fb-auto-sync-box">
+                    <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+                        <input type="checkbox" id="fb-auto-sync-enabled">
+                        Sincronização automática
+                    </label>
+                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted)">A cada</span>
+                        <select id="fb-auto-sync-hours" class="input input-sm" style="width:auto">
+                            <option value="3">3 horas</option>
+                            <option value="6" selected>6 horas</option>
+                            <option value="12">12 horas</option>
+                            <option value="24">24 horas</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-secondary" id="fb-auto-sync-now"><i data-lucide="refresh-cw" style="width:13px;height:13px;vertical-align:-2px"></i> Sincronizar agora</button>
+                        <small id="fb-auto-sync-last" style="color:var(--text-muted)"></small>
+                    </div>
+                    <small style="display:block;margin-top:0.35rem;color:var(--text-muted)">Puxa os últimos 3 dias de todas as contas com campanhas mapeadas direto pro Diário (com o app aberto).</small>
                 </div>
                 <details style="margin-bottom:0.75rem">
                     <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)">Adicionar contas manualmente</summary>
@@ -5631,9 +5647,25 @@
                                 <label style="font-size:0.75rem;color:var(--text-muted);display:block">Nome (opcional)</label>
                                 <input type="text" id="fb-ad-account-name" class="input input-sm" placeholder="Loja XYZ" style="width:100%">
                             </div>
+                            <div style="min-width:120px">
+                                <label style="font-size:0.75rem;color:var(--text-muted);display:block">Perfil</label>
+                                <select id="fb-manual-profile" class="input input-sm" style="width:100%"></select>
+                            </div>
                             <button type="button" class="btn btn-sm btn-secondary" id="fb-add-account-manual"><i data-lucide="plus" style="width:14px;height:14px;vertical-align:-2px"></i> Adicionar</button>
                         </div>
                         <small style="color:var(--text-muted);display:block;margin-top:0.4rem">Sem o prefixo "act_". A conta aparece na lista acima já marcada — você pode adicionar várias seguidas.</small>
+                    </div>
+                </details>
+                <details style="margin-bottom:0.75rem">
+                    <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-muted)"><i data-lucide="shield-check" style="width:13px;height:13px;vertical-align:-2px"></i> Como gerar o token e evitar bloqueios</summary>
+                    <div style="margin-top:0.5rem;padding:0.6rem;background:var(--bg-secondary);border-radius:6px;font-size:0.8rem;line-height:1.55;color:var(--text-secondary)">
+                        <strong>Token recomendado (não expira e não gera bloqueio):</strong>
+                        <ol style="margin:0.3rem 0 0.5rem 1.1rem;padding:0">
+                            <li>Crie um app próprio em <strong>developers.facebook.com</strong> (tipo Empresa) vinculado ao seu Business Manager;</li>
+                            <li>No Business Manager, crie um <strong>Usuário do Sistema</strong> (Configurações → Usuários → Usuários do sistema);</li>
+                            <li>Dê a ele acesso às contas de anúncio e gere um token com as permissões <code>ads_read</code> e <code>read_insights</code> (e <code>ads_management</code> só se for usar o Ad Launcher).</li>
+                        </ol>
+                        <strong>Por que contas são bloqueadas:</strong> tokens do Graph API Explorer usados de forma contínua, muitas chamadas em sequência (rate limit), token sem 2FA no perfil, e apps não vinculados ao seu BM. O app agora espaça as chamadas automaticamente e reduz o ritmo quando o Facebook sinaliza uso alto — mas o token de Usuário do Sistema é a proteção mais importante.
                     </div>
                 </details>
                 <div class="form-actions">
@@ -5676,6 +5708,8 @@
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-paused" checked> Pausadas</label>
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-archived" checked> Arquivadas/Inativas</label>
                     <label class="fb-campaigns-filter-chk"><input type="checkbox" id="fb-campaigns-filter-mapped"> Só marcadas</label>
+                    <button type="button" class="btn btn-sm btn-secondary" id="fb-campaigns-select-all" title="Marca todas as campanhas visíveis (respeita busca e filtros)">Marcar visíveis</button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="fb-campaigns-select-none" title="Desmarca todas as campanhas visíveis">Desmarcar</button>
                     <span class="fb-campaigns-count" id="fb-campaigns-count"></span>
                 </div>
             </div>

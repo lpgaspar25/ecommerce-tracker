@@ -125,18 +125,7 @@ const CalculatorModule = {
     _calculateProfitWithTicket(cpaCurrency, cpaValue) {
         const product = this._selectedProduct;
         if (!product) return 0;
-
-        const effectivePrice = this._getEffectivePrice();
-        const priceCurrency = product.priceCurrency;
-
-        // Normalize everything to USD
-        const priceUSD = convertToUSD(effectivePrice, priceCurrency);
-        const costUSD = convertToUSD(product.cost, product.costCurrency);
-        const cpaUSD = convertToUSD(cpaValue, cpaCurrency);
-        const taxAmount = priceUSD * (product.tax / 100);
-        const variableAmount = priceUSD * (product.variableCosts / 100);
-
-        return priceUSD - costUSD - taxAmount - variableAmount - cpaUSD;
+        return calculateProfitPerSale(product, cpaCurrency, cpaValue, this._getEffectivePrice());
     },
 
     updateProductInfo() {
@@ -183,11 +172,7 @@ const CalculatorModule = {
 
     // Returns gross margin per sale (price - cost - tax - variableCosts), WITHOUT CPA
     _getGrossMarginPerSale() {
-        const product = this._selectedProduct;
-        if (!product) return 0;
-        const priceUSD = convertToUSD(this._getEffectivePrice(), product.priceCurrency);
-        const costUSD = convertToUSD(product.cost, product.costCurrency);
-        return priceUSD - costUSD - (priceUSD * product.tax / 100) - (priceUSD * product.variableCosts / 100);
+        return calculateGrossMarginPerSale(this._selectedProduct, this._getEffectivePrice());
     },
 
     _getCurrentCalcData() {

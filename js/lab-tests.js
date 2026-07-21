@@ -316,12 +316,10 @@ const LabTestsModule = {
         if (isProductTest && typeof AppState !== 'undefined') {
             const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
             if (prod) {
-                // Lucro por venda = preço − custo − (preço × imposto%) − (preço × var%)
-                const price = parseFloat(prod.price || 0);
-                const cost = parseFloat(prod.cost || 0);
-                const tax = parseFloat(prod.tax || 0) / 100;
-                const varCosts = parseFloat(prod.variableCosts || 0) / 100;
-                const profitPerSale = price - cost - (price * tax) - (price * varCosts);
+                // Margem bruta central (USD) convertida pra moeda do produto —
+                // idêntica à fórmula antiga quando preço e custo têm a mesma moeda,
+                // e correta quando as moedas diferem
+                const profitPerSale = convertCurrency(calculateGrossMarginPerSale(prod), 'USD', prod.priceCurrency || 'BRL');
                 baselineProfit = profitPerSale * baselineSales - baselineSpend;
                 duringProfit = profitPerSale * duringSales - duringSpend;
                 marginInfo = `Lucro/venda ≈ ${profitPerSale.toFixed(2)} ${prod.priceCurrency || ''}`;
@@ -375,11 +373,7 @@ const LabTestsModule = {
         if (isProductTest && typeof AppState !== 'undefined') {
             const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
             if (prod) {
-                const price = parseFloat(prod.price || 0);
-                const cost = parseFloat(prod.cost || 0);
-                const tax = parseFloat(prod.tax || 0) / 100;
-                const varCosts = parseFloat(prod.variableCosts || 0) / 100;
-                profitPerSaleProd = price - cost - (price * tax) - (price * varCosts);
+                profitPerSaleProd = convertCurrency(calculateGrossMarginPerSale(prod), 'USD', prod.priceCurrency || 'BRL');
             }
         }
         const storeMargin = parseFloat(test.assumedMargin || 30) / 100;
