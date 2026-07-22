@@ -14525,6 +14525,63 @@ body:not([data-theme]) .adh-board-viewport {
 .mdgx-ranking-item:hover {
     background: rgba(139, 92, 246, 0.05);
 }
+/* Botão "ver por dia" no item do ranking */
+.mdgx-ranking-daybtn {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.mdgx-ranking-item:hover .mdgx-ranking-daybtn { opacity: 1; }
+.mdgx-ranking-daybtn:hover { background: rgba(139, 92, 246, 0.14); color: var(--accent, #8b5cf6); }
+
+/* Modal: vendas por dia */
+.mdgx-daily-content { max-width: 580px; max-height: 88vh; overflow-y: auto; }
+.mdgx-daily-summary {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    padding: 0.5rem 0 1rem;
+    border-bottom: 1px solid var(--border, rgba(0,0,0,0.08));
+    margin-bottom: 0.85rem;
+}
+.mdgx-daily-stat { display: flex; flex-direction: column; }
+.mdgx-daily-stat-num { font-size: 1.15rem; font-weight: 700; color: var(--text-primary); }
+.mdgx-daily-stat-lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.mdgx-daily-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.85rem; }
+.mdgx-daily-tab {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    background: var(--bg-input, rgba(0,0,0,0.04)); border: 1px solid transparent;
+    color: var(--text-secondary); font-size: 0.82rem; font-weight: 600;
+    padding: 0.4rem 0.8rem; border-radius: 8px; cursor: pointer; transition: all 0.12s;
+}
+.mdgx-daily-tab:hover { background: rgba(139, 92, 246, 0.1); }
+.mdgx-daily-tab.active { background: rgba(139, 92, 246, 0.15); color: var(--accent, #8b5cf6); border-color: rgba(139, 92, 246, 0.35); }
+.mdgx-daily-empty { text-align: center; color: var(--text-muted); padding: 2rem 0; }
+.mdgx-daily-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.mdgx-daily-table th, .mdgx-daily-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border, rgba(0,0,0,0.05)); text-align: left; }
+.mdgx-daily-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+.mdgx-daily-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.mdgx-daily-table tbody tr:hover { background: rgba(139, 92, 246, 0.05); }
+/* Mini calendário no modal */
+.mdgx-cal-month { margin-bottom: 1rem; }
+.mdgx-cal-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; }
+.mdgx-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mdgx-cal-wd { text-align: center; font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; padding-bottom: 2px; }
+.mdgx-cal-cell {
+    position: relative; aspect-ratio: 1; border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--bg-input, rgba(0,0,0,0.03));
+}
+.mdgx-cal-cell.mdgx-cal-empty { background: transparent; }
+.mdgx-cal-num { font-size: 0.7rem; color: var(--text-muted); }
+.mdgx-cal-has .mdgx-cal-num { color: #fff; font-weight: 600; }
+.mdgx-cal-sales { font-size: 0.82rem; font-weight: 700; color: #fff; line-height: 1; }
+.mdgx-cal-has { cursor: default; }
 .mdgx-ranking-thumb {
     width: 56px;
     height: 56px;

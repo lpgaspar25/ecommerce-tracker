@@ -1021,12 +1021,26 @@ const DashboardModule = {
 
         // ── Primary source: Shopify orders (works even if local products aren't linked) ──
         let salesByShopifyPid = {}; // { shopify_pid: { sales, revenue, title, currency } }
+        this._mdgxDaily = {};       // { productId: { 'YYYY-MM-DD': { sales, revenue } } } — pro modal de detalhe
+        const _shopTz = ShopifyModule?.getConfig?.()?.shopTimezone;
+        const _orderDate = (createdAt) => {
+            if (_shopTz) { try { return new Intl.DateTimeFormat('en-CA', { timeZone: _shopTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(createdAt)); } catch {} }
+            return String(createdAt || '').slice(0, 10);
+        };
+        const _addDaily = (id, date, sales, revenue) => {
+            if (!id || !date) return;
+            if (!this._mdgxDaily[id]) this._mdgxDaily[id] = {};
+            if (!this._mdgxDaily[id][date]) this._mdgxDaily[id][date] = { sales: 0, revenue: 0 };
+            this._mdgxDaily[id][date].sales += sales;
+            this._mdgxDaily[id][date].revenue += revenue;
+        };
         if (hasShopify && this._startDate && this._endDate) {
             container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
             try {
                 const orders = await ShopifyModule.fetchOrders(this._startDate, this._endDate, { silent: true });
                 for (const o of (orders || [])) {
                     const cur = o.currency || ShopifyModule.getConfig?.()?.shopCurrency || 'BRL';
+                    const oDate = _orderDate(o.created_at);
                     for (const li of (o.line_items || [])) {
                         const pid = String(li.product_id || '');
                         if (!pid) continue;
@@ -1035,6 +1049,7 @@ const DashboardModule = {
                         if (!salesByShopifyPid[pid]) salesByShopifyPid[pid] = { sales: 0, revenue: 0, title: li.title || pid, currency: cur };
                         salesByShopifyPid[pid].sales += qty;
                         salesByShopifyPid[pid].revenue += unitPrice * qty;
+                        _addDaily(pid, oDate, qty, unitPrice * qty);
                     }
                 }
             } catch (e) {
@@ -1082,6 +1097,7 @@ const DashboardModule = {
             const dEntries = byLocalProduct[p.id] || [];
             const diarySales = dEntries.reduce((s, e) => s + (parseFloat(e.sales) || 0), 0);
             if (diarySales <= 0) continue;
+            dEntries.forEach(e => { if (e.date) _addDaily(p.id, e.date, parseFloat(e.sales) || 0, parseFloat(e.revenue) || 0); });
             const sp = linkedShopifyPid ? shopifyProds.find(x => String(x.id) === String(linkedShopifyPid)) : null;
             items.push({
                 id: p.id,
@@ -1128,7 +1144,7 @@ const DashboardModule = {
             const lp = localProductFor(p.id);
             const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
             return `
-            <div class="mdgx-ranking-item" data-id="${escapeHtml(p.id)}">
+            <div class="mdgx-ranking-item" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-currency="${escapeHtml(p.currency || 'BRL')}" title="Ver vendas por dia">
                 ${p.thumb
                     ? `<img class="mdgx-ranking-thumb" src="${escapeHtml(p.thumb)}" alt="">`
                     : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
@@ -1140,6 +1156,7 @@ const DashboardModule = {
                         <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
                     </div>
                 </div>
+                <span class="mdgx-ranking-daybtn" title="Ver vendas por dia"><i data-lucide="calendar-days" style="width:16px;height:16px"></i></span>
             </div>`;
         }).join('');
 
@@ -1166,13 +1183,95 @@ const DashboardModule = {
             container.appendChild(expandBtn);
         }
 
-        // Click item → opens products tab (single product detail not implemented, so just go to list)
+        // Click item → abre modal de vendas por dia (Lista / Calendário)
         container.querySelectorAll('.mdgx-ranking-item').forEach(el => {
-            el.addEventListener('click', () => {
-                document.querySelectorAll('[data-tab="products"]').forEach(b => b.click());
+            el.addEventListener('click', (e) => {
+                if (e.target.closest('a, button')) return; // não intercepta badges/links do produto
+                this._openProductDailyModal(el.dataset.id, el.dataset.name, el.dataset.currency);
             });
         });
 
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    // Modal: vendas por dia de um produto — visão Lista + Calendário
+    _openProductDailyModal(id, name, currency) {
+        const daily = (this._mdgxDaily && this._mdgxDaily[id]) || {};
+        const dates = Object.keys(daily).sort();
+        const sym = { BRL:'R$', USD:'$', EUR:'€', GBP:'£' }[currency] || ((currency || '') + ' ');
+        const money = (v) => `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const totalSales = dates.reduce((s, d) => s + daily[d].sales, 0);
+        const totalRev = dates.reduce((s, d) => s + daily[d].revenue, 0);
+        const fmtDate = (ds) => { const [y, m, dd] = ds.split('-'); return `${dd}/${m}/${y}`; };
+        const WEEK = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+        const MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+        document.getElementById('mdgx-daily-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'mdgx-daily-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content mdgx-daily-content">
+                <div class="modal-header">
+                    <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+                    <button class="btn-close" id="mdgx-daily-close">&times;</button>
+                </div>
+                <div class="mdgx-daily-summary">
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${totalSales}</span><span class="mdgx-daily-stat-lbl">vendas</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${money(totalRev)}</span><span class="mdgx-daily-stat-lbl">receita</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${dates.length}</span><span class="mdgx-daily-stat-lbl">dia(s) com venda</span></div>
+                </div>
+                <div class="mdgx-daily-tabs">
+                    <button class="mdgx-daily-tab active" data-view="lista"><i data-lucide="list" style="width:14px;height:14px;vertical-align:-2px"></i> Lista</button>
+                    <button class="mdgx-daily-tab" data-view="cal"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                </div>
+                <div id="mdgx-daily-body"></div>
+            </div>`;
+        document.body.appendChild(modal);
+        const body = modal.querySelector('#mdgx-daily-body');
+
+        const renderList = () => {
+            if (!dates.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            body.innerHTML = `<table class="mdgx-daily-table">
+                <thead><tr><th>Dia</th><th class="num">Vendas</th><th class="num">Receita</th></tr></thead>
+                <tbody>${dates.slice().reverse().map(d =>
+                    `<tr><td>${fmtDate(d)}</td><td class="num"><strong>${daily[d].sales}</strong></td><td class="num">${money(daily[d].revenue)}</td></tr>`
+                ).join('')}</tbody></table>`;
+        };
+        const renderCal = () => {
+            const months = [...new Set(dates.map(d => d.slice(0, 7)))].sort();
+            if (!months.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            const maxDay = Math.max(1, ...dates.map(d => daily[d].sales));
+            body.innerHTML = months.map(ym => {
+                const [y, m] = ym.split('-').map(Number);
+                const startWd = new Date(y, m - 1, 1).getDay();
+                const days = new Date(y, m, 0).getDate();
+                let cells = '';
+                for (let i = 0; i < startWd; i++) cells += '<div class="mdgx-cal-cell mdgx-cal-empty"></div>';
+                for (let d = 1; d <= days; d++) {
+                    const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const info = daily[ds];
+                    const intensity = info ? (0.15 + 0.85 * (info.sales / maxDay)) : 0;
+                    const bg = info ? `style="background:rgba(139,92,246,${intensity.toFixed(2)})"` : '';
+                    cells += `<div class="mdgx-cal-cell${info ? ' mdgx-cal-has' : ''}" ${bg} ${info ? `title="${fmtDate(ds)}: ${info.sales} venda(s) · ${money(info.revenue)}"` : ''}>
+                        <span class="mdgx-cal-num">${d}</span>${info ? `<span class="mdgx-cal-sales">${info.sales}</span>` : ''}</div>`;
+                }
+                return `<div class="mdgx-cal-month">
+                    <div class="mdgx-cal-title">${MES[m - 1]} ${y}</div>
+                    <div class="mdgx-cal-grid">${WEEK.map(w => `<div class="mdgx-cal-wd">${w}</div>`).join('')}${cells}</div>
+                </div>`;
+            }).join('');
+        };
+        renderList();
+        modal.querySelectorAll('.mdgx-daily-tab').forEach(t => t.addEventListener('click', () => {
+            modal.querySelectorAll('.mdgx-daily-tab').forEach(x => x.classList.toggle('active', x === t));
+            if (t.dataset.view === 'cal') renderCal(); else renderList();
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }));
+        const close = () => modal.remove();
+        modal.querySelector('#mdgx-daily-close').addEventListener('click', close);
+        modal.querySelector('.modal-overlay').addEventListener('click', close);
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
     },
 
@@ -2343,12 +2442,20 @@ const DashboardModule = {
         days.forEach(d => { html += `<div class="mcal-header">${d}</div>`; });
         for (let i = 0; i < firstDow; i++) html += '<div class="mcal-day mcal-day-empty"></div>';
 
+        const isRealMetric = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal' || this._calMetric === 'conversionCombined';
         for (let day = 1; day <= totalDays; day++) {
             const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const isToday    = ds === todayStr;
             const isFuture   = ds > todayStr;
             const dayEntries = byDate[ds] || [];
-            const hasData    = dayEntries.length > 0 && !isFuture;
+            // Dias com venda REAL (Shopify) contam como "tem dado" mesmo sem entrada no Diário (FB/Meta).
+            // Sem isto, dias só-Shopify (ex.: FB parou de sincronizar) apareciam em branco no calendário.
+            let hasReal = false;
+            if (isRealMetric && !isFuture) {
+                const r = this._sumRealSales(this._realSalesMap, this._calProduct || 'todos', ds, ds);
+                hasReal = (r.sales > 0 || r.revenue > 0);
+            }
+            const hasData    = !isFuture && (dayEntries.length > 0 || hasReal);
 
             let numCls  = isFuture ? 'mcal-dim' : '';
             let todayCls = isToday ? ' mcal-today' : '';
