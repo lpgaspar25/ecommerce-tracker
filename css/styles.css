@@ -9929,6 +9929,38 @@ thead:hover .diary-check-col input[type="checkbox"],
 .mcal-product-select { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); font-size: 0.75rem; padding: 0.3rem 0.5rem; margin-bottom: 0.3rem; cursor: pointer; max-width: 200px; }
 .mcal-product-select:focus { outline: 1px solid var(--accent); }
 
+/* Dropdown customizado do produto (com badges de plataforma + conta de anúncio) */
+.mcal-prod-dd { position: relative; margin-bottom: 0.3rem; }
+.mcal-prod-dd-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    max-width: 340px; min-width: 180px; text-align: left;
+    padding: 0.35rem 0.55rem;
+}
+.mcal-prod-dd-cur { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; overflow: hidden; flex: 1; min-width: 0; }
+.mcal-prod-dd-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.mcal-prod-dd-panel {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 90;
+    width: min(420px, 88vw); max-height: 380px; overflow-y: auto;
+    background: var(--bg-secondary, #fff); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,0.18); padding: 0.4rem;
+}
+.mcal-prod-dd-panel.hidden { display: none; }
+.mcal-prod-dd-search {
+    width: 100%; box-sizing: border-box; margin-bottom: 0.35rem;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text-primary); font-size: 0.8rem; padding: 0.4rem 0.6rem;
+}
+.mcal-prod-dd-search:focus { outline: 1px solid var(--accent); }
+.mcal-prod-dd-opt {
+    display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+    padding: 0.5rem 0.55rem; border-radius: 8px; cursor: pointer; font-size: 0.82rem;
+    transition: background 0.1s;
+}
+.mcal-prod-dd-opt:hover { background: rgba(139, 92, 246, 0.1); }
+.mcal-prod-dd-opt.active { background: rgba(139, 92, 246, 0.15); }
+.mcal-prod-dd-opt .mcal-prod-dd-name { max-width: 100%; }
+.mcal-prod-dd-opt .prod-meta-badges { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+
 /* Month nav */
 .mcal-nav { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 0.5rem; }
 .mcal-nav-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); min-width: 160px; text-align: center; }

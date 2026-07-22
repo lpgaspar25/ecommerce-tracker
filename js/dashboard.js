@@ -2156,11 +2156,18 @@ const DashboardModule = {
             { key: 'cpc',                label: 'CPC Médio'        },
         ];
 
-        // Build product options
+        // Build product options — dropdown customizado (mostra plataforma FB/Google + conta de anúncio, igual ao ranking)
         const products = (AppState.products || []);
-        const prodOptions = products.map(p =>
-            `<option value="${p.id}"${calFilter === p.id ? ' selected' : ''}>${p.name}</option>`
-        ).join('');
+        const _badges = (p) => (typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(p) : '';
+        const curProd = calFilter === 'todos' ? null : products.find(p => p.id === calFilter);
+        const curLabelHtml = curProd
+            ? `<span class="mcal-prod-dd-name">${escapeHtml(curProd.name)}</span>${_badges(curProd)}`
+            : '<span class="mcal-prod-dd-name">Todos os Produtos</span>';
+        const prodDdOptions =
+            `<div class="mcal-prod-dd-opt${calFilter === 'todos' ? ' active' : ''}" data-value="todos"><span class="mcal-prod-dd-name">Todos os Produtos</span></div>` +
+            products.map(p =>
+                `<div class="mcal-prod-dd-opt${calFilter === p.id ? ' active' : ''}" data-value="${escapeHtml(p.id)}"><span class="mcal-prod-dd-name">${escapeHtml(p.name)}</span>${_badges(p)}</div>`
+            ).join('');
 
         // Build region options from sub-entries that have region tags
         const regions = this._getCalendarRegionOptions();
@@ -2174,10 +2181,16 @@ const DashboardModule = {
             <div class="mcal-tabs">${tabs.map(t =>
                 `<button class="mcal-tab${this._calMetric === t.key ? ' active' : ''}" data-metric="${t.key}">${t.label}</button>`
             ).join('')}</div>
-            <select class="mcal-product-select" id="mcal-product">
-                <option value="todos"${calFilter === 'todos' ? ' selected' : ''}>Todos os Produtos</option>
-                ${prodOptions}
-            </select>
+            <div class="mcal-prod-dd" id="mcal-product-dd">
+                <button type="button" class="mcal-product-select mcal-prod-dd-btn" id="mcal-prod-dd-btn">
+                    <span class="mcal-prod-dd-cur">${curLabelHtml}</span>
+                    <i data-lucide="chevron-down" style="width:14px;height:14px;flex-shrink:0;opacity:.6"></i>
+                </button>
+                <div class="mcal-prod-dd-panel hidden" id="mcal-prod-dd-panel">
+                    <input type="text" class="mcal-prod-dd-search" id="mcal-prod-dd-search" placeholder="Buscar produto...">
+                    <div class="mcal-prod-dd-list">${prodDdOptions}</div>
+                </div>
+            </div>
             <select class="mcal-product-select" id="mcal-region"${regions.length === 0 ? ' disabled title="Sem campanhas com tag de país"' : ''}>
                 <option value=""${this._calRegion === '' ? ' selected' : ''}>Todos os países</option>
                 ${regionOptions}
@@ -2211,11 +2224,39 @@ const DashboardModule = {
             });
         });
 
-        // Product select handler
-        container.querySelector('#mcal-product')?.addEventListener('change', (e) => {
-            this._calProduct = e.target.value;
-            this._renderMetricsCalendar();
+        // Product dropdown customizado (mostra badges de plataforma + conta de anúncio)
+        const ddBtn = container.querySelector('#mcal-prod-dd-btn');
+        const ddPanel = container.querySelector('#mcal-prod-dd-panel');
+        const ddSearch = container.querySelector('#mcal-prod-dd-search');
+        ddBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = ddPanel.classList.contains('hidden');
+            ddPanel.classList.toggle('hidden');
+            if (willOpen) setTimeout(() => ddSearch?.focus(), 0);
         });
+        container.querySelectorAll('.mcal-prod-dd-opt').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._calProduct = opt.dataset.value;
+                this._renderMetricsCalendar();
+            });
+        });
+        ddSearch?.addEventListener('click', (e) => e.stopPropagation());
+        ddSearch?.addEventListener('input', (e) => {
+            const q = (e.target.value || '').toLowerCase();
+            container.querySelectorAll('.mcal-prod-dd-opt').forEach(opt => {
+                if (opt.dataset.value === 'todos') { opt.style.display = q ? 'none' : ''; return; }
+                opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+        // Fecha ao clicar fora (um único listener, substituído a cada render)
+        if (this._calDdCloser) document.removeEventListener('click', this._calDdCloser);
+        this._calDdCloser = (ev) => {
+            if (!ev.target.closest('#mcal-product-dd')) {
+                document.getElementById('mcal-prod-dd-panel')?.classList.add('hidden');
+            }
+        };
+        document.addEventListener('click', this._calDdCloser);
 
         // Region select handler
         container.querySelector('#mcal-region')?.addEventListener('change', (e) => {
