@@ -1310,11 +1310,17 @@ const LabTestsModule = {
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
         }
 
-        // Populate product dropdown from AppState
+        // Populate product dropdown from AppState.
+        // Usa a lista filtrada por loja; se ela estiver vazia (loja sem produtos / filtro),
+        // cai pra lista completa — senão o dropdown fica morto. O resto do módulo já
+        // resolve nomes via allProducts, então mantém a mesma fonte.
         const prodSelect = get('lab-product');
         if (prodSelect) {
             prodSelect.innerHTML = '<option value="">Nenhum produto</option>';
-            const products = (typeof AppState !== 'undefined' && AppState.products) ? AppState.products : [];
+            const _st = (typeof AppState !== 'undefined') ? AppState : {};
+            const products = (Array.isArray(_st.products) && _st.products.length)
+                ? _st.products
+                : (Array.isArray(_st.allProducts) ? _st.allProducts : []);
             for (const p of products) {
                 const opt = document.createElement('option');
                 opt.value = p.id;
@@ -1329,7 +1335,12 @@ const LabTestsModule = {
         if (creatSelect) {
             creatSelect.innerHTML = '<option value="">Nenhum criativo</option>';
             try {
-                const creatives = JSON.parse(localStorage.getItem('etracker_creatives') || '[]');
+                // Prefere a lista viva do AppState (master/filtrada); localStorage é só fallback
+                const _st = (typeof AppState !== 'undefined') ? AppState : {};
+                let creatives = (Array.isArray(_st.creatives) && _st.creatives.length)
+                    ? _st.creatives
+                    : (Array.isArray(_st.allCreatives) ? _st.allCreatives : []);
+                if (!creatives.length) creatives = JSON.parse(localStorage.getItem('etracker_creatives') || '[]');
                 for (const c of creatives) {
                     const opt = document.createElement('option');
                     opt.value = c.id;
