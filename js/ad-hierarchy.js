@@ -954,11 +954,24 @@
                 .replace(/[^a-z0-9 ]/g, '').trim();
         },
 
+        // Uma chave normalizada que representa TAXA (%) ou CUSTO — não contagem.
+        _isRateOrCostHeader(h) {
+            const k = ` ${String(h || '')} `;
+            return [' taxa ', ' custo por ', ' cost per ', ' ctr ', ' cpm ', ' cpc ',
+                    ' percentual ', ' percent ', ' roas ', ' rate ', ' classificacao '].some(t => k.includes(t));
+        },
+
         _findCol(headers, candidates) {
             const norm = headers.map(h => this._norm(h));
             for (const cand of candidates) {
                 const c = this._norm(cand);
-                const idx = norm.findIndex(h => h === c || h.includes(c));
+                const exato = norm.findIndex(h => h === c);
+                if (exato >= 0) return exato;
+                // Sem isto, 'cliques no link' casava por substring com
+                // "Taxa de visualizações da página de destino por cliques no link"
+                // e a soma de PORCENTAGENS virava o total de cliques (CTR de 87%).
+                const candEhTaxa = this._isRateOrCostHeader(c);
+                const idx = norm.findIndex(h => h.includes(c) && (candEhTaxa || !this._isRateOrCostHeader(h)));
                 if (idx >= 0) return idx;
             }
             return -1;
@@ -975,6 +988,7 @@
             const idxImpr = this._findCol(headers, ['impressoes', 'impressions']);
             const idxClicks = this._findCol(headers, ['cliques no link', 'link clicks', 'cliques']);
             const idxSpend = this._findCol(headers, ['valor usado', 'amount spent', 'gasto']);
+            const idxCpc = this._findCol(headers, ['cpc custo por clique no link', 'custo por clique no link', 'cpc']);
 
             if (idxCampaign < 0) throw new Error('Coluna "Nome da campanha" não encontrada');
 
@@ -1020,8 +1034,13 @@
                     const k = adName + '||' + adsetName + '||' + campName;
                     if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0 };
                     const imp = parseFloat(String(row[idxImpr] || '').replace(/[^0-9.-]/g, '')) || 0;
-                    const clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
                     const spd = parseFloat(String(row[idxSpend] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    let clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    // Relatório sem coluna de cliques: deriva de gasto / CPC (mesma regra do Diagnóstico)
+                    if (!clk && idxCpc >= 0 && spd > 0) {
+                        const cpcVal = parseFloat(String(row[idxCpc] || '').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+                        if (cpcVal > 0) clk = spd / cpcVal;
+                    }
                     metricsByAd[k].impressions += imp;
                     metricsByAd[k].clicks += clk;
                     metricsByAd[k].spend += spd;
