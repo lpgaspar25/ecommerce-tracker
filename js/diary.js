@@ -592,6 +592,8 @@ const DiaryModule = {
 
         this._setupProductMultiSelect();
         document.getElementById('diary-platform-filter').addEventListener('change', () => this.render());
+        document.getElementById('diary-type-filter')?.addEventListener('change', () => this.render());
+        document.getElementById('btn-diary-clear-ranges')?.addEventListener('click', () => this.clearRangeEntries());
         document.getElementById('diary-region-filter')?.addEventListener('change', () => this.render());
 
         // Compare mode
@@ -923,6 +925,44 @@ const DiaryModule = {
         EventBus.emit('diaryChanged');
     },
 
+    // Remove as entradas de PERÍODO (agregados de vários dias), mantendo as diárias.
+    // Elas somam em cima dos dias e inflam os totais do Diário.
+    async clearRangeEntries() {
+        const ranges = (AppState.allDiary || []).filter(d => !d.isCampaign && this._isRangeEntry(d));
+        if (!ranges.length) {
+            showToast('Nenhuma entrada de período encontrada.', 'info');
+            return;
+        }
+        // Sub-entradas (campanhas) penduradas nessas entradas também saem
+        const rangeIds = new Set(ranges.map(d => d.id));
+        const subs = (AppState.allDiary || []).filter(d => d.parentId && rangeIds.has(d.parentId));
+
+        const amostra = ranges.slice(0, 6).map(d =>
+            `• ${formatDate(d.periodStart)} → ${formatDate(d.periodEnd)} · ${getProductName(d.productId) || 'Loja'} · ${Number(d.sales || 0)} vendas`
+        ).join('\n');
+        const msg = `Excluir ${ranges.length} entrada(s) de PERÍODO`
+            + (subs.length ? ` e ${subs.length} sub-entrada(s) de campanha` : '')
+            + `?\n\nAs entradas diárias NÃO são afetadas.\n\n${amostra}`
+            + (ranges.length > 6 ? `\n… e mais ${ranges.length - 6}.` : '')
+            + `\n\nEsta ação não pode ser desfeita.`;
+        if (!confirm(msg)) return;
+
+        const removerIds = new Set([...rangeIds, ...subs.map(d => d.id)]);
+        AppState.allDiary = (AppState.allDiary || []).filter(d => !removerIds.has(d.id));
+
+        if (typeof LocalStore !== 'undefined') LocalStore.save('diary', AppState.allDiary);
+        if (typeof SupabaseSync !== 'undefined' && SupabaseSync.isLoggedIn && SupabaseSync.client) {
+            for (const id of removerIds) {
+                try { await SupabaseSync.client.from('diary').delete().eq('id', id); }
+                catch (e) { console.warn('[Diary] limpeza Supabase:', e); }
+            }
+        }
+        filterDataByStore();
+        this.render();
+        EventBus.emit('diaryChanged');
+        showToast(`${ranges.length} entrada(s) de período removida(s). Diárias preservadas.`, 'success');
+    },
+
     async deleteEntry(id) {
         if (!confirm('Excluir esta entrada?')) return;
 
@@ -1183,17 +1223,25 @@ const DiaryModule = {
 
     _esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
 
+    // Entrada que agrega vários dias (salva a partir de um período no Diagnóstico)
+    _isRangeEntry(entry) {
+        return !!(entry && entry.periodStart && entry.periodEnd && entry.periodStart !== entry.periodEnd);
+    },
+
     getFilteredEntries() {
         const platformFilter = document.getElementById('diary-platform-filter').value;
         const regionFilter = document.getElementById('diary-region-filter')?.value || '';
         const startDate = document.getElementById('diary-date-start')?.value || '';
         const endDate = document.getElementById('diary-date-end')?.value || '';
+        const tipoFilter = document.getElementById('diary-type-filter')?.value || 'todos';
 
         const matchesScope = (entry) => {
             if (startDate && entry.date < startDate) return false;
             if (endDate && entry.date > endDate) return false;
             if (!this._matchesProductFilter(entry)) return false;
             if (platformFilter !== 'todos' && entry.platform !== platformFilter) return false;
+            if (tipoFilter === 'dias' && this._isRangeEntry(entry)) return false;
+            if (tipoFilter === 'periodos' && !this._isRangeEntry(entry)) return false;
             return true;
         };
 

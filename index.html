@@ -1077,6 +1077,7 @@
                 <button id="btn-diary-compare" class="btn btn-secondary btn-sm" title="Comparar períodos"><i data-lucide="git-compare-arrows" style="width:13px;height:13px"></i> Comparar</button>
                 <button id="btn-diary-dedup" class="btn btn-secondary btn-sm" title="Remove duplicatas (mesmo produto + mesma data, mantém a mais completa)"><i data-lucide="layers" style="width:13px;height:13px"></i> Limpar duplicatas</button>
                 <button id="btn-diary-sync-shopify" class="btn btn-secondary btn-sm" title="Puxa as vendas reais da Shopify para o Diário (não apaga dados do Facebook)"><i data-lucide="shopping-bag" style="width:13px;height:13px"></i> Sincronizar Shopify</button>
+                <button id="btn-diary-clear-ranges" class="btn btn-secondary btn-sm" title="Remove as entradas de PERÍODO (agregados de vários dias) que inflam os totais. As entradas diárias são preservadas."><i data-lucide="calendar-x" style="width:13px;height:13px"></i> Limpar períodos</button>
                 <button id="btn-diary-sync-scroll" class="btn btn-secondary btn-sm" title="Rolar todas as tabelas de produtos lateralmente juntas"><i data-lucide="move-horizontal" style="width:13px;height:13px"></i> Rolar juntas</button>
             </div>
 
@@ -1153,6 +1154,14 @@
                         <option value="Google Ads">Google Ads</option>
                         <option value="TikTok Ads">TikTok Ads</option>
                         <option value="Outra">Outra</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Tipo:</label>
+                    <select id="diary-type-filter" class="input" title="Entradas de período somam vários dias — separe-as das entradas diárias">
+                        <option value="todos">Todas</option>
+                        <option value="dias">Só dias</option>
+                        <option value="periodos">Só períodos</option>
                     </select>
                 </div>
                 <div class="filter-group">
