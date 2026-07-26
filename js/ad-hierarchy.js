@@ -416,8 +416,15 @@
                           <span class="adh-sales-pill"><i data-lucide="package" style="width:10px;height:10px;vertical-align:-1px"></i> ${s.orders} pedido(s)</span>
                        </div>`
                     : '';
+                // Tags: plataforma de ads (FB/Google) + conta de anúncio + idiomas, e a página que roda o produto
+                const metaBadges = (typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(p) : '';
+                const pageLink = p.pageUrl
+                    ? `<a class="prod-page-link" href="${this._esc(p.pageUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a página que roda este produto"><i data-lucide="external-link" style="width:11px;height:11px;vertical-align:-1px"></i> Página</a>`
+                    : '';
+                const tagsLine = (metaBadges || pageLink) ? `<div class="adh-card-tags">${metaBadges}${pageLink}</div>` : '';
                 return `<div class="adh-card ${selected ? 'adh-card-selected' : ''}" data-level="product" data-id="${this._esc(p.id)}">
                     <div class="adh-card-title">${this._esc(p.name)}</div>
+                    ${tagsLine}
                     ${salesLine}
                     <div class="adh-card-meta"><i data-lucide="megaphone" style="width:10px;height:10px;vertical-align:-1px"></i> ${campCount} campanha(s)${campCount > 0 ? ' · <span style="color:#8b5cf6">clique p/ ver</span>' : ''}</div>
                 </div>`;

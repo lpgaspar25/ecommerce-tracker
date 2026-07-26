@@ -10490,6 +10490,25 @@ thead:hover .diary-check-col input[type="checkbox"],
 
 .lab-card-header { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.4rem; }
 
+/* Tags no card de produto do Mapa de Ads (plataforma, conta de anúncio, página) */
+.adh-card-tags {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 3px;
+    margin: 3px 0 4px;
+    max-width: 100%; min-width: 0;
+}
+.adh-card-tags .prod-meta-badges {
+    display: inline-flex; flex-wrap: wrap; gap: 3px;
+    max-width: 100%; min-width: 0;
+}
+/* Nomes longos de conta de anúncio não podem estourar a coluna */
+.adh-card-tags .prod-meta-badges > *,
+.adh-card-tags .prod-page-link {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Link da página que está rodando (produto / criativo) */
 .prod-page-link, .creative-chip-page {
     display: inline-flex; align-items: center; gap: 3px;
