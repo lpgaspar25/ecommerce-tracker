@@ -369,7 +369,12 @@ const FunnelModule = {
     },
 
     _hydrateFromDiaryEntry(entry) {
-        const clicks = entry.cpc > 0 ? (entry.budget / entry.cpc) : 0;
+        // Prefere os cliques salvos (exatos). Só reconstrói de gasto/CPC em
+        // entradas antigas, que não guardavam o campo — aí o CPC arredondado
+        // a 2 casas introduz ~1% de erro.
+        const clicks = Number(entry.clicks) > 0
+            ? Number(entry.clicks)
+            : (entry.cpc > 0 ? (entry.budget / entry.cpc) : 0);
         const ctr = entry.impressions > 0 && clicks > 0 ? (clicks / entry.impressions) * 100 : 0;
         const viewPageRate = clicks > 0 && entry.pageViews > 0 ? (entry.pageViews / clicks) * 100 : 0;
         const atcRate = entry.pageViews > 0 ? (entry.addToCart / entry.pageViews) * 100 : 0;
@@ -430,7 +435,10 @@ const FunnelModule = {
             const revenueCurr = entry.revenueCurrency || this.state.actual.ticketCurrency;
             totalRevenueInSelected += convertCurrency(revenue, revenueCurr, this.state.actual.ticketCurrency);
 
-            if (entry.cpc > 0) {
+            // Cliques salvos são exatos; gasto/CPC é fallback pra entradas antigas
+            if (Number(entry.clicks) > 0) {
+                clicks += Number(entry.clicks);
+            } else if (entry.cpc > 0) {
                 clicks += budget / entry.cpc;
             }
         });
@@ -1225,6 +1233,7 @@ const FunnelModule = {
                 shopifyRevenue: existing?.shopifyRevenue,
                 shopifyRevenueCurrency: existing?.shopifyRevenueCurrency,
                 cpa: finalSales > 0 ? parseFloat((row.spend / finalSales).toFixed(2)) : 0,
+                clicks: Math.round(row.clicks || 0),
                 cpc: (row.clicks || 0) > 0 ? parseFloat((row.spend / row.clicks).toFixed(2)) : 0,
                 platform: 'Meta Ads',
                 notes: 'Via Facebook Ads · import em lote',
@@ -1819,6 +1828,7 @@ const FunnelModule = {
                         pageViews:   Math.round(agg.viewContent / days),
                         addToCart:   Math.round(agg.addToCart   / days),
                         checkout:    Math.round(agg.checkout    / days),
+                        clicks: Math.round(clicksPerDay || 0),
                         cpc: clicksPerDay > 0 ? parseFloat((spendPerDay / clicksPerDay).toFixed(2)) : 0,
                         cpa: salesPerDay  > 0 ? parseFloat((spendPerDay / salesPerDay).toFixed(2))  : 0,
                         platform: 'Meta Ads',
@@ -2241,6 +2251,7 @@ const FunnelModule = {
 
         const actual = {
             impressions: Math.round(metrics.impressions || 0),
+            clicks: Math.round(metrics.clicks || 0),
             cpc: parseFloat((cpc || 0).toFixed(2)),
             cpcCurrency: ticketCurrency,
             ctr: parseFloat((metrics.ctr || 0).toFixed(2)),
@@ -2356,6 +2367,7 @@ const FunnelModule = {
             shopifyRevenue: existing?.shopifyRevenue,
             shopifyRevenueCurrency: existing?.shopifyRevenueCurrency,
             cpa: parseFloat(finalCpa.toFixed(2)),
+            clicks: Math.round(clicks || 0),
             cpc: parseFloat(cpc.toFixed(2)),
             platform: 'Meta Ads',
             notes: `Importado automaticamente via ${sourceLabel} (diagnóstico por período)`,
@@ -2553,6 +2565,7 @@ const FunnelModule = {
                     pageViews: Math.round(agg.viewContent),
                     addToCart: Math.round(agg.addToCart),
                     checkout: Math.round(agg.checkout),
+                    clicks: Math.round(agg.clicks || 0),
                     cpc: agg.clicks > 0 ? parseFloat((agg.spend / agg.clicks).toFixed(2)) : 0,
                     cpa: agg.purchase > 0 ? parseFloat((agg.spend / agg.purchase).toFixed(2)) : 0,
                     platform: 'Meta Ads',
