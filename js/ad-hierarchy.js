@@ -1513,7 +1513,7 @@
             if (!wrap || !nodesEl || !svg) return;
 
             // Layout: 4 columns × N rows, each node 220×85 with 40px gap
-            const NODE_W = 250, NODE_H = 150, COL_GAP = 80, ROW_GAP = 20;  // +faixa de funil no nó
+            const NODE_W = 250, NODE_H = 190, COL_GAP = 80, ROW_GAP = 20;  // 190 = altura real do nó com a faixa de funil
             const f = this._state.boardFilter || {};
             this._buildPeriodCache();          // recorta métricas pelo período antes de tudo
             let keep = this._computeBoardScope();
@@ -1658,6 +1658,7 @@
                 else if (n.type === 'ad' && n.item.adsetId) par('adset:' + n.item.adsetId, 'ad:' + n.item.id);
             });
             this._boardHierEdges = hier;
+            this._deoverlapNodes(nodesEl);
 
             // Contador "N de M nós" + botão de limpar
             const totalGeral = (this._state.campaigns || []).length + (this._state.adsets || []).length + (this._state.ads || []).length;
@@ -1742,6 +1743,34 @@
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
             this._applyBoardTransform();
+        },
+
+        // Rede de segurança: depois de renderizar, mede a altura REAL de cada nó e
+        // empurra pra baixo qualquer um que esteja encavalando o de cima na mesma coluna.
+        // Nós arrastados pelo usuário não são movidos (mas contam como obstáculo).
+        _deoverlapNodes(nodesEl) {
+            if (!nodesEl) return;
+            const GAP = 14;
+            const cols = new Map();
+            nodesEl.querySelectorAll('.adh-board-node').forEach(el => {
+                if (el.dataset.type === 'funnel') return;          // nó de funil é livre
+                const col = Math.round(el.offsetLeft / 40) * 40;   // tolera pequenas diferenças
+                if (!cols.has(col)) cols.set(col, []);
+                cols.get(col).push(el);
+            });
+            cols.forEach(lista => {
+                lista.sort((a, b) => a.offsetTop - b.offsetTop);
+                let fimAnterior = -Infinity;
+                lista.forEach(el => {
+                    const fixo = !!(this._state.nodePos || {})[el.dataset.type + ':' + el.dataset.id];
+                    let top = el.offsetTop;
+                    if (!fixo && top < fimAnterior + GAP) {
+                        top = fimAnterior + GAP;
+                        el.style.top = top + 'px';
+                    }
+                    fimAnterior = Math.max(fimAnterior, top + el.offsetHeight);
+                });
+            });
         },
 
         // Desenha TODAS as arestas lendo posição real dos nós no DOM.
