@@ -2886,10 +2886,28 @@ const FunnelModule = {
                 if (startsWithCandidate) return headerMap[startsWithCandidate];
                 continue;
             }
-            const fuzzy = keys.find(k => k.includes(candidate) || candidate.includes(k));
+            // Um candidato de CONTAGEM nunca pode casar com coluna de TAXA/CUSTO.
+            // Sem isto, "cliques no link" casava por substring com
+            // "Taxa de visualizações da página de destino por cliques no link"
+            // (uma %), e o total de cliques virava a soma das porcentagens.
+            const candidateIsRate = this._looksLikeRateOrCostKey(candidate);
+            const fuzzy = keys.find(k => {
+                if (!(k.includes(candidate) || candidate.includes(k))) return false;
+                if (!candidateIsRate && this._looksLikeRateOrCostKey(k)) return false;
+                return true;
+            });
             if (fuzzy) return headerMap[fuzzy];
         }
         return -1;
+    },
+
+    // Chave normalizada que representa uma taxa (%) ou um custo — não uma contagem.
+    _looksLikeRateOrCostKey(key) {
+        const k = ` ${String(key || '')} `;
+        return [
+            ' taxa ', ' custo por ', ' cost per ', ' ctr ', ' cpm ', ' cpc ',
+            ' percentual ', ' percent ', ' roas ', ' rate '
+        ].some(t => k.includes(t));
     },
 
     _pickCsvValue(row, headerMap, candidates, options = {}) {
@@ -2989,8 +3007,17 @@ const FunnelModule = {
         ];
 
         const impressions = this._toNumber(this._pickCsvValue(row, headerMap, impressionsCandidates));
-        const clicks = this._toNumber(this._pickCsvValue(row, headerMap, clicksCandidates));
+        let clicks = this._toNumber(this._pickCsvValue(row, headerMap, clicksCandidates));
         const spend = this._toNumber(this._pickCsvValue(row, headerMap, spendCandidates));
+        // Relatórios do Ads Manager frequentemente trazem só o CPC (sem coluna de cliques).
+        // Deriva cliques = gasto / CPC por linha — mesma convenção já usada no resto do módulo.
+        if (!(clicks > 0) && spend > 0) {
+            const cpcCol = this._toNumber(this._pickCsvValue(row, headerMap, [
+                'cpc custo por clique no link', 'cpc custo por clique',
+                'custo por clique no link', 'custo por clique de saida', 'cpc'
+            ]));
+            if (cpcCol > 0) clicks = spend / cpcCol;
+        }
         const viewContent = this._toNumber(this._pickCsvValue(row, headerMap, viewContentCandidates));
         // Count columns are parsed in strict mode to avoid matching custom ratio metrics
         // such as "Visu. Página > Add To Cart".
@@ -3007,7 +3034,8 @@ const FunnelModule = {
         const saleRateRaw = this._normalizeRatePercent(this._pickCsvValue(row, headerMap, saleRateCandidates));
 
         const hasImpressions = this._hasCsvData(row, headerMap, impressionsCandidates);
-        const hasClicks = this._hasCsvData(row, headerMap, clicksCandidates);
+        // Conta como "tem cliques" também quando foi derivado de gasto/CPC
+        const hasClicks = this._hasCsvData(row, headerMap, clicksCandidates) || clicks > 0;
         const hasSpend = this._hasCsvData(row, headerMap, spendCandidates);
         const hasViewContent = this._hasCsvData(row, headerMap, viewContentCandidates);
         const hasAddToCart = this._hasCsvData(row, headerMap, addToCartCandidates, { strict: true });
