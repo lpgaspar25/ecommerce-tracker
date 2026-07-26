@@ -26,7 +26,7 @@
             fbAdsByAdset: {},
             filter: { product:'', campaign:'', adset:'', ad:'' },
             // Filtros do Board — só em memória de propósito: recarregar volta a mostrar tudo
-            boardFilter: { q:'', running:false, valid:false, metric:'', top:false, compact:false },
+            boardFilter: { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'' },
             // Board pan/zoom
             board: { zoom: 1, tx: 0, ty: 0, dragging: false, dragX: 0, dragY: 0 },
             // Collapsed nodes: { "campaign:id": true, "adset:id": true }
@@ -171,7 +171,14 @@
             chip('adh-f-running', 'running');
             chip('adh-f-valid', 'valid');
             chip('adh-f-compact', 'compact');
-            chip('adh-f-top', 'top');
+            document.getElementById('adh-board-top')?.addEventListener('change', (e) => {
+                this._state.boardFilter.top = e.target.value;   // '' | 'best' | 'worst'
+                reBoard();
+            });
+            document.getElementById('adh-board-period')?.addEventListener('change', (e) => {
+                this._state.boardFilter.period = e.target.value;
+                reBoard();
+            });
             document.getElementById('adh-board-q')?.addEventListener('input', (e) => {
                 // debounce: cada tecla redesenha dezenas de nós com imagem
                 clearTimeout(this._boardQTimer);
@@ -181,11 +188,11 @@
             document.getElementById('adh-board-metric')?.addEventListener('change', (e) => {
                 const v = e.target.value;
                 this._state.boardFilter.metric = v;
-                const topBtn = document.getElementById('adh-f-top');
-                if (topBtn) {
-                    topBtn.disabled = !v;
-                    topBtn.title = v ? 'Mostra só os 10 melhores pela métrica escolhida' : 'Escolha uma métrica para habilitar';
-                    if (!v) { this._state.boardFilter.top = false; topBtn.setAttribute('aria-pressed', 'false'); }
+                const topSel = document.getElementById('adh-board-top');
+                if (topSel) {
+                    topSel.disabled = !v;
+                    topSel.title = v ? 'Mostra só os 10 melhores ou os 10 piores pela métrica' : 'Escolha uma métrica para habilitar';
+                    if (!v) { this._state.boardFilter.top = ''; topSel.value = ''; }
                 }
                 reBoard();
             });
@@ -198,13 +205,14 @@
                 reBoard();
             });
             document.getElementById('adh-board-clear')?.addEventListener('click', () => {
-                this._state.boardFilter = { q:'', running:false, valid:false, metric:'', top:false, compact:false };
-                ['adh-f-running','adh-f-valid','adh-f-compact','adh-f-top'].forEach(id => {
+                this._state.boardFilter = { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'' };
+                ['adh-f-running','adh-f-valid','adh-f-compact'].forEach(id => {
                     document.getElementById(id)?.setAttribute('aria-pressed', 'false');
                 });
-                const topBtn = document.getElementById('adh-f-top'); if (topBtn) topBtn.disabled = true;
+                const topSel = document.getElementById('adh-board-top'); if (topSel) { topSel.disabled = true; topSel.value = ''; }
                 const q = document.getElementById('adh-board-q'); if (q) q.value = '';
                 const m = document.getElementById('adh-board-metric'); if (m) m.value = '';
+                const pr = document.getElementById('adh-board-period'); if (pr) pr.value = '';
                 reBoard();
             });
 
@@ -1090,7 +1098,7 @@
                 // Accumulate metrics per ad
                 if (adName && adsetName) {
                     const k = adName + '||' + adsetName + '||' + campName;
-                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0, first: '', last: '' };
+                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0, first: '', last: '', daily: {} };
                     const imp = parseFloat(String(row[idxImpr] || '').replace(/[^0-9.-]/g, '')) || 0;
                     const spd = parseFloat(String(row[idxSpend] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
@@ -1112,6 +1120,13 @@
                         const m = metricsByAd[k];
                         if (!m.first || day < m.first) m.first = day;
                         if (!m.last || day > m.last) m.last = day;
+                        // Série diária compacta [imp, cliques, gasto, lpv, atc, ic, compras]
+                        // — é o que permite filtrar o board por período.
+                        const cur = m.daily[day] || [0,0,0,0,0,0,0];
+                        cur[0]+=imp; cur[1]+=clk; cur[2]+=spd;
+                        cur[3]+=numCol(idxLpv); cur[4]+=numCol(idxAtc);
+                        cur[5]+=numCol(idxIc);  cur[6]+=numCol(idxPur);
+                        m.daily[day] = cur;
                     }
                 }
 
@@ -1192,6 +1207,17 @@
                     ad.purchases = Math.round(m.purchases);
                     if (m.first) ad.firstSeen = m.first;
                     if (m.last) ad.lastSeen = m.last;
+                    // Arredonda pra não inflar o localStorage e mantém só os últimos 120 dias
+                    const dias = Object.keys(m.daily || {}).sort().slice(-120);
+                    if (dias.length) {
+                        const comp = {};
+                        dias.forEach(d => {
+                            const v = m.daily[d];
+                            comp[d] = [Math.round(v[0]), Math.round(v[1]), Math.round(v[2]*100)/100,
+                                       Math.round(v[3]), Math.round(v[4]), Math.round(v[5]), Math.round(v[6])];
+                        });
+                        ad.daily = comp;
+                    }
                 }
             });
 
@@ -1224,8 +1250,10 @@
         // Funil derivado de um item (criativo, conjunto ou campanha)
         _funnelOf(item) {
             const n = (v) => Number(v) || 0;
-            const impressions = n(item.impressions), clicks = n(item.clicks), spend = n(item.spend);
-            const lpv = n(item.lpv), atc = n(item.atc), ic = n(item.ic), purchases = n(item.purchases);
+            // Quando há período ativo, usa o recorte; senão os totais do relatório
+            const src = (this._periodCache && this._periodCache.get(item.id)) || item;
+            const impressions = n(src.impressions), clicks = n(src.clicks), spend = n(src.spend);
+            const lpv = n(src.lpv), atc = n(src.atc), ic = n(src.ic), purchases = n(src.purchases);
             const pct = (a, b) => (b > 0 ? (a / b) * 100 : null);
             return {
                 impressions, clicks, spend, lpv, atc, ic, purchases,
@@ -1333,6 +1361,59 @@
 
         _cssEsc(s) { return String(s).replace(/"/g, '\\"'); },
 
+        // Último dia com dado no relatório (o período é relativo a ELE, não a hoje —
+        // senão um CSV de semana passada mostraria zero em "últimos 7 dias").
+        _ultimoDiaComDado() {
+            let max = '';
+            (this._state.ads || []).forEach(a => { if (a.lastSeen && a.lastSeen > max) max = a.lastSeen; });
+            return max;
+        },
+
+        // Intervalo do período selecionado, ou null quando é "todo o período"
+        _periodRange() {
+            const dias = parseInt(this._state.boardFilter?.period, 10);
+            if (!dias) return null;
+            const fim = this._ultimoDiaComDado();
+            if (!fim) return null;
+            const d = new Date(fim + 'T00:00:00');
+            d.setDate(d.getDate() - (dias - 1));
+            return { from: d.toISOString().slice(0, 10), to: fim, dias };
+        },
+
+        // Métricas de TODOS os itens recortadas pelo período (Map id -> métricas).
+        // Criativo soma sua série diária; conjunto/campanha somam os filhos.
+        _buildPeriodCache() {
+            const range = this._periodRange();
+            if (!range) { this._periodCache = null; return; }
+            const cache = new Map();
+            const zero = () => ({ impressions:0, clicks:0, spend:0, lpv:0, atc:0, ic:0, purchases:0 });
+            const somar = (alvo, arr) => {
+                alvo.impressions += arr[0] || 0; alvo.clicks += arr[1] || 0; alvo.spend += arr[2] || 0;
+                alvo.lpv += arr[3] || 0; alvo.atc += arr[4] || 0; alvo.ic += arr[5] || 0; alvo.purchases += arr[6] || 0;
+            };
+            const acumular = (alvo, m) => {
+                ['impressions','clicks','spend','lpv','atc','ic','purchases'].forEach(k => { alvo[k] += m[k] || 0; });
+            };
+            (this._state.ads || []).forEach(ad => {
+                const m = zero();
+                Object.entries(ad.daily || {}).forEach(([d, arr]) => {
+                    if (d >= range.from && d <= range.to) somar(m, arr);
+                });
+                cache.set(ad.id, m);
+            });
+            (this._state.adsets || []).forEach(as => {
+                const m = zero();
+                (this._state.ads || []).forEach(a => { if (a.adsetId === as.id) acumular(m, cache.get(a.id) || zero()); });
+                cache.set(as.id, m);
+            });
+            (this._state.campaigns || []).forEach(c => {
+                const m = zero();
+                (this._state.adsets || []).forEach(a => { if (a.campaignId === c.id) acumular(m, cache.get(a.id) || zero()); });
+                cache.set(c.id, m);
+            });
+            this._periodCache = cache;
+        },
+
         // ── Filtro do Board: decide quais ids ficam visíveis ──────────────
         // Poda de baixo pra cima: pai só aparece se tiver filho visível.
         // Retorna null quando não há filtro (caminho rápido = mostra tudo).
@@ -1434,6 +1515,7 @@
             // Layout: 4 columns × N rows, each node 220×85 with 40px gap
             const NODE_W = 250, NODE_H = 150, COL_GAP = 80, ROW_GAP = 20;  // +faixa de funil no nó
             const f = this._state.boardFilter || {};
+            this._buildPeriodCache();          // recorta métricas pelo período antes de tudo
             let keep = this._computeBoardScope();
             let AD_NODE_H = f.compact ? 175 : 350;   // compacto: thumb menor + funil oculto
             let AD_NODE_W = f.compact ? 170 : NODE_W;
@@ -1458,10 +1540,14 @@
                 const setsOk = new Set((this._state.adsets || []).filter(a => campsOk.has(a.campaignId)).map(a => a.id));
                 let cands = (this._state.ads || []).filter(a => setsOk.has(a.adsetId));
                 if (keep) cands = cands.filter(a => keep.ad.has(a.id));
-                this._sortByMetric(cands, f.metric)
-                    .filter(a => this._metricValue(a, f.metric) != null)
-                    .slice(0, 10)
-                    .forEach((a, i) => this._boardTopRank.set(a.id, i + 1));
+                const ordenados = this._sortByMetric(cands, f.metric)
+                    .filter(a => this._metricValue(a, f.metric) != null);
+                // f.top: '' = nenhum · 'best' = 10 melhores · 'worst' = 10 piores
+                this._boardRankDir = f.top || (f.metric ? 'best' : '');
+                const lista = this._boardRankDir === 'worst'
+                    ? ordenados.slice(-10).reverse()   // piores primeiro
+                    : ordenados.slice(0, 10);
+                lista.forEach((a, i) => this._boardTopRank.set(a.id, i + 1));
                 if (f.top) {
                     keep = this._computeBoardScope(ad => this._boardTopRank.has(ad.id));
                     if (keep) visibleProducts = visibleProducts.filter(p => keep.product.has(p.id));
@@ -1577,8 +1663,10 @@
             const totalGeral = (this._state.campaigns || []).length + (this._state.adsets || []).length + (this._state.ads || []).length;
             const mostrados = nodes.filter(n => n.type !== 'funnel' && n.type !== 'product').length;
             const cnt = document.getElementById('adh-board-count');
-            if (cnt) cnt.textContent = `${mostrados} de ${totalGeral} nós`;
-            const temFiltro = !!(f.q || f.running || f.valid || f.metric || f.top || f.compact);
+            const rangeAtivo = this._periodRange();
+            if (cnt) cnt.textContent = `${mostrados} de ${totalGeral} nós`
+                + (rangeAtivo ? ` · ${this._fmtDia(rangeAtivo.from)}–${this._fmtDia(rangeAtivo.to)}` : '');
+            const temFiltro = !!(f.q || f.running || f.valid || f.metric || f.top || f.compact || f.period);
             document.getElementById('adh-board-clear')?.classList.toggle('hidden', !temFiltro);
             this._boardNodeSize = { w: NODE_W, h: NODE_H };
             this._drawBoardEdges();
@@ -1878,7 +1966,10 @@
             }
             const valid = item.validated ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;color:#10b981" title="Validado"></i>' : '';
             const rank = (n.type === 'ad' && this._boardTopRank) ? this._boardTopRank.get(item.id) : null;
-            const rankBadge = rank ? `<span class="adh-rank-badge" title="${rank}º melhor pela métrica selecionada">${rank}º</span>` : '';
+            const pior = this._boardRankDir === 'worst';
+            const rankBadge = rank
+                ? `<span class="adh-rank-badge${pior ? ' adh-rank-worst' : ''}" title="${rank}º ${pior ? 'PIOR' : 'melhor'} pela métrica selecionada">${rank}º${pior ? ' pior' : ''}</span>`
+                : '';
             // Criativo expandido: imagem grande (ou placeholder)
             const adImage = n.type === 'ad'
                 ? (item.thumbnail
@@ -1921,7 +2012,7 @@
                 </div>`;
             }
 
-            return `<div class="adh-board-node ${selected ? 'adh-board-node-selected' : ''} ${item.validated ? 'adh-board-node-validated' : ''} ${rank ? 'adh-board-node-top' : ''} adh-board-node-${n.type}"
+            return `<div class="adh-board-node ${selected ? 'adh-board-node-selected' : ''} ${item.validated ? 'adh-board-node-validated' : ''} ${rank ? (pior ? 'adh-board-node-worst' : 'adh-board-node-top') : ''} adh-board-node-${n.type}"
                 data-type="${n.type}" data-id="${this._esc(item.id)}"
                 style="left:${n.x}px;top:${n.y}px;width:${w}px;min-height:${h}px">
                 <div class="adh-board-node-hdr">
