@@ -85,9 +85,14 @@
         <div class="sidebar-section">
             <a href="#" class="sidebar-link active" data-tab="dashboard"><i data-lucide="layout-dashboard" class="sidebar-icon"></i><span>Dashboard</span></a>
             <a href="#" class="sidebar-link" data-tab="vendas"><i data-lucide="line-chart" class="sidebar-icon"></i><span>Vendas</span></a>
-            <a href="#" class="sidebar-link" data-tab="fiscal"><i data-lucide="building-2" class="sidebar-icon"></i><span>Fiscal</span></a>
-            <a href="#" class="sidebar-link" data-tab="reconciliation"><i data-lucide="scale" class="sidebar-icon"></i><span>Conciliação</span></a>
-            <a href="#" class="sidebar-link" data-tab="captures"><i data-lucide="download-cloud" class="sidebar-icon"></i><span>Capturas</span></a>
+            <div class="sidebar-group">
+                <button class="sidebar-group-header" data-group="financeiro"><i data-lucide="landmark" class="sidebar-icon"></i><span>Financeiro</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+                <div class="sidebar-group-items" data-group-items="financeiro">
+                    <a href="#" class="sidebar-link sidebar-sublink" data-tab="fiscal"><i data-lucide="building-2" class="sidebar-icon"></i><span>Fiscal</span></a>
+                    <a href="#" class="sidebar-link sidebar-sublink" data-tab="reconciliation"><i data-lucide="scale" class="sidebar-icon"></i><span>Conciliação</span></a>
+                    <a href="#" class="sidebar-link sidebar-sublink" data-tab="captures"><i data-lucide="download-cloud" class="sidebar-icon"></i><span>Capturas</span></a>
+                </div>
+            </div>
         </div>
 
         <div class="sidebar-group">
