@@ -412,6 +412,7 @@ const CreativesModule = {
             document.getElementById('creative-platform').value = creative.platform || 'Meta Ads';
             document.getElementById('creative-status').value = creative.status || 'ativo';
             document.getElementById('creative-launch-date').value = creative.launchDate || '';
+            const pgIn = document.getElementById('creative-page-url'); if (pgIn) pgIn.value = creative.pageUrl || '';
             // Ad text fields
             document.getElementById('creative-primary-text').value = creative.primaryText || '';
             document.getElementById('creative-headline').value = creative.headline || '';
@@ -484,6 +485,7 @@ const CreativesModule = {
             platform: document.getElementById('creative-platform').value,
             status: document.getElementById('creative-status').value || 'ativo',
             launchDate: document.getElementById('creative-launch-date').value,
+            pageUrl: (document.getElementById('creative-page-url')?.value || '').trim(),
             // Ad copy fields
             primaryText: document.getElementById('creative-primary-text').value.trim(),
             headline: document.getElementById('creative-headline').value.trim(),
@@ -849,6 +851,74 @@ const CreativesModule = {
         showToast('Metrica registrada!', 'success');
     },
 
+    // ---- Clonar criativo (nova variação de ângulo/hook) ----
+    // Herda produto/país/campanha/plataforma e COPIA a mídia pra um novo id.
+    // Copiar é obrigatório: deleteCreative() apaga o blob do MediaStore, então
+    // compartilhar mediaId faria excluir o clone destruir a mídia do original.
+    async duplicateCreative(creativeId) {
+        const src = this.getCreativeById(creativeId);
+        if (!src) return;
+
+        const base = String(src.name || 'Criativo').replace(/\s*\(v\d+\)\s*$/i, '');
+        const sameBase = (AppState.allCreatives || []).filter(c =>
+            String(c.name || '').replace(/\s*\(v\d+\)\s*$/i, '') === base).length;
+        const novo = {
+            ...src,
+            id: generateId('creative'),
+            name: `${base} (v${sameBase + 1})`,
+            status: 'ativo',
+            launchDate: todayISO(),      // conta o tempo no ar a partir de hoje
+            variations: [],              // métricas/variações não são herdadas
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            mediaId: null,
+        };
+
+        // Copia o blob da mídia pra um id próprio
+        if (src.mediaId && typeof MediaStore !== 'undefined' && MediaStore.isSupported?.()) {
+            try {
+                const rec = await MediaStore.get(src.mediaId);
+                if (rec && rec.blob) {
+                    const newMediaId = generateId('media');
+                    await MediaStore.put(newMediaId, rec.blob, { type: rec.type, name: rec.name });
+                    novo.mediaId = newMediaId;
+                }
+            } catch (err) {
+                console.warn('[Creatives] copia de midia falhou, clonando sem midia:', err);
+                novo.mediaThumb = '';
+            }
+        }
+
+        AppState.allCreatives.push(novo);
+        LocalStore.save('creatives', AppState.allCreatives);
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        EventBus.emit('creativesChanged');
+        this.render();
+        if (typeof showToast === 'function') showToast(`Variação criada: ${novo.name} — ajuste ângulo/hook`, 'success');
+        // Abre já no formulário pra editar ângulo/hook
+        setTimeout(() => this.openForm(this.getCreativeById(novo.id)), 250);
+    },
+
+    // Atalho: gerar imagem nova por IA a partir deste criativo
+    sendToAiGenerator(creativeId) {
+        const c = this.getCreativeById(creativeId);
+        if (!c) return;
+        try {
+            const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === c.productId);
+            const seed = {
+                productId: c.productId,
+                productName: prod?.name || '',
+                angle: c.angle || '',
+                hook: c.hookText || '',
+                headline: c.headline || '',
+                fromCreativeId: c.id,
+            };
+            sessionStorage.setItem('etracker_ai_seed', JSON.stringify(seed));
+        } catch {}
+        document.querySelector('.tab-btn[data-tab="ai-generations"]')?.click();
+        if (typeof showToast === 'function') showToast('Abrindo AI Generations com o contexto deste criativo', 'info');
+    },
+
     // ---- Test Variations (ad text A/B testing) ----
     openVariationForm(creativeId) {
         const creative = this.getCreativeById(creativeId);
@@ -1203,6 +1273,7 @@ const CreativesModule = {
             ${camp ? `<span class="creative-chip creative-chip-camp" title="Campanha"><i data-lucide="megaphone" style="width:11px;height:11px;vertical-align:-1px"></i> ${this._escapeHtml(camp)}</span>` : ''}
             ${creative.type ? `<span class="creative-chip">${this._escapeHtml(creative.type)}</span>` : ''}
             ${creative.angle ? `<span class="creative-chip creative-chip-angle">${this._escapeHtml(creative.angle)}</span>` : ''}
+            ${creative.pageUrl ? `<a class="creative-chip creative-chip-page" href="${this._escapeHtml(creative.pageUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a página que roda este criativo: ${this._escapeHtml(creative.pageUrl)}"><i data-lucide="external-link" style="width:11px;height:11px;vertical-align:-1px"></i> Página</a>` : ''}
         </div>`;
 
         return `<div class="creative-card ${fatigue.fatigued ? 'creative-fatigued' : ''} ${creative.status === 'winner' ? 'creative-winner' : ''} ${isBest ? 'creative-best' : ''}">
@@ -1251,6 +1322,8 @@ const CreativesModule = {
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openForm(CreativesModule.getCreativeById('${creative.id}'))">Editar</button>
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openMetricForm('${creative.id}')">+ Metrica</button>
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openVariationForm('${creative.id}')"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testar Variacao</button>
+                <button class="btn btn-secondary btn-sm" onclick="CreativesModule.duplicateCreative('${creative.id}')" title="Clonar herdando produto/país/campanha — troque ângulo e hook"><i data-lucide="copy-plus" style="width:14px;height:14px;vertical-align:-2px"></i> Nova variação</button>
+                <button class="btn btn-secondary btn-sm" onclick="CreativesModule.sendToAiGenerator('${creative.id}')" title="Gerar imagem nova por IA a partir deste criativo"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> IA</button>
                 ${creative.imageUrl ? `<button class="btn btn-primary btn-sm" onclick="CreativesModule.sendToAdLauncher('${creative.id}')"><i data-lucide="send" style="width:14px;height:14px;vertical-align:-2px"></i> Lançar Anúncio</button>` : ''}
                 <button class="btn btn-danger btn-sm" onclick="CreativesModule.deleteCreative('${creative.id}')">Excluir</button>
             </div>

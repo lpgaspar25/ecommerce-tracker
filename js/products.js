@@ -156,6 +156,7 @@ const ProductsModule = {
             if (gIn) gIn.value = googleIds.map(id => googleLabels[id] ? `${googleLabels[id]}=${id}` : id).join(', ');
             const cuIn = document.getElementById('product-campaign-url');
             if (cuIn) cuIn.value = product.campaignGroupUrl || '';
+            const pgIn = document.getElementById('product-page-url'); if (pgIn) pgIn.value = product.pageUrl || '';
             document.getElementById('product-price').value = product.price;
             document.getElementById('product-price-currency').value = product.priceCurrency;
             document.getElementById('product-cost').value = product.cost;
@@ -533,6 +534,7 @@ const ProductsModule = {
             fbAdAccountLabels: fbManualParsed.labels,
             googleAdAccountLabels: googleParsed.labels,
             campaignGroupUrl: (document.getElementById('product-campaign-url')?.value || '').trim(),
+            pageUrl: (document.getElementById('product-page-url')?.value || '').trim(),
             price: parseFloat(document.getElementById('product-price').value) || 0,
             priceCurrency: document.getElementById('product-price-currency').value,
             cost: parseFloat(document.getElementById('product-cost').value) || 0,
@@ -902,7 +904,7 @@ const ProductsModule = {
             const isSelected = this._selectedIds.has(p.id);
             return `<tr class="${isSelected ? 'row-selected' : ''}" data-product-id="${p.id}">
                 <td><input type="checkbox" class="products-row-cb" data-id="${p.id}" ${isSelected ? 'checked' : ''}></td>
-                <td><strong>${this._escapeHtml(p.name)}</strong>${typeof renderProductMetaBadges === 'function' ? renderProductMetaBadges(p) : ''}<br>${stageBadge}${countryBadges}</td>
+                <td><strong>${this._escapeHtml(p.name)}</strong>${typeof renderProductMetaBadges === 'function' ? renderProductMetaBadges(p) : ''}${p.pageUrl ? ` <a class="prod-page-link" href="${this._escapeHtml(p.pageUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a página que roda este produto"><i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-2px"></i> Página</a>` : ''}<br>${stageBadge}${countryBadges}</td>
                 <td>${statusBadge}</td>
                 <td>${typeof renderProductMetaBadges === 'function' && (Array.isArray(p.languages) || Array.isArray(p.platforms)) ? renderProductMetaBadges(p) : this._escapeHtml(p.language || p.country || 'Ingles')}</td>
                 <td>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</td>

@@ -10490,6 +10490,16 @@ thead:hover .diary-check-col input[type="checkbox"],
 
 .lab-card-header { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.4rem; }
 
+/* Link da página que está rodando (produto / criativo) */
+.prod-page-link, .creative-chip-page {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(16, 185, 129, .12); color: #059669;
+    border-radius: 6px; padding: 1px 6px;
+    font-size: .68rem; font-weight: 600; text-decoration: none;
+    white-space: nowrap;
+}
+.prod-page-link:hover, .creative-chip-page:hover { background: rgba(16, 185, 129, .22); }
+
 /* Menu rápido de status no card do Laboratório */
 .lab-status-wrap { position: relative; margin-left: auto; }
 .lab-status-btn {
