@@ -790,6 +790,26 @@
             return true;
         },
 
+        // API pública: alimenta o mapa a partir das linhas de um relatório (usado pelo
+        // Diagnóstico, pra que UM upload de CSV monte também a hierarquia de ads).
+        // Retorna null quando o relatório não tem colunas de conjunto/criativo.
+        importRowsForProduct(rows, productId) {
+            if (!Array.isArray(rows) || rows.length < 2 || !productId) return null;
+            if (!this._state.campaigns) this._loadFromStorage();
+            const headerIdx = this._findHeaderRow(rows);
+            if (headerIdx < 0) return null;
+            const headers = rows[headerIdx] || [];
+            const temConjunto = this._findCol(headers, ['ad set name', 'nome do conjunto de anuncios', 'nome do conjunto', 'adset name']) >= 0;
+            const temCriativo = this._findCol(headers, ['ad name', 'nome do anuncio']) >= 0;
+            if (!temConjunto && !temCriativo) return null;
+            try {
+                return this._importRows(rows.slice(headerIdx), productId);
+            } catch (e) {
+                console.warn('[AdHierarchy] import via relatório falhou:', e);
+                return null;
+            }
+        },
+
         // External API: count campaigns for a product
         campaignCountForProduct(productId) {
             if (!this._state.campaigns) { try { this._loadFromStorage(); } catch {} }
@@ -944,7 +964,7 @@
             return -1;
         },
 
-        _importRows(rows) {
+        _importRows(rows, forcedProductId) {
             const headers = rows[0] || [];
             const idxCampaign = this._findCol(headers, ['campaign name', 'nome da campanha', 'campanha']);
             const idxAdset = this._findCol(headers, ['ad set name', 'nome do conjunto de anuncios', 'nome do conjunto', 'conjunto', 'adset name']);
@@ -959,8 +979,9 @@
             if (idxCampaign < 0) throw new Error('Coluna "Nome da campanha" não encontrada');
 
             const result = { campaigns: 0, adsets: 0, ads: 0 };
-            const productId = this._state.selectedProductId && this._state.selectedProductId !== '__unassigned__'
-                ? this._state.selectedProductId : null;
+            const productId = forcedProductId
+                || (this._state.selectedProductId && this._state.selectedProductId !== '__unassigned__'
+                    ? this._state.selectedProductId : null);
 
             // Acumula status mais recente por entidade (data -> status)
             // Chave: campaignName | adsetName | adName

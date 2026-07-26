@@ -1399,24 +1399,6 @@ const FunnelModule = {
             throw new Error('Relatório sem linhas de dados');
         }
 
-        // Avisa (ou bloqueia) quando faltam colunas necessárias no relatório
-        const check = this._validateReportColumns(headerMap);
-        if (check.blocking.length) {
-            throw new Error(
-                'Faltam colunas obrigatórias no relatório: ' + check.blocking.join(', ') +
-                '. Adicione essas colunas no Ads Manager e exporte de novo.'
-            );
-        }
-        if (check.missing.length && typeof showToast === 'function') {
-            showToast(
-                'Importado, mas faltam colunas: ' + check.missing.join(' · ') +
-                '. Métricas afetadas ficam vazias ou estimadas.',
-                'warning'
-            );
-        }
-        if (check.notes.length && typeof showToast === 'function') {
-            check.notes.forEach(n => showToast(n, 'info'));
-        }
 
         const dailyGroups = this._groupDailyRows(dataRows, headerMap);
         let imported = null;
@@ -1640,6 +1622,40 @@ const FunnelModule = {
 
         if (dataRows.length === 0) {
             throw new Error('Relatório sem linhas de dados');
+        }
+
+
+        // Um upload só alimenta os dois lugares: além do Diário, monta a hierarquia
+        // Produto → Campanha → Conjunto → Criativo no Mapa de Ads.
+        try {
+            if (typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.importRowsForProduct && this.state.productId) {
+                const mapRes = AdHierarchyModule.importRowsForProduct(rows, this.state.productId);
+                if (mapRes && (mapRes.campaigns || mapRes.adsets || mapRes.ads)) {
+                    showToast(
+                        `Mapa de Ads atualizado: ${mapRes.campaigns} camp · ${mapRes.adsets} conj · ${mapRes.ads} criativos`,
+                        'success'
+                    );
+                }
+            }
+        } catch (e) { console.warn('[Funnel] alimentar Mapa de Ads falhou:', e); }
+
+        // Avisa (ou bloqueia) quando faltam colunas necessárias no relatório
+        const check = this._validateReportColumns(headerMap);
+        if (check.blocking.length) {
+            throw new Error(
+                'Faltam colunas obrigatórias no relatório: ' + check.blocking.join(', ') +
+                '. Adicione essas colunas no Ads Manager e exporte de novo.'
+            );
+        }
+        if (check.missing.length && typeof showToast === 'function') {
+            showToast(
+                'Importado, mas faltam colunas: ' + check.missing.join(' · ') +
+                '. Métricas afetadas ficam vazias ou estimadas.',
+                'warning'
+            );
+        }
+        if (check.notes.length && typeof showToast === 'function') {
+            check.notes.forEach(n => showToast(n, 'info'));
         }
 
         const budgetConfig = this._extractCampaignBudgetConfig(dataRows, headerMap);
