@@ -1068,6 +1068,9 @@ const SalesModule = (() => {
                 ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}">${p.delta.label}</span>`
                 : '';
             const lp = localProductFor(p.pid, p.title);
+            // Nome sempre do produto local (renomear em Produtos reflete aqui).
+            // p.title é o título congelado no pedido da Shopify — só fallback.
+            const dispName = lp?.name || p.title || p.pid;
             const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
             const conv = convForProduct(lp?.id);
             const convHtml = `<span class="mdgx-conv-chips">
@@ -1122,7 +1125,7 @@ const SalesModule = (() => {
                     : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
                 }
                 <div class="mdgx-ranking-info">
-                    <div class="mdgx-ranking-name" title="${(p.title || '').replace(/"/g, '&quot;')}">${p.title || p.pid}${badges}</div>
+                    <div class="mdgx-ranking-name" title="${(dispName || '').replace(/"/g, '&quot;')}">${dispName}${badges}</div>
                     <div class="mdgx-ranking-meta">
                         <span class="mdgx-ranking-price">${fmtMoney(p.avgPrice, p.currency)}</span>
                         <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
@@ -1343,6 +1346,20 @@ const SalesModule = (() => {
     // ── Render: summary + table ──────────────────────────────────
     function _esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+    // Resolve o produto LOCAL a partir do id/título da Shopify.
+    // Lê AppState na hora da chamada, então renomear em Produtos reflete em tudo
+    // que usa este helper (tabela de pedidos, ranking, filtros).
+    const _normName = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+    function _localProductFor(pid, title) {
+        const localProducts = AppState.allProducts || AppState.products || [];
+        let lp = null;
+        if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+            lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
+        }
+        if (!lp && title) lp = localProducts.find(p => _normName(p.name) === _normName(title)) || null;
+        return lp;
+    }
+
     function _renderSummary() {
         const wrap = document.getElementById('sales-summary');
         if (!wrap) return;
@@ -1431,16 +1448,7 @@ const SalesModule = (() => {
         }
 
         // Compact platform-icon + clickable product helper (no extra column)
-        const localProducts = AppState.allProducts || AppState.products || [];
-        const normP = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
-        const localFor = (pid, title) => {
-            let lp = null;
-            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
-                lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
-            }
-            if (!lp && title) lp = localProducts.find(p => normP(p.name) === normP(title)) || null;
-            return lp;
-        };
+        const localFor = _localProductFor;
         const platMiniIcons = (lp) => {
             if (!lp) return '';
             const plats = Array.isArray(lp.platforms) ? lp.platforms : [];
@@ -1465,7 +1473,8 @@ const SalesModule = (() => {
             const orderCC = (o.shipping_address?.country_code || '').toUpperCase();
             return (o.line_items || []).map(li => {
                 const lp = localFor(li.product_id, li.title);
-                const title = `${_esc(li.title || '—')} ×${li.quantity}`;
+                // Nome atual do produto local; li.title é o congelado no pedido (só fallback)
+                const title = `${_esc(lp?.name || li.title || '—')} ×${li.quantity}`;
                 if (lp) {
                     // Open the campaign for THIS order's country (falls back to the generic link)
                     const campUrl = _buildCampaignUrl(lp, orderCC);
@@ -1538,7 +1547,9 @@ const SalesModule = (() => {
             for (const o of orders) {
                 for (const li of (o.line_items || [])) {
                     if (li.product_id && !products.has(String(li.product_id))) {
-                        products.set(String(li.product_id), li.title || `#${li.product_id}`);
+                        // Prefere o nome do produto local (renomeações refletem no filtro)
+                        const lp = _localProductFor(li.product_id, li.title);
+                        products.set(String(li.product_id), lp?.name || li.title || `#${li.product_id}`);
                     }
                 }
             }
@@ -2521,6 +2532,13 @@ const SalesModule = (() => {
                     if (window.lucide?.createIcons) lucide.createIcons();
                     renderDashWidget(false);
                 }
+            });
+            // Renomear/editar produto reflete na hora (nome, badges, filtros) sem refazer o fetch
+            EventBus.on('productsChanged', () => {
+                if (!_state.loaded) return;
+                try { _renderMdgxRanking(); } catch {}
+                try { _renderTable(); } catch {}
+                try { _populateFilters(); } catch {}
             });
         }
     }

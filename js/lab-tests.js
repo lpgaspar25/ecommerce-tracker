@@ -682,9 +682,33 @@ const LabTestsModule = {
                 if (e.target.closest('[data-action="calc-shopify"]')) return;
                 if (e.target.closest('[data-action="open-chart"]')) return;
                 if (e.target.closest('.lab-card-bulk-check')) return;
+                if (e.target.closest('.lab-status-wrap')) return; // menu de status rápido
                 this._openModal(card.dataset.id);
             });
         });
+
+        // Menu rápido de status
+        const closeStatusMenus = () => container.querySelectorAll('.lab-status-menu').forEach(m => m.classList.add('hidden'));
+        container.querySelectorAll('[data-status-btn]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const menu = container.querySelector(`[data-status-menu="${btn.dataset.statusBtn}"]`);
+                const wasHidden = menu?.classList.contains('hidden');
+                closeStatusMenus();
+                if (wasHidden) menu?.classList.remove('hidden');
+            });
+        });
+        container.querySelectorAll('.lab-status-opt').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeStatusMenus();
+                this._quickSetStatus(opt.dataset.id, opt.dataset.setStatus, opt.dataset.setResult || '');
+            });
+        });
+        // Fecha ao clicar fora (um listener só, trocado a cada render)
+        if (this._statusMenuCloser) document.removeEventListener('click', this._statusMenuCloser);
+        this._statusMenuCloser = (ev) => { if (!ev.target.closest('.lab-status-wrap')) closeStatusMenus(); };
+        document.addEventListener('click', this._statusMenuCloser);
 
         // Click on result box → open chart
         container.querySelectorAll('[data-action="open-chart"]').forEach(box => {
@@ -809,6 +833,50 @@ const LabTestsModule = {
         }
     },
 
+    // Menu rápido de status no card (concluir / cancelar / reativar) — sem abrir o modal
+    _renderStatusMenu(test) {
+        const opts = [];
+        if (test.status === 'ativo') {
+            opts.push(['concluido', 'positivo', 'check-circle-2', '#059669', 'Concluir · Validado']);
+            opts.push(['concluido', 'negativo', 'x-circle', '#dc2626', 'Concluir · Falhou']);
+            opts.push(['concluido', 'neutro', 'minus', '#6b7280', 'Concluir · Neutro']);
+            opts.push(['cancelado', '', 'ban', '#6b7280', 'Cancelar teste']);
+        } else {
+            opts.push(['ativo', '', 'rotate-ccw', '#10b981', 'Reativar (voltar pra ativo)']);
+            if (test.status !== 'cancelado') opts.push(['cancelado', '', 'ban', '#6b7280', 'Cancelar teste']);
+        }
+        return `
+        <div class="lab-status-wrap">
+            <button class="lab-status-btn" data-status-btn="${test.id}" title="Mudar status rápido">
+                <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+            </button>
+            <div class="lab-status-menu hidden" data-status-menu="${test.id}">
+                ${opts.map(([st, rs, icon, color, label]) =>
+                    `<button class="lab-status-opt" data-id="${test.id}" data-set-status="${st}" data-set-result="${rs}">
+                        <i data-lucide="${icon}" style="width:14px;height:14px;color:${color}"></i> ${label}
+                    </button>`
+                ).join('')}
+            </div>
+        </div>`;
+    },
+
+    _quickSetStatus(id, status, result) {
+        const t = this._tests.find(x => x.id === id);
+        if (!t) return;
+        t.status = status;
+        if (status === 'concluido' && result) t.result = result;
+        t.updatedAt = new Date().toISOString();
+        try {
+            this._persist();
+            this._renderCards();
+            if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+            const nome = status === 'concluido'
+                ? `Concluído (${result === 'positivo' ? 'validado' : result === 'negativo' ? 'falhou' : 'neutro'})`
+                : status === 'cancelado' ? 'Cancelado' : 'Ativo';
+            if (typeof showToast === 'function') showToast(`Status atualizado: ${nome}`, 'success');
+        } catch (e) { console.error('[LabTests] quick status failed:', e); }
+    },
+
     _renderCard(test) {
         const cat = this.CATEGORIES[test.category] || this.CATEGORIES.outro;
         const metric = this.METRICS[test.expectedMetric];
@@ -832,7 +900,9 @@ const LabTestsModule = {
         // Resolve product and creative names
         let productName = '';
         if (test.productId && typeof AppState !== 'undefined') {
-            const prod = (AppState.products || []).find(p => p.id === test.productId);
+            // allProducts primeiro: renomear em Produtos reflete aqui mesmo se o
+            // filtro de loja não incluir o produto
+            const prod = (AppState.allProducts || AppState.products || []).find(p => p.id === test.productId);
             productName = prod ? prod.name : '';
         }
         let creativeName = '';
@@ -851,6 +921,7 @@ const LabTestsModule = {
                 <span class="lab-category-badge" style="background:${cat.bg};color:${cat.color}">${cat.icon} ${cat.label}</span>
                 ${resultBadge}
                 ${isOverdue ? '<span class="lab-overdue-badge"><i data-lucide="alarm-clock" style="width:14px;height:14px;vertical-align:-2px"></i> Vencido</span>' : ''}
+                ${this._renderStatusMenu(test)}
             </div>
             <h4 class="lab-card-title">${this._esc(test.title)}</h4>
             ${productName || creativeName ? `<p class="lab-card-area">${productName ? `<i data-lucide="tag" style="width:14px;height:14px;vertical-align:-2px"></i>️ ${this._esc(productName)}` : ''}${productName && creativeName ? ' · ' : ''}${creativeName ? `<i data-lucide="clapperboard" style="width:14px;height:14px;vertical-align:-2px"></i> ${this._esc(creativeName)}` : ''}</p>` : ''}
