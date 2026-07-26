@@ -850,6 +850,18 @@
 
         // ---------- CSV Import ----------
         async importCsv(file) {
+            // Sem produto selecionado, tudo entra como "Sem produto vinculado" e
+            // some da coluna do produto — avisa antes em vez de deixar o usuario perdido.
+            const pidSel = this._state.selectedProductId;
+            if (!pidSel || pidSel === '__unassigned__') {
+                const seguir = confirm(
+                    'Nenhum produto selecionado.\n\n' +
+                    'As campanhas do CSV entrariam como "Sem produto vinculado" — e a coluna do produto continuaria vazia.\n\n' +
+                    'Recomendado: Cancelar, clicar no produto na coluna "Produtos" e importar de novo.\n\n' +
+                    'Importar assim mesmo?'
+                );
+                if (!seguir) return;
+            }
             try {
                 showToast('Lendo arquivo…', 'info');
                 let rows;
@@ -875,7 +887,10 @@
                 // Slice to start at header
                 const dataRows = rows.slice(headerRowIdx);
                 const result = this._importRows(dataRows);
-                showToast(`Importado: ${result.campaigns} camp · ${result.adsets} conj · ${result.ads} criativos`, 'success');
+                const alvo = (pidSel && pidSel !== '__unassigned__')
+                    ? (this._products().find(p => p.id === pidSel)?.name || 'produto selecionado')
+                    : 'Sem produto vinculado';
+                showToast(`Importado em "${alvo}": ${result.campaigns} camp · ${result.adsets} conj · ${result.ads} criativos`, 'success');
                 this.render();
             } catch (e) {
                 console.error('[AdHierarchy] import error:', e);
