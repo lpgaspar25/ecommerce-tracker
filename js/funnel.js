@@ -1399,6 +1399,25 @@ const FunnelModule = {
             throw new Error('Relatório sem linhas de dados');
         }
 
+        // Avisa (ou bloqueia) quando faltam colunas necessárias no relatório
+        const check = this._validateReportColumns(headerMap);
+        if (check.blocking.length) {
+            throw new Error(
+                'Faltam colunas obrigatórias no relatório: ' + check.blocking.join(', ') +
+                '. Adicione essas colunas no Ads Manager e exporte de novo.'
+            );
+        }
+        if (check.missing.length && typeof showToast === 'function') {
+            showToast(
+                'Importado, mas faltam colunas: ' + check.missing.join(' · ') +
+                '. Métricas afetadas ficam vazias ou estimadas.',
+                'warning'
+            );
+        }
+        if (check.notes.length && typeof showToast === 'function') {
+            check.notes.forEach(n => showToast(n, 'info'));
+        }
+
         const dailyGroups = this._groupDailyRows(dataRows, headerMap);
         let imported = null;
         let mode = 'single';
@@ -2965,6 +2984,59 @@ const FunnelModule = {
         if (n <= 0) return 0;
         // Facebook CSV sometimes exports rates as ratio (0.77) and sometimes as percent (77.0).
         return n <= 1.5 ? (n * 100) : n;
+    },
+
+    /**
+     * Confere se o relatório tem as colunas necessárias.
+     *  - blocking: sem elas não dá pra importar (erro)
+     *  - missing : dá pra importar, mas alguma métrica fica vazia (aviso)
+     *  - notes   : dá pra suprir de outro jeito (informativo)
+     */
+    _validateReportColumns(headerMap) {
+        const has = (cands, opts) => this._findHeaderIndex(headerMap, cands, opts || {}) >= 0;
+
+        const blocking = [];
+        if (!has(['valor usado usd', 'valor usado brl', 'valor usado', 'amount spent'])) blocking.push('Valor usado (gasto)');
+        if (!has(['impressoes', 'impressions'])) blocking.push('Impressões');
+
+        const missing = [];
+        const notes = [];
+
+        // Cliques: coluna própria é o ideal; CPC serve de fallback
+        const temCliques = has(['cliques todos', 'cliques no link', 'link clicks', 'outbound clicks', 'cliques']);
+        const temCpc = has(['cpc custo por clique no link', 'cpc custo por clique', 'custo por clique no link', 'custo por clique de saida', 'cpc']);
+        if (!temCliques && temCpc) {
+            notes.push('Sem a coluna "Cliques no link" — cliques calculados a partir do CPC. Para números exatos, adicione essa coluna.');
+        } else if (!temCliques && !temCpc) {
+            missing.push('Cliques no link (e CPC)');
+        }
+
+        // Etapas do funil
+        if (!has(['visualizacoes da pagina de destino do site', 'visualizacoes da pagina de destino', 'landing page views'])) {
+            missing.push('Visualizações da página de destino');
+        }
+        if (!has(['adicoes ao carrinho', 'adicao ao carrinho', 'adds to cart', 'add to cart'], { strict: true })) {
+            missing.push('Adições ao carrinho');
+        }
+        if (!has(['finalizacoes de compra iniciadas', 'checkouts iniciados', 'initiated checkout'])) {
+            missing.push('Finalizações de compra iniciadas');
+        }
+        if (!has(['compras no site', 'compras', 'purchases', 'resultados'])) {
+            missing.push('Compras');
+        }
+
+        // Quebra por dia / por anúncio
+        if (!has(['dia', 'day', 'data', 'date'])) {
+            notes.push('Sem a coluna "Dia" — o relatório será tratado como um período único, não dia a dia.');
+        }
+        if (!has(['nome do anuncio', 'ad name'])) {
+            notes.push('Sem "Nome do anúncio" — não dá pra separar por criativo.');
+        }
+        if (!has(['nome da campanha', 'campaign name'])) {
+            notes.push('Sem "Nome da campanha" — não dá pra separar por campanha.');
+        }
+
+        return { blocking, missing, notes };
     },
 
     _extractCsvMetricsFromRow(row, headerMap) {
