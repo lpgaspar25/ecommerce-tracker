@@ -8544,6 +8544,17 @@ thead:hover .diary-check-col input[type="checkbox"],
 .creative-metric strong { font-size: 0.85rem; }
 .creative-no-metrics { text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 0.5rem; }
 
+/* Métricas vindas da planilha (Mapa de Ads) */
+.creative-metric-est {
+    font-size: 0.62rem; font-weight: 600; opacity: 0.7;
+    border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; margin-left: 2px;
+}
+.creative-admap-note {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.7rem; color: var(--text-muted);
+    padding: 4px 2px 0; margin-top: -2px;
+}
+
 .creative-card-actions { display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap; }
 
 /* Variations */
@@ -15359,3 +15370,74 @@ body:not([data-theme]) .adh-board-viewport {
 .rec-verdict { margin-top: .8rem; font-size: .9rem; line-height: 1.45; }
 .rec-bridge-table .rec-sub td { color: var(--text-muted, #6b7280); font-size: .86rem; padding-top: .3rem; padding-bottom: .3rem; }
 .rec-insight { margin-top: .7rem; padding: .6rem .75rem; border-radius: 10px; background: rgba(99,102,241,.08); font-size: .88rem; line-height: 1.45; }
+
+/* ─────────────────────────────────────────────
+   Diário → Criativos: ranking de desempenho
+   ───────────────────────────────────────────── */
+.diary-creatives-panel { margin-bottom: 1.25rem; }
+
+.diary-cre-toolbar {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 0.65rem 0.85rem; margin-bottom: 0.85rem;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+}
+.diary-cre-toolbar label { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
+.diary-cre-toolbar .input-sm { padding: 0.3rem 0.5rem; font-size: 0.8rem; width: auto; }
+.diary-cre-check { cursor: pointer; }
+.diary-cre-count { margin-left: auto; font-size: 0.78rem; color: var(--text-muted); }
+.diary-cre-hint { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; }
+
+.diary-cre-produto {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 1rem; overflow: hidden;
+}
+.diary-cre-produto-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap; padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--border); background: var(--bg-hover);
+}
+.diary-cre-produto-head h3 { margin: 0; font-size: 0.95rem; }
+.diary-cre-kpis { display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.diary-cre-kpis span { display: flex; flex-direction: column; }
+.diary-cre-kpis label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+.diary-cre-kpis strong { font-size: 0.95rem; }
+.diary-cre-kpis em { font-style: normal; opacity: 0.7; }
+
+/* Tabelas largas rolam sozinhas; a página nunca rola de lado. */
+.diary-cre-table-wrap { overflow-x: auto; }
+.diary-cre-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 900px; }
+.diary-cre-table th {
+    text-align: left; padding: 0.5rem 0.6rem; font-size: 0.68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.diary-cre-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.diary-cre-table tbody tr:last-child td { border-bottom: none; }
+.diary-cre-table tbody tr:hover { background: var(--bg-hover); }
+.cre-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cre-pos { width: 28px; color: var(--text-muted); font-size: 0.75rem; }
+.cre-nome strong { display: block; }
+.cre-sub { font-size: 0.7rem; color: var(--text-muted); }
+.cre-cpa strong { font-size: 0.88rem; }
+.cre-status { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 0.66rem; color: #fff; white-space: nowrap; }
+
+/* Fatia do gasto do produto que esse criativo consome */
+.cre-share { height: 3px; background: var(--border); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+.cre-share span { display: block; height: 100%; background: var(--blue); border-radius: 2px; }
+
+.diary-cre-table tr.cre-bom { background: color-mix(in srgb, var(--green) 9%, transparent); }
+.diary-cre-table tr.cre-bom .cre-cpa strong { color: var(--green); }
+.diary-cre-table tr.cre-ruim { background: color-mix(in srgb, var(--red) 9%, transparent); }
+.diary-cre-table tr.cre-ruim .cre-cpa strong { color: var(--red); }
+.diary-cre-table tr.cre-alerta { background: color-mix(in srgb, var(--orange) 9%, transparent); }
+
+.diary-cre-legenda {
+    display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;
+    padding: 0.5rem 1rem; font-size: 0.72rem; color: var(--text-muted);
+    border-top: 1px solid var(--border);
+}
+.cre-leg { display: flex; align-items: center; gap: 0.35rem; }
+.cre-leg::before { content: ''; width: 10px; height: 10px; border-radius: 3px; }
+.cre-leg-bom::before { background: var(--green); }
+.cre-leg-ruim::before { background: var(--red); }
+.cre-leg-nota { margin-left: auto; font-style: italic; }

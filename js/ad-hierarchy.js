@@ -21,6 +21,7 @@
             campaigns: [],      // [{id, name, status, productId, source, validated}]
             adsets: [],         // [{id, name, status, campaignId, daily_budget, source, validated}]
             ads: [],            // [{id, name, status, adsetId, thumbnail, source, validated, impressions, clicks, spend}]
+            currency: 'USD',    // lida do cabeçalho do CSV, ex.: "Valor usado (GBP)"
             // Cache from FB (if connected)
             fbAdsetsByCamp: {},
             fbAdsByAdset: {},
@@ -64,6 +65,7 @@
                 if (Array.isArray(data.customEdges)) this._state.customEdges = data.customEdges;
                 if (Array.isArray(data.funnelNodes)) this._state.funnelNodes = data.funnelNodes;
                 if (data.creativeMedia && typeof data.creativeMedia === 'object') this._state.creativeMedia = data.creativeMedia;
+                if (typeof data.currency === 'string') this._state.currency = data.currency;
             } catch (e) { console.warn('[AdHierarchy] load failed:', e); }
         },
 
@@ -76,6 +78,7 @@
                 customEdges: this._state.customEdges,
                 funnelNodes: this._state.funnelNodes,
                 creativeMedia: this._state.creativeMedia,
+                currency: this._state.currency,
             });
             try {
                 localStorage.setItem(STORAGE_KEY, payload);
@@ -1064,6 +1067,13 @@
 
             if (idxCampaign < 0) throw new Error('Coluna "Nome da campanha" não encontrada');
 
+            // O Facebook põe a moeda no próprio cabeçalho: "Valor usado (GBP)".
+            // Sem isso o app mostraria libra com cifrão de dólar.
+            if (idxSpend >= 0) {
+                const m = String(headers[idxSpend] || '').match(/\(([A-Z]{3})\)/);
+                if (m) this._state.currency = m[1];
+            }
+
             const result = { campaigns: 0, adsets: 0, ads: 0 };
             const productId = forcedProductId
                 || (this._state.selectedProductId && this._state.selectedProductId !== '__unassigned__'
@@ -1229,6 +1239,9 @@
 
             this._rollUpMetrics();
             this._persist();
+            // A tela de Criativos precisa enxergar o que acabou de entrar pela planilha.
+            try { window.CreativesModule?.syncFromAdMap?.({ silent: true }); }
+            catch (e) { console.warn('[AdHierarchy] sync de criativos falhou:', e); }
             return result;
         },
 

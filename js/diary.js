@@ -570,6 +570,14 @@ const DiaryModule = {
             });
         });
 
+        // Controles da aba Criativos
+        document.getElementById('diary-cre-sort')?.addEventListener('change', () => this._renderCreativesView());
+        document.getElementById('diary-cre-only-active')?.addEventListener('change', () => this._renderCreativesView());
+        // O CSV pode ter entrado depois que a tela já estava aberta.
+        EventBus.on('creativesChanged', () => {
+            if (this._activeView === 'creatives') this._renderCreativesView();
+        });
+
         // Group-by-campaign toggle (Facebook-style view)
         const groupBtn = document.getElementById('btn-diary-group-campaign');
         if (groupBtn) {
@@ -1615,11 +1623,218 @@ const DiaryModule = {
         if (this._activeView === 'tests') {
             entries = entries.filter(e => e.isTest);
         }
+
+        // A aba Criativos troca a lista de dias por um ranking de criativos.
+        const painel = document.getElementById('diary-creatives-panel');
+        const lista = document.getElementById('diary-notion-list');
+        const grafico = document.querySelector('.diary-chart-section');
+        const modoCriativos = this._activeView === 'creatives';
+        if (painel) painel.style.display = modoCriativos ? '' : 'none';
+        if (lista) lista.style.display = modoCriativos ? 'none' : '';
+        if (grafico) grafico.style.display = modoCriativos ? 'none' : '';
+
+        if (modoCriativos) {
+            this.renderSummary(entries);
+            this._renderCreativesView();
+            return;
+        }
+
         this.renderNotionList(entries);
         this.renderSummary(entries);
         this._renderDiaryChart(entries);
         // Async: preload Shopify data for visible period, then re-render
         this._ensureShopifyData(entries);
+    },
+
+    // ============================================================
+    //  DIÁRIO → CRIATIVOS
+    //  Ranking por produto, no período escolhido: quem entrega venda barata
+    //  e quem só queima verba. Alimentado pelas métricas que a planilha do
+    //  Mapa de Ads gravou em cada criativo.
+    // ============================================================
+
+    _renderCreativesView() {
+        const corpo = document.getElementById('diary-cre-body');
+        const contador = document.getElementById('diary-cre-count');
+        if (!corpo) return;
+
+        const ini = document.getElementById('diary-date-start')?.value || '';
+        const fim = document.getElementById('diary-date-end')?.value || '';
+        const ordem = document.getElementById('diary-cre-sort')?.value || 'cpa';
+        const soAtivos = !!document.getElementById('diary-cre-only-active')?.checked;
+
+        const criativos = AppState.allCreatives || [];
+        const metricas = AppState.allCreativeMetrics || [];
+        if (!criativos.length || !metricas.length) {
+            corpo.innerHTML = `<div class="empty-state">
+                <p>Nenhum criativo com métricas ainda.</p>
+                <p class="diary-cre-hint">Importe o CSV do Facebook em <strong>Mapa de Ads</strong> — os criativos e as métricas diárias aparecem aqui automaticamente.</p>
+            </div>`;
+            if (contador) contador.textContent = '';
+            return;
+        }
+
+        // Métricas do período, somadas por criativo
+        const porCriativo = new Map();
+        metricas.forEach(m => {
+            if (ini && m.date < ini) return;
+            if (fim && m.date > fim) return;
+            let a = porCriativo.get(m.creativeId);
+            if (!a) {
+                a = { spend: 0, impressions: 0, clicks: 0, lpv: 0, atc: 0, ic: 0,
+                      purchases: 0, revenue: 0, dias: new Set(), moeda: 'USD', estimada: false };
+                porCriativo.set(m.creativeId, a);
+            }
+            a.spend += Number(m.spend) || 0;
+            a.impressions += Number(m.impressions) || 0;
+            a.clicks += Number(m.clicks) || 0;
+            a.lpv += Number(m.lpv) || 0;
+            a.atc += Number(m.atc) || 0;
+            a.ic += Number(m.ic) || 0;
+            a.purchases += Number(m.conversions) || 0;
+            a.revenue += Number(m.revenue) || 0;
+            a.dias.add(m.date);
+            if (m.currency) a.moeda = m.currency;
+            if (m.revenueEstimated) a.estimada = true;
+        });
+
+        // Agrupa por produto, respeitando o filtro de produto do Diário
+        const porProduto = new Map();
+        criativos.forEach(c => {
+            const ag = porCriativo.get(c.id);
+            if (!ag) return;
+            if (soAtivos && !ag.spend) return;
+            if (!this._matchesProductFilter({ productId: c.productId })) return;
+            const pid = c.productId || '__sem__';
+            if (!porProduto.has(pid)) porProduto.set(pid, []);
+            porProduto.get(pid).push({ c, ...ag, dias: ag.dias.size });
+        });
+
+        if (!porProduto.size) {
+            corpo.innerHTML = `<div class="empty-state"><p>Nenhum criativo com dados no período selecionado.</p>
+                <p class="diary-cre-hint">Tente ampliar o período no seletor de datas acima.</p></div>`;
+            if (contador) contador.textContent = '';
+            return;
+        }
+
+        const porCpa = (a, b) => (a.purchases ? a.spend / a.purchases : Infinity) - (b.purchases ? b.spend / b.purchases : Infinity);
+        const cmp = {
+            cpa:       porCpa,
+            spend:     (a, b) => b.spend - a.spend,
+            purchases: (a, b) => b.purchases - a.purchases,
+            roas:      (a, b) => (b.spend ? b.revenue / b.spend : 0) - (a.spend ? a.revenue / a.spend : 0),
+            ctr:       (a, b) => (b.impressions ? b.clicks / b.impressions : 0) - (a.impressions ? a.clicks / a.impressions : 0),
+            cpc:       (a, b) => (a.clicks ? a.spend / a.clicks : Infinity) - (b.clicks ? b.spend / b.clicks : Infinity),
+        }[ordem] || porCpa;
+
+        let total = 0;
+        const blocos = [...porProduto.entries()].map(([pid, itens]) => {
+            itens.sort(cmp);
+            total += itens.length;
+            return this._blocoCriativosProduto(pid, itens, ini, fim);
+        });
+
+        corpo.innerHTML = blocos.join('');
+        if (contador) {
+            const periodo = (ini && fim) ? `${this._br(ini)} → ${this._br(fim)}` : 'todo o histórico';
+            contador.textContent = `${total} criativo(s) · ${periodo}`;
+        }
+        if (window.lucide?.createIcons) { try { lucide.createIcons(); } catch {} }
+    },
+
+    _br(iso) {
+        const p = String(iso || '').split('-');
+        return p.length === 3 ? `${p[2]}/${p[1]}` : iso;
+    },
+
+    _blocoCriativosProduto(pid, itens, ini, fim) {
+        const prod = (AppState.allProducts || []).find(p => p.id === pid);
+        const nomeProd = prod?.name || (pid === '__sem__' ? 'Sem produto' : pid);
+        const moeda = itens.find(i => i.moeda)?.moeda || 'USD';
+
+        const gastoTotal = itens.reduce((s, i) => s + i.spend, 0);
+        const comprasTotal = itens.reduce((s, i) => s + i.purchases, 0);
+        const receitaTotal = itens.reduce((s, i) => s + i.revenue, 0);
+        const cpaProduto = comprasTotal > 0 ? gastoTotal / comprasTotal : 0;
+        const estimada = itens.some(i => i.estimada);
+
+        // "Bom" e "ruim" são relativos ao próprio produto: 15% melhor ou pior
+        // que o CPA médio dele. Comparar produtos entre si não faria sentido.
+        const classe = (it) => {
+            if (!it.spend) return '';
+            if (!it.purchases) return it.spend >= (cpaProduto || 0) ? 'cre-ruim' : 'cre-alerta';
+            if (!cpaProduto) return '';
+            const r = (it.spend / it.purchases) / cpaProduto;
+            if (r <= 0.85) return 'cre-bom';
+            if (r >= 1.15) return 'cre-ruim';
+            return '';
+        };
+
+        const linhas = itens.map((it, idx) => {
+            const cpa = it.purchases ? it.spend / it.purchases : 0;
+            const cpc = it.clicks ? it.spend / it.clicks : 0;
+            const ctr = it.impressions ? (it.clicks / it.impressions * 100) : 0;
+            const roas = it.spend ? it.revenue / it.spend : 0;
+            const share = gastoTotal ? (it.spend / gastoTotal * 100) : 0;
+            const cls = classe(it);
+            const conj = it.c.adMapSync?.conjuntos || 0;
+            const st = (CreativesModule.STATUSES || []).find(s => s.id === it.c.status);
+
+            // Onde o funil vaza: clique→site→carrinho→checkout→compra
+            const taxa = (n, d) => d > 0 ? (n / d * 100).toFixed(1) + '%' : '--';
+
+            return `<tr class="${cls}">
+                <td class="cre-pos">${idx + 1}</td>
+                <td class="cre-nome">
+                    <strong>${this._esc(it.c.name)}</strong>
+                    <span class="cre-sub">${conj ? conj + ' conjunto(s) · ' : ''}${it.dias} dia(s)</span>
+                </td>
+                <td>${st ? `<span class="cre-status" style="background:${st.color}">${st.label}</span>` : '--'}</td>
+                <td class="cre-num">${formatCurrency(it.spend, moeda)}<div class="cre-share"><span style="width:${share.toFixed(1)}%"></span></div></td>
+                <td class="cre-num">${ctr.toFixed(2)}%</td>
+                <td class="cre-num">${formatCurrency(cpc, moeda)}</td>
+                <td class="cre-num">${taxa(it.lpv, it.clicks)}</td>
+                <td class="cre-num">${taxa(it.atc, it.lpv)}</td>
+                <td class="cre-num">${taxa(it.purchases, it.ic)}</td>
+                <td class="cre-num"><strong>${it.purchases}</strong></td>
+                <td class="cre-num cre-cpa"><strong>${it.purchases ? formatCurrency(cpa, moeda) : '--'}</strong></td>
+                <td class="cre-num">${it.revenue > 0 ? roas.toFixed(2) + 'x' : '--'}</td>
+            </tr>`;
+        }).join('');
+
+        return `<div class="diary-cre-produto">
+            <div class="diary-cre-produto-head">
+                <h3><i data-lucide="package" style="width:15px;height:15px;vertical-align:-2px"></i> ${this._esc(nomeProd)}</h3>
+                <div class="diary-cre-kpis">
+                    <span><label>Gasto</label><strong>${formatCurrency(gastoTotal, moeda)}</strong></span>
+                    <span><label>Compras</label><strong>${comprasTotal}</strong></span>
+                    <span><label>CPA médio</label><strong>${comprasTotal ? formatCurrency(cpaProduto, moeda) : '--'}</strong></span>
+                    ${receitaTotal > 0 ? `<span><label>ROAS${estimada ? ' <em>est.</em>' : ''}</label><strong>${(receitaTotal / gastoTotal).toFixed(2)}x</strong></span>` : ''}
+                </div>
+            </div>
+            <div class="diary-cre-table-wrap">
+            <table class="diary-cre-table">
+                <thead><tr>
+                    <th>#</th><th>Criativo</th><th>Status</th><th>Gasto</th><th>CTR</th><th>CPC</th>
+                    <th title="Cliques que viraram visita ao site">Clique→Site</th>
+                    <th title="Visitas que viraram carrinho">Site→Carr.</th>
+                    <th title="Checkouts iniciados que viraram compra">IC→Compra</th>
+                    <th>Compras</th><th>CPA</th><th>ROAS</th>
+                </tr></thead>
+                <tbody>${linhas}</tbody>
+            </table>
+            </div>
+            <div class="diary-cre-legenda">
+                <span class="cre-leg cre-leg-bom">CPA 15% melhor que a média do produto</span>
+                <span class="cre-leg cre-leg-ruim">CPA 15% pior, ou gastando sem vender</span>
+                ${estimada ? '<span class="cre-leg-nota">ROAS estimado pelo preço cadastrado do produto — o CSV do Facebook não traz receita.</span>' : ''}
+            </div>
+        </div>`;
+    },
+
+    _esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     },
 
     _getShopifyDataFor(date, productId) {

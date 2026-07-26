@@ -1066,6 +1066,7 @@
                 <div class="diary-view-tabs">
                     <button class="diary-view-tab active" data-diary-view="all"><i data-lucide="layout-list" style="width:14px;height:14px"></i> Todos</button>
                     <button class="diary-view-tab" data-diary-view="tests"><i data-lucide="flask-conical" style="width:14px;height:14px"></i> Testes</button>
+                    <button class="diary-view-tab" data-diary-view="creatives"><i data-lucide="clapperboard" style="width:14px;height:14px"></i> Criativos</button>
                 </div>
                 <button id="btn-diary-group-campaign" class="btn btn-secondary btn-sm" title="Agrupar por campanha (estilo Facebook Ads)"><i data-lucide="megaphone" style="width:13px;height:13px"></i> Por Campanha</button>
                 <button id="btn-add-entry" class="btn btn-primary">+ Nova Entrada</button>
@@ -1220,6 +1221,25 @@
                 <label><input type="checkbox" id="diary-select-all-cb"> Selecionar todos</label>
                 <span id="diary-selected-count" class="diary-bulk-count">0 selecionados</span>
                 <button id="btn-diary-bulk-delete" class="btn btn-danger btn-sm"><i data-lucide="trash-2" style="width:14px;height:14px;vertical-align:-2px"></i>️ Excluir selecionados</button>
+            </div>
+
+            <!-- Diário → Criativos: desempenho por produto no período -->
+            <div id="diary-creatives-panel" class="diary-creatives-panel" style="display:none">
+                <div class="diary-cre-toolbar">
+                    <label>Ordenar por:
+                        <select id="diary-cre-sort" class="input input-sm">
+                            <option value="cpa">CPA (melhor primeiro)</option>
+                            <option value="spend">Gasto</option>
+                            <option value="purchases">Compras</option>
+                            <option value="roas">ROAS</option>
+                            <option value="ctr">CTR</option>
+                            <option value="cpc">CPC</option>
+                        </select>
+                    </label>
+                    <label class="diary-cre-check"><input type="checkbox" id="diary-cre-only-active"> Só os que rodaram no período</label>
+                    <span id="diary-cre-count" class="diary-cre-count"></span>
+                </div>
+                <div id="diary-cre-body"></div>
             </div>
 
             <!-- Diary Notion View -->
@@ -2280,6 +2300,7 @@
             <div class="section-header">
                 <h2>Criativos & Testes</h2>
                 <div id="creatives-actions">
+                    <button id="btn-sync-admap-creatives" class="btn btn-secondary" title="Puxar os criativos e as métricas que você importou por planilha no Mapa de Ads"><i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Sincronizar do Mapa de Ads</button>
                     <button id="btn-import-creatives" class="btn btn-secondary" title="Importar criativos de uma planilha (CSV)"><i data-lucide="upload" style="width:14px;height:14px;vertical-align:-2px"></i> Importar planilha</button>
                     <button id="btn-bulk-upload-creatives" class="btn btn-secondary" title="Subir vários arquivos de uma vez"><i data-lucide="upload-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Subir em massa</button>
                     <button id="btn-compare-creatives" class="btn btn-secondary">Comparar</button>

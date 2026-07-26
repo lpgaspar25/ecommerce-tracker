@@ -49,6 +49,12 @@ const CreativesModule = {
         });
         document.getElementById('btn-creative-csv-template')?.addEventListener('click', () => this.downloadCsvTemplate());
 
+        // Traz o que entrou pela planilha no Mapa de Ads
+        document.getElementById('btn-sync-admap-creatives')?.addEventListener('click', () => {
+            this.syncFromAdMap();
+            this.render();
+        });
+
         // Bulk upload (multiple files at once)
         document.getElementById('btn-bulk-upload-creatives')?.addEventListener('click', () => this.openBulkModal());
         document.getElementById('creative-bulk-input')?.addEventListener('change', (e) => {
@@ -980,6 +986,208 @@ const CreativesModule = {
         showToast(`Variacao ${result === 'validado' ? 'validada' : 'nao validada'}!`, result === 'validado' ? 'success' : 'info');
     },
 
+    // ============================================================
+    //  SINCRONIZAÇÃO COM O MAPA DE ADS
+    //  Os criativos que chegam pela planilha (CSV do Facebook) vivem em
+    //  AdHierarchyModule. Aqui eles viram criativos de verdade, com as
+    //  métricas diárias somadas de TODOS os conjuntos que rodam o mesmo nome.
+    // ============================================================
+
+    // Mesmo nome, escrito diferente (acento/caixa/espaço), é o mesmo criativo.
+    _syncKey(s) {
+        return String(s || '').toLowerCase().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    },
+
+    // Percorre anúncio → conjunto → campanha para descobrir de que produto ele é.
+    _adMapGroups() {
+        const AH = window.AdHierarchyModule;
+        if (!AH || !AH._state) return null;
+
+        const setById = new Map((AH._state.adsets || []).map(a => [a.id, a]));
+        const campById = new Map((AH._state.campaigns || []).map(c => [c.id, c]));
+        const grupos = new Map();
+        let semProduto = 0;
+
+        (AH._state.ads || []).forEach(ad => {
+            if (!ad?.name) return;
+            const set = setById.get(ad.adsetId);
+            const camp = set ? campById.get(set.campaignId) : null;
+            const pid = camp?.productId || '';
+            // Sem produto vinculado não dá pra saber onde encaixar o criativo.
+            if (!pid) { semProduto++; return; }
+
+            const chave = pid + '||' + this._syncKey(ad.name);
+            let g = grupos.get(chave);
+            if (!g) {
+                g = { productId: pid, name: ad.name, ads: [], conjuntos: new Set(),
+                      campanhas: new Set(), paises: new Set(), diario: {}, validado: false };
+                grupos.set(chave, g);
+            }
+            g.ads.push(ad);
+            if (set?.id) g.conjuntos.add(set.id);   // por id: dois conjuntos podem ter o mesmo nome
+            if (camp?.name) g.campanhas.add(camp.name);
+            if (ad.region) g.paises.add(ad.region);
+            if (ad.validated) g.validado = true;
+
+            // daily = { 'YYYY-MM-DD': [impr, cliques, gasto, lpv, atc, ic, compras] }
+            Object.entries(ad.daily || {}).forEach(([dia, v]) => {
+                const d = g.diario[dia] || [0, 0, 0, 0, 0, 0, 0];
+                for (let i = 0; i < 7; i++) d[i] += Number(v[i]) || 0;
+                g.diario[dia] = d;
+            });
+        });
+
+        return { grupos, semProduto };
+    },
+
+    // Receita não vem no CSV do Facebook (só compras). Estimamos pelo preço do
+    // produto, convertido pra moeda do gasto — e marcamos como estimada, porque
+    // inventar receita sem avisar seria mentir no ROAS.
+    _precoEstimado(productId, moedaGasto) {
+        const p = (AppState.allProducts || []).find(x => x.id === productId);
+        const preco = Number(p?.price) || 0;
+        if (!preco) return 0;
+        const de = p.priceCurrency || 'USD';
+        if (de === moedaGasto) return preco;
+        try { return convertCurrency(preco, de, moedaGasto) || 0; } catch { return 0; }
+    },
+
+    syncFromAdMap({ silent = false } = {}) {
+        const dados = this._adMapGroups();
+        if (!dados) {
+            if (!silent) showToast('Mapa de Ads indisponível.', 'error');
+            return { criados: 0, atualizados: 0, dias: 0, semProduto: 0 };
+        }
+        const { grupos, semProduto } = dados;
+        if (!grupos.size) {
+            if (!silent) {
+                showToast(semProduto
+                    ? `Nenhum criativo sincronizado: ${semProduto} anúncios do mapa não estão vinculados a um produto.`
+                    : 'Nenhum criativo no Mapa de Ads ainda. Importe um CSV lá primeiro.', 'warning');
+            }
+            return { criados: 0, atualizados: 0, dias: 0, semProduto };
+        }
+
+        const moeda = (window.AdHierarchyModule?._state?.currency) || 'USD';
+        AppState.allCreatives = AppState.allCreatives || [];
+        AppState.allCreativeMetrics = AppState.allCreativeMetrics || [];
+
+        let criados = 0, atualizados = 0, dias = 0;
+        const idsSincronizados = new Set();
+
+        grupos.forEach(g => {
+            const nk = this._syncKey(g.name);
+            let cr = AppState.allCreatives.find(c =>
+                c.productId === g.productId && this._syncKey(c.name) === nk);
+
+            const datas = Object.keys(g.diario).sort();
+            const estreia = datas[0] || g.ads.map(a => a.firstSeen).filter(Boolean).sort()[0] || '';
+            // Ativo se qualquer conjunto ainda está rodando esse criativo.
+            const rodando = g.ads.some(a => String(a.status || '').toUpperCase() === 'ACTIVE');
+            const pais = [...g.paises][0] || '';
+
+            if (!cr) {
+                cr = {
+                    id: generateId('cr'),
+                    productId: g.productId,
+                    name: g.name,
+                    type: '', angle: '', hookText: '', hookType: '',
+                    platform: 'facebook',
+                    status: g.validado ? 'winner' : (rodando ? 'ativo' : 'pausado'),
+                    launchDate: estreia,
+                    pageUrl: '',
+                    primaryText: '', headline: '', adDescription: '',
+                    country: pais,
+                    campaign: [...g.campanhas][0] || '',
+                    mediaId: '', mediaType: '', mediaThumb: '', mediaName: '', imageUrl: '',
+                    variations: [],
+                    storeId: getWritableStoreId(g.productId),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                AppState.allCreatives.push(cr);
+                criados++;
+            } else {
+                // Não sobrescreve o que o usuário escreveu à mão — só preenche buracos.
+                if (!cr.launchDate && estreia) cr.launchDate = estreia;
+                if (!cr.country && pais) cr.country = pais;
+                if (!cr.campaign && g.campanhas.size) cr.campaign = [...g.campanhas][0];
+                if (!cr.platform) cr.platform = 'facebook';
+                // Status manual ("winner"/"killed") é decisão do usuário; só mexe no automático.
+                if (cr.status === 'ativo' || cr.status === 'pausado') {
+                    cr.status = rodando ? 'ativo' : 'pausado';
+                }
+                cr.updatedAt = new Date().toISOString();
+                atualizados++;
+            }
+
+            // A imagem que o usuário subiu no board vale aqui também.
+            const doBoard = window.AdHierarchyModule?._mediaForCreative?.(g.ads[0]);
+            if (doBoard && !cr.mediaId && !cr.imageUrl && !cr.mediaThumb) cr.mediaThumb = doBoard;
+
+            cr.adMapSync = {
+                conjuntos: g.conjuntos.size,
+                campanhas: g.campanhas.size,
+                anuncios: g.ads.length,
+                em: new Date().toISOString()
+            };
+            idsSincronizados.add(cr.id);
+
+            const precoUn = this._precoEstimado(g.productId, moeda);
+
+            // Reescreve só as linhas que vieram do mapa; as digitadas à mão ficam.
+            AppState.allCreativeMetrics = AppState.allCreativeMetrics.filter(
+                m => !(m.creativeId === cr.id && m.source === 'admap'));
+
+            datas.forEach(dia => {
+                const [impr, cliques, gasto, lpv, atc, ic, compras] = g.diario[dia];
+                if (!impr && !cliques && !gasto && !compras) return;
+                const receita = precoUn * compras;
+                AppState.allCreativeMetrics.push({
+                    id: 'cm_admap_' + cr.id + '_' + dia,
+                    creativeId: cr.id,
+                    date: dia,
+                    spend: Math.round(gasto * 100) / 100,
+                    impressions: Math.round(impr),
+                    clicks: Math.round(cliques),
+                    ctr: impr > 0 ? parseFloat((cliques / impr * 100).toFixed(2)) : 0,
+                    cpc: cliques > 0 ? parseFloat((gasto / cliques).toFixed(2)) : 0,
+                    cpm: impr > 0 ? parseFloat((gasto / impr * 1000).toFixed(2)) : 0,
+                    conversions: Math.round(compras),
+                    revenue: Math.round(receita * 100) / 100,
+                    roas: gasto > 0 ? parseFloat((receita / gasto).toFixed(2)) : 0,
+                    // Funil, pra ranquear onde o criativo perde gente
+                    lpv: Math.round(lpv), atc: Math.round(atc), ic: Math.round(ic),
+                    currency: moeda,
+                    revenueEstimated: receita > 0,
+                    source: 'admap',
+                    storeId: cr.storeId || ''
+                });
+                dias++;
+            });
+        });
+
+        // Criativo apagado do mapa não deixa métrica órfã pra trás.
+        AppState.allCreativeMetrics = AppState.allCreativeMetrics.filter(
+            m => m.source !== 'admap' || idsSincronizados.has(m.creativeId));
+
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        LocalStore.save('creatives', AppState.allCreatives);
+        LocalStore.save('creative_metrics', AppState.allCreativeMetrics);
+        EventBus.emit('creativesChanged');
+
+        if (!silent) {
+            const partes = [];
+            if (criados) partes.push(`${criados} criado(s)`);
+            if (atualizados) partes.push(`${atualizados} atualizado(s)`);
+            let msg = `Criativos sincronizados: ${partes.join(', ') || 'nada novo'} · ${dias} dias de métricas.`;
+            if (semProduto) msg += ` (${semProduto} anúncios ignorados: campanha sem produto vinculado)`;
+            showToast(msg, 'success');
+        }
+        return { criados, atualizados, dias, semProduto };
+    },
+
     // ---- Fatigue Detection ----
     detectFatigue(creativeId) {
         const metrics = this.getMetricsForCreative(creativeId);
@@ -1038,6 +1246,10 @@ const CreativesModule = {
         const totalImpressions = metrics.reduce((s, m) => s + m.impressions, 0);
         const totalConversions = metrics.reduce((s, m) => s + m.conversions, 0);
         const totalRevenue = metrics.reduce((s, m) => s + m.revenue, 0);
+        const totalLpv = metrics.reduce((s, m) => s + (Number(m.lpv) || 0), 0);
+        const totalAtc = metrics.reduce((s, m) => s + (Number(m.atc) || 0), 0);
+        const totalIc = metrics.reduce((s, m) => s + (Number(m.ic) || 0), 0);
+        const doMapa = metrics.filter(m => m.source === 'admap');
 
         return {
             totalSpend,
@@ -1045,6 +1257,12 @@ const CreativesModule = {
             totalImpressions,
             totalConversions,
             totalRevenue,
+            totalLpv, totalAtc, totalIc,
+            // A moeda vem do CSV; sem isso o gasto em libra apareceria como dólar.
+            currency: metrics.find(m => m.currency)?.currency || 'USD',
+            // ROAS estimado pelo preço do produto — o CSV do Facebook não traz receita.
+            revenueEstimated: doMapa.some(m => m.revenueEstimated),
+            fromAdMap: doMapa.length > 0,
             avgCTR: totalImpressions > 0 ? (totalClicks / totalImpressions * 100) : 0,
             avgCPC: totalClicks > 0 ? (totalSpend / totalClicks) : 0,
             avgCPM: totalImpressions > 0 ? (totalSpend / totalImpressions * 1000) : 0,
@@ -1308,13 +1526,17 @@ const CreativesModule = {
 
             ${stats ? `
             <div class="creative-metrics-grid">
-                <div class="creative-metric"><label>Gasto</label><strong>${formatCurrency(stats.totalSpend, 'USD')}</strong></div>
+                <div class="creative-metric"><label>Gasto</label><strong>${formatCurrency(stats.totalSpend, stats.currency)}</strong></div>
                 <div class="creative-metric"><label>CTR</label><strong>${stats.avgCTR.toFixed(2)}%</strong></div>
-                <div class="creative-metric"><label>CPC</label><strong>${formatCurrency(stats.avgCPC, 'USD')}</strong></div>
-                <div class="creative-metric"><label>CPM</label><strong>${formatCurrency(stats.avgCPM, 'USD')}</strong></div>
-                <div class="creative-metric"><label>Conv.</label><strong>${stats.totalConversions}</strong></div>
-                <div class="creative-metric"><label>ROAS</label><strong>${stats.roas.toFixed(2)}x</strong></div>
-            </div>` : '<div class="creative-no-metrics">Sem metricas registradas</div>'}
+                <div class="creative-metric"><label>CPC</label><strong>${formatCurrency(stats.avgCPC, stats.currency)}</strong></div>
+                <div class="creative-metric"><label>CPA</label><strong>${stats.totalConversions > 0 ? formatCurrency(stats.cpa, stats.currency) : '--'}</strong></div>
+                <div class="creative-metric"><label>Compras</label><strong>${stats.totalConversions}</strong></div>
+                ${stats.revenueEstimated
+                    ? `<div class="creative-metric" title="ROAS estimado: o CSV do Facebook não traz receita, então usamos o preço cadastrado do produto × compras."><label>ROAS <span class="creative-metric-est">est.</span></label><strong>${stats.roas.toFixed(2)}x</strong></div>`
+                    : `<div class="creative-metric"><label>${stats.totalRevenue > 0 ? 'ROAS' : 'CPM'}</label><strong>${stats.totalRevenue > 0 ? stats.roas.toFixed(2) + 'x' : formatCurrency(stats.avgCPM, stats.currency)}</strong></div>`}
+            </div>
+            ${stats.fromAdMap && creative.adMapSync ? `<div class="creative-admap-note" title="Métricas somadas de todos os conjuntos que rodam este criativo"><i data-lucide="git-merge" style="width:11px;height:11px;vertical-align:-1px"></i> ${creative.adMapSync.conjuntos} conjunto(s) · ${stats.days} dia(s) de dados — via planilha</div>` : ''}`
+            : `<div class="creative-no-metrics">Sem metricas registradas${creative.adMapSync ? '' : ' — importe o CSV no Mapa de Ads ou clique em "+ Metrica"'}</div>`}
 
             ${variations.length > 0 ? this.renderVariations(creative.id, variations) : ''}
 
