@@ -989,6 +989,11 @@
             const idxClicks = this._findCol(headers, ['cliques no link', 'link clicks', 'cliques']);
             const idxSpend = this._findCol(headers, ['valor usado', 'amount spent', 'gasto']);
             const idxCpc = this._findCol(headers, ['cpc custo por clique no link', 'custo por clique no link', 'cpc']);
+            // Etapas do funil (Site → Carrinho → IC → Compra)
+            const idxLpv = this._findCol(headers, ['visualizacoes da pagina de destino do site', 'visualizacoes da pagina de destino', 'landing page views']);
+            const idxAtc = this._findCol(headers, ['adicoes ao carrinho', 'adds to cart']);
+            const idxIc  = this._findCol(headers, ['finalizacoes de compra iniciadas', 'checkouts iniciados']);
+            const idxPur = this._findCol(headers, ['compras', 'purchases']);
 
             if (idxCampaign < 0) throw new Error('Coluna "Nome da campanha" não encontrada');
 
@@ -1032,7 +1037,7 @@
                 // Accumulate metrics per ad
                 if (adName && adsetName) {
                     const k = adName + '||' + adsetName + '||' + campName;
-                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0 };
+                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0 };
                     const imp = parseFloat(String(row[idxImpr] || '').replace(/[^0-9.-]/g, '')) || 0;
                     const spd = parseFloat(String(row[idxSpend] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
@@ -1041,9 +1046,14 @@
                         const cpcVal = parseFloat(String(row[idxCpc] || '').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
                         if (cpcVal > 0) clk = spd / cpcVal;
                     }
+                    const numCol = (i) => i >= 0 ? (parseFloat(String(row[i] || '').replace(/[^0-9.-]/g, '')) || 0) : 0;
                     metricsByAd[k].impressions += imp;
                     metricsByAd[k].clicks += clk;
                     metricsByAd[k].spend += spd;
+                    metricsByAd[k].lpv += numCol(idxLpv);
+                    metricsByAd[k].atc += numCol(idxAtc);
+                    metricsByAd[k].ic  += numCol(idxIc);
+                    metricsByAd[k].purchases += numCol(idxPur);
                 }
 
                 // Extract region from names (uses RegionTags if available)
@@ -1117,11 +1127,56 @@
                     ad.impressions = Math.round(m.impressions);
                     ad.clicks = Math.round(m.clicks);
                     ad.spend = m.spend;
+                    ad.lpv = Math.round(m.lpv);
+                    ad.atc = Math.round(m.atc);
+                    ad.ic = Math.round(m.ic);
+                    ad.purchases = Math.round(m.purchases);
                 }
             });
 
+            this._rollUpMetrics();
             this._persist();
             return result;
+        },
+
+        // Soma as métricas dos criativos nos conjuntos, e dos conjuntos nas campanhas,
+        // pra que TODO nível do board mostre o funil.
+        _rollUpMetrics() {
+            const zero = () => ({ impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0 });
+            const soma = (alvo, fonte) => {
+                ['impressions', 'clicks', 'spend', 'lpv', 'atc', 'ic', 'purchases'].forEach(k => {
+                    alvo[k] = (alvo[k] || 0) + (Number(fonte[k]) || 0);
+                });
+            };
+            (this._state.adsets || []).forEach(as => {
+                const acc = zero();
+                (this._state.ads || []).filter(a => a.adsetId === as.id).forEach(a => soma(acc, a));
+                Object.assign(as, acc);
+            });
+            (this._state.campaigns || []).forEach(c => {
+                const acc = zero();
+                (this._state.adsets || []).filter(a => a.campaignId === c.id).forEach(a => soma(acc, a));
+                Object.assign(c, acc);
+            });
+        },
+
+        // Funil derivado de um item (criativo, conjunto ou campanha)
+        _funnelOf(item) {
+            const n = (v) => Number(v) || 0;
+            const impressions = n(item.impressions), clicks = n(item.clicks), spend = n(item.spend);
+            const lpv = n(item.lpv), atc = n(item.atc), ic = n(item.ic), purchases = n(item.purchases);
+            const pct = (a, b) => (b > 0 ? (a / b) * 100 : null);
+            return {
+                impressions, clicks, spend, lpv, atc, ic, purchases,
+                ctr: pct(clicks, impressions),          // FB: impressões → cliques
+                cpc: clicks > 0 ? spend / clicks : null,
+                lpvRate: pct(lpv, clicks),              // clique → site
+                atcRate: pct(atc, lpv),                 // site → carrinho
+                icRate: pct(ic, atc),                   // carrinho → IC
+                purRate: pct(purchases, ic),            // IC → compra
+                cpa: purchases > 0 ? spend / purchases : null,
+                temDados: impressions > 0 || clicks > 0 || spend > 0,
+            };
         },
 
         _mapStatus(s) {
@@ -1212,8 +1267,8 @@
             if (!wrap || !nodesEl || !svg) return;
 
             // Layout: 4 columns × N rows, each node 220×85 with 40px gap
-            const NODE_W = 220, NODE_H = 90, COL_GAP = 80, ROW_GAP = 20;
-            const AD_NODE_H = 290; // Criativos expandidos (imagem grande) — cobre o nó real (~273px) + título em 2 linhas
+            const NODE_W = 250, NODE_H = 150, COL_GAP = 80, ROW_GAP = 20;  // +faixa de funil no nó
+            const AD_NODE_H = 350; // Criativos expandidos (imagem grande) — cobre o nó real (~273px) + título em 2 linhas
             const COL_X = (i) => i * (NODE_W + COL_GAP) + 40;
 
             const productId = this._state.selectedProductId;
@@ -1668,8 +1723,39 @@
                         <div class="adh-board-node-meta">${status}</div>
                     </div>
                 </div>
+                ${this._funnelStripHtml(item)}
                 ${links}
                 ${port}
+            </div>`;
+        },
+
+        // Faixa compacta do funil dentro do nó:  FB → Site → Carrinho → IC → Compra
+        _funnelStripHtml(item) {
+            const f = this._funnelOf(item);
+            if (!f.temDados) return '';
+            const money = (v, d = 2) => v == null ? '—' : (v < 1 ? v.toFixed(d) : v.toFixed(2));
+            const pc = (v) => v == null ? '—' : (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + '%';
+            const num = (v) => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : String(Math.round(v));
+            // etapa: rótulo curto, taxa e volume absoluto
+            const etapa = (rot, taxa, vol, dica) =>
+                `<div class="adh-fn-step" title="${this._esc(dica)}">
+                    <span class="adh-fn-lbl">${rot}</span>
+                    <span class="adh-fn-val">${taxa}</span>
+                    <span class="adh-fn-vol">${vol}</span>
+                </div>`;
+            return `<div class="adh-fn-strip">
+                <div class="adh-fn-head">
+                    <span class="adh-fn-chip" title="Gasto no período">${money(f.spend)}</span>
+                    <span class="adh-fn-chip" title="Custo por clique">CPC ${f.cpc == null ? '—' : money(f.cpc)}</span>
+                    ${f.cpa != null ? `<span class="adh-fn-chip adh-fn-chip-cpa" title="Custo por compra">CPA ${money(f.cpa)}</span>` : ''}
+                </div>
+                <div class="adh-fn-row">
+                    ${etapa('FB', pc(f.ctr), num(f.clicks), `CTR ${pc(f.ctr)} — ${num(f.impressions)} impressões geraram ${num(f.clicks)} cliques`)}
+                    ${etapa('Site', pc(f.lpvRate), num(f.lpv), `${pc(f.lpvRate)} dos cliques viraram visita — ${num(f.lpv)} visitas`)}
+                    ${etapa('Carr', pc(f.atcRate), num(f.atc), `${pc(f.atcRate)} das visitas adicionaram ao carrinho — ${num(f.atc)}`)}
+                    ${etapa('IC', pc(f.icRate), num(f.ic), `${pc(f.icRate)} dos carrinhos iniciaram checkout — ${num(f.ic)}`)}
+                    ${etapa('Compra', pc(f.purRate), num(f.purchases), `${pc(f.purRate)} dos checkouts viraram compra — ${num(f.purchases)} compras`)}
+                </div>
             </div>`;
         },
 

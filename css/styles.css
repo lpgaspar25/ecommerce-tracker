@@ -14352,6 +14352,34 @@ body:not([data-theme]) .adh-board-viewport {
     font-variant-numeric: tabular-nums;
 }
 
+/* Faixa de funil dentro do nó do board: FB → Site → Carrinho → IC → Compra */
+.adh-fn-strip {
+    margin-top: 5px;
+    border-top: 1px solid var(--border, rgba(0,0,0,.07));
+    padding-top: 4px;
+}
+.adh-fn-head { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 3px; }
+.adh-fn-chip {
+    font-size: .58rem; font-weight: 700; padding: 1px 5px; border-radius: 4px;
+    background: var(--bg-input, rgba(0,0,0,.05)); color: var(--text-secondary);
+    white-space: nowrap;
+}
+.adh-fn-chip-cpa { background: rgba(139,92,246,.14); color: #7c3aed; }
+.adh-fn-row { display: flex; gap: 2px; align-items: stretch; }
+.adh-fn-step {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center;
+    padding: 2px 1px; border-radius: 4px; background: var(--bg-input, rgba(0,0,0,.04));
+    position: relative;
+}
+.adh-fn-step + .adh-fn-step::before {
+    content: '';
+    position: absolute; left: -2px; top: 50%;
+    width: 2px; height: 1px; background: var(--text-muted); opacity: .35;
+}
+.adh-fn-lbl { font-size: .5rem; text-transform: uppercase; letter-spacing: .02em; color: var(--text-muted); line-height: 1.1; }
+.adh-fn-val { font-size: .66rem; font-weight: 800; color: var(--text-primary); line-height: 1.2; }
+.adh-fn-vol { font-size: .52rem; color: var(--text-muted); line-height: 1.1; }
+
 /* ── Canvas de funil (estilo Miro) ── */
 /* O svg do board tem pointer-events:none; os alvos de clique das arestas manuais precisam reativar */
 .adh-board-svg [data-edge-id] { pointer-events: stroke; }
