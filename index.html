@@ -3275,6 +3275,8 @@
                                 <option value="last_30d">Últimos 30 dias</option>
                                 <option value="custom">Personalizado (período acima)</option>
                             </select>
+                            <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm" title="Importar relatório do Ads Manager (CSV/XLSX) — não precisa conectar o Facebook"><i data-lucide="file-up" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV</button>
+                            <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
                             <button type="button" id="btn-fb-fetch" class="btn btn-primary btn-sm"><i data-lucide="download" style="width:14px;height:14px;vertical-align:-2px"></i> Importar do Facebook</button>
                             <button type="button" id="btn-fb-fetch-all" class="btn btn-secondary btn-sm" title="Importa do FB todos os produtos com campanhas mapeadas na conta ativa"><i data-lucide="layers" style="width:14px;height:14px;vertical-align:-2px"></i> Importar TODOS os produtos</button>
                         </div>
@@ -3282,8 +3284,6 @@
                     <div class="ads-section-body" id="fb-section-body">
                         <button type="button" id="btn-fb-config" class="btn btn-secondary btn-sm"><i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px"></i> Configurar</button>
                         <button type="button" id="btn-fb-map-campaigns" class="btn btn-secondary btn-sm"><i data-lucide="link" style="width:14px;height:14px;vertical-align:-2px"></i> Mapear Campanhas</button>
-                        <button type="button" id="btn-fb-upload-csv" class="btn btn-secondary btn-sm"><i data-lucide="file" style="width:14px;height:14px;vertical-align:-2px"></i> Importar CSV</button>
-                        <input type="file" id="fb-csv-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none">
                     </div>
                 </div>
 
