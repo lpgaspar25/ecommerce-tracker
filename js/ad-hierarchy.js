@@ -1778,11 +1778,43 @@
                 return { d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`, midX: (x1 + x2) / 2, midY: (y1 + y2) / 2 };
             };
 
+            // Cotovelo (padrão de árvore): sai do pai, desce/sobe num TRONCO vertical
+            // logo à direita dele e entra no filho na horizontal. Irmãos compartilham o
+            // mesmo tronco, então as linhas não se cruzam em diagonal.
+            const elbow = (a, b) => {
+                const aRight = a.x + a.w <= b.x;
+                const x1 = aRight ? a.x + a.w : a.x;
+                const x2 = aRight ? b.x : b.x + b.w;
+                const y1 = a.y + a.h / 2, y2 = b.y + b.h / 2;
+                maxX = Math.max(maxX, a.x + a.w, b.x + b.w);
+                maxY = Math.max(maxY, a.y + a.h, b.y + b.h);
+                // tronco a 34px do pai (mesmo valor pra todos os filhos dele)
+                const bus = aRight ? x1 + 34 : x1 - 34;
+                const R = 10;                                  // raio do canto arredondado
+                const desce = y2 > y1;
+                const dy = Math.abs(y2 - y1);
+                if (dy < 2) {
+                    return { d: `M ${x1} ${y1} L ${x2} ${y2}`, midX: (x1 + x2) / 2, midY: y1 };
+                }
+                const r = Math.min(R, dy / 2, Math.abs(bus - x1), Math.abs(x2 - bus));
+                const sgn = desce ? 1 : -1;
+                const dir = aRight ? 1 : -1;
+                const d = [
+                    `M ${x1} ${y1}`,
+                    `L ${bus - dir * r} ${y1}`,
+                    `Q ${bus} ${y1} ${bus} ${y1 + sgn * r}`,      // curva pro tronco
+                    `L ${bus} ${y2 - sgn * r}`,                   // tronco vertical
+                    `Q ${bus} ${y2} ${bus + dir * r} ${y2}`,      // curva pro filho
+                    `L ${x2} ${y2}`,
+                ].join(' ');
+                return { d, midX: bus, midY: (y1 + y2) / 2 };
+            };
+
             // Arestas hierárquicas (produto→campanha→conjunto→criativo)
             (this._boardHierEdges || []).forEach(e => {
                 const a = rectFor(e.from), b = rectFor(e.to);
                 if (!a || !b) return;
-                const p = bezier(a, b);
+                const p = elbow(a, b);
                 parts.push(`<path d="${p.d}" stroke="#8b5cf6" stroke-width="1.5" fill="none" opacity="0.45"/>`);
             });
 
