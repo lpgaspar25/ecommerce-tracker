@@ -25,6 +25,8 @@
             fbAdsetsByCamp: {},
             fbAdsByAdset: {},
             filter: { product:'', campaign:'', adset:'', ad:'' },
+            // Filtros do Board — só em memória de propósito: recarregar volta a mostrar tudo
+            boardFilter: { q:'', running:false, valid:false, metric:'', top:false, compact:false },
             // Board pan/zoom
             board: { zoom: 1, tx: 0, ty: 0, dragging: false, dragX: 0, dragY: 0 },
             // Collapsed nodes: { "campaign:id": true, "adset:id": true }
@@ -154,6 +156,57 @@
             document.getElementById('adh-board-zoom-in')?.addEventListener('click', () => this._zoomBoard(1.2));
             document.getElementById('adh-board-zoom-out')?.addEventListener('click', () => this._zoomBoard(1/1.2));
             document.getElementById('adh-board-reset')?.addEventListener('click', () => this._resetBoard());
+
+            // ── Barra de filtros do Board ──
+            const reBoard = () => this._renderBoard();
+            const chip = (id, campo) => {
+                const b = document.getElementById(id);
+                b?.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    this._state.boardFilter[campo] = !this._state.boardFilter[campo];
+                    b.setAttribute('aria-pressed', String(this._state.boardFilter[campo]));
+                    reBoard();
+                });
+            };
+            chip('adh-f-running', 'running');
+            chip('adh-f-valid', 'valid');
+            chip('adh-f-compact', 'compact');
+            chip('adh-f-top', 'top');
+            document.getElementById('adh-board-q')?.addEventListener('input', (e) => {
+                // debounce: cada tecla redesenha dezenas de nós com imagem
+                clearTimeout(this._boardQTimer);
+                const v = e.target.value;
+                this._boardQTimer = setTimeout(() => { this._state.boardFilter.q = v; reBoard(); }, 150);
+            });
+            document.getElementById('adh-board-metric')?.addEventListener('change', (e) => {
+                const v = e.target.value;
+                this._state.boardFilter.metric = v;
+                const topBtn = document.getElementById('adh-f-top');
+                if (topBtn) {
+                    topBtn.disabled = !v;
+                    topBtn.title = v ? 'Mostra só os 10 melhores pela métrica escolhida' : 'Escolha uma métrica para habilitar';
+                    if (!v) { this._state.boardFilter.top = false; topBtn.setAttribute('aria-pressed', 'false'); }
+                }
+                reBoard();
+            });
+            document.getElementById('adh-board-collapse-sets')?.addEventListener('click', () => {
+                (this._state.adsets || []).forEach(a => { this._state.collapsed['adset:' + a.id] = true; });
+                reBoard();
+            });
+            document.getElementById('adh-board-expand')?.addEventListener('click', () => {
+                this._state.collapsed = {};
+                reBoard();
+            });
+            document.getElementById('adh-board-clear')?.addEventListener('click', () => {
+                this._state.boardFilter = { q:'', running:false, valid:false, metric:'', top:false, compact:false };
+                ['adh-f-running','adh-f-valid','adh-f-compact','adh-f-top'].forEach(id => {
+                    document.getElementById(id)?.setAttribute('aria-pressed', 'false');
+                });
+                const topBtn = document.getElementById('adh-f-top'); if (topBtn) topBtn.disabled = true;
+                const q = document.getElementById('adh-board-q'); if (q) q.value = '';
+                const m = document.getElementById('adh-board-metric'); if (m) m.value = '';
+                reBoard();
+            });
 
             // Funil: dropdown de etapas + auto-layout
             document.getElementById('adh-btn-funnel')?.addEventListener('click', (e) => {
@@ -1037,7 +1090,7 @@
                 // Accumulate metrics per ad
                 if (adName && adsetName) {
                     const k = adName + '||' + adsetName + '||' + campName;
-                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0 };
+                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0, first: '', last: '' };
                     const imp = parseFloat(String(row[idxImpr] || '').replace(/[^0-9.-]/g, '')) || 0;
                     const spd = parseFloat(String(row[idxSpend] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
@@ -1054,6 +1107,12 @@
                     metricsByAd[k].atc += numCol(idxAtc);
                     metricsByAd[k].ic  += numCol(idxIc);
                     metricsByAd[k].purchases += numCol(idxPur);
+                    // Janela em que o criativo apareceu no relatório (pra "X dias no ar")
+                    if (day) {
+                        const m = metricsByAd[k];
+                        if (!m.first || day < m.first) m.first = day;
+                        if (!m.last || day > m.last) m.last = day;
+                    }
                 }
 
                 // Extract region from names (uses RegionTags if available)
@@ -1131,6 +1190,8 @@
                     ad.atc = Math.round(m.atc);
                     ad.ic = Math.round(m.ic);
                     ad.purchases = Math.round(m.purchases);
+                    if (m.first) ad.firstSeen = m.first;
+                    if (m.last) ad.lastSeen = m.last;
                 }
             });
 
@@ -1201,6 +1262,12 @@
             return 'ACTIVE';
         },
 
+        _fmtDia(iso) {
+            if (!iso) return '';
+            const [y, m, d] = String(iso).split('-');
+            return d && m ? `${d}/${m}` : iso;
+        },
+
         _regionBadge(region) {
             if (!region) return '';
             const label = (typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(region) : region;
@@ -1266,6 +1333,97 @@
 
         _cssEsc(s) { return String(s).replace(/"/g, '\\"'); },
 
+        // ── Filtro do Board: decide quais ids ficam visíveis ──────────────
+        // Poda de baixo pra cima: pai só aparece se tiver filho visível.
+        // Retorna null quando não há filtro (caminho rápido = mostra tudo).
+        _computeBoardScope(adGate) {
+            const f = this._state.boardFilter || {};
+            const q = String(f.q || '').trim().toLowerCase();
+            if (!q && !f.running && !f.valid && !adGate) return null;
+
+            const pass = (o) => (!f.running || o.status === 'ACTIVE') && (!f.valid || !!o.validated);
+            const hit  = (o) => !q || String(o.name || '').toLowerCase().includes(q);
+
+            // Indexa uma vez só (evita filter dentro de laço)
+            const adsBy = new Map(), setsBy = new Map();
+            (this._state.ads || []).forEach(a => {
+                if (!adsBy.has(a.adsetId)) adsBy.set(a.adsetId, []);
+                adsBy.get(a.adsetId).push(a);
+            });
+            (this._state.adsets || []).forEach(a => {
+                if (!setsBy.has(a.campaignId)) setsBy.set(a.campaignId, []);
+                setsBy.get(a.campaignId).push(a);
+            });
+
+            const keep = { product: new Set(), campaign: new Set(), adset: new Set(), ad: new Set() };
+            (this._products() || []).forEach(prod => {
+                const prodHit = hit(prod);
+                let prodTemFilho = false;
+                this._campaignsForProduct(prod.id).forEach(camp => {
+                    const campHit = prodHit || hit(camp);
+                    let campTemFilho = false;
+                    (setsBy.get(camp.id) || []).forEach(as => {
+                        const setHit = campHit || hit(as);
+                        let setTemFilho = false;
+                        (adsBy.get(as.id) || []).forEach(ad => {
+                            if (!pass(ad)) return;
+                            if (!(setHit || hit(ad))) return;
+                            if (adGate && !adGate(ad)) return;
+                            keep.ad.add(ad.id); setTemFilho = true;
+                        });
+                        const semFilhos = !(adsBy.get(as.id) || []).length;
+                        if (setTemFilho || (semFilhos && pass(as) && setHit)) {
+                            keep.adset.add(as.id); campTemFilho = true;
+                        }
+                    });
+                    const semSets = !(setsBy.get(camp.id) || []).length;
+                    if (campTemFilho || (semSets && pass(camp) && campHit)) {
+                        keep.campaign.add(camp.id); prodTemFilho = true;
+                    }
+                });
+                if (prodTemFilho || (prodHit && !this._campaignsForProduct(prod.id).length)) keep.product.add(prod.id);
+            });
+            return keep;
+        },
+
+        // Valor de uma métrica pra ordenar — reaproveita _funnelOf. null = sem dado.
+        _metricValue(item, metric) {
+            const f = this._funnelOf(item);
+            switch (metric) {
+                case 'spend':     return f.spend > 0 ? f.spend : null;
+                case 'clicks':    return f.clicks > 0 ? f.clicks : null;
+                case 'purchases': return f.purchases > 0 ? f.purchases : null;
+                case 'ctr':       return f.impressions > 0 ? f.ctr : null;
+                case 'cpc':       return f.cpc;
+                case 'cpa':       return f.cpa;
+                default:          return null;
+            }
+        },
+
+        // Ordena uma CÓPIA. Em CPC/CPA menor é melhor. Sem dado vai sempre pro fim.
+        _sortByMetric(list, metric) {
+            const menorMelhor = (metric === 'cpc' || metric === 'cpa');
+            return [...list].sort((a, b) => {
+                const va = this._metricValue(a, metric), vb = this._metricValue(b, metric);
+                if (va == null && vb == null) return 0;
+                if (va == null) return 1;
+                if (vb == null) return -1;
+                return menorMelhor ? va - vb : vb - va;
+            });
+        },
+
+        // "X dias no ar" a partir da janela vista no relatório
+        _diasNoAr(item) {
+            if (!item || !item.firstSeen) return null;
+            const ini = new Date(item.firstSeen + 'T00:00:00');
+            const fim = new Date((item.lastSeen || item.firstSeen) + 'T00:00:00');
+            if (isNaN(ini) || isNaN(fim)) return null;
+            const dias = Math.round((fim - ini) / 86400000) + 1;
+            const hoje = new Date(); hoje.setHours(0,0,0,0);
+            const paradoHa = Math.round((hoje - fim) / 86400000);
+            return { dias, paradoHa: paradoHa > 1 ? paradoHa : 0, ate: item.lastSeen || item.firstSeen };
+        },
+
         // ============= BOARD VIEW (estilo Miro) =============
         _renderBoard() {
             const wrap = document.getElementById('adh-board-wrap');
@@ -1275,16 +1433,40 @@
 
             // Layout: 4 columns × N rows, each node 220×85 with 40px gap
             const NODE_W = 250, NODE_H = 150, COL_GAP = 80, ROW_GAP = 20;  // +faixa de funil no nó
-            const AD_NODE_H = 350; // Criativos expandidos (imagem grande) — cobre o nó real (~273px) + título em 2 linhas
+            const f = this._state.boardFilter || {};
+            let keep = this._computeBoardScope();
+            let AD_NODE_H = f.compact ? 175 : 350;   // compacto: thumb menor + funil oculto
+            let AD_NODE_W = f.compact ? 170 : NODE_W;
+            const perRow = f.compact ? 2 : 1;        // compacto: 2 criativos por linha
+            const GX = 12, GY = 12;
             const COL_X = (i) => i * (NODE_W + COL_GAP) + 40;
 
             const productId = this._state.selectedProductId;
             const products = this._products().filter(p => productId ? p.id === productId : true);
 
             // If nothing selected, show all products that have campaigns
-            const visibleProducts = productId
+            let visibleProducts = productId
                 ? products
                 : this._products().filter(p => this._campaignsForProduct(p.id).length > 0);
+            if (keep) visibleProducts = visibleProducts.filter(p => keep.product.has(p.id));
+
+            // Ranking dos 10 melhores criativos (precisa vir ANTES do layout por causa do "Só top 10")
+            this._boardTopRank = new Map();
+            if (f.metric) {
+                const idsProd = new Set(visibleProducts.map(p => p.id));
+                const campsOk = new Set((this._state.campaigns || []).filter(c => idsProd.has(c.productId)).map(c => c.id));
+                const setsOk = new Set((this._state.adsets || []).filter(a => campsOk.has(a.campaignId)).map(a => a.id));
+                let cands = (this._state.ads || []).filter(a => setsOk.has(a.adsetId));
+                if (keep) cands = cands.filter(a => keep.ad.has(a.id));
+                this._sortByMetric(cands, f.metric)
+                    .filter(a => this._metricValue(a, f.metric) != null)
+                    .slice(0, 10)
+                    .forEach((a, i) => this._boardTopRank.set(a.id, i + 1));
+                if (f.top) {
+                    keep = this._computeBoardScope(ad => this._boardTopRank.has(ad.id));
+                    if (keep) visibleProducts = visibleProducts.filter(p => keep.product.has(p.id));
+                }
+            }
 
             const nodes = [];
             const lines = [];
@@ -1293,7 +1475,9 @@
             const isCollapsed = (type, id) => !!this._state.collapsed[type + ':' + id];
 
             for (const prod of visibleProducts) {
-                const campaigns = this._campaignsForProduct(prod.id);
+                let campaigns = this._campaignsForProduct(prod.id);
+                if (keep) campaigns = campaigns.filter(c => keep.campaign.has(c.id));
+                if (f.metric) campaigns = this._sortByMetric(campaigns, f.metric);
                 if (!campaigns.length) continue;
                 const productStart = curY;
                 const prodCollapsed = isCollapsed('product', prod.id);
@@ -1308,7 +1492,9 @@
                 for (let ci = 0; ci < campaigns.length; ci++) {
                     const camp = campaigns[ci];
                     const campCollapsed = isCollapsed('campaign', camp.id);
-                    const adsets = campCollapsed ? [] : this._state.adsets.filter(a => a.campaignId === camp.id);
+                    let adsets = campCollapsed ? [] : this._state.adsets.filter(a => a.campaignId === camp.id);
+                    if (keep) adsets = adsets.filter(a => keep.adset.has(a.id));
+                    if (f.metric) adsets = this._sortByMetric(adsets, f.metric);
                     const campStart = curY;
 
                     if (adsets.length === 0) {
@@ -1319,18 +1505,26 @@
                         for (let ai = 0; ai < adsets.length; ai++) {
                             const adset = adsets[ai];
                             const adsetCollapsed = isCollapsed('adset', adset.id);
-                            const ads = adsetCollapsed ? [] : this._state.ads.filter(x => x.adsetId === adset.id);
+                            let ads = adsetCollapsed ? [] : this._state.ads.filter(x => x.adsetId === adset.id);
+                            if (keep) ads = ads.filter(x => keep.ad.has(x.id));
+                            if (f.metric) ads = this._sortByMetric(ads, f.metric);
                             const adsetStart = curY;
 
                             if (ads.length === 0) {
                                 nodes.push({ x: COL_X(2), y: curY, type: 'adset', item: adset });
                                 curY += NODE_H + ROW_GAP;
                             } else {
-                                for (const ad of ads) {
-                                    nodes.push({ x: COL_X(3), y: curY, type: 'ad', item: ad });
-                                    curY += AD_NODE_H + ROW_GAP; // criativo expandido ocupa mais altura
-                                }
-                                const adsetY = (adsetStart + curY - ROW_GAP - NODE_H) / 2;
+                                ads.forEach((ad, i) => {
+                                    nodes.push({
+                                        x: COL_X(3) + (i % perRow) * (AD_NODE_W + GX),
+                                        y: adsetStart + Math.floor(i / perRow) * (AD_NODE_H + GY),
+                                        type: 'ad', item: ad,
+                                    });
+                                });
+                                const laneH = Math.ceil(ads.length / perRow) * (AD_NODE_H + GY) - GY;
+                                const faixa = Math.max(laneH, NODE_H);
+                                curY = adsetStart + faixa + ROW_GAP;
+                                const adsetY = adsetStart + (faixa - NODE_H) / 2;
                                 nodes.push({ x: COL_X(2), y: adsetY, type: 'adset', item: adset });
                             }
                         }
@@ -1362,23 +1556,30 @@
             });
 
             // Render nodes
-            nodesEl.innerHTML = nodes.map(n => this._renderBoardNode(n, NODE_W, n.type === 'ad' ? AD_NODE_H : NODE_H)).join('');
+            nodesEl.classList.toggle('adh-compact', !!f.compact);
+            nodesEl.innerHTML = nodes.map(n =>
+                this._renderBoardNode(n, n.type === 'ad' ? AD_NODE_W : NODE_W, n.type === 'ad' ? AD_NODE_H : NODE_H)
+            ).join('');
 
-            // ── Guarda os pares hierárquicos; o desenho fica em _drawBoardEdges (lê o DOM) ──
+            // ── Arestas montadas a partir dos nós REALMENTE desenhados ──
+            // (varrer o estado inteiro criaria arestas apontando pra nós filtrados)
+            const presentes = new Set(nodes.map(n => n.type + ':' + n.item.id));
             const hier = [];
-            visibleProducts.forEach(p => {
-                if (isCollapsed('product', p.id)) return;
-                this._campaignsForProduct(p.id).forEach(c => hier.push({ from: 'product:' + p.id, to: 'campaign:' + c.id }));
-            });
-            this._state.campaigns.forEach(c => {
-                if (isCollapsed('campaign', c.id)) return;
-                this._state.adsets.filter(a => a.campaignId === c.id).forEach(a => hier.push({ from: 'campaign:' + c.id, to: 'adset:' + a.id }));
-            });
-            this._state.adsets.forEach(a => {
-                if (isCollapsed('adset', a.id)) return;
-                this._state.ads.filter(x => x.adsetId === a.id).forEach(x => hier.push({ from: 'adset:' + a.id, to: 'ad:' + x.id }));
+            const par = (from, to) => { if (presentes.has(from) && presentes.has(to)) hier.push({ from, to }); };
+            nodes.forEach(n => {
+                if (n.type === 'campaign' && n.item.productId) par('product:' + n.item.productId, 'campaign:' + n.item.id);
+                else if (n.type === 'adset' && n.item.campaignId) par('campaign:' + n.item.campaignId, 'adset:' + n.item.id);
+                else if (n.type === 'ad' && n.item.adsetId) par('adset:' + n.item.adsetId, 'ad:' + n.item.id);
             });
             this._boardHierEdges = hier;
+
+            // Contador "N de M nós" + botão de limpar
+            const totalGeral = (this._state.campaigns || []).length + (this._state.adsets || []).length + (this._state.ads || []).length;
+            const mostrados = nodes.filter(n => n.type !== 'funnel' && n.type !== 'product').length;
+            const cnt = document.getElementById('adh-board-count');
+            if (cnt) cnt.textContent = `${mostrados} de ${totalGeral} nós`;
+            const temFiltro = !!(f.q || f.running || f.valid || f.metric || f.top || f.compact);
+            document.getElementById('adh-board-clear')?.classList.toggle('hidden', !temFiltro);
             this._boardNodeSize = { w: NODE_W, h: NODE_H };
             this._drawBoardEdges();
 
@@ -1665,8 +1866,19 @@
                 || (n.type === 'ad' && item.id === this._state.selectedAdId);
             const icons = { product:'package', campaign:'megaphone', adset:'target', ad:'image' };
             const labels = { product:'Produto', campaign:'Campanha', adset:'Conjunto', ad:'Criativo' };
-            const status = (n.type === 'product') ? '' : (this._statusBadge(item.status) + (item.region ? this._regionBadge(item.region) : ''));
+            let status = (n.type === 'product') ? '' : (this._statusBadge(item.status) + (item.region ? this._regionBadge(item.region) : ''));
+            if (n.type === 'ad') {
+                if (item.status === 'ACTIVE' && !Number(item.impressions)) {
+                    status += ' <span class="adh-status-badge adh-st-issues" title="Marcado como ativo, mas sem nenhuma impressão no relatório importado — pode ser rejeitado, em aprendizado ou com orçamento zerado">sem entrega</span>';
+                }
+                const t = this._diasNoAr(item);
+                if (t) {
+                    status += ` <span class="adh-days-badge${t.paradoHa ? ' adh-days-stale' : ''}" title="Apareceu no relatório de ${this._fmtDia(item.firstSeen)} a ${this._fmtDia(t.ate)}${t.paradoHa ? ` — sem dados há ${t.paradoHa} dia(s)` : ''}">${t.dias}d no ar${t.paradoHa ? ` · parou há ${t.paradoHa}d` : ''}</span>`;
+                }
+            }
             const valid = item.validated ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;color:#10b981" title="Validado"></i>' : '';
+            const rank = (n.type === 'ad' && this._boardTopRank) ? this._boardTopRank.get(item.id) : null;
+            const rankBadge = rank ? `<span class="adh-rank-badge" title="${rank}º melhor pela métrica selecionada">${rank}º</span>` : '';
             // Criativo expandido: imagem grande (ou placeholder)
             const adImage = n.type === 'ad'
                 ? (item.thumbnail
@@ -1709,13 +1921,13 @@
                 </div>`;
             }
 
-            return `<div class="adh-board-node ${selected ? 'adh-board-node-selected' : ''} ${item.validated ? 'adh-board-node-validated' : ''} adh-board-node-${n.type}"
+            return `<div class="adh-board-node ${selected ? 'adh-board-node-selected' : ''} ${item.validated ? 'adh-board-node-validated' : ''} ${rank ? 'adh-board-node-top' : ''} adh-board-node-${n.type}"
                 data-type="${n.type}" data-id="${this._esc(item.id)}"
                 style="left:${n.x}px;top:${n.y}px;width:${w}px;min-height:${h}px">
                 <div class="adh-board-node-hdr">
                     <i data-lucide="${icons[n.type]}" style="width:12px;height:12px"></i>
                     <span class="adh-board-node-type">${labels[n.type]}</span>
-                    ${valid}
+                    ${rankBadge}${valid}
                     <div class="adh-board-node-actions">
                         ${n.type !== 'product' ? `<button class="adh-board-validate" title="Marcar como validado">
                             <i data-lucide="${item.validated ? 'check-square' : 'square'}" style="width:13px;height:13px"></i>
@@ -1803,9 +2015,25 @@
         },
 
         _resetBoard() {
-            this._state.board.zoom = 1;
-            this._state.board.tx = 0;
-            this._state.board.ty = 0;
+            // "Ajustar" = enquadrar o board inteiro na viewport (antes só zerava o zoom)
+            const vp = document.getElementById('adh-board-viewport');
+            const canvas = document.getElementById('adh-board-canvas');
+            const cw = canvas ? parseFloat(canvas.style.width) || canvas.scrollWidth : 0;
+            const ch = canvas ? parseFloat(canvas.style.height) || canvas.scrollHeight : 0;
+            if (!vp || !cw || !ch) {
+                this._state.board.zoom = 1; this._state.board.tx = 0; this._state.board.ty = 0;
+                this._applyBoardTransform();
+                return;
+            }
+            // O board é VERTICAL: enquadrar a altura toda daria 20% (ilegível).
+            // Enquadra pela LARGURA e nunca abaixo de 45% — o resto se navega rolando/arrastando.
+            const cabeTudo = Math.min(vp.clientWidth / cw, vp.clientHeight / ch) * 0.95;
+            const z = cabeTudo >= 0.45
+                ? Math.min(1, cabeTudo)
+                : Math.max(0.45, Math.min(1, (vp.clientWidth / cw) * 0.95));
+            this._state.board.zoom = z;
+            this._state.board.tx = Math.max(0, (vp.clientWidth - cw * z) / 2);
+            this._state.board.ty = 20;   // encosta no topo: o board é vertical
             this._applyBoardTransform();
         },
 

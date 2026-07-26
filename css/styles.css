@@ -14352,6 +14352,47 @@ body:not([data-theme]) .adh-board-viewport {
     font-variant-numeric: tabular-nums;
 }
 
+/* Barra de filtros do Board */
+.adh-board-filters {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+    padding: .45rem .75rem; border-bottom: 1px solid var(--border, rgba(0,0,0,.08));
+}
+.adh-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    background: var(--bg-input, rgba(0,0,0,.04));
+    border: 1px solid var(--border, rgba(0,0,0,.1));
+    color: var(--text-secondary); font-size: .68rem; font-weight: 600;
+    padding: .28rem .6rem; border-radius: 999px; cursor: pointer;
+    transition: background .12s, border-color .12s, color .12s;
+}
+.adh-chip:hover { background: rgba(139,92,246,.1); }
+.adh-chip[aria-pressed="true"] { background: rgba(139,92,246,.18); border-color: #8b5cf6; color: var(--text-primary); }
+.adh-chip[disabled] { opacity: .45; cursor: not-allowed; }
+.adh-chip[disabled]:hover { background: var(--bg-input, rgba(0,0,0,.04)); }
+.adh-board-count { margin-left: auto; font-size: .7rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Badge de posição no ranking + destaque do top */
+.adh-rank-badge {
+    background: rgba(245,158,11,.2); color: #b45309;
+    font-size: .58rem; font-weight: 800; padding: 0 5px; border-radius: 999px;
+}
+.adh-board-node-top { box-shadow: 0 0 0 2px rgba(245,158,11,.45), 0 4px 12px rgba(0,0,0,.08); }
+
+/* Tempo no ar */
+.adh-days-badge {
+    display: inline-block; font-size: .56rem; font-weight: 700;
+    padding: 0 5px; border-radius: 4px;
+    background: rgba(16,185,129,.14); color: #059669; white-space: nowrap;
+}
+.adh-days-badge.adh-days-stale { background: rgba(107,114,128,.16); color: var(--text-muted); }
+
+/* Modo compacto: nó menor, sem as 5 etapas (mantém gasto/CPC/CPA) */
+#adh-board-nodes.adh-compact .adh-board-node-ad { width: 170px; }
+#adh-board-nodes.adh-compact .adh-board-ad-img { height: 64px; margin: 2px 0 4px; }
+#adh-board-nodes.adh-compact .adh-board-node-title { -webkit-line-clamp: 1; }
+#adh-board-nodes.adh-compact .adh-fn-row { display: none; }
+#adh-board-nodes.adh-compact .adh-node-links { display: none; }
+
 /* Faixa de funil dentro do nó do board: FB → Site → Carrinho → IC → Compra */
 .adh-fn-strip {
     margin-top: 5px;

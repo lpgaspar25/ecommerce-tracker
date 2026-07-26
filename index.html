@@ -4869,6 +4869,26 @@
                     </button>
                     <span style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">Arraste nós pra posicionar · ⊕ conecta dois nós · Esc cancela · clique na linha tracejada pra apagar</span>
                 </div>
+                <div class="adh-board-filters">
+                    <input type="text" id="adh-board-q" class="input input-sm" placeholder="Buscar campanha, conjunto ou criativo…" style="width:230px">
+                    <button type="button" id="adh-f-running" class="adh-chip" aria-pressed="false" title="Mostra só o que está ativo. Ramos sem nenhum filho ativo somem inteiros."><i data-lucide="play" style="width:12px;height:12px"></i> Só rodando</button>
+                    <button type="button" id="adh-f-valid" class="adh-chip" aria-pressed="false" title="Mostra só os itens marcados como validados"><i data-lucide="check-circle-2" style="width:12px;height:12px"></i> Só validados</button>
+                    <select id="adh-board-metric" class="input input-sm" style="width:auto" title="Ordena os nós pela métrica escolhida">
+                        <option value="">Ordem padrão</option>
+                        <option value="spend">Gasto</option>
+                        <option value="cpa">CPA (menor melhor)</option>
+                        <option value="purchases">Compras</option>
+                        <option value="ctr">CTR</option>
+                        <option value="clicks">Cliques</option>
+                        <option value="cpc">CPC (menor melhor)</option>
+                    </select>
+                    <button type="button" id="adh-f-top" class="adh-chip" aria-pressed="false" disabled title="Escolha uma métrica para habilitar"><i data-lucide="trending-up" style="width:12px;height:12px"></i> Só top 10</button>
+                    <button type="button" id="adh-f-compact" class="adh-chip" aria-pressed="false" title="Nós menores, 2 criativos por linha — cabe muito mais na tela"><i data-lucide="rows-3" style="width:12px;height:12px"></i> Compacto</button>
+                    <button type="button" id="adh-board-collapse-sets" class="btn btn-sm btn-secondary" title="Recolhe todos os conjuntos de uma vez"><i data-lucide="chevrons-down-up" style="width:13px;height:13px"></i> Recolher conjuntos</button>
+                    <button type="button" id="adh-board-expand" class="btn btn-sm btn-secondary" title="Expande tudo de novo">Expandir tudo</button>
+                    <span id="adh-board-count" class="adh-board-count"></span>
+                    <button type="button" id="adh-board-clear" class="btn btn-sm btn-secondary hidden">Limpar filtros</button>
+                </div>
                 <div id="adh-board-viewport" class="adh-board-viewport">
                     <div id="adh-board-canvas" class="adh-board-canvas">
                         <svg id="adh-board-svg" class="adh-board-svg"></svg>
