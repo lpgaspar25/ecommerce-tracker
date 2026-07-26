@@ -1180,16 +1180,23 @@
         },
 
         _mapStatus(s) {
-            const n = this._norm(s);
+            // O Facebook manda "not_delivering", "campaign_paused", "in_process"… e o _norm
+            // REMOVE o "_", virando "notdelivering" — que não casava com nada e caía no
+            // fallback ACTIVE (campanha desativada aparecia como Ativa). Troca "_" por espaço antes.
+            const n = this._norm(String(s || '').replace(/[_\-]+/g, ' '));
             if (!n) return 'ACTIVE';
             // Ordem importa: archived antes de active porque "archived" não inclui "active"
             if (n.includes('archiv') || n.includes('arquiv')) return 'ARCHIVED';
             if (n.includes('delet') || n.includes('removid')) return 'DELETED';
-            if (n.includes('not delivering') || n.includes('not_delivering') || n.includes('nao veiculando')) return 'PAUSED';
+            if (n.includes('not delivering') || n.includes('notdelivering')
+                || n.includes('nao veiculando') || n.includes('nao esta veiculando')) return 'PAUSED';
             if (n.includes('paus')) return 'PAUSED';
-            if (n.includes('inactive') || n.includes('inativ') || n === 'off') return 'PAUSED';
-            if (n.includes('issue') || n.includes('erro') || n.includes('reject')) return 'WITH_ISSUES';
-            if (n.includes('pending') || n.includes('processando')) return 'IN_PROCESS';
+            if (n.includes('inactive') || n.includes('inativ') || n === 'off'
+                || n.includes('desativ') || n.includes('disabled') || n.includes('encerrad')
+                || n.includes('completed') || n.includes('concluid')) return 'PAUSED';
+            if (n.includes('issue') || n.includes('erro') || n.includes('reject') || n.includes('rejeitad')) return 'WITH_ISSUES';
+            if (n.includes('pending') || n.includes('processando') || n.includes('in process')
+                || n.includes('em analise') || n.includes('review')) return 'IN_PROCESS';
             if (n.includes('active') || n.includes('ativ') || n.includes('veiculando') || n.includes('running')) return 'ACTIVE';
             return 'ACTIVE';
         },
