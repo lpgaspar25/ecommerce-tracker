@@ -10490,6 +10490,23 @@ thead:hover .diary-check-col input[type="checkbox"],
 
 .lab-card-header { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.4rem; }
 
+/* Entrada de PERÍODO no Diário (agregado) — não confundir com entrada diária */
+.diary-notion-date-range { white-space: nowrap; }
+.diary-range-arrow { opacity: .5; margin: 0 1px; }
+.diary-range-badge {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, .16);
+    color: #b45309;
+    font-size: .62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    vertical-align: 1px;
+}
+
 /* Tags no card de produto do Mapa de Ads (plataforma, conta de anúncio, página) */
 .adh-card-tags {
     display: flex; flex-wrap: wrap; align-items: center; gap: 3px;

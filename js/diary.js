@@ -180,7 +180,15 @@ const DiaryModule = {
                 const toggleIcon = hasCampaigns
                     ? `<button class="diary-expand-btn" onclick="event.stopPropagation(); DiaryModule._toggleCampaigns('${entry.id}')" data-parent="${entry.id}"><i data-lucide="chevron-right" style="width:12px;height:12px" class="diary-expand-icon"></i></button>`
                     : '';
-                return `<td class="diary-notion-date">${toggleIcon}${formatDate(entry.date)}</td>`;
+                // Entradas de PERÍODO (agregado de vários dias) mostram o intervalo e um
+                // selo — senão ficam com a mesma data de uma entrada diária e parecem duplicadas.
+                const ps = entry.periodStart, pe = entry.periodEnd;
+                const isRange = ps && pe && ps !== pe;
+                const label = isRange
+                    ? `${formatDate(ps)} <span class="diary-range-arrow">→</span> ${formatDate(pe)}
+                       <span class="diary-range-badge" title="Entrada de período: soma de ${formatDate(ps)} a ${formatDate(pe)} — não é um dia">período</span>`
+                    : formatDate(entry.date);
+                return `<td class="diary-notion-date${isRange ? ' diary-notion-date-range' : ''}">${toggleIcon}${label}</td>`;
             }
             case 'product': {
                 const name = (!entry.productId || entry.testType === 'store')
