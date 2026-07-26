@@ -26,7 +26,10 @@
             fbAdsByAdset: {},
             filter: { product:'', campaign:'', adset:'', ad:'' },
             // Filtros do Board — só em memória de propósito: recarregar volta a mostrar tudo
-            boardFilter: { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'' },
+            boardFilter: { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'', grouped:false },
+            // Mídia compartilhada por NOME de criativo: uma cópia serve todos os
+            // conjuntos que rodam o mesmo criativo (evita 127 cópias no armazenamento)
+            creativeMedia: {},
             // Board pan/zoom
             board: { zoom: 1, tx: 0, ty: 0, dragging: false, dragX: 0, dragY: 0 },
             // Collapsed nodes: { "campaign:id": true, "adset:id": true }
@@ -60,6 +63,7 @@
                 if (data.nodePos && typeof data.nodePos === 'object') this._state.nodePos = data.nodePos;
                 if (Array.isArray(data.customEdges)) this._state.customEdges = data.customEdges;
                 if (Array.isArray(data.funnelNodes)) this._state.funnelNodes = data.funnelNodes;
+                if (data.creativeMedia && typeof data.creativeMedia === 'object') this._state.creativeMedia = data.creativeMedia;
             } catch (e) { console.warn('[AdHierarchy] load failed:', e); }
         },
 
@@ -71,6 +75,7 @@
                 nodePos: this._state.nodePos,
                 customEdges: this._state.customEdges,
                 funnelNodes: this._state.funnelNodes,
+                creativeMedia: this._state.creativeMedia,
             });
             try {
                 localStorage.setItem(STORAGE_KEY, payload);
@@ -171,6 +176,7 @@
             chip('adh-f-running', 'running');
             chip('adh-f-valid', 'valid');
             chip('adh-f-compact', 'compact');
+            chip('adh-f-grouped', 'grouped');
             document.getElementById('adh-board-top')?.addEventListener('change', (e) => {
                 this._state.boardFilter.top = e.target.value;   // '' | 'best' | 'worst'
                 reBoard();
@@ -205,8 +211,8 @@
                 reBoard();
             });
             document.getElementById('adh-board-clear')?.addEventListener('click', () => {
-                this._state.boardFilter = { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'' };
-                ['adh-f-running','adh-f-valid','adh-f-compact'].forEach(id => {
+                this._state.boardFilter = { q:'', running:false, valid:false, metric:'', top:'', compact:false, period:'', grouped:false };
+                ['adh-f-running','adh-f-valid','adh-f-compact','adh-f-grouped'].forEach(id => {
                     document.getElementById(id)?.setAttribute('aria-pressed', 'false');
                 });
                 const topSel = document.getElementById('adh-board-top'); if (topSel) { topSel.disabled = true; topSel.value = ''; }
@@ -1558,6 +1564,33 @@
             const lines = [];
             let curY = 40;
 
+            // ── Modo AGRUPADO: Produto → um cartão por criativo (soma dos conjuntos) ──
+            if (f.grouped) {
+                for (const prod of visibleProducts) {
+                    const campIds = new Set(this._campaignsForProduct(prod.id).map(c => c.id));
+                    const setIds = new Set((this._state.adsets || []).filter(a => campIds.has(a.campaignId)).map(a => a.id));
+                    let adsProd = (this._state.ads || []).filter(a => setIds.has(a.adsetId));
+                    if (keep) adsProd = adsProd.filter(a => keep.ad.has(a.id));
+                    let grupos = this._criativosAgrupados(adsProd);
+                    if (f.metric) grupos = this._sortByMetric(grupos, f.metric);
+                    if (!grupos.length) continue;
+                    // métricas já somadas no objeto: o cache de período não deve reinterpretá-las
+                    grupos.forEach(g => { if (this._periodCache) this._periodCache.set(g.id, g); });
+                    const inicio = curY;
+                    grupos.forEach((g, i) => {
+                        nodes.push({
+                            x: COL_X(1) + (i % perRow) * (AD_NODE_W + GX),
+                            y: inicio + Math.floor(i / perRow) * (AD_NODE_H + GY),
+                            type: 'ad', item: g,
+                        });
+                    });
+                    const laneH = Math.ceil(grupos.length / perRow) * (AD_NODE_H + GY) - GY;
+                    const faixa = Math.max(laneH, NODE_H);
+                    nodes.push({ x: COL_X(0), y: inicio + (faixa - NODE_H) / 2, type: 'product', item: prod });
+                    curY = inicio + faixa + ROW_GAP * 2;
+                }
+            } else {
+
             const isCollapsed = (type, id) => !!this._state.collapsed[type + ':' + id];
 
             for (const prod of visibleProducts) {
@@ -1625,6 +1658,8 @@
                 curY += ROW_GAP * 2;
             }
 
+            }
+
             // ── Posições customizadas (arrasto) sobrescrevem o auto-layout ──
             nodes.forEach(n => {
                 const pos = this._state.nodePos[n.type + ':' + n.item.id];
@@ -1667,7 +1702,7 @@
             const rangeAtivo = this._periodRange();
             if (cnt) cnt.textContent = `${mostrados} de ${totalGeral} nós`
                 + (rangeAtivo ? ` · ${this._fmtDia(rangeAtivo.from)}–${this._fmtDia(rangeAtivo.to)}` : '');
-            const temFiltro = !!(f.q || f.running || f.valid || f.metric || f.top || f.compact || f.period);
+            const temFiltro = !!(f.q || f.running || f.valid || f.metric || f.top || f.compact || f.period || f.grouped);
             document.getElementById('adh-board-clear')?.classList.toggle('hidden', !temFiltro);
             this._boardNodeSize = { w: NODE_W, h: NODE_H };
             this._drawBoardEdges();
@@ -1743,6 +1778,68 @@
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
             this._applyBoardTransform();
+        },
+
+        // Agrupa os criativos por NOME, somando as métricas de todos os conjuntos.
+        // 127 nós repetidos viram 4 cartões — um por criativo real.
+        _criativosAgrupados(adsVisiveis) {
+            const porNome = new Map();
+            (adsVisiveis || []).forEach(ad => {
+                const chave = this._creativeKey(ad.name);
+                if (!chave) return;
+                if (!porNome.has(chave)) {
+                    porNome.set(chave, {
+                        id: 'grp_' + chave.replace(/[^a-z0-9]/g, '_'),
+                        name: ad.name, status: ad.status, validated: !!ad.validated,
+                        region: ad.region, thumbnail: '', _grupo: true, _conjuntos: 0, _ids: [],
+                        impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0,
+                        firstSeen: ad.firstSeen, lastSeen: ad.lastSeen,
+                    });
+                }
+                const g = porNome.get(chave);
+                const m = (this._periodCache && this._periodCache.get(ad.id)) || ad;
+                ['impressions','clicks','spend','lpv','atc','ic','purchases'].forEach(k => {
+                    g[k] += Number(m[k]) || 0;
+                });
+                g._conjuntos++; g._ids.push(ad.id);
+                if (ad.status === 'ACTIVE') g.status = 'ACTIVE';
+                if (ad.validated) g.validated = true;
+                if (ad.firstSeen && (!g.firstSeen || ad.firstSeen < g.firstSeen)) g.firstSeen = ad.firstSeen;
+                if (ad.lastSeen && (!g.lastSeen || ad.lastSeen > g.lastSeen)) g.lastSeen = ad.lastSeen;
+            });
+            return [...porNome.values()];
+        },
+
+        _creativeKey(nome) {
+            return String(nome || '').trim().toLowerCase();
+        },
+
+        // Imagem do criativo: a própria do nó, ou a compartilhada pelo nome
+        _mediaForCreative(item) {
+            if (item.thumbnail) return item.thumbnail;
+            return (this._state.creativeMedia || {})[this._creativeKey(item.name)] || '';
+        },
+
+        // Aplica imagem/validado a TODOS os nós com o mesmo nome de criativo
+        _propagarCriativo(item, { imagem, validado }) {
+            const chave = this._creativeKey(item.name);
+            if (!chave) return 0;
+            if (imagem !== undefined) {
+                if (!this._state.creativeMedia) this._state.creativeMedia = {};
+                if (imagem) this._state.creativeMedia[chave] = imagem;
+                else delete this._state.creativeMedia[chave];
+                // guarda só na tabela compartilhada — sem cópia por nó
+                (this._state.ads || []).forEach(a => {
+                    if (this._creativeKey(a.name) === chave) a.thumbnail = '';
+                });
+            }
+            let n = 0;
+            (this._state.ads || []).forEach(a => {
+                if (this._creativeKey(a.name) !== chave) return;
+                if (validado !== undefined) a.validated = validado;
+                n++;
+            });
+            return n;
         },
 
         // Rede de segurança: depois de renderizar, mede a altura REAL de cada nó e
@@ -2020,6 +2117,9 @@
                 if (item.status === 'ACTIVE' && !Number(item.impressions)) {
                     status += ' <span class="adh-status-badge adh-st-issues" title="Marcado como ativo, mas sem nenhuma impressão no relatório importado — pode ser rejeitado, em aprendizado ou com orçamento zerado">sem entrega</span>';
                 }
+                if (item._grupo && item._conjuntos > 1) {
+                    status += ` <span class="adh-grp-badge" title="Este criativo roda em ${item._conjuntos} conjuntos — métricas somadas">${item._conjuntos} conjuntos</span>`;
+                }
                 const t = this._diasNoAr(item);
                 if (t) {
                     status += ` <span class="adh-days-badge${t.paradoHa ? ' adh-days-stale' : ''}" title="Apareceu no relatório de ${this._fmtDia(item.firstSeen)} a ${this._fmtDia(t.ate)}${t.paradoHa ? ` — sem dados há ${t.paradoHa} dia(s)` : ''}">${t.dias}d no ar${t.paradoHa ? ` · parou há ${t.paradoHa}d` : ''}</span>`;
@@ -2032,9 +2132,10 @@
                 ? `<span class="adh-rank-badge${pior ? ' adh-rank-worst' : ''}" title="${rank}º ${pior ? 'PIOR' : 'melhor'} pela métrica selecionada">${rank}º${pior ? ' pior' : ''}</span>`
                 : '';
             // Criativo expandido: imagem grande (ou placeholder)
+            const midia = n.type === 'ad' ? this._mediaForCreative(item) : '';
             const adImage = n.type === 'ad'
-                ? (item.thumbnail
-                    ? `<img class="adh-board-ad-img" src="${this._esc(item.thumbnail)}" alt="">`
+                ? (midia
+                    ? `<img class="adh-board-ad-img" src="${this._esc(midia)}" alt="">`
                     : `<div class="adh-board-ad-img adh-board-ad-noimg"><i data-lucide="image" style="width:32px;height:32px"></i></div>`)
                 : '';
 
@@ -2245,8 +2346,13 @@
                 item.status = document.getElementById('adh-edit-status').value;
             }
             item.validated = document.getElementById('adh-edit-validated').checked;
-            if (level === 'ad' && this._editingImage !== null) {
-                item.thumbnail = this._editingImage;
+            let propagados = 0;
+            if (level === 'ad') {
+                // Imagem e "validado" valem pro CRIATIVO (nome), não só pra este nó
+                propagados = this._propagarCriativo(item, {
+                    imagem: this._editingImage !== null ? this._editingImage : undefined,
+                    validado: item.validated,
+                });
             }
             try {
                 this._persist();
@@ -2259,7 +2365,11 @@
             this._closeEditModal();
             this.render();
             if (this._state.view === 'board') this._renderBoard();
-            if (typeof showToast === 'function') showToast('Item salvo', 'success');
+            if (typeof showToast === 'function') {
+                showToast(propagados > 1
+                    ? `Salvo e aplicado em ${propagados} conjuntos que rodam "${item.name}"`
+                    : 'Item salvo', 'success');
+            }
         },
 
         _handleImageUpload(file) {

@@ -14379,6 +14379,10 @@ body:not([data-theme]) .adh-board-viewport {
 .adh-board-node-top { box-shadow: 0 0 0 2px rgba(245,158,11,.45), 0 4px 12px rgba(0,0,0,.08); }
 .adh-rank-badge.adh-rank-worst { background: rgba(239,68,68,.2); color: #b91c1c; }
 .adh-board-node-worst { box-shadow: 0 0 0 2px rgba(239,68,68,.45), 0 4px 12px rgba(0,0,0,.08); }
+.adh-grp-badge {
+    display: inline-block; font-size: .56rem; font-weight: 700; padding: 0 5px;
+    border-radius: 4px; background: rgba(99,102,241,.16); color: #4f46e5; white-space: nowrap;
+}
 
 /* Tempo no ar */
 .adh-days-badge {
