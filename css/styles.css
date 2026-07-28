@@ -15547,3 +15547,57 @@ body:not([data-theme]) .adh-board-viewport {
 .studio-msg-pensando { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); }
 .studio-chat-barra { display: flex; gap: 0.4rem; }
 .studio-chat-barra .input { flex: 1; }
+
+/* Estúdio → bloco de marca */
+.studio-marca-topo { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
+.studio-marca-nome { font-size: 1.05rem; display: block; letter-spacing: 0.02em; }
+.studio-marca-tag { font-size: 0.76rem; color: var(--text-muted); }
+.studio-marca-cores { display: flex; gap: 4px; }
+.studio-marca-cores span { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--border); }
+.studio-marca-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6rem; margin-bottom: 0.7rem; }
+.studio-marca-grid label { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.studio-marca-grid p { margin: 2px 0 0; font-size: 0.79rem; line-height: 1.4; }
+.studio-marca-tom { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+
+/* Preview da PDP com a paleta da marca */
+.studio-pdp-wrap {
+    background: var(--pdp-bg, var(--bg-card)); color: var(--pdp-txt, var(--text-primary));
+    border-radius: 10px; padding: 1rem;
+}
+.studio-pdp-marca { text-align: center; padding-bottom: 0.8rem; margin-bottom: 1rem; border-bottom: 1px solid rgba(128,128,128,0.25); }
+.studio-pdp-marca strong { display: block; font-size: 1.1rem; letter-spacing: 0.14em; text-transform: uppercase; }
+.studio-pdp-marca span { font-size: 0.7rem; opacity: 0.7; }
+.studio-pdp-media { flex-shrink: 0; width: 180px; }
+.studio-pdp-sem { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; background: rgba(128,128,128,0.12); }
+.studio-pdp-mini { display: flex; gap: 4px; margin-top: 4px; }
+.studio-pdp-mini img { width: 100%; max-width: 42px; aspect-ratio: 1; object-fit: cover; border-radius: 4px; }
+.studio-pdp-img { width: 100%; border-radius: 8px; display: block; }
+.studio-pdp-vars { margin: 0.7rem 0; }
+.studio-pdp-vars label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.65; }
+.studio-pdp-var-lista { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+.studio-pdp-var {
+    font-size: 0.72rem; padding: 0.25rem 0.55rem; border-radius: 20px; cursor: default;
+    border: 1px solid currentColor; background: transparent; color: inherit; opacity: 0.6;
+}
+.studio-pdp-var.ativa { opacity: 1; background: var(--pdp-cor, currentColor); color: var(--pdp-bg, #fff); border-color: transparent; }
+.studio-pdp-ofertas { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.7rem 0; }
+.studio-pdp-oferta {
+    font-size: 0.74rem; padding: 0.35rem 0.6rem; border-radius: 6px;
+    border: 1px dashed var(--pdp-dest, currentColor); display: flex; gap: 0.4rem; flex-wrap: wrap;
+}
+.studio-pdp-oferta span { opacity: 0.75; }
+.studio-pdp-cta {
+    margin-top: 0.5rem; width: 100%; padding: 0.6rem; border-radius: 7px; cursor: default;
+    background: var(--pdp-cor, #111); color: var(--pdp-bg, #fff); border: none;
+    font-weight: 600; font-size: 0.86rem; letter-spacing: 0.02em;
+}
+.studio-pdp-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+.studio-pdp-badges span { font-size: 0.68rem; display: inline-flex; align-items: center; gap: 0.2rem; opacity: 0.8; }
+.studio-pdp-bloco { margin-top: 1.2rem; }
+.studio-pdp-bloco h3 { font-size: 0.86rem; margin: 0 0 0.45rem; }
+.studio-pdp-bloco details { border-bottom: 1px solid rgba(128,128,128,0.25); padding: 0.4rem 0; font-size: 0.8rem; }
+.studio-pdp-bloco summary { cursor: pointer; font-weight: 600; }
+.studio-pdp-bloco details p { margin: 0.35rem 0 0; opacity: 0.8; line-height: 1.55; }
+.studio-pdp-specs { width: 100%; font-size: 0.78rem; border-collapse: collapse; }
+.studio-pdp-specs td { padding: 0.3rem 0; border-bottom: 1px solid rgba(128,128,128,0.2); }
+.studio-pdp-specs td:first-child { opacity: 0.65; width: 45%; }

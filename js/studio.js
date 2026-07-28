@@ -211,7 +211,11 @@ const StudioModule = (() => {
         let ok = 0;
         for (const preset of presets) {
             try {
-                const prompt = extra ? `${preset.prompt} ${extra}` : preset.prompt;
+                const m = d.marca;
+                // A estética da marca entra no prompt da foto — senão a imagem
+                // sai bonita mas sem nada a ver com a loja.
+                const estetica = m ? ` Overall aesthetic: ${(m.tom?.adjetivos || []).join(', ')}. Art direction aimed at ${m.publico?.quem || 'the target buyer'}.` : '';
+                const prompt = `${preset.prompt}${estetica}${extra ? ' ' + extra : ''}`;
                 const blob = await _editarImagem(base, prompt, chave);
                 const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
                 const mediaId = 'studio_' + id;
@@ -332,17 +336,84 @@ const StudioModule = (() => {
         return partes.join('\n');
     }
 
-    const SISTEMA_PAGINA = `Você é um copywriter de resposta direta especializado em páginas de produto de e-commerce que convertem no Reino Unido.
-Escreva em INGLÊS BRITÂNICO (o público é UK), com tom claro, específico e sem exagero publicitário vazio.
-Regras: nunca mencione AliExpress, China, dropshipping ou prazos de entrega longos. Não invente certificações, prêmios ou números de clientes. Foque em benefício concreto e na dor que o produto resolve.
-Responda APENAS com JSON válido, sem markdown e sem texto antes ou depois, neste formato exato:
-{"titulo":"...","subtitulo":"...","bullets":["...","...","...","...","..."],"descricaoHtml":"<p>...</p>","faq":[{"p":"...","r":"..."}],"garantia":"...","cta":"..."}
-- titulo: até 70 caracteres, com o benefício principal
-- subtitulo: uma linha de apoio
-- bullets: exatamente 5, cada um começando com o benefício
-- descricaoHtml: HTML simples (só <p>, <h3>, <ul>, <li>, <strong>), estruturado como problema, solução, prova e garantia
-- faq: 5 a 8 perguntas reais de quem hesita antes de comprar
-- cta: texto curto do botão`;
+    // ── Camada de MARCA: é o que separa uma loja com personalidade de um
+    //    catálogo genérico. Define para QUEM se fala antes de escrever a copy.
+    const SISTEMA_MARCA = `Você cria identidades de marca para lojas de e-commerce premium no Reino Unido, no padrão de marcas como Elliot Vaughn e THEMASTER: nome próprio ou palavra curta e memorável, tom refinado e confiante, zero linguagem de "promoção imperdível".
+
+A marca precisa ser FOCADA num público específico — não "todo mundo que gosta de X", mas uma pessoa concreta com um desejo e uma objeção reais.
+
+Responda APENAS com JSON válido, sem markdown e sem nada antes ou depois:
+{"nome":"...","tagline":"...","publico":{"quem":"...","idade":"...","desejo":"...","objecao":"...","gatilho":"..."},"tom":{"adjetivos":["...","...","..."],"faca":["...","...","..."],"naoFaca":["...","...","..."]},"paleta":{"primaria":"#hex","fundo":"#hex","texto":"#hex","destaque":"#hex"},"historia":"..."}
+- nome: 1 a 2 palavras, pronunciável em inglês, sem número e sem hífen
+- tagline: até 45 caracteres
+- publico.quem: uma frase descrevendo a pessoa (profissão, contexto de vida)
+- publico.desejo: o que ela quer sentir ao usar o produto
+- publico.objecao: a razão real pela qual ela hesitaria em comprar
+- publico.gatilho: o momento em que ela decide comprar
+- tom.faca / tom.naoFaca: instruções concretas de escrita
+- paleta: cores que combinam com o posicionamento (fundo claro ou escuro, à sua escolha)
+- historia: 2 frases sobre por que a marca existe (sem inventar fundador real, prêmios ou datas)`;
+
+    const SISTEMA_PAGINA = `Você é um copywriter de resposta direta para páginas de produto de e-commerce premium no Reino Unido, no padrão de lojas como Elliot Vaughn e THEMASTER.
+
+Escreva em INGLÊS BRITÂNICO. Tom refinado e específico: descreva materiais, ajuste e uso real. Nada de "amazing", "best ever", pontos de exclamação ou urgência falsa.
+
+PROIBIDO: mencionar AliExpress, China, dropshipping ou prazo longo; inventar certificações, prêmios, número de clientes vendidos ou avaliações; prometer resultado de saúde.
+
+Responda APENAS com JSON válido, sem markdown e sem nada antes ou depois:
+{"hero":{"titulo":"...","subtitulo":"...","badges":["...","...","..."]},"variantes":[{"nome":"...","descricao":"..."}],"bullets":["...","...","...","...","..."],"especificacoes":[{"campo":"...","valor":"..."}],"detalhes":[{"titulo":"...","texto":"..."}],"ofertas":[{"rotulo":"...","detalhe":"..."}],"garantia":{"titulo":"...","texto":"..."},"envio":{"titulo":"...","texto":"..."},"faq":[{"p":"...","r":"..."}],"descricaoHtml":"<p>...</p>","cta":"..."}
+
+- hero.titulo: até 60 caracteres, o produto e seu caráter (não um slogan)
+- hero.badges: 3 a 4 selos TÉCNICOS e verificáveis (ex.: "UV400 Protection", "Polarised Lenses", "Comfort Fit")
+- variantes: 4 a 5 cores/opções com NOMES EVOCATIVOS no padrão do mercado premium (ex.: "Amber Honey", "Sage Olive", "Onyx Black") — nunca "Marrom", "Verde", "Preto"
+- bullets: exatamente 5, cada um abrindo pelo benefício concreto
+- especificacoes: 4 a 6 pares campo/valor plausíveis para o produto (medidas, material, peso)
+- detalhes: 3 a 4 blocos de artesanato/construção que viram acordeão (ex.: "The hinge", "The lens")
+- ofertas: 1 a 2 ofertas por quantidade (ex.: "50% off the second pair")
+- faq: 5 a 8 perguntas reais de quem hesita — endereçando diretamente a objeção do público
+- descricaoHtml: HTML simples (só <p>, <h3>, <ul>, <li>, <strong>): problema, solução, construção, para quem é
+- cta: 2 a 4 palavras`;
+
+    // Resumo da marca injetado em todo prompt seguinte — é o que dá
+    // personalidade consistente da copy à foto.
+    function _contextoDeMarca(pid) {
+        const m = _dados(pid).marca;
+        if (!m) return '';
+        return `\n\nMARCA E PÚBLICO (obedeça rigorosamente):
+Marca: ${m.nome} — "${m.tagline}"
+Público: ${m.publico?.quem} (${m.publico?.idade}). Quer: ${m.publico?.desejo}. Hesita porque: ${m.publico?.objecao}. Compra quando: ${m.publico?.gatilho}.
+Tom: ${(m.tom?.adjetivos || []).join(', ')}.
+FAÇA: ${(m.tom?.faca || []).join(' / ')}
+NÃO FAÇA: ${(m.tom?.naoFaca || []).join(' / ')}`;
+    }
+
+    async function gerarMarca() {
+        const pid = _state.productId;
+        if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
+
+        const btn = document.getElementById('studio-gerar-marca');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:14px;height:14px;animation:spin 1s linear infinite"></i> Criando…'; }
+
+        try {
+            const publicoAlvo = (document.getElementById('studio-publico')?.value || '').trim();
+            const prompt = `${_dossie(pid)}${_contextoDeAngulos(pid)}` +
+                (publicoAlvo ? `\n\nO público que eu quero atingir: ${publicoAlvo}` : '') +
+                `\n\nCrie a identidade da marca desta loja.`;
+            const marca = _extrairJson(await _claude(SISTEMA_MARCA, [{ role: 'user', content: prompt }], 2000));
+
+            const d = _dados(pid);
+            d.marca = { ...marca, geradoEm: new Date().toISOString() };
+            _save();
+            _renderMarca();
+            showToast(`Marca "${marca.nome}" criada`, 'success');
+        } catch (err) {
+            console.error('[Studio] gerarMarca:', err);
+            showToast('Falha: ' + err.message, 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; _icones(); }
+        }
+    }
 
     async function gerarPagina() {
         const pid = _state.productId;
@@ -353,8 +424,8 @@ Responda APENAS com JSON válido, sem markdown e sem texto antes ou depois, nest
         if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:14px;height:14px;animation:spin 1s linear infinite"></i> Gerando…'; }
 
         try {
-            const prompt = `${_dossie(pid)}${_contextoDeAngulos(pid)}\n\nEscreva a página de produto completa.`;
-            const txt = await _claude(SISTEMA_PAGINA, [{ role: 'user', content: prompt }]);
+            const prompt = `${_dossie(pid)}${_contextoDeMarca(pid)}${_contextoDeAngulos(pid)}\n\nEscreva a página de produto completa.`;
+            const txt = await _claude(SISTEMA_PAGINA, [{ role: 'user', content: prompt }], 4000);
             const pagina = _extrairJson(txt);
 
             const d = _dados(pid);
@@ -365,7 +436,7 @@ Responda APENAS com JSON válido, sem markdown e sem texto antes ou depois, nest
 
             // Alimenta a biblioteca de copy para reuso em anúncios
             if (window.CopyLibrary?.add) {
-                CopyLibrary.add('product_headline', pagina.titulo, ['studio']);
+                if (pagina.hero?.titulo) CopyLibrary.add('product_headline', pagina.hero.titulo, ['studio']);
                 (pagina.bullets || []).forEach(b => CopyLibrary.add('product_bullet', b, ['studio']));
             }
             showToast('Página gerada', 'success');
@@ -373,7 +444,7 @@ Responda APENAS com JSON válido, sem markdown e sem texto antes ou depois, nest
             console.error('[Studio] gerarPagina:', err);
             showToast('Falha: ' + err.message, 'error');
         } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; _icones(); }
         }
     }
 
@@ -427,19 +498,36 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             .replace(/^-+|-+$/g, '').slice(0, 60) || 'produto';
     }
 
-    function _corpoHtml(pagina) {
+    function _corpoHtml(pagina, marca) {
         if (!pagina) return '';
         const partes = [];
-        if (pagina.subtitulo) partes.push(`<p><strong>${pagina.subtitulo}</strong></p>`);
+        const esc = (x) => String(x ?? '');
+        if (pagina.hero?.subtitulo) partes.push(`<p><strong>${esc(pagina.hero.subtitulo)}</strong></p>`);
+        if (pagina.hero?.badges?.length) {
+            partes.push('<p>' + pagina.hero.badges.map(b => `<strong>${esc(b)}</strong>`).join(' &middot; ') + '</p>');
+        }
         if (pagina.bullets?.length) {
-            partes.push('<ul>' + pagina.bullets.map(b => `<li>${b}</li>`).join('') + '</ul>');
+            partes.push('<ul>' + pagina.bullets.map(b => `<li>${esc(b)}</li>`).join('') + '</ul>');
         }
         if (pagina.descricaoHtml) partes.push(pagina.descricaoHtml);
-        if (pagina.garantia) partes.push(`<h3>Our guarantee</h3><p>${pagina.garantia}</p>`);
-        if (pagina.faq?.length) {
-            partes.push('<h3>FAQ</h3>' + pagina.faq.map(f => `<p><strong>${f.p}</strong><br>${f.r}</p>`).join(''));
+        if (pagina.especificacoes?.length) {
+            partes.push('<h3>Product details</h3><ul>' +
+                pagina.especificacoes.map(e => `<li><strong>${esc(e.campo)}:</strong> ${esc(e.valor)}</li>`).join('') + '</ul>');
         }
-        return partes.join('\n');
+        if (pagina.detalhes?.length) {
+            partes.push('<h3>Craftsmanship</h3>' +
+                pagina.detalhes.map(x => `<p><strong>${esc(x.titulo)}</strong><br>${esc(x.texto)}</p>`).join(''));
+        }
+        if (pagina.garantia) partes.push(`<h3>${esc(pagina.garantia.titulo || 'Our guarantee')}</h3><p>${esc(pagina.garantia.texto || '')}</p>`);
+        if (pagina.envio) partes.push(`<h3>${esc(pagina.envio.titulo || 'Shipping & returns')}</h3><p>${esc(pagina.envio.texto || '')}</p>`);
+        if (pagina.faq?.length) {
+            partes.push('<h3>FAQ</h3>' + pagina.faq.map(f => `<p><strong>${esc(f.p)}</strong><br>${esc(f.r)}</p>`).join(''));
+        }
+        if (marca?.historia) partes.push(`<h3>About ${esc(marca.nome)}</h3><p>${esc(marca.historia)}</p>`);
+        // Sem quebra de linha: mantém cada produto numa única linha do CSV.
+        // Com \n o campo continua válido (fica entre aspas), mas qualquer
+        // planilha ou editor mostra o arquivo picotado na hora de conferir.
+        return partes.join('');
     }
 
     function exportarCsv() {
@@ -449,7 +537,8 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         const d = _dados(pid);
         if (!d.pagina) { showToast('Gere a página antes de exportar', 'error'); return; }
 
-        const handle = _handle(d.pagina.titulo || p.name);
+        const tituloPg = d.pagina.hero?.titulo || d.pagina.titulo || p.name;
+        const handle = _handle(tituloPg);
         // Cabeçalho oficial de importação de produtos da Shopify
         const cols = ['Handle', 'Title', 'Body (HTML)', 'Vendor', 'Type', 'Tags', 'Published',
                       'Option1 Name', 'Option1 Value', 'Variant SKU', 'Variant Inventory Policy',
@@ -459,6 +548,9 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         const preco = Number(p.price) || 0;
         const linhas = [cols.join(',')];
+        // Cada variante vira uma linha; a Shopify agrupa pelo mesmo Handle.
+        const variantes = (d.pagina.variantes || []).map(v => v.nome).filter(Boolean);
+        if (!variantes.length) variantes.push('Default Title');
 
         // Imagens: só URLs públicas entram no CSV. As fotos geradas por IA
         // vivem no IndexedDB (blob), que a Shopify não consegue buscar —
@@ -467,11 +559,20 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             .filter(f => /^https?:/.test(f.url)).map(f => f.url).slice(0, 10);
 
         linhas.push([
-            handle, d.pagina.titulo || p.name, _corpoHtml(d.pagina), p.vendor || '', p.type || '',
-            'studio', 'TRUE', 'Title', 'Default Title', p.sku || '', 'deny', 'manual',
+            handle, tituloPg, _corpoHtml(d.pagina, d.marca), d.marca?.nome || p.vendor || '', p.type || '',
+            'studio', 'TRUE', variantes.length > 1 ? 'Colour' : 'Title', variantes[0], p.sku || '', 'deny', 'manual',
             preco.toFixed(2), '', 'TRUE', 'TRUE',
-            imagensPublicas[0] || '', imagensPublicas[0] ? '1' : '', d.pagina.titulo || p.name, 'draft',
+            imagensPublicas[0] || '', imagensPublicas[0] ? '1' : '', tituloPg, 'draft',
         ].map(_csvCampo).join(','));
+
+        // Demais variantes: só as colunas de variante são preenchidas
+        variantes.slice(1).forEach(nome => {
+            const l = new Array(cols.length).fill('');
+            l[0] = handle; l[7] = 'Colour'; l[8] = nome;
+            l[10] = 'deny'; l[11] = 'manual'; l[12] = preco.toFixed(2);
+            l[14] = 'TRUE'; l[15] = 'TRUE'; l[19] = 'draft';
+            linhas.push(l.map(_csvCampo).join(','));
+        });
 
         // Linhas extras só com imagem (padrão da Shopify para múltiplas fotos)
         imagensPublicas.slice(1).forEach((url, i) => {
@@ -659,24 +760,95 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         }
 
         const pg = d.pagina;
+        const m = d.marca;
         const capa = d.fotos[0]?.thumb || _fontesDeImagem(_state.productId)[0]?.url || '';
+        const galeria = d.fotos.slice(0, 4).map(f => f.thumb);
         const p = (AppState.allProducts || []).find(x => x.id === _state.productId);
+        // A paleta da marca é aplicada ao preview: é assim que se vê se a
+        // personalidade ficou de pé, não só o texto.
+        const pal = m?.paleta || {};
+        const estilo = pal.fundo
+            ? `--pdp-bg:${pal.fundo};--pdp-txt:${pal.texto || '#111'};--pdp-cor:${pal.primaria || '#111'};--pdp-dest:${pal.destaque || pal.primaria || '#111'}`
+            : '';
+
         box.innerHTML = `
+          <div class="studio-pdp-wrap" style="${estilo}">
+            ${m ? `<div class="studio-pdp-marca"><strong>${_esc(m.nome)}</strong><span>${_esc(m.tagline || '')}</span></div>` : ''}
             <div class="studio-pdp">
-                ${capa ? `<img class="studio-pdp-img" src="${_esc(capa)}" alt="">` : ''}
+                <div class="studio-pdp-media">
+                    ${capa ? `<img class="studio-pdp-img" src="${_esc(capa)}" alt="">` : '<div class="studio-pdp-img studio-pdp-sem"><i data-lucide="image" style="width:26px;height:26px"></i></div>'}
+                    ${galeria.length > 1 ? `<div class="studio-pdp-mini">${galeria.map(t => `<img src="${_esc(t)}" alt="">`).join('')}</div>` : ''}
+                </div>
                 <div class="studio-pdp-txt">
-                    <h2>${_esc(pg.titulo || '')}</h2>
-                    ${pg.subtitulo ? `<p class="studio-pdp-sub">${_esc(pg.subtitulo)}</p>` : ''}
+                    <h2>${_esc(pg.hero?.titulo || pg.titulo || '')}</h2>
+                    ${pg.hero?.subtitulo ? `<p class="studio-pdp-sub">${_esc(pg.hero.subtitulo)}</p>` : ''}
                     ${p?.price ? `<div class="studio-pdp-preco">${formatCurrency(p.price, p.priceCurrency || 'GBP')}</div>` : ''}
+
+                    ${pg.variantes?.length ? `<div class="studio-pdp-vars">
+                        <label>Colour</label>
+                        <div class="studio-pdp-var-lista">${pg.variantes.map((v, i) => `
+                            <button type="button" class="studio-pdp-var${i === 0 ? ' ativa' : ''}" title="${_esc(v.descricao || '')}">${_esc(v.nome)}</button>`).join('')}</div>
+                    </div>` : ''}
+
+                    ${pg.ofertas?.length ? `<div class="studio-pdp-ofertas">${pg.ofertas.map(o => `
+                        <div class="studio-pdp-oferta"><strong>${_esc(o.rotulo)}</strong><span>${_esc(o.detalhe || '')}</span></div>`).join('')}</div>` : ''}
+
+                    ${pg.cta ? `<button class="studio-pdp-cta" disabled>${_esc(pg.cta)}</button>` : ''}
+
+                    ${pg.hero?.badges?.length ? `<div class="studio-pdp-badges">${pg.hero.badges.map(b => `
+                        <span><i data-lucide="check" style="width:11px;height:11px"></i> ${_esc(b)}</span>`).join('')}</div>` : ''}
+
                     ${pg.bullets?.length ? `<ul class="studio-pdp-bullets">${pg.bullets.map(b => `<li>${_esc(b)}</li>`).join('')}</ul>` : ''}
-                    ${pg.cta ? `<button class="btn btn-primary studio-pdp-cta" disabled>${_esc(pg.cta)}</button>` : ''}
-                    ${pg.garantia ? `<p class="studio-pdp-garantia"><i data-lucide="shield-check" style="width:13px;height:13px;vertical-align:-2px"></i> ${_esc(pg.garantia)}</p>` : ''}
+
+                    ${pg.garantia ? `<p class="studio-pdp-garantia"><i data-lucide="shield-check" style="width:13px;height:13px;vertical-align:-2px"></i> <strong>${_esc(pg.garantia.titulo || '')}</strong> ${_esc(pg.garantia.texto || '')}</p>` : ''}
+                    ${pg.envio ? `<p class="studio-pdp-garantia"><i data-lucide="truck" style="width:13px;height:13px;vertical-align:-2px"></i> <strong>${_esc(pg.envio.titulo || '')}</strong> ${_esc(pg.envio.texto || '')}</p>` : ''}
                 </div>
             </div>
+
+            ${pg.especificacoes?.length ? `<div class="studio-pdp-bloco"><h3>Product details</h3>
+                <table class="studio-pdp-specs">${pg.especificacoes.map(e => `
+                    <tr><td>${_esc(e.campo)}</td><td>${_esc(e.valor)}</td></tr>`).join('')}</table></div>` : ''}
+
+            ${pg.detalhes?.length ? `<div class="studio-pdp-bloco"><h3>Craftsmanship</h3>
+                ${pg.detalhes.map(x => `<details><summary>${_esc(x.titulo)}</summary><p>${_esc(x.texto)}</p></details>`).join('')}</div>` : ''}
+
             <div class="studio-pdp-desc">${pg.descricaoHtml || ''}</div>
-            ${pg.faq?.length ? `<div class="studio-pdp-faq"><h3>FAQ</h3>${pg.faq.map(f => `
-                <details><summary>${_esc(f.p)}</summary><p>${_esc(f.r)}</p></details>`).join('')}</div>` : ''}`;
+
+            ${pg.faq?.length ? `<div class="studio-pdp-bloco"><h3>FAQ</h3>${pg.faq.map(f => `
+                <details><summary>${_esc(f.p)}</summary><p>${_esc(f.r)}</p></details>`).join('')}</div>` : ''}
+          </div>`;
         _icones();
+    }
+
+    function _renderMarca() {
+        const box = document.getElementById('studio-marca');
+        if (!box) return;
+        const m = _dados(_state.productId).marca;
+        if (!m) {
+            box.innerHTML = `<p class="studio-vazio">Sem marca definida. Descreva o público (ou deixe em branco) e clique em "Criar marca" — nome, tom de voz e paleta saem daqui e comandam toda a copy e as fotos.</p>`;
+            return;
+        }
+        const pal = m.paleta || {};
+        box.innerHTML = `
+            <div class="studio-marca-topo">
+                <div>
+                    <strong class="studio-marca-nome">${_esc(m.nome)}</strong>
+                    <span class="studio-marca-tag">${_esc(m.tagline || '')}</span>
+                </div>
+                <div class="studio-marca-cores">
+                    ${['primaria', 'destaque', 'fundo', 'texto'].filter(k => pal[k]).map(k =>
+                        `<span title="${k}: ${_esc(pal[k])}" style="background:${_esc(pal[k])}"></span>`).join('')}
+                </div>
+            </div>
+            <div class="studio-marca-grid">
+                <div><label>Público</label><p>${_esc(m.publico?.quem || '')} ${m.publico?.idade ? `(${_esc(m.publico.idade)})` : ''}</p></div>
+                <div><label>Quer</label><p>${_esc(m.publico?.desejo || '')}</p></div>
+                <div><label>Hesita porque</label><p>${_esc(m.publico?.objecao || '')}</p></div>
+                <div><label>Compra quando</label><p>${_esc(m.publico?.gatilho || '')}</p></div>
+            </div>
+            <div class="studio-marca-tom">
+                ${(m.tom?.adjetivos || []).map(a => `<span class="studio-angulo">${_esc(a)}</span>`).join('')}
+            </div>`;
     }
 
     function _renderChat(pensando = false) {
@@ -696,7 +868,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function _selecionarProduto(pid) {
         _state.productId = pid;
-        _renderAngulos(); _renderFontes(); _renderPresets();
+        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets();
         _renderFotos(); _renderPagina(); _renderChat();
     }
 
@@ -734,6 +906,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             r.readAsDataURL(f);
         });
 
+        document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
         document.getElementById('studio-gerar-pagina')?.addEventListener('click', () => gerarPagina());
         document.getElementById('studio-exportar-csv')?.addEventListener('click', () => exportarCsv());
 
@@ -760,10 +933,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         STORAGE_KEY, PRESETS_FOTO, _state,
         init, render,
         getTopAngles, _contextoDeAngulos, _fontesDeImagem, _dossie,
-        gerarFotos, gerarPagina, enviarChat, exportarCsv,
+        gerarFotos, gerarMarca, gerarPagina, enviarChat, exportarCsv, _contextoDeMarca,
         _dados, _save, _load, _miniatura, _urlParaBlobPng, _editarImagem,
         _claude, _extrairJson, _corpoHtml, _handle,
-        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _selecionarProduto,
+        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderMarca, _selecionarProduto,
     };
 })();
 
