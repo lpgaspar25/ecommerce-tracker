@@ -131,7 +131,8 @@ const CreativesModule = {
 
     sendToAdLauncher(creativeId) {
         const creative = (AppState.allCreatives || []).find(c => c.id === creativeId);
-        if (!creative || !creative.imageUrl) {
+        // A imagem pode estar no IndexedDB (mediaId) em vez de embutida em imageUrl.
+        if (!creative || !(creative.imageUrl || creative.mediaId || creative.mediaThumb)) {
             if (typeof showToast === 'function') showToast('Criativo sem imagem', 'error');
             return;
         }
@@ -1546,7 +1547,7 @@ const CreativesModule = {
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.openVariationForm('${creative.id}')"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Testar Variacao</button>
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.duplicateCreative('${creative.id}')" title="Clonar herdando produto/país/campanha — troque ângulo e hook"><i data-lucide="copy-plus" style="width:14px;height:14px;vertical-align:-2px"></i> Nova variação</button>
                 <button class="btn btn-secondary btn-sm" onclick="CreativesModule.sendToAiGenerator('${creative.id}')" title="Gerar imagem nova por IA a partir deste criativo"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> IA</button>
-                ${creative.imageUrl ? `<button class="btn btn-primary btn-sm" onclick="CreativesModule.sendToAdLauncher('${creative.id}')"><i data-lucide="send" style="width:14px;height:14px;vertical-align:-2px"></i> Lançar Anúncio</button>` : ''}
+                ${(creative.imageUrl || creative.mediaId || creative.mediaThumb) ? `<button class="btn btn-primary btn-sm" onclick="CreativesModule.sendToAdLauncher('${creative.id}')"><i data-lucide="send" style="width:14px;height:14px;vertical-align:-2px"></i> Lançar Anúncio</button>` : ''}
                 <button class="btn btn-danger btn-sm" onclick="CreativesModule.deleteCreative('${creative.id}')">Excluir</button>
             </div>
         </div>`;

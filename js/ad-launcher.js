@@ -282,13 +282,16 @@
 
         _getItems() {
             if (this.state.source === 'creatives') {
+                // Criativo com mídia no IndexedDB (upload ou geração de IA) não tem
+                // imageUrl — mostra pela miniatura, senão a lista fica vazia.
                 return (AppState.allCreatives || [])
-                    .filter(c => c.imageUrl)
+                    .filter(c => c.imageUrl || c.mediaThumb || c.mediaId)
                     .map(c => ({
                         id: c.id,
                         title: c.name || 'Sem nome',
                         subtitle: this._productName(c.productId),
-                        imageUrl: c.imageUrl,
+                        imageUrl: c.imageUrl || c.mediaThumb || '',
+                        mediaId: c.mediaId || '',
                         productId: c.productId,
                         primaryText: c.primaryText || '',
                         headline: c.headline || '',
@@ -298,14 +301,19 @@
             }
             if (this.state.source === 'generations') {
                 let list = [];
-                try { list = JSON.parse(localStorage.getItem('etracker_ai_generations') || '[]') || []; } catch { list = []; }
+                // A chave certa é a que o gerador grava (AIAdGenerator.STORAGE_KEY).
+                // Antes lia 'etracker_ai_generations', que ninguém escreve — o
+                // seletor ficava sempre vazio.
+                const CHAVE = window.AIAdGenerator?.STORAGE_KEY || 'ai_ad_generations_v1';
+                try { list = JSON.parse(localStorage.getItem(CHAVE) || '[]') || []; } catch { list = []; }
                 return list
-                    .filter(g => g.imageUrl || g.url || g.dataUrl)
+                    .filter(g => g.imageUrl || g.url || g.dataUrl || g.thumb || g.mediaId)
                     .map(g => ({
                         id: g.id,
                         title: (g.prompt || '').slice(0, 60) || 'AI Generation',
                         subtitle: g.size || g.aspect || '',
-                        imageUrl: g.imageUrl || g.url || g.dataUrl,
+                        imageUrl: g.imageUrl || g.url || g.dataUrl || g.thumb || '',
+                        mediaId: g.mediaId || '',
                         productId: g.productId || '',
                         primaryText: g.prompt || '',
                         headline: '',
@@ -1296,8 +1304,10 @@
                     try {
                         const baseLabel = it.title + combo.variantLabel;
                         const adName = adNameBase ? `${adNameBase} — ${baseLabel}` : `[Launcher] ${baseLabel}`;
-                        // 1) upload image
-                        const imageHash = await this._uploadAdImage(accountId, it.imageUrl);
+                        // 1) upload image — resolve a mídia em resolução cheia.
+                        // it.imageUrl pode ser só a miniatura quando o arquivo
+                        // real está no IndexedDB; subir o thumb daria um anúncio borrado.
+                        const imageHash = await this._uploadAdImage(accountId, await this._srcParaUpload(it));
                         // 2) create creative
                         const creativeId = await this._createAdCreative(accountId, {
                             pageId, igId, imageHash,
@@ -1401,6 +1411,16 @@
             return new Error(`${title}${detail}${code}`);
         },
 
+        // Prefere sempre o arquivo cheio guardado no IndexedDB; só cai para
+        // imageUrl (que pode ser miniatura ou URL remota) quando não há mediaId.
+        async _srcParaUpload(it) {
+            if (it?.mediaId && window.MediaStore?.isSupported?.()) {
+                const url = await window.MediaStore.getObjectUrl(it.mediaId);
+                if (url) return url;
+            }
+            return it?.imageUrl || '';
+        },
+
         async _uploadAdImage(accountId, imageUrl) {
             // Aceita URL direta ou data URL — sempre converte pra Blob via fetch e envia como multipart
             const blob = await this._fetchAsBlob(imageUrl);
@@ -1421,8 +1441,9 @@
         },
 
         async _fetchAsBlob(src) {
-            // Se for data URL, converte direto
-            if (src.startsWith('data:')) {
+            if (!src) throw new Error('Item sem imagem para enviar');
+            // data: e blob: (mídia do IndexedDB) convertem direto
+            if (src.startsWith('data:') || src.startsWith('blob:')) {
                 const res = await fetch(src);
                 return res.blob();
             }

@@ -11,7 +11,7 @@ const StorageManager = {
         'etracker_shopify_orders_day_cache',
         'etracker_shopify_orders_cache',
         'etracker_creative_metrics',
-        'etracker_ai_generations',
+        'ai_ad_generations_v1',   // índice das gerações de IA (a chave real; os bytes ficam no IndexedDB)
         'etracker_adl_uploads',
         'etracker_usage_data',
         'etracker_recent_edits',

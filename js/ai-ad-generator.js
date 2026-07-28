@@ -185,9 +185,11 @@ const AIAdGenerator = {
                 dataUrl: await this._compressToWebP(item.dataUrl)
             })));
 
-            this._saveGenerations(compressed);
-            this._renderResults(compressed);
-            if (onProgress) onProgress('done', { items: compressed });
+            // Salva primeiro (os bytes vão pro IndexedDB) e renderiza o registro
+            // leve devolvido, pra tela e armazenamento nunca divergirem.
+            const salvos = await this._saveGenerations(compressed);
+            await this._renderResults(salvos);
+            if (onProgress) onProgress('done', { items: salvos });
             if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
             this.renderGenerationsGallery();
             if (typeof showToast === 'function') showToast(`${compressed.length} imagem(ns) gerada(s) <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`, 'success');
@@ -404,14 +406,119 @@ const AIAdGenerator = {
         });
     },
 
+    // ══════════════════════════════════════════════════════════════════
+    //  ARMAZENAMENTO DE MÍDIA
+    //  Os bytes da imagem vão para o IndexedDB (MediaStore); no localStorage
+    //  fica só um índice leve com uma miniatura de poucos KB. Antes, cada
+    //  geração gravava o base64 inteiro no localStorage — a cota estourava
+    //  em ~10 imagens e o app APAGAVA as antigas em silêncio pra caber.
+    //  Registros antigos (com dataUrl) continuam funcionando e migram sozinhos.
+    // ══════════════════════════════════════════════════════════════════
+
+    // Miniatura pequena: aparece na hora na galeria, sem tocar o IndexedDB.
+    async _makeThumb(dataUrl, maxDim = 320, quality = 0.6) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const escala = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+                    canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/webp', quality));
+                } catch { resolve(''); }
+            };
+            img.onerror = () => resolve('');
+            img.src = dataUrl;
+        });
+    },
+
+    async _dataUrlToBlob(dataUrl) {
+        try { return await (await fetch(dataUrl)).blob(); } catch { return null; }
+    },
+
+    _blobParaDataUrl(blob) {
+        return new Promise(resolve => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(r.result || '');
+            r.onerror = () => resolve('');
+            r.readAsDataURL(blob);
+        });
+    },
+
+    _mediaOk() {
+        return !!(window.MediaStore && window.MediaStore.isSupported());
+    },
+
+    // Guarda os bytes no IndexedDB e devolve o registro leve que vai pro índice.
+    async _toLightRecord(item) {
+        const thumb = await this._makeThumb(item.dataUrl);
+        if (!this._mediaOk()) return { ...item, thumb };   // sem IndexedDB, segue no modo antigo
+
+        const blob = await this._dataUrlToBlob(item.dataUrl);
+        if (!blob) return { ...item, thumb };
+
+        const mediaId = 'aigen_' + item.id;
+        try {
+            await window.MediaStore.put(mediaId, blob, { type: blob.type || 'image/webp', name: `ai-${item.id}.webp` });
+            // Só descarta o base64 depois de confirmar que dá pra ler de volta.
+            const conferido = await window.MediaStore.get(mediaId);
+            if (!conferido || !conferido.blob) return { ...item, thumb };
+            const { dataUrl, ...resto } = item;
+            return { ...resto, mediaId, mime: blob.type || 'image/webp', thumb };
+        } catch (e) {
+            console.warn('[AIAdGenerator] MediaStore.put falhou, mantendo base64:', e?.message);
+            return { ...item, thumb };
+        }
+    },
+
+    // Devolve uma URL exibível. Registro novo → objectURL do IndexedDB (o
+    // chamador deve revogar). Registro antigo → o próprio dataUrl.
+    async _resolveSrc(item) {
+        if (!item) return '';
+        if (item.mediaId && this._mediaOk()) {
+            const url = await window.MediaStore.getObjectUrl(item.mediaId);
+            if (url) return url;
+        }
+        return item.dataUrl || item.thumb || '';
+    },
+
+    // Migração preguiçosa: registro antigo vira registro leve na primeira vez
+    // que a galeria o exibe. Nunca joga o base64 fora sem confirmar a gravação.
+    async _migrarAntigos(lista) {
+        if (!this._mediaOk()) return false;
+        const pendentes = lista.filter(i => i.dataUrl && !i.mediaId);
+        if (!pendentes.length) return false;
+
+        let migrados = 0;
+        for (const antigo of pendentes.slice(0, 20)) {   // em lotes, pra não travar a tela
+            const novo = await this._toLightRecord(antigo);
+            if (novo.mediaId) {
+                const idx = lista.findIndex(i => i.id === antigo.id);
+                if (idx >= 0) { lista[idx] = novo; migrados++; }
+            }
+        }
+        if (migrados) {
+            this._saveIndex(lista);
+            console.info(`[AIAdGenerator] ${migrados} geração(ões) movida(s) para o IndexedDB`);
+        }
+        return migrados > 0;
+    },
+
     // ── Render results ────────────────────────────────────────────────
-    _renderResults(items) {
+    async _renderResults(items) {
         const results = document.getElementById('aiad-results');
         if (!results) return;
 
-        results.innerHTML = items.map(item => `
+        // Resolve as URLs antes de montar o HTML (registro novo vive no IndexedDB).
+        const srcs = await Promise.all(items.map(i => this._resolveSrc(i)));
+        this._revogarUrls(this._urlsResultados);
+        this._urlsResultados = srcs.filter(u => u.startsWith('blob:'));
+
+        results.innerHTML = items.map((item, i) => `
             <div class="aiad-result-item" data-id="${item.id}">
-                <img src="${item.dataUrl}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
+                <img src="${srcs[i]}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
                 <div class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
                     ${ {'google':'Google Imagen 3','google-imagen2':'Google Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
                 </div>
@@ -430,16 +537,31 @@ const AIAdGenerator = {
         });
     },
 
-    _handleAction(action, id, items) {
+    // Object URLs precisam ser revogados, senão o blob fica preso na memória.
+    _urlsResultados: [],
+    _urlsGaleria: [],
+    _revogarUrls(lista) {
+        (lista || []).forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
+    },
+
+    // Baixa sempre o arquivo cheio (do IndexedDB), nunca a miniatura.
+    async _baixar(item, id) {
+        const src = await this._resolveSrc(item);
+        if (!src) { if (typeof showToast === 'function') showToast('Imagem não encontrada', 'error'); return; }
+        const ext = (item.mime || item.dataUrl || '').includes('webp') ? 'webp' : 'png';
+        const a = document.createElement('a');
+        a.href = src;
+        a.download = `ai-ad-${id}.${ext}`;
+        a.click();
+        if (src.startsWith('blob:')) setTimeout(() => { try { URL.revokeObjectURL(src); } catch {} }, 10000);
+    },
+
+    async _handleAction(action, id, items) {
         const item = items.find(i => i.id === id);
         if (!item) return;
 
         if (action === 'download') {
-            const ext = item.dataUrl.startsWith('data:image/webp') ? 'webp' : 'png';
-            const a = document.createElement('a');
-            a.href = item.dataUrl;
-            a.download = `ai-ad-${id}.${ext}`;
-            a.click();
+            await this._baixar(item, id);
         } else if (action === 'copy-prompt') {
             navigator.clipboard.writeText(item.revisedPrompt || item.prompt).then(() => {
                 if (typeof showToast === 'function') showToast('Prompt copiado', 'success');
@@ -556,29 +678,56 @@ const AIAdGenerator = {
     },
 
     // ── Persistence ────────────────────────────────────────────────────
-    _saveGenerations(items) {
+    // Teto do índice. Com os bytes fora do localStorage cada registro pesa
+    // poucos KB (só a miniatura), então cabe muito mais que os 50 de antes.
+    MAX_GERACOES: 300,
+
+    async _saveGenerations(items) {
+        const leves = [];
+        for (const item of items) leves.push(await this._toLightRecord(item));
+
         const all = this._getAllGenerations();
-        all.unshift(...items);
-        // Cap progressivo para evitar QuotaExceeded — começa em 50, reduz se falhar
-        const tryCaps = [50, 25, 10, 5, items.length];
-        for (const cap of tryCaps) {
-            try {
-                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all.slice(0, cap)));
-                if (cap < 50) {
+        all.unshift(...leves);
+
+        const excedente = all.slice(this.MAX_GERACOES);
+        const mantidos = all.slice(0, this.MAX_GERACOES);
+        // Quem sai do índice leva o blob junto — senão o IndexedDB vira depósito de órfãos.
+        for (const velho of excedente) await this._apagarBlob(velho);
+
+        this._saveIndex(mantidos);
+        return leves;
+    },
+
+    // Grava o índice. Se ainda assim faltar espaço, usa a recuperação de cota
+    // do app antes de desistir (e só então corta os mais antigos).
+    _saveIndex(lista) {
+        const gravar = () => localStorage.setItem(this.STORAGE_KEY, JSON.stringify(lista));
+        try {
+            if (window.StorageManager?.withReclaim) StorageManager.withReclaim(gravar);
+            else gravar();
+            return true;
+        } catch (e) {
+            console.warn('[AIAdGenerator] índice não coube:', e?.name || e?.message);
+            for (const corte of [100, 50, 20]) {
+                try {
+                    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(lista.slice(0, corte)));
                     if (typeof showToast === 'function') {
-                        showToast(`Armazenamento cheio — mantendo só as ${cap} mais recentes. Clique "Limpar" para liberar espaço.`, 'warning');
+                        showToast(`Armazenamento cheio — mantendo as ${corte} gerações mais recentes.`, 'warning');
                     }
-                }
-                return;
-            } catch (e) {
-                console.warn(`[AIAdGenerator] save failed at cap=${cap}:`, e?.name || e?.message);
+                    return true;
+                } catch { /* tenta o corte seguinte */ }
             }
+            if (typeof showToast === 'function') {
+                showToast('Não consegui salvar a galeria: armazenamento cheio. Use "Limpar" em AI Generations.', 'error');
+            }
+            return false;
         }
-        // Falhou em todos os caps
-        if (typeof showToast === 'function') {
-            showToast('Erro: localStorage cheio. Vá em AI Generations → botão "Limpar" para apagar gerações antigas.', 'error');
+    },
+
+    async _apagarBlob(item) {
+        if (item?.mediaId && this._mediaOk()) {
+            try { await window.MediaStore.del(item.mediaId); } catch { /* já não existe */ }
         }
-        throw new Error('localStorage cheio — não consegui salvar a geração');
     },
 
     _getAllGenerations() {
@@ -588,10 +737,17 @@ const AIAdGenerator = {
     },
 
     // ── Gallery (Minhas Gerações tab) ──────────────────────────────────
-    renderGenerationsGallery() {
+    async renderGenerationsGallery() {
         const grid = document.getElementById('aigen-grid');
         if (!grid) return;
         const all = this._getAllGenerations();
+
+        // Registros antigos (base64 no localStorage) sobem pro IndexedDB aqui,
+        // em lotes, na primeira vez que aparecem. Se algum migrou, redesenha.
+        if (await this._migrarAntigos(all)) {
+            if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
+        }
+
         if (!all.length) {
             grid.innerHTML = `<div class="adhub-empty" style="padding:4rem 0;grid-column:1/-1">
                 <i data-lucide="wand-2" style="width:48px;height:48px;color:var(--text-muted)"></i>
@@ -604,7 +760,7 @@ const AIAdGenerator = {
         grid.innerHTML = all.map(item => `
             <div class="aigen-card" data-id="${item.id}">
                 <div class="aigen-card-thumb">
-                    <img src="${item.dataUrl}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
+                    <img src="${item.thumb || item.dataUrl || ''}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
                     <div class="aigen-card-overlay">
                         <button class="btn btn-primary btn-sm" data-action="similar" data-id="${item.id}"><i data-lucide="sparkles" style="width:13px;height:13px"></i> Generate Similar</button>
                     </div>
@@ -624,24 +780,23 @@ const AIAdGenerator = {
         if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch(e) {}
 
         grid.querySelectorAll('button[data-action]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const id = btn.dataset.id;
                 const item = all.find(i => i.id === id);
                 if (!item) return;
                 const action = btn.dataset.action;
                 if (action === 'dl') {
-                    const ext = item.dataUrl.startsWith('data:image/webp') ? 'webp' : 'png';
-                    const a = document.createElement('a');
-                    a.href = item.dataUrl;
-                    a.download = `ai-ad-${id}.${ext}`;
-                    a.click();
+                    await this._baixar(item, id);
                 } else if (action === 'cp') {
                     navigator.clipboard.writeText(item.revisedPrompt || item.prompt);
                     if (typeof showToast === 'function') showToast('Prompt copiado', 'success');
                 } else if (action === 'del') {
-                    const remaining = all.filter(i => i.id !== id);
-                    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(remaining));
+                    await this._apagarBlob(item);
+                    this._saveIndex(all.filter(i => i.id !== id));
+                    // O Ad Launcher lê esta mesma lista — sem o evento ele
+                    // continuaria oferecendo uma imagem já apagada.
+                    if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
                     this.renderGenerationsGallery();
                 } else if (action === 'similar') {
                     const promptEl = document.getElementById('adhub-prompt-text');
@@ -703,10 +858,34 @@ const AIAdGenerator = {
 
         document.getElementById('sc-cancel-btn')?.addEventListener('click', close);
         overlay?.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-        document.getElementById('sc-save-btn')?.addEventListener('click', () => {
+        document.getElementById('sc-save-btn')?.addEventListener('click', async () => {
             const productId = document.getElementById('sc-product-select')?.value;
             const name = document.getElementById('sc-name-input')?.value.trim() || defaultName;
             if (!productId) { if (typeof showToast === 'function') showToast('Selecione um produto', 'error'); return; }
+
+            // O criativo recebe uma CÓPIA do blob: excluir o criativo apaga o
+            // mediaId dele (CreativesModule.deleteCreative), e compartilhar o id
+            // destruiria a geração original da galeria.
+            let mediaId = '', mediaType = '', mediaThumb = item.thumb || '';
+            if (this._mediaOk()) {
+                try {
+                    const src = await this._resolveSrc(item);
+                    const blob = src.startsWith('blob:')
+                        ? await (await fetch(src)).blob()
+                        : await this._dataUrlToBlob(src);
+                    if (blob) {
+                        mediaId = 'media_ai_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+                        await window.MediaStore.put(mediaId, blob, { type: blob.type, name: `${name}.webp` });
+                        mediaType = blob.type || 'image/webp';
+                        if (!mediaThumb) mediaThumb = await this._makeThumb(await this._blobParaDataUrl(blob));
+                    }
+                    if (src.startsWith('blob:')) { try { URL.revokeObjectURL(src); } catch {} }
+                } catch (e) {
+                    console.warn('[AIAdGenerator] cópia da mídia falhou:', e?.message);
+                }
+            }
+            // Sem IndexedDB, cai no modo antigo (base64 direto no criativo).
+            const imageUrl = mediaId ? '' : (item.dataUrl || item.thumb || '');
 
             const product = products.find(p => p.id === productId);
             const creative = {
@@ -723,7 +902,8 @@ const AIAdGenerator = {
                 primaryText: '',
                 headline: '',
                 adDescription: '',
-                imageUrl: item.dataUrl,
+                imageUrl,
+                mediaId, mediaType, mediaThumb, mediaName: mediaId ? `${name}.webp` : '',
                 variations: [],
                 storeId: product?.storeId || (typeof getWritableStoreId === 'function' ? getWritableStoreId(productId) : ''),
                 createdAt: new Date().toISOString(),
@@ -740,9 +920,14 @@ const AIAdGenerator = {
         });
     },
 
-    clearAllGenerations() {
+    async clearAllGenerations() {
         if (!confirm('Apagar TODAS as gerações? Não dá pra recuperar.')) return;
+        // Apaga também os blobs do IndexedDB — limpar só o índice deixaria
+        // as imagens ocupando espaço para sempre, invisíveis.
+        const all = this._getAllGenerations();
+        for (const item of all) await this._apagarBlob(item);
         localStorage.removeItem(this.STORAGE_KEY);
+        if (typeof EventBus !== 'undefined') EventBus.emit('aigenChanged');
         this.renderGenerationsGallery();
         if (typeof showToast === 'function') showToast('Galeria limpa', 'success');
     },
