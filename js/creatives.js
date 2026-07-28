@@ -1835,4 +1835,6 @@ function getCreativeName(id) {
     return c ? c.name : '';
 }
 
+// `const` nao vira propriedade de window — outros modulos acessam por aqui.
+window.CreativesModule = CreativesModule;
 document.addEventListener('DOMContentLoaded', () => CreativesModule.init());

@@ -41,6 +41,7 @@
         <button class="tab-btn" data-tab="laboratorio"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
         <button class="tab-btn" data-tab="ai-ad-generator" hidden>AI Ad Generator</button>
+        <button class="tab-btn" data-tab="studio" hidden>Estúdio</button>
         <button class="tab-btn" data-tab="ai-generations" hidden>AI Generations</button>
         <button class="tab-btn" data-tab="ad-library" hidden>Ad Library</button>
         <button class="tab-btn" data-tab="ad-launcher" hidden>Ad Launcher</button>
@@ -130,6 +131,7 @@
                     <span>AI Generations</span>
                     <span class="sidebar-badge">NEW</span>
                 </a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="studio"><i data-lucide="palette" class="sidebar-icon"></i><span>Estúdio de Produto</span><span class="sidebar-badge">NEW</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="creatives"><i data-lucide="layers" class="sidebar-icon"></i><span>My Creatives</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="recent-edits"><i data-lucide="history" class="sidebar-icon"></i><span>Recent Edits</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="saved-inspirations"><i data-lucide="bookmark" class="sidebar-icon"></i><span>Saved Inspirations</span></a>
@@ -3972,6 +3974,67 @@
         </section>
 
         <!-- ==================== AI GENERATIONS (Madgicx-style) ==================== -->
+        <!-- ══════════ ESTÚDIO DE PRODUTO ══════════ -->
+        <section id="tab-studio" class="tab-panel">
+            <div class="section-header">
+                <h2><i data-lucide="palette" style="width:20px;height:20px;vertical-align:-3px"></i> Estúdio de Produto</h2>
+                <select id="studio-produto" class="input" style="max-width:340px"></select>
+                <div style="margin-left:auto;display:flex;gap:0.5rem" id="studio-pagina-acoes">
+                    <button id="studio-exportar-csv" class="btn btn-secondary btn-sm" title="Gera o CSV no formato de importação da Shopify"><i data-lucide="file-down" style="width:14px;height:14px;vertical-align:-2px"></i> Exportar CSV Shopify</button>
+                </div>
+            </div>
+
+            <!-- Ângulos que já venderam: o dado que só esta ferramenta tem -->
+            <div class="studio-bloco">
+                <h3><i data-lucide="target" style="width:15px;height:15px;vertical-align:-2px"></i> Ângulos que já venderam
+                    <small>usados automaticamente na copy</small></h3>
+                <div id="studio-angulos" class="studio-angulos"></div>
+            </div>
+
+            <div class="studio-grid">
+                <!-- Coluna esquerda: fotos -->
+                <div class="studio-col">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="image" style="width:15px;height:15px;vertical-align:-2px"></i> Foto base</h3>
+                        <div id="studio-fontes" class="studio-fontes"></div>
+                        <input type="file" id="studio-upload" accept="image/*" hidden>
+                        <button id="studio-upload-btn" class="btn btn-secondary btn-sm" style="margin-top:0.6rem"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir outra foto</button>
+                    </div>
+
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="sparkles" style="width:15px;height:15px;vertical-align:-2px"></i> Cenários</h3>
+                        <div id="studio-presets" class="studio-presets"></div>
+                        <input type="text" id="studio-foto-extra" class="input" placeholder="Detalhe extra (opcional): ex. sobre mármore, com plantas ao fundo" style="margin-top:0.6rem">
+                        <button id="studio-gerar-fotos" class="btn btn-primary btn-sm" style="margin-top:0.6rem;width:100%"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar fotos</button>
+                    </div>
+
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="images" style="width:15px;height:15px;vertical-align:-2px"></i> Fotos geradas</h3>
+                        <div id="studio-fotos" class="studio-fotos"></div>
+                    </div>
+                </div>
+
+                <!-- Coluna direita: página + copy interativo -->
+                <div class="studio-col">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="file-text" style="width:15px;height:15px;vertical-align:-2px"></i> Página do produto
+                            <button id="studio-gerar-pagina" class="btn btn-primary btn-sm" style="margin-left:auto"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar página</button>
+                        </h3>
+                        <div id="studio-preview" class="studio-preview"></div>
+                    </div>
+
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="messages-square" style="width:15px;height:15px;vertical-align:-2px"></i> Copy interativo</h3>
+                        <div id="studio-chat" class="studio-chat"></div>
+                        <div class="studio-chat-barra">
+                            <input type="text" id="studio-chat-input" class="input" placeholder="Ex.: deixa o título mais direto, troca o bullet 3 para dor…">
+                            <button id="studio-chat-enviar" class="btn btn-primary btn-sm"><i data-lucide="send" style="width:14px;height:14px"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section id="tab-ai-generations" class="tab-panel">
             <div class="adhub-page">
                 <div class="section-header">
@@ -6014,6 +6077,7 @@
     <script src="js/funnel.js"></script>
     <script src="js/media-store.js"></script>
     <script src="js/creatives.js"></script>
+    <script src="js/studio.js"></script>
     <script src="js/pending-approvals.js"></script>
     <script src="js/ai-consultant.js"></script>
     <script src="js/pipeline.js"></script>
