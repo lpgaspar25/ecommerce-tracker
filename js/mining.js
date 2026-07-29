@@ -109,16 +109,79 @@ const MiningModule = {
             // Step 2: Paginate using cursor via Worker (sends GraphQL from Worker IP)
             // The Worker uses facebookexternalhit UA which doesn't need cookies for page 1
             // but needs cursor for subsequent pages
+            // ── Paginação por cursor: continua a MESMA busca, página após página.
+            // É o caminho que passa dos ~30 do HTML inicial. Só depois de
+            // esgotá-lo caímos no plano B de variar a palavra-chave, que traz
+            // resultados sobrepostos e fora do tema.
+            // MEDIDO EM 29/07/2026: o endpoint GraphQL responde 269 KB com 30
+            // anúncios para um IP residencial e apenas 7 KB vazios para o IP do
+            // Cloudflare Worker — o Facebook filtra por origem. Por isso o
+            // caminho por cursor fica desligado aqui; ele só vale quando a
+            // chamada sair do navegador do usuário (extensão, com a sessão dele).
+            const CURSOR_PELO_WORKER_FUNCIONA = false;
+            let cursorPaginas = 0;
+            while (CURSOR_PELO_WORKER_FUNCIONA && !this._stopRequested && nextCursor && cursorPaginas < 200) {
+                const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+                if (filtered.length >= minResults) break;
+
+                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Paginando resultado real — página ${cursorPaginas + 1} (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+
+                let novosNoCursor = 0;
+                try {
+                    const variables = {
+                        activeStatus: activeStatus.toUpperCase(),
+                        adType: 'ALL',
+                        countries: [country],
+                        cursor: nextCursor,
+                        first: 100,               // pedimos mais que os 30 do HTML
+                        mediaType: (mediaType === 'all' ? 'ALL' : mediaType.toUpperCase()),
+                        queryString: keyword,
+                        searchType: 'KEYWORD_UNORDERED',
+                        viewAllPageID: '0',
+                        contentLanguages: language ? [language] : [],
+                        bylines: [], excludedIDs: [], pageIDs: [],
+                        potentialReachInput: [], publisherPlatforms: [], regions: [],
+                        collationToken: null, location: null, sortData: null, source: null,
+                        startDate: null,
+                    };
+                    const resp = await fetch(`${this._PROXY_URL}/?action=graphql`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ variables, fb_dtsg: fbDtsg }),
+                        signal: AbortSignal.timeout(30000),
+                    });
+                    const data = await resp.json();
+                    for (const ad of (data.ads || [])) {
+                        if (!seenIds.has(ad.adId)) { seenIds.add(ad.adId); this._allFetched.push(ad); novosNoCursor++; }
+                    }
+                    nextCursor = data.hasMore ? (data.nextCursor || '') : '';
+                } catch (err) {
+                    console.warn('[Mining] cursor falhou:', err.message);
+                    nextCursor = '';
+                }
+
+                cursorPaginas++;
+                totalBatches++;
+                this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+                try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
+
+                // Cursor que não traz nada novo está morto — não insiste.
+                if (novosNoCursor === 0) { nextCursor = ''; }
+                await new Promise(r => setTimeout(r, 120));
+            }
+
+            let loteSufixo = 1;   // 0 já foi consumido pela busca inicial
             while (!this._stopRequested) {
                 const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                 if (filtered.length >= minResults && totalBatches > 0) break;
                 if (emptyBatches >= 5) break;
 
-                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Scroll página ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Variando palavra-chave — lote ${loteSufixo} (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
 
                 try {
-                    // Use different batch suffixes to get different results
-                    const batchIdx = totalBatches;
+                    // Índice próprio: totalBatches agora inclui as páginas de
+                    // cursor, e usá-lo aqui pularia os primeiros sufixos.
+                    const batchIdx = loteSufixo++;
                     const params = new URLSearchParams({
                         action: 'search', q: keyword, country, media_type: mediaType,
                         active_status: activeStatus, batch: batchIdx,
@@ -154,7 +217,7 @@ const MiningModule = {
                 }
 
                 this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
-                try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                 await new Promise(r => setTimeout(r, 100));
             }
 
@@ -188,7 +251,7 @@ const MiningModule = {
 
                         this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                         if (this._results.length >= minResults) break;
-                        try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                        try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                         await new Promise(r => setTimeout(r, 50));
                     }
                 }
@@ -263,7 +326,7 @@ const MiningModule = {
                     } catch (e) { console.warn('[Mining] Paginate batch error:', e.message); }
 
                     this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
-                    try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                    try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                     await new Promise(r => setTimeout(r, 50));
                 }
             } catch (e) {
@@ -430,20 +493,36 @@ const MiningModule = {
 
         grid.innerHTML = this._results.map((ad, i) => this._renderCard(ad, i)).join('');
 
-        // Bind card events
-        grid.querySelectorAll('.mining-card-check').forEach(cb => {
-            cb.addEventListener('change', () => this._onCardCheckChange(cb.dataset.idx, cb.checked));
-        });
-        grid.querySelectorAll('.mining-save-one').forEach(btn => {
-            btn.addEventListener('click', (e) => { e.stopPropagation(); this._saveOneToSwipe(parseInt(btn.dataset.idx)); });
-        });
-        grid.querySelectorAll('.mining-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.mining-card-check-wrap') || e.target.closest('.mining-save-one')) return;
-                const idx = parseInt(card.dataset.idx);
-                this._openPreview(idx);
+        // Delegação: os ouvintes ficam no container e são ligados UMA vez.
+        // Antes eram religados por card a cada lote — com milhares de anúncios
+        // isso criava dezenas de milhares de ouvintes e travava a aba.
+        if (!grid.dataset.ouvintesLigados) {
+            grid.addEventListener('change', (e) => {
+                const cb = e.target.closest('.mining-card-check');
+                if (cb) this._onCardCheckChange(cb.dataset.idx, cb.checked);
             });
-        });
+            grid.addEventListener('click', (e) => {
+                const btn = e.target.closest('.mining-save-one');
+                if (btn) { e.stopPropagation(); this._saveOneToSwipe(parseInt(btn.dataset.idx)); return; }
+                if (e.target.closest('.mining-card-check-wrap')) return;
+                const card = e.target.closest('.mining-card');
+                if (card) this._openPreview(parseInt(card.dataset.idx));
+            });
+            grid.dataset.ouvintesLigados = '1';
+        }
+    },
+
+    // Durante a mineração o grid é redesenhado a cada página. Com muitos
+    // resultados isso domina o tempo de CPU, então limitamos a frequência.
+    _renderGridThrottled() {
+        const agora = Date.now();
+        if (this._ultimoRender && agora - this._ultimoRender < 700) {
+            clearTimeout(this._renderPendente);
+            this._renderPendente = setTimeout(() => this._renderGridThrottled(), 700);
+            return;
+        }
+        this._ultimoRender = agora;
+        this._renderGrid();
     },
 
     _calcDaysRunning(startDate) {
