@@ -15601,3 +15601,36 @@ body:not([data-theme]) .adh-board-viewport {
 .studio-pdp-specs { width: 100%; font-size: 0.78rem; border-collapse: collapse; }
 .studio-pdp-specs td { padding: 0.3rem 0; border-bottom: 1px solid rgba(128,128,128,0.2); }
 .studio-pdp-specs td:first-child { opacity: 0.65; width: 45%; }
+
+/* ─────────────────────────────────────────────
+   Mineração → Varredura profunda por data
+   ───────────────────────────────────────────── */
+.mining-sweep {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.7rem 0.9rem; margin: 0.75rem 0;
+}
+.mining-sweep-toggle {
+    display: flex; align-items: center; gap: 0.5rem; cursor: pointer; flex-wrap: wrap;
+}
+.mining-sweep-toggle strong { font-size: 0.86rem; }
+.mining-sweep-toggle small { color: var(--text-muted); font-size: 0.74rem; }
+.mining-sweep-fields {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.6rem; margin-top: 0.7rem; align-items: end;
+}
+.mining-sweep-fields .mining-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.mining-sweep-fields label { font-size: 0.7rem; color: var(--text-muted); }
+.mining-sweep-estimate {
+    grid-column: 1 / -1; font-size: 0.76rem; color: var(--text-muted);
+    padding-top: 0.2rem; border-top: 1px dashed var(--border); margin-top: 0.1rem;
+}
+
+/* Selo de histórico da varredura no card */
+.mining-sweep-badge {
+    display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+    margin-top: 0.35rem; font-size: 0.68rem;
+}
+.mining-sweep-badge span {
+    color: #fff; padding: 1px 6px; border-radius: 20px; font-weight: 600; white-space: nowrap;
+}
+.mining-sweep-badge small { color: var(--text-muted); }

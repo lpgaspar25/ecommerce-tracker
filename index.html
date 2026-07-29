@@ -3159,6 +3159,39 @@
                 <div class="mining-field" style="justify-content:flex-end"><label>&nbsp;</label><button id="btn-mine" class="btn btn-primary" style="width:100%"><i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar</button></div>
             </div>
 
+            <!-- Varredura profunda por data: repete a MESMA busca movendo só a
+                 data máxima para trás, o que faz a Biblioteca revelar anúncios
+                 antigos que ela esconde na consulta normal. -->
+            <div class="mining-sweep">
+                <label class="mining-sweep-toggle">
+                    <input type="checkbox" id="mining-sweep-on">
+                    <i data-lucide="calendar-search" style="width:15px;height:15px;vertical-align:-3px"></i>
+                    <strong>Varredura profunda por data</strong>
+                    <small>revela anúncios ativos antigos que a busca normal não mostra</small>
+                </label>
+                <div id="mining-sweep-fields" class="mining-sweep-fields" style="display:none">
+                    <div class="mining-field"><label>Data inicial</label><input type="date" id="mining-sweep-start" class="input"></div>
+                    <div class="mining-field"><label>Retroceder (dias)</label><input type="number" id="mining-sweep-days" class="input" value="90" min="1" max="730"></div>
+                    <div class="mining-field"><label>Profundidade</label>
+                        <select id="mining-sweep-step" class="input">
+                            <option value="1">Diária — 1 em 1 dia</option>
+                            <option value="3">A cada 3 dias</option>
+                            <option value="7" selected>Semanal — a cada 7 dias</option>
+                            <option value="15">Quinzenal</option>
+                            <option value="30">Mensal</option>
+                        </select>
+                    </div>
+                    <div class="mining-field"><label>Ritmo entre buscas</label>
+                        <select id="mining-sweep-pace" class="input" title="O Facebook limita o IP do servidor quando recebe muitas buscas seguidas. Ritmo mais lento é mais confiável.">
+                            <option value="1200">Rápido — 1,2s</option>
+                            <option value="2500" selected>Seguro — 2,5s</option>
+                            <option value="5000">Conservador — 5s</option>
+                        </select>
+                    </div>
+                    <div class="mining-sweep-estimate" id="mining-sweep-estimate"></div>
+                </div>
+            </div>
+
             <!-- Cookie bar removed — FB blocks cookies from different IPs -->
 
             <!-- Bulk actions -->
