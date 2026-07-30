@@ -1044,14 +1044,43 @@ function convertCurrency(value, fromCurrency, toCurrency) {
     return usd * rate;
 }
 
-function calculateProfitPerSale(product, cpaCurrency, cpaValue) {
-    const price = convertToUSD(product.price, product.priceCurrency);
-    const cost = convertToUSD(product.cost, product.costCurrency);
-    const cpa = convertToUSD(cpaValue || product.cpa, cpaCurrency || product.cpaCurrency);
-    const taxAmount = price * (product.tax / 100);
-    const variableAmount = price * (product.variableCosts / 100);
+/* ── Fórmulas canônicas de lucro (USD) ──────────────────────────────
+   Duas bases, de propósito:
+   - PREVISÃO usa o preço do produto  → calculateGrossMarginPerSale / calculateProfitPerSale
+   - HISTÓRICO usa a receita real     → calculateEntryProfit
+   Todos os módulos devem chamar estas funções em vez de reimplementar. */
 
-    return price - cost - taxAmount - variableAmount - cpa;
+// Margem bruta por venda (sem CPA): preço − custo − imposto% − custos var%
+// priceOverride (na moeda do produto) permite simular ticket diferente.
+function calculateGrossMarginPerSale(product, priceOverride) {
+    if (!product) return 0;
+    const effectivePrice = priceOverride > 0 ? priceOverride : product.price;
+    const price = convertToUSD(effectivePrice, product.priceCurrency);
+    const cost = convertToUSD(product.cost, product.costCurrency);
+    return price - cost - (price * (product.tax / 100)) - (price * (product.variableCosts / 100));
+}
+
+// Lucro previsto por venda = margem bruta − CPA
+function calculateProfitPerSale(product, cpaCurrency, cpaValue, priceOverride) {
+    if (!product) return 0;
+    const cpa = convertToUSD(cpaValue ?? product.cpa, cpaCurrency || product.cpaCurrency);
+    return calculateGrossMarginPerSale(product, priceOverride) - cpa;
+}
+
+// Lucro REAL de uma entrada do Diário:
+// receita − (custo × vendas) − (receita × imposto%) − (receita × var%) − ads.
+// Sem produto vinculado (ex: entrada de loja), cai para receita − ads.
+function calculateEntryProfit(entry) {
+    const revenueUSD = convertToUSD(entry.revenue || 0, entry.revenueCurrency || 'BRL');
+    const budgetUSD = convertToUSD(entry.budget || 0, entry.budgetCurrency || 'BRL');
+    const product = (entry.productId && entry.productId !== '__STORE__') ? getProductById(entry.productId) : null;
+    if (!product) return revenueUSD - budgetUSD;
+    const costUSD = convertToUSD(product.cost, product.costCurrency);
+    return revenueUSD
+        - (costUSD * (entry.sales || 0))
+        - (revenueUSD * product.tax / 100)
+        - (revenueUSD * product.variableCosts / 100)
+        - budgetUSD;
 }
 
 function formatDate(dateStr) {

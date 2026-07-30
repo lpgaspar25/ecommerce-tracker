@@ -307,12 +307,7 @@ const DailyTargetsCalculator = {
 
     // Per-sale margin BEFORE ad cost (Price - Cost - Tax% - VarCost%) in USD
     _marginPerSaleUSD(product) {
-        if (!product) return 0;
-        const priceUSD = convertToUSD(product.price || 0, product.priceCurrency || 'USD');
-        const costUSD  = convertToUSD(product.cost || 0,  product.costCurrency  || product.priceCurrency || 'USD');
-        const tax = (product.tax || 0) / 100;
-        const varCost = (product.variableCosts || 0) / 100;
-        return priceUSD * (1 - tax - varCost) - costUSD;
+        return calculateGrossMarginPerSale(product);
     },
 
     _calculate() {

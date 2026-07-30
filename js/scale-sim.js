@@ -84,12 +84,7 @@ const ScaleSimModule = {
     // Profit per unit in the display currency, net of tax% and variableCosts%
     _profitPerUnit(product) {
         if (!product) return 0;
-        const display = this._displayCurrency();
-        const price = this._convToDisplay(product.price, product.priceCurrency || display);
-        const cost  = this._convToDisplay(product.cost,  product.costCurrency  || display);
-        const taxPct = Number(product.tax) || 0;
-        const varPct = Number(product.variableCosts) || 0;
-        return price - cost - (price * taxPct / 100) - (price * varPct / 100);
+        return this._convToDisplay(calculateGrossMarginPerSale(product), 'USD');
     },
 
     _priceDisplay(product) {
