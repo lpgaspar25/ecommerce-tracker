@@ -15634,3 +15634,10 @@ body:not([data-theme]) .adh-board-viewport {
     color: #fff; padding: 1px 6px; border-radius: 20px; font-weight: 600; white-space: nowrap;
 }
 .mining-sweep-badge small { color: var(--text-muted); }
+
+/* Diário: venda real da loja quando difere da atribuição do Facebook */
+.diary-sales-real { white-space: nowrap; }
+.diary-sales-flag {
+    display: inline-block; margin-left: 4px; font-size: 0.62rem;
+    font-weight: 600; opacity: 0.85; vertical-align: 1px;
+}

@@ -207,7 +207,21 @@ const DiaryModule = {
                 const value = computed > 0 ? computed : Number(entry.checkoutRate || 0);
                 return this._fmtMetricCell(value, 'icRate');
             }
-            case 'sales': return `<td class="num">${sales || '--'}</td>`;
+            case 'sales': {
+                // Quando o Shopify já gravou a venda real, a importação do CSV
+                // NÃO sobrescreve — o número da loja vale mais que a atribuição
+                // do Facebook. Sem marcar isso na tela, o usuário importa um CSV
+                // com 12 vendas, vê 9, e conclui que a ferramenta errou.
+                const fbS = Number(entry.fbSales);
+                const daLoja = entry.salesSource === 'shopify';
+                if (daLoja && Number.isFinite(fbS) && fbS !== Number(sales || 0)) {
+                    const dif = Number(sales || 0) - fbS;
+                    const cor = dif > 0 ? 'var(--green)' : 'var(--orange)';
+                    const dica = `Venda real da loja (Shopify): ${sales}. O Facebook atribuiu ${fbS} neste dia — diferença de ${dif > 0 ? '+' : ''}${dif}. A ferramenta mostra o número da loja.`;
+                    return `<td class="num diary-sales-real" title="${this._esc(dica)}">${sales}<span class="diary-sales-flag" style="color:${cor}">${dif > 0 ? '+' : ''}${dif} FB</span></td>`;
+                }
+                return `<td class="num">${sales || '--'}</td>`;
+            }
             case 'shopifySales': {
                 const data = this._getShopifyDataFor(entry.date, entry.productId);
                 if (!data) return '<td class="num" style="color:var(--text-muted)">--</td>';
@@ -1228,8 +1242,6 @@ const DiaryModule = {
         if (entry.productId && sel.has(entry.productId)) return true;
         return false;
     },
-
-    _esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
 
     // Entrada que agrega vários dias (salva a partir de um período no Diagnóstico)
     _isRangeEntry(entry) {
