@@ -15789,3 +15789,13 @@ body:not([data-theme]) .adh-board-viewport {
     display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.55rem;
 }
 .mdgx-ranking-btn-import:hover { filter: brightness(1.1); }
+
+/* Vendas → nome do produto clicável para editar */
+.mdgx-name-edit {
+    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    font: inherit; color: inherit; text-align: left;
+    display: inline-flex; align-items: center;
+    border-bottom: 1px dashed transparent;
+}
+.mdgx-name-edit:hover { border-bottom-color: currentColor; }
+.mdgx-name-edit:hover i { opacity: 1 !important; }

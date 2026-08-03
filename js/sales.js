@@ -1054,6 +1054,10 @@ const SalesModule = (() => {
                 if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
                     lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) || null;
                 }
+                // shopifyId gravado no produto: sobrevive a renomear, ao
+                // contrário do casamento por nome (que quebrava e fazia o
+                // produto reaparecer como "sem cadastro", convidando a duplicar).
+                if (!lp) lp = localProducts.find(p => p.shopifyId && String(p.shopifyId) === String(shopifyPid)) || null;
                 if (!lp && title) lp = localProducts.find(p => norm(p.name) === norm(title)) || null;
                 return lp;
             };
@@ -1168,6 +1172,7 @@ const SalesModule = (() => {
             if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
                 achou = locais.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
             }
+            if (!achou) achou = locais.find(p => p.shopifyId && String(p.shopifyId) === String(pid)) || null;
             if (!achou) achou = locais.find(p => norm(p.name) === norm(info.title)) || null;
             if (!achou) faltando.push({ pid, title: info.title, sales: info.sales, revenue: info.revenue, currency: info.currency });
         });
@@ -1326,11 +1331,13 @@ const SalesModule = (() => {
         const localProducts = AppState.allProducts || AppState.products || [];
         const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
         const localProductFor = (shopifyPid, title) => {
-            // 1) by Shopify link, 2) by name match
+            // 1) vínculo Shopify, 2) shopifyId gravado no produto, 3) nome.
+            // O passo 2 é o que faz o vínculo sobreviver a renomear o produto.
             let lp = null;
             if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
                 lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) || null;
             }
+            if (!lp) lp = localProducts.find(p => p.shopifyId && String(p.shopifyId) === String(shopifyPid)) || null;
             if (!lp && title) lp = localProducts.find(p => norm(p.name) === norm(title)) || null;
             return lp;
         };
@@ -1429,7 +1436,9 @@ const SalesModule = (() => {
                     : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
                 }
                 <div class="mdgx-ranking-info">
-                    <div class="mdgx-ranking-name" title="${(dispName || '').replace(/"/g, '&quot;')}">${dispName}${badges}${!lp ? '<span class="mdgx-nocad" title="Vende na Shopify mas ainda não tem cadastro aqui — sem custo, não entra em lucro nem em meta">sem cadastro</span>' : ''}</div>
+                    <div class="mdgx-ranking-name" title="${lp ? 'Clique para editar ' + (dispName || '').replace(/"/g, '&quot;') : (dispName || '').replace(/"/g, '&quot;')}">${lp
+                        ? `<button type="button" class="mdgx-name-edit" data-edit-product="${esc(lp.id)}">${dispName}<i data-lucide="pencil" style="width:11px;height:11px;margin-left:4px;opacity:0.55"></i></button>`
+                        : dispName}${badges}${!lp ? '<span class="mdgx-nocad" title="Vende na Shopify mas ainda não tem cadastro aqui — sem custo, não entra em lucro nem em meta">sem cadastro</span>' : ''}</div>
                     <div class="mdgx-ranking-meta">
                         <span class="mdgx-ranking-price">${fmtMoney(p.avgPrice, p.currency)}</span>
                         <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
@@ -1493,6 +1502,21 @@ const SalesModule = (() => {
             _renderMdgxRanking();
             // Scroll back to ranking header
             document.getElementById('sales-mdgx-ranking-list')?.scrollIntoView({ behavior:'smooth', block:'center' });
+        });
+
+        // Editar o produto sem sair de Vendas — abre o mesmo formulário da
+        // lista de Produtos, então tudo que dá pra fazer lá vale aqui.
+        listEl.querySelectorAll('[data-edit-product]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const prod = (AppState.allProducts || AppState.products || [])
+                    .find(p => String(p.id) === String(btn.dataset.editProduct));
+                if (!prod) { showToast('Produto não encontrado.', 'error'); return; }
+                if (typeof ProductsModule === 'undefined' || !ProductsModule.openForm) {
+                    showToast('Módulo de produtos indisponível.', 'error'); return;
+                }
+                ProductsModule.openForm(prod);
+            });
         });
 
         // "Ver campanhas no Mapa de Ads" buttons → switch tab + select product
@@ -2689,6 +2713,15 @@ const SalesModule = (() => {
             _mdgxShowAll = !_mdgxShowAll;
             _renderMdgxRanking();
         });
+
+        // Editar/cadastrar produto muda nome, custo e vínculo — sem isto o
+        // ranking continuaria mostrando o estado anterior até trocar de aba.
+        if (typeof EventBus !== 'undefined') {
+            EventBus.on('productsChanged', () => {
+                _renderMdgxRanking();
+                _renderGeoRanking();
+            });
+        }
         _bindDashWidget();
         // Render dashboard widget after a tick so ShopifyModule has init'd
         setTimeout(() => renderDashWidget(false), 800);
