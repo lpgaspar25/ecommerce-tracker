@@ -15768,3 +15768,24 @@ body:not([data-theme]) .adh-board-viewport {
     background: rgba(139, 92, 246, 0.16); color: var(--accent, #8b5cf6);
 }
 .sg-tag-pad { background: rgba(107, 114, 128, 0.18); color: var(--text-muted); }
+
+/* Vendas → importar produtos do ranking que só existem na Shopify */
+.mdgx-import-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; flex-wrap: wrap; padding: 0.6rem 1.1rem;
+    background: color-mix(in srgb, var(--orange) 9%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--orange) 28%, transparent);
+}
+.mdgx-import-txt { font-size: 0.78rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.mdgx-import-txt small { color: var(--text-muted); font-size: 0.7rem; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mdgx-nocad {
+    display: inline-block; margin-left: 0.35rem; padding: 0 6px;
+    border-radius: 20px; font-size: 0.6rem; font-weight: 700; vertical-align: 1px;
+    background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange);
+}
+.mdgx-ranking-btn-import {
+    background: var(--accent, #8b5cf6) !important; color: #fff !important;
+    border-color: transparent !important; font-size: 0.7rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.55rem;
+}
+.mdgx-ranking-btn-import:hover { filter: brightness(1.1); }

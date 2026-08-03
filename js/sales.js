@@ -1116,6 +1116,94 @@ const SalesModule = (() => {
     let _mdgxPrevCache = { key: '', orders: null };
     let _mdgxShowAll = false;
 
+    // ══════════════════════════════════════════════════════════════
+    //  Importar do ranking → cadastro local
+    //  O produto vende na Shopify mas ainda não existe no app: sem
+    //  cadastro ele não tem custo, não entra em meta, diário nem CPA.
+    //  Importar aqui evita ter que caçá-lo no importador geral.
+    // ══════════════════════════════════════════════════════════════
+
+    function _criarProdutoLocalDeShopify(shopifyPid, titulo, precoUnit, moeda) {
+        const storeId = typeof getWritableStoreId === 'function' ? getWritableStoreId() : null;
+        const sp = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getShopifyProducts)
+            ? (ShopifyModule.getShopifyProducts() || []).find(s => String(s.id) === String(shopifyPid))
+            : null;
+
+        const novo = {
+            id: (typeof generateId === 'function' ? generateId('prod') : 'prod_' + Date.now() + Math.random().toString(36).slice(2, 6)),
+            name: sp?.title || titulo || String(shopifyPid),
+            language: 'Ingles',
+            // Preço: prefere o do catálogo Shopify; senão usa o ticket médio observado
+            price: Number(sp?.priceMin) || Number(precoUnit) || 0,
+            priceCurrency: sp?.currency || moeda || 'USD',
+            cost: 0, costCurrency: sp?.currency || moeda || 'USD',
+            tax: 0, variableCosts: 0,
+            cpa: 0, cpaCurrency: sp?.currency || moeda || 'USD',
+            countryPrices: [],
+            status: 'ativo',
+            storeId,
+            shopifyId: shopifyPid,
+            shopifyHandle: sp?.handle || '',
+            shopifyImage: sp?.image || '',
+            shopifyImportedAt: new Date().toISOString(),
+        };
+        AppState.allProducts = AppState.allProducts || [];
+        AppState.allProducts.push(novo);
+        // Vincula explicitamente: sem o link o ranking só casaria por nome,
+        // que quebra assim que o título mudar num dos lados.
+        try { ShopifyModule.linkProduct?.(novo.id, shopifyPid); } catch {}
+        return novo;
+    }
+
+    // Produtos do ranking atual que ainda não têm cadastro local
+    function _naoCadastradosDoRanking() {
+        const orders = _state.filtered || [];
+        const byProd = _aggregateByProduct(orders);
+        const locais = AppState.allProducts || AppState.products || [];
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+        const faltando = [];
+        Object.entries(byProd).forEach(([pid, info]) => {
+            if (!info.sales) return;
+            let achou = null;
+            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                achou = locais.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
+            }
+            if (!achou) achou = locais.find(p => norm(p.name) === norm(info.title)) || null;
+            if (!achou) faltando.push({ pid, title: info.title, sales: info.sales, revenue: info.revenue, currency: info.currency });
+        });
+        return faltando.sort((a, b) => b.sales - a.sales);
+    }
+
+    async function importarUmDoRanking(shopifyPid) {
+        const alvo = _naoCadastradosDoRanking().find(x => String(x.pid) === String(shopifyPid));
+        if (!alvo) { showToast('Produto já cadastrado.', 'info'); return; }
+        const unit = alvo.sales > 0 ? alvo.revenue / alvo.sales : 0;
+        const novo = _criarProdutoLocalDeShopify(alvo.pid, alvo.title, unit, alvo.currency);
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof populateProductDropdowns === 'function') populateProductDropdowns();
+        if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
+        EventBus.emit('productsChanged');
+        showToast(`"${novo.name}" cadastrado. Defina o custo em Produtos para o lucro ficar correto.`, 'success');
+        _renderMdgxRanking();
+    }
+
+    async function importarTodosDoRanking() {
+        const faltando = _naoCadastradosDoRanking();
+        if (!faltando.length) { showToast('Todos os produtos do período já estão cadastrados.', 'info'); return; }
+        if (!confirm(`Cadastrar ${faltando.length} produto(s) que vendem na Shopify mas ainda não existem na ferramenta?\n\nEles entram sem custo definido — o lucro só fica correto depois que você preencher o custo em Produtos.`)) return;
+
+        faltando.forEach(x => {
+            const unit = x.sales > 0 ? x.revenue / x.sales : 0;
+            _criarProdutoLocalDeShopify(x.pid, x.title, unit, x.currency);
+        });
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof populateProductDropdowns === 'function') populateProductDropdowns();
+        if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
+        EventBus.emit('productsChanged');
+        showToast(`${faltando.length} produto(s) cadastrado(s). Defina os custos em Produtos.`, 'success');
+        _renderMdgxRanking();
+    }
+
     async function _renderMdgxRanking() {
         const totalEl = document.getElementById('sales-mdgx-ranking-total');
         const compareEl = document.getElementById('sales-mdgx-ranking-compare');
@@ -1297,7 +1385,13 @@ const SalesModule = (() => {
             const nameAttr = lp ? (lp.name || '').replace(/"/g, '&quot;') : '';
             const esc = (s) => String(s || '').replace(/"/g, '&quot;');
             let btnsInner = '';
-            if (lp) {
+            if (!lp) {
+                // Vende na Shopify mas não existe no app: sem cadastro não há
+                // custo, meta nem CPA. Um clique resolve, sem sair da tela.
+                btnsInner = `<button class="mdgx-ranking-btn mdgx-ranking-btn-import" data-import-pid="${esc(p.pid)}" title="Cadastrar &quot;${esc(p.title)}&quot; na ferramenta">
+                    <i data-lucide="download" style="width:13px;height:13px"></i> Cadastrar
+                </button>`;
+            } else if (lp) {
                 // Badge with the number of campaigns the link points to (selected_campaign_ids)
                 const campBadge = (n) => n ? `<span class="mdgx-camp-count" title="${n} campanha${n !== 1 ? 's' : ''} no link">${n}</span>` : '';
                 if (curCC) {
@@ -1335,7 +1429,7 @@ const SalesModule = (() => {
                     : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
                 }
                 <div class="mdgx-ranking-info">
-                    <div class="mdgx-ranking-name" title="${(dispName || '').replace(/"/g, '&quot;')}">${dispName}${badges}</div>
+                    <div class="mdgx-ranking-name" title="${(dispName || '').replace(/"/g, '&quot;')}">${dispName}${badges}${!lp ? '<span class="mdgx-nocad" title="Vende na Shopify mas ainda não tem cadastro aqui — sem custo, não entra em lucro nem em meta">sem cadastro</span>' : ''}</div>
                     <div class="mdgx-ranking-meta">
                         <span class="mdgx-ranking-price">${fmtMoney(p.avgPrice, p.currency)}</span>
                         <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
@@ -1361,7 +1455,34 @@ const SalesModule = (() => {
             }
         }
 
+        // Barra de importação em massa — só aparece quando há o que importar.
+        const semCadastro = _naoCadastradosDoRanking();
+        if (semCadastro.length) {
+            const nomes = semCadastro.slice(0, 3).map(x => x.title).join(', ');
+            itemsHtml = `<div class="mdgx-import-bar">
+                <span class="mdgx-import-txt">
+                    <i data-lucide="alert-circle" style="width:14px;height:14px;vertical-align:-2px"></i>
+                    <strong>${semCadastro.length} produto(s)</strong> vendendo sem cadastro na ferramenta
+                    <small title="${semCadastro.map(x => String(x.title).replace(/"/g,'&quot;')).join(' · ')}">${nomes}${semCadastro.length > 3 ? ` +${semCadastro.length - 3}` : ''}</small>
+                </span>
+                <button type="button" class="btn btn-primary btn-sm" id="mdgx-import-all">
+                    <i data-lucide="download" style="width:13px;height:13px;vertical-align:-2px"></i> Cadastrar todos
+                </button>
+            </div>` + itemsHtml;
+        }
+
         listEl.innerHTML = itemsHtml;
+
+        document.getElementById('mdgx-import-all')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            importarTodosDoRanking();
+        });
+        listEl.querySelectorAll('[data-import-pid]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                importarUmDoRanking(btn.dataset.importPid);
+            });
+        });
 
         document.getElementById('mdgx-ranking-expand-btn')?.addEventListener('click', () => {
             _mdgxShowAll = true;
