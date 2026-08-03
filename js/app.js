@@ -959,6 +959,53 @@ async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9, op
     });
 }
 
+// "Estúdio branco" → "estudio-branco". Para nome de arquivo, sem acento nem
+// espaço. ̀-ͯ é a faixa dos acentos combinantes depois do NFD —
+// escrita escapada de propósito: o caractere literal some em cópia/colagem.
+function _handleSimples(texto) {
+    return String(texto || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'imagem';
+}
+
+// Lightbox genérico — qualquer tela pode ampliar uma imagem sem precisar do
+// próprio markup. Cria o elemento na primeira chamada e reusa depois.
+// (O Estúdio e os Criativos têm lightboxes próprios mais antigos, que
+// carregam blob do IndexedDB; este aqui é para quem já tem o src pronto.)
+function abrirImagemAmpliada(src, legenda = '') {
+    if (!src) return;
+    let box = document.getElementById('app-lightbox');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'app-lightbox';
+        box.className = 'creative-lightbox';   // reaproveita o estilo já existente
+        box.innerHTML = `
+            <button type="button" class="creative-lightbox-close" aria-label="Fechar">&times;</button>
+            <div class="creative-lightbox-body"></div>
+            <div class="creative-lightbox-caption"></div>`;
+        document.body.appendChild(box);
+        box.querySelector('.creative-lightbox-close').addEventListener('click', fecharImagemAmpliada);
+        box.addEventListener('click', (e) => { if (e.target === box) fecharImagemAmpliada(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && box.style.display === 'flex') fecharImagemAmpliada();
+        });
+    }
+    box.querySelector('.creative-lightbox-body').innerHTML =
+        `<img src="${src}" alt="${escapeHtml(legenda)}" style="max-width:100%;max-height:80vh;border-radius:10px">`;
+    box.querySelector('.creative-lightbox-caption').textContent = legenda || '';
+    box.style.display = 'flex';
+}
+
+function fecharImagemAmpliada() {
+    const box = document.getElementById('app-lightbox');
+    if (!box) return;
+    box.querySelector('.creative-lightbox-body').innerHTML = '';
+    box.style.display = 'none';
+}
+
 // Baixa os bytes de uma imagem, seja ela base64 (upload local) ou URL remota
 // (CDN da Shopify). Os dois casos aparecem misturados em product.images.
 async function bytesDaImagem(src) {

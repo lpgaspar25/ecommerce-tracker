@@ -3833,6 +3833,31 @@ body {
 }
 .prod-padrao-nome { font-size: 0.75rem; font-weight: 600; color: var(--text-primary); }
 .prod-padrao-nicho { font-size: 0.62rem; color: var(--text-muted); }
+/* Seletor da galeria completa */
+.prod-gal-titulo {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: .03em; margin-bottom: 0.4rem;
+}
+.prod-gal-toggle {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-size: 0.68rem; text-transform: none; letter-spacing: 0;
+    color: var(--accent, #8b5cf6); text-decoration: underline;
+}
+.prod-gal-lista {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.35rem;
+}
+.prod-gal-item {
+    display: flex; align-items: center; gap: 0.45rem;
+    padding: 0.4rem 0.55rem; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.09));
+    font-size: 0.78rem; color: var(--text-primary);
+}
+.prod-gal-item:hover { border-color: var(--accent, #8b5cf6); }
+.prod-gal-item img { width: 26px; height: 26px; object-fit: cover; border-radius: 5px; flex-shrink: 0; }
+.prod-gal-item em { font-style: normal; font-size: 0.62rem; color: var(--text-muted); }
+.prod-gal-conta { font-size: 0.75rem; color: var(--text-muted); margin-right: auto; }
+
 .prod-cenario-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .prod-cenario-chip {
     font-size: 0.68rem;

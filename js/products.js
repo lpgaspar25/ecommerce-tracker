@@ -104,6 +104,7 @@ const ProductsModule = {
         document.getElementById('btn-prod-ai-desc-imgs')?.addEventListener('click', () => this.melhorarImagensDescricao());
 
         // IA nas imagens do produto
+        document.getElementById('btn-prod-gen-gallery')?.addEventListener('click', () => this.abrirGerarGaleria());
         document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
@@ -970,7 +971,7 @@ const ProductsModule = {
         // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
             <div class="prod-image-thumb">
-                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy">
+                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-ampliar="${i}" style="cursor:zoom-in">
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
                 <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
@@ -986,6 +987,17 @@ const ProductsModule = {
         });
         thumbs.querySelectorAll('[data-enhance]').forEach(btn => {
             btn.addEventListener('click', () => this.melhorarImagem(parseInt(btn.dataset.enhance, 10)));
+        });
+        // Clicar na miniatura amplia — sem isso não dá pra conferir de verdade
+        // se a versão melhorada ficou boa (a miniatura tem ~90px).
+        thumbs.querySelectorAll('[data-ampliar]').forEach(el => {
+            el.addEventListener('click', () => {
+                const im = this._images[parseInt(el.dataset.ampliar, 10)];
+                if (!im) return;
+                const rotulo = [im.name || im.alt || `Imagem ${Number(el.dataset.ampliar) + 1}`,
+                                im.melhorada ? '(melhorada por IA)' : ''].filter(Boolean).join(' ');
+                abrirImagemAmpliada(im.dataUrl || im.url, rotulo);
+            });
         });
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
@@ -1163,6 +1175,171 @@ const ProductsModule = {
         showToast(falhas
             ? `${ok} imagem(ns) da descrição melhorada(s), ${falhas} falharam.`
             : `${ok} imagem(ns) da descrição melhorada(s).`, falhas ? 'warning' : 'success');
+    },
+
+    // ── Gerar a GALERIA INTEIRA de uma vez ──
+    // A capa sozinha não fecha uma página de produto: a loja precisa do
+    // conjunto (estúdio, ângulo, em uso, detalhe, escala). Aqui o usuário
+    // marca os cenários e os padrões que quer e a ferramenta gera tudo em
+    // sequência, sempre a partir da MESMA foto base do produto real.
+    abrirGerarGaleria() {
+        const base = this._images.find(im => im.dataUrl || im.url);
+        if (!base) { showToast('Adicione ao menos uma foto do produto para servir de base.', 'error'); return; }
+
+        const presets = (window.StudioModule?.PRESETS_FOTO) || [];
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        const nichos = [...new Set(padroes.map(p => p.nicho).filter(Boolean))].sort();
+
+        const linhaPreset = (p) => `
+            <label class="prod-gal-item">
+                <input type="checkbox" data-preset="${p.id}" checked>
+                <span>${escapeHtml(p.label)}</span>
+            </label>`;
+        const linhaPadrao = (p) => `
+            <label class="prod-gal-item" data-nicho="${escapeHtml(p.nicho || '')}">
+                <input type="checkbox" data-padrao="${p.id}">
+                ${p.exemploThumb ? `<img src="${p.exemploThumb}" alt="">` : ''}
+                <span>${escapeHtml(p.nome)}${p.nicho ? ` <em>${escapeHtml(p.nicho)}</em>` : ''}</span>
+            </label>`;
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar galeria do produto</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">
+                Marque o que quer gerar. Cada item é uma chamada paga à IA, feita a partir da foto base do produto.
+            </p>
+
+            <div>
+                <div class="prod-gal-titulo">Cenários <button type="button" class="prod-gal-toggle" data-toggle="preset">alternar todos</button></div>
+                <div class="prod-gal-lista">${presets.map(linhaPreset).join('')}</div>
+            </div>
+
+            ${padroes.length ? `
+            <div>
+                <div class="prod-gal-titulo">
+                    Padrões de criativo
+                    ${nichos.length > 1 ? `<select id="pgal-nicho" class="input input-sm" style="width:auto;margin-left:auto">
+                        <option value="">Todos os nichos</option>
+                        ${nichos.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+                    </select>` : ''}
+                </div>
+                <div class="prod-gal-lista" id="pgal-padroes">${padroes.map(linhaPadrao).join('')}</div>
+            </div>` : ''}
+
+            <label class="prod-gal-item" style="border:none;padding-left:0">
+                <input type="checkbox" id="pgal-substituir">
+                <span>Substituir as imagens atuais (por padrão, as novas são <strong>adicionadas</strong>)</span>
+            </label>
+
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;align-items:center">
+                <span id="pgal-conta" class="prod-gal-conta"></span>
+                <button type="button" class="btn btn-primary btn-sm" id="pgal-gerar">Gerar</button>
+            </div>
+        `, (ov) => {
+            const marcados = () => [...ov.querySelectorAll('input[type=checkbox][data-preset]:checked, input[type=checkbox][data-padrao]:checked')];
+            const atualizaConta = () => {
+                const n = marcados().length;
+                ov.querySelector('#pgal-conta').textContent = n ? `${n} imagem(ns)` : 'nada marcado';
+                ov.querySelector('#pgal-gerar').disabled = !n;
+            };
+            ov.addEventListener('change', atualizaConta);
+            atualizaConta();
+
+            ov.querySelector('[data-toggle="preset"]')?.addEventListener('click', () => {
+                const caixas = [...ov.querySelectorAll('input[data-preset]')];
+                const ligar = !caixas.every(c => c.checked);
+                caixas.forEach(c => { c.checked = ligar; });
+                atualizaConta();
+            });
+            ov.querySelector('#pgal-nicho')?.addEventListener('change', (e) => {
+                ov.querySelectorAll('#pgal-padroes .prod-gal-item').forEach(el => {
+                    el.style.display = (!e.target.value || el.dataset.nicho === e.target.value) ? '' : 'none';
+                });
+            });
+
+            ov.querySelector('#pgal-gerar').addEventListener('click', () => {
+                const itens = marcados().map(c => c.dataset.preset
+                    ? { tipo: 'preset', id: c.dataset.preset }
+                    : { tipo: 'padrao', id: c.dataset.padrao });
+                const substituir = ov.querySelector('#pgal-substituir').checked;
+                ov.remove();
+                this._gerarGaleria(itens, substituir);
+            });
+        });
+    },
+
+    async _gerarGaleria(itens, substituir) {
+        const base = this._images.find(im => im.dataUrl || im.url);
+        if (!base || !itens.length) return;
+
+        const presets = (window.StudioModule?.PRESETS_FOTO) || [];
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        const contexto = this._contextoDoFormulario();
+        const idProduto = document.getElementById('product-id')?.value || null;
+
+        // A base é lida UMA vez — reusar o mesmo blob evita refetch por item.
+        let blobBase;
+        try { blobBase = await bytesDaImagem(base.dataUrl || base.url); }
+        catch (e) { showToast('Não consegui ler a foto base: ' + e.message, 'error'); return; }
+
+        const novas = [];
+        let falhas = 0;
+        for (let i = 0; i < itens.length; i++) {
+            const item = itens[i];
+            const preset = item.tipo === 'preset' ? presets.find(p => p.id === item.id) : null;
+            const padrao = item.tipo === 'padrao' ? padroes.find(p => p.id === item.id) : null;
+            const rotulo = preset?.label || padrao?.nome || item.id;
+            this._statusImagem(`Gerando ${i + 1} de ${itens.length} — ${rotulo}…`);
+
+            try {
+                let blobs = [blobBase];
+                let prompt;
+
+                if (preset) {
+                    prompt = `${preset.prompt}${contexto ? ` The product is: ${contexto}.` : ''}`
+                        + ' Do not add any text, logo, badge or label that is not already visible on the product in the input image.';
+                } else if (padrao) {
+                    prompt = window.StudioModule?.montarPromptDoPadrao?.(padrao, idProduto, {
+                        produto: (document.getElementById('product-name')?.value || '').trim() || 'the product',
+                        marca: (document.getElementById('product-vendor')?.value || '').trim(),
+                    }) || padrao.esqueleto;
+
+                    // Padrão tem referência visual: manda os pixels dela também.
+                    let ref = null;
+                    if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                        try { ref = (await MediaStore.get(padrao.exemploMediaId))?.blob || null; } catch {}
+                    }
+                    if (!ref && padrao.exemploThumb) {
+                        try { ref = await bytesDaImagem(padrao.exemploThumb); } catch {}
+                    }
+                    if (ref) {
+                        blobs = [ref, blobBase];
+                        prompt = `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting and colour grading. THE SECOND IMAGE is the real product. Rebuild the scene of the first image featuring the product from the second image, keeping that product's exact shape, colour, materials and every marking unchanged. ${prompt}`;
+                    }
+                } else { continue; }
+
+                const gerado = await ImageAI.editar(blobs, prompt, {
+                    provedor: this._provedorImagem(),
+                    largura: 1024, altura: 1024,
+                    formato: 'image/webp', compressao: 90,
+                });
+                const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+                novas.push({ dataUrl, name: `${_handleSimples(rotulo)}.webp`, melhorada: true, cenario: rotulo });
+
+                // Mostra o que já saiu enquanto o resto ainda gera.
+                if (substituir && novas.length === 1) this._images = [];
+                this._images.push(novas[novas.length - 1]);
+                this._renderProductImages();
+            } catch (e) {
+                console.warn('[Produtos] falha ao gerar', rotulo, e.message);
+                falhas++;
+            }
+        }
+
+        this._statusImagem('');
+        if (!novas.length) { showToast('Nenhuma imagem foi gerada. Veja o console para o motivo.', 'error'); return; }
+        showToast(falhas
+            ? `${novas.length} imagem(ns) gerada(s), ${falhas} falharam.`
+            : `Galeria gerada: ${novas.length} imagem(ns).`, falhas ? 'warning' : 'success');
     },
 
     // ── Gerar capa a partir de um padrão de criativo (com filtro de nicho) ──
