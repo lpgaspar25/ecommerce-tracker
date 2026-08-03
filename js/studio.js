@@ -286,20 +286,33 @@ const StudioModule = (() => {
         return document.getElementById('studio-img-provider')?.value || 'openai';
     }
 
-    async function _editarImagem(blob, prompt, apiKey, provedor) {
+    // Aceita 1 ou 2 imagens. Com 2, a primeira é a referência de composição
+    // e a segunda é o produto real — a doc dos dois provedores manda separar
+    // esses papéis pelo TEXTO do prompt, não por campo da API.
+    async function _editarImagem(blobs, prompt, apiKey, provedor) {
+        const lista = Array.isArray(blobs) ? blobs.filter(Boolean) : [blobs];
         const prov = provedor || _provedorImagem();
-        if (prov === 'gemini') return _editarComGemini(blob, prompt);
-        return _editarComOpenAI(blob, prompt, apiKey || _chaveOpenAI());
+        if (prov === 'gemini') return _editarComGemini(lista, prompt);
+        return _editarComOpenAI(lista, prompt, apiKey || _chaveOpenAI());
     }
 
-    async function _editarComOpenAI(blob, prompt, apiKey) {
+    async function _editarComOpenAI(blobs, prompt, apiKey) {
         if (!apiKey) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+        const lista = Array.isArray(blobs) ? blobs : [blobs];
         const fd = new FormData();
         fd.append('model', 'gpt-image-1');
-        fd.append('image', blob, 'produto.png');
+        // Múltiplas imagens usam o campo "image[]" repetido (até 16).
+        if (lista.length > 1) {
+            lista.forEach((b, i) => fd.append('image[]', b, `img${i + 1}.png`));
+        } else {
+            fd.append('image', lista[0], 'produto.png');
+        }
         fd.append('prompt', prompt);
         fd.append('size', '1024x1024');
         fd.append('quality', 'high');
+        // Default da API é "low" — com low o modelo reinterpreta o produto em
+        // vez de preservá-lo, que é o oposto do que a feature precisa.
+        fd.append('input_fidelity', 'high');
         fd.append('n', '1');
         const r = await fetch('https://api.openai.com/v1/images/edits', {
             method: 'POST',
@@ -313,41 +326,54 @@ const StudioModule = (() => {
         return _b64ParaBlob(b64);
     }
 
-    // Gemini com imagem de entrada. O Imagen 3 (predict) é só texto→imagem e
-    // não serviria aqui: ele inventaria um produto em vez de partir do real.
-    async function _editarComGemini(blob, prompt) {
+    // Ordem de tentativa. O gemini-2.5-flash-image (Nano Banana original) tem
+    // desligamento anunciado para 02/10/2026, então fica só como último
+    // recurso. O 3-pro é o único da família com referência de ESTILO, que é
+    // exatamente o que o padrão de criativo é; o 3.1-flash é o substituto
+    // oficial do depreciado e cobre bem múltiplas imagens.
+    const MODELOS_GEMINI = ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
+
+    async function _editarComGemini(blobs, prompt) {
         const key = _chaveGoogle();
         if (!key) throw new Error('Configure a chave Google AI (AI Generations → API Keys)');
-        const modelo = 'gemini-2.5-flash-image';
-        const base64 = await _blobParaBase64(blob);
-        const r = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        { inline_data: { mime_type: blob.type || 'image/png', data: base64 } },
-                    ],
-                }],
-                generationConfig: { responseModalities: ['IMAGE'] },
-            }),
-        });
-        if (!r.ok) {
-            const t = await r.text();
-            throw new Error('Gemini: ' + t.slice(0, 220));
+        const lista = Array.isArray(blobs) ? blobs : [blobs];
+
+        // Exemplos oficiais multi-imagem põem as IMAGENS antes do texto, para
+        // que "first/second image" no prompt case com a ordem enviada.
+        const parts = [];
+        for (const b of lista) {
+            parts.push({ inline_data: { mime_type: b.type || 'image/png', data: await _blobParaBase64(b) } });
         }
-        const data = await r.json();
-        const partes = data?.candidates?.[0]?.content?.parts || [];
-        const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
-        const b64 = img?.inlineData?.data || img?.inline_data?.data;
-        if (!b64) {
-            // Modelo às vezes responde só texto (recusa/segurança) — mostrar o motivo
+        parts.push({ text: prompt });
+
+        let ultimoErro = '';
+        for (const modelo of MODELOS_GEMINI) {
+            const r = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts }],
+                    generationConfig: { responseModalities: ['IMAGE'], imageConfig: { imageSize: '2K' } },
+                }),
+            });
+            if (!r.ok) {
+                ultimoErro = (await r.text()).slice(0, 220);
+                // Modelo indisponível para esta chave: tenta o próximo da lista.
+                if (r.status === 404 || r.status === 403 || r.status === 400) continue;
+                throw new Error('Gemini: ' + ultimoErro);
+            }
+            const data = await r.json();
+            const partes = data?.candidates?.[0]?.content?.parts || [];
+            const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+            const b64 = img?.inlineData?.data || img?.inline_data?.data;
+            if (b64) return _b64ParaBlob(b64, img?.inlineData?.mimeType || 'image/png');
+            // Respondeu só texto (recusa/segurança) — o motivo importa mais
+            // que tentar outro modelo, que responderia igual.
             const txt = partes.map(p => p.text).filter(Boolean).join(' ').slice(0, 180);
-            throw new Error('Gemini não devolveu imagem' + (txt ? `: ${txt}` : '. Verifique se a chave tem acesso ao modelo de imagem.'));
+            throw new Error('Gemini não devolveu imagem' + (txt ? `: ${txt}` : '.'));
         }
-        return _b64ParaBlob(b64, img?.inlineData?.mimeType || 'image/png');
+        throw new Error('Gemini: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
     }
 
     async function _miniatura(blob, maxDim = 320) {
@@ -513,14 +539,26 @@ Responda APENAS com JSON válido:
     // Bloco final anexado ao prompt: trava o que já existe no produto real
     // pra IA não inventar substituto (ex.: "Polarized" no lugar do texto
     // real) nem acrescentar elemento gráfico que não estava no esqueleto.
-    function _instrucaoPreservacao(marcacoes) {
+    // `alvo` muda a forma de apontar o produto conforme o número de imagens.
+    function _instrucaoPreservacao(marcacoes, alvo = 'the input photo') {
         const lista = (marcacoes?.marcacoes || [])
             .filter(m => m?.texto)
             .map(m => `"${m.texto}"${m.local ? ` (${m.local})` : ''}`);
         if (!lista.length) {
-            return ' This is a photo edit of a real product, not a new illustration — do not add any text, logo, tag, plaque, or badge to the product that is not already visible in the input photo.';
+            return ` This is a photo edit of a real product, not a new illustration — do not add any text, logo, tag, plaque, or badge to the product that is not already visible in ${alvo}.`;
         }
-        return ` This is a photo edit of a real product, not a new illustration. The product in the input photo already has these exact markings — reproduce every one character-for-character, in the same position, without translating, paraphrasing, or substituting them: ${lista.join(', ')}. Do not add any other text, logo, tag, plaque, or badge beyond what is listed here.`;
+        return ` This is a photo edit of a real product, not a new illustration. The product in ${alvo} already has these exact markings — reproduce every one character-for-character, in the same position, without translating, paraphrasing, or substituting them: ${lista.join(', ')}. Do not add any other text, logo, tag, plaque, or badge beyond what is listed here.`;
+    }
+
+    // Instrução de transferência de composição, usada quando mandamos as DUAS
+    // imagens. Segue o padrão oficial dos dois provedores: separar os papéis
+    // no texto ("the first image" / "the second image"), já que nenhuma das
+    // APIs tem campo para dizer qual é estilo e qual é sujeito.
+    function _instrucaoComposicao(marca) {
+        const trocaMarca = marca
+            ? ` Any brand name or logo that appears in the first image must be replaced with "${marca}" — never keep the original brand from the first image.`
+            : ' Remove any brand name or logo that belongs to the first image; do not carry it over into the result.';
+        return `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting, shadows, colour grading and text layout as closely as possible. THE SECOND IMAGE is the real product this new creative is for. Rebuild the scene of the first image, but featuring the product from the second image — including its own case, pouch, cloth and accessories exactly as they appear in the second image, replacing the ones from the first image. The product from the second image must keep its exact shape, proportions, colour, materials and every marking unchanged; do not restyle it to look like the product in the first image.${trocaMarca} Scene described in detail: `;
     }
 
     // {DESCRICAO_PRODUTO} vai para um modelo de IMAGEM, então precisa conter
@@ -575,6 +613,27 @@ Responda APENAS com JSON válido:
         return prompt.replace(/\s{2,}/g, ' ').trim();
     }
 
+    // Recupera o criativo original do padrão. Padrões antigos (ou salvos sem
+    // IndexedDB) só têm a miniatura — ela serve de referência de composição,
+    // já que o produto real vem da outra imagem em alta resolução.
+    async function _blobDoPadrao(padrao) {
+        try {
+            if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                const rec = await MediaStore.get(padrao.exemploMediaId);
+                if (rec?.blob) return rec.blob;
+            }
+            if (padrao.exemploThumb) return await _dataUrlParaBlob(padrao.exemploThumb);
+        } catch (e) {
+            console.warn('[Studio] não consegui carregar o criativo de referência:', e.message);
+        }
+        return null;
+    }
+
+    function _marcaDoProduto(pid) {
+        const p = (AppState.allProducts || []).find(x => x.id === pid);
+        return (_dados(pid).marca?.nome || p?.vendor || '').trim();
+    }
+
     // Gera uma imagem aplicando o padrão à foto base do produto.
     async function gerarComPadrao(padraoId) {
         const pid = _state.productId;
@@ -599,23 +658,32 @@ Responda APENAS com JSON válido:
         _renderFotos();
         try {
             const base = await _urlParaBlobPng(d.fotoBase);
+            // O criativo validado entra como PIXEL, não só como texto. Sem ele
+            // a composição era reinventada a partir da descrição — que era o
+            // motivo de o resultado não parecer com a referência.
+            const referencia = await _blobDoPadrao(padrao);
+            const marca = _marcaDoProduto(pid);
+
             let prompt = montarPromptDoPadrao(padrao, pid);
+            if (referencia) prompt = _instrucaoComposicao(marca) + prompt;
             try {
                 const marcacoes = await _marcacoesDoProduto(pid, base);
-                prompt += _instrucaoPreservacao(marcacoes);
+                prompt += _instrucaoPreservacao(marcacoes, referencia ? 'the second image' : 'the input photo');
             } catch (e) {
                 // Sem a transcrição a geração segue, só sem a trava extra —
                 // melhor gerar sem a proteção do que travar a feature toda.
                 console.warn('[Studio] não consegui transcrever as marcações do produto:', e.message);
             }
-            const blob = await _editarImagem(base, prompt, chave);
+            // Ordem importa: o prompt fala em "first/second image".
+            const blob = await _editarImagem(referencia ? [referencia, base] : [base], prompt, chave);
 
             const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
             const mediaId = 'studio_' + id;
             await MediaStore.put(mediaId, blob, { type: blob.type, name: `${padrao.id}.png` });
             const thumb = await _miniatura(blob);
             d.fotos.unshift({ id, mediaId, thumb, preset: padrao.id, presetLabel: padrao.nome,
-                              prompt, padraoId: padrao.id, criadoEm: new Date().toISOString() });
+                              prompt, padraoId: padrao.id, comReferencia: !!referencia,
+                              criadoEm: new Date().toISOString() });
             padrao.usos = (padrao.usos || 0) + 1;
             _save();
             showToast(`Gerado com o padrão "${padrao.nome}"`, 'success');
