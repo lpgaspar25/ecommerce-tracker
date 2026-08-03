@@ -165,12 +165,21 @@ const AIAdGenerator = {
             row.querySelector('[data-action="save"]')?.addEventListener('click', () => {
                 const val = input.value.trim();
                 if (!val) { if (typeof showToast === 'function') showToast('Cole uma chave antes de salvar', 'error'); return; }
-                if (p.prefixo && !val.startsWith(p.prefixo)) {
-                    if (typeof showToast === 'function') showToast(`Chave inválida — deve começar com "${p.prefixo}"`, 'error');
-                    return;
-                }
+                // O prefixo é só um alerta de "colou a coisa errada" — nunca um
+                // bloqueio. Provedores mudam o formato da chave sem avisar (a
+                // Google já tem pelo menos dois formatos válidos de chave), e
+                // travar o salvamento nisso deixa o usuário sem conseguir usar
+                // uma chave real só porque não bate com o padrão que eu conhecia.
+                const foraDoPadrao = p.prefixo && !val.startsWith(p.prefixo);
                 this._setKey(providerId, val);
-                if (typeof showToast === 'function') showToast(`Chave ${p.nome} salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`, 'success');
+                if (typeof showToast === 'function') {
+                    showToast(
+                        foraDoPadrao
+                            ? `Chave ${p.nome} salva — formato incomum (não começa com "${p.prefixo}"). Se a geração falhar, confira se colou a chave certa.`
+                            : `Chave ${p.nome} salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`,
+                        foraDoPadrao ? 'warning' : 'success'
+                    );
+                }
                 this.renderApiKeysModal();
             });
             row.querySelector('[data-action="remove"]')?.addEventListener('click', () => {
