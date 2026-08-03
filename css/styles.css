@@ -4886,6 +4886,11 @@ body {
 .input-lg {
     padding: 0.75rem 1rem;
     font-size: 1rem;
+    /* .input trava height:36px. Com padding de 12px em cima e embaixo sobravam
+       só 10px para uma fonte de 16px, e o texto do produto/moeda saía cortado. */
+    height: auto;
+    min-height: 46px;
+    line-height: 1.25;
 }
 
 .input-sm {
@@ -15661,3 +15666,18 @@ body:not([data-theme]) .adh-board-viewport {
     background: rgba(16, 185, 129, 0.14); color: var(--green, #10b981);
     vertical-align: middle;
 }
+
+/* Produto → custo por país no cabeçalho da linha */
+.cp-cost-wrap {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.7rem; color: var(--text-muted); white-space: nowrap;
+}
+
+/* Simulador → origem do custo (país) e dica do seletor */
+.calc-cost-src {
+    display: inline-block; margin-left: 0.3rem; padding: 0 5px;
+    border-radius: 4px; font-size: 0.62rem; font-weight: 700;
+    background: rgba(139, 92, 246, 0.16); color: var(--accent, #8b5cf6);
+    vertical-align: 1px;
+}
+.calc-country-hint { font-size: 0.66rem; color: var(--text-muted); font-weight: 400; }

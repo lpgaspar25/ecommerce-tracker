@@ -12,6 +12,7 @@ const CalculatorModule = {
         document.getElementById('calc-cpa').addEventListener('input', () => this.onCPAChange());
         document.getElementById('calc-ticket').addEventListener('input', () => this.onTicketChange());
         document.getElementById('calc-currency').addEventListener('change', () => this.onCPAChange());
+        document.getElementById('calc-country')?.addEventListener('change', () => this.onCountryChange());
 
         // Section A — Sales simulation
         document.getElementById('calc-a-sales').addEventListener('input', () => this.calcSectionA());
@@ -52,6 +53,21 @@ const CalculatorModule = {
         });
         document.getElementById('calc-i-sim-sales').addEventListener('input', () => this.calcSectionISim());
 
+        // Pontuação de milhar ao digitar. Converte os campos para texto —
+        // type="number" descarta qualquer separador — e todas as leituras
+        // acima já passam por NumFmt.val(), então o valor lido continua limpo.
+        if (typeof NumFmt !== 'undefined') {
+            NumFmt.attachAll([
+                'calc-ticket', 'calc-cpa', 'calc-a-sales', 'calc-b-target',
+                'calc-c-budget', 'calc-f-margin',
+                'calc-d-cpa-target', 'calc-d-cpa-real', 'calc-d-target-profit',
+                'calc-g-cpa-target', 'calc-g-conv-rate', 'calc-g-ctr',
+                'calc-h-cpa', 'calc-h-budget', 'calc-h-sales-target',
+                'calc-i-sales', 'calc-i-cpa', 'calc-i-budget-spent', 'calc-i-price',
+                'calc-i-cost', 'calc-i-tax', 'calc-i-variable', 'calc-i-sim-sales',
+            ]);
+        }
+
         EventBus.on('dataLoaded', () => this.onProductChange());
         EventBus.on('productsChanged', () => this.onProductChange());
         EventBus.on('rateUpdated', () => {
@@ -74,29 +90,30 @@ const CalculatorModule = {
         }
 
         // Pre-fill Ticket (price) from product
-        document.getElementById('calc-ticket').value = product.price;
+        NumFmt.set('calc-ticket', product.price);
 
         // Pre-fill CPA from product
-        document.getElementById('calc-cpa').value = product.cpa;
+        NumFmt.set('calc-cpa', product.cpa);
         document.getElementById('calc-currency').value = product.cpaCurrency;
 
         // Pre-fill Section D target CPA
-        document.getElementById('calc-d-cpa-target').value = product.cpa;
+        NumFmt.set('calc-d-cpa-target', product.cpa);
 
         // Pre-fill Section G CPA target
-        document.getElementById('calc-g-cpa-target').value = product.cpa;
+        NumFmt.set('calc-g-cpa-target', product.cpa);
         document.getElementById('calc-g-currency').value = product.cpaCurrency;
 
         // Pre-fill Section I from product
-        document.getElementById('calc-i-price').value = product.price;
+        NumFmt.set('calc-i-price', product.price);
         document.getElementById('calc-i-price-currency').value = product.priceCurrency;
-        document.getElementById('calc-i-cost').value = product.cost;
+        NumFmt.set('calc-i-cost', product.cost);
         document.getElementById('calc-i-cost-currency').value = product.costCurrency;
-        document.getElementById('calc-i-tax').value = product.tax;
-        document.getElementById('calc-i-variable').value = product.variableCosts;
+        NumFmt.set('calc-i-tax', product.tax);
+        NumFmt.set('calc-i-variable', product.variableCosts);
         document.getElementById('calc-i-ads-currency').value = product.cpaCurrency;
         document.getElementById('calc-i-autofill-hint').style.display = 'block';
 
+        this._fillCountrySelect();
         this.updateProductInfo();
         this.recalcAll();
     },
@@ -116,9 +133,70 @@ const CalculatorModule = {
         const product = this._selectedProduct;
         if (!product) return 0;
 
-        const ticketVal = parseFloat(document.getElementById('calc-ticket').value);
+        const ticketVal = NumFmt.val('calc-ticket');
         if (ticketVal > 0) return ticketVal;
         return product.price;
+    },
+
+    // ── País selecionado: preço e custo mudam por destino ──
+    // Retorna a entrada de countryPrices do país escolhido, ou null.
+    _getCountryEntry() {
+        const product = this._selectedProduct;
+        const cc = document.getElementById('calc-country')?.value || '';
+        if (!product || !cc || !Array.isArray(product.countryPrices)) return null;
+        return product.countryPrices.find(cp => cp.country === cc) || null;
+    },
+
+    // Custo efetivo: o do país quando cadastrado, senão o padrão do produto.
+    // Devolve {value, currency, fonte} para a interface poder explicar de onde veio.
+    _getEffectiveCost() {
+        const product = this._selectedProduct;
+        if (!product) return { value: 0, currency: 'USD', fonte: 'nenhum' };
+        const cp = this._getCountryEntry();
+        if (cp && cp.cost != null && cp.cost !== '') {
+            return { value: Number(cp.cost) || 0, currency: cp.currency || product.costCurrency, fonte: 'pais' };
+        }
+        return { value: product.cost, currency: product.costCurrency, fonte: 'padrao' };
+    },
+
+    // Preenche o seletor de país com os países cadastrados no produto.
+    _fillCountrySelect() {
+        const sel = document.getElementById('calc-country');
+        if (!sel) return;
+        const product = this._selectedProduct;
+        const anterior = sel.value;
+        const lista = (product?.countryPrices || []).filter(cp => cp && cp.country);
+        sel.innerHTML = '<option value="">Padrão do produto</option>' + lista.map(cp => {
+            const temCusto = cp.cost != null && cp.cost !== '';
+            const preco = cp.tiers?.[0]?.price || cp.price || 0;
+            const detalhe = [preco ? `${cp.currency} ${preco}` : '', temCusto ? `custo ${cp.currency} ${cp.cost}` : ''].filter(Boolean).join(' · ');
+            return `<option value="${cp.country}">${cp.country}${detalhe ? ' — ' + detalhe : ''}</option>`;
+        }).join('');
+        // Preserva a escolha do usuário se o país ainda existir
+        if (anterior && lista.some(cp => cp.country === anterior)) sel.value = anterior;
+        sel.disabled = lista.length === 0;
+    },
+
+    onCountryChange() {
+        const cp = this._getCountryEntry();
+        if (cp) {
+            const preco = cp.tiers?.[0]?.price || cp.price || 0;
+            if (preco > 0) NumFmt.set('calc-ticket', preco);
+            if (cp.currency) {
+                const selMoeda = document.getElementById('calc-currency');
+                if (selMoeda && [...selMoeda.options].some(o => o.value === cp.currency)) selMoeda.value = cp.currency;
+            }
+        } else if (this._selectedProduct) {
+            NumFmt.set('calc-ticket', this._selectedProduct.price);
+        }
+        // A seção I tem custo próprio editável — reflete o país escolhido
+        const custo = this._getEffectiveCost();
+        NumFmt.set('calc-i-cost', custo.value);
+        const selCusto = document.getElementById('calc-i-cost-currency');
+        if (selCusto && [...selCusto.options].some(o => o.value === custo.currency)) selCusto.value = custo.currency;
+
+        this.updateProductInfo();
+        this.recalcAll();
     },
 
     // Calculate profit per sale using the editable ticket price
@@ -127,11 +205,14 @@ const CalculatorModule = {
         if (!product) return 0;
 
         const effectivePrice = this._getEffectivePrice();
-        const priceCurrency = product.priceCurrency;
+        // Preço na moeda do país quando há país selecionado
+        const cp = this._getCountryEntry();
+        const priceCurrency = (cp && cp.currency) ? cp.currency : product.priceCurrency;
+        const custo = this._getEffectiveCost();
 
         // Normalize everything to USD
         const priceUSD = convertToUSD(effectivePrice, priceCurrency);
-        const costUSD = convertToUSD(product.cost, product.costCurrency);
+        const costUSD = convertToUSD(custo.value, custo.currency);
         const cpaUSD = convertToUSD(cpaValue, cpaCurrency);
         const taxAmount = priceUSD * (product.tax / 100);
         const variableAmount = priceUSD * (product.variableCosts / 100);
@@ -150,12 +231,26 @@ const CalculatorModule = {
 
         infoSection.style.display = 'flex';
 
-        const cpa = parseFloat(document.getElementById('calc-cpa').value) || 0;
+        const cpa = NumFmt.val('calc-cpa') || 0;
         const cpaCurrency = document.getElementById('calc-currency').value;
         const effectivePrice = this._getEffectivePrice();
 
-        document.getElementById('calc-info-price').textContent = formatDualCurrency(effectivePrice, product.priceCurrency);
-        document.getElementById('calc-info-cost').textContent = formatDualCurrency(product.cost, product.costCurrency);
+        const cpSel = this._getCountryEntry();
+        const custoEf = this._getEffectiveCost();
+        document.getElementById('calc-info-price').textContent = formatDualCurrency(effectivePrice, cpSel?.currency || product.priceCurrency);
+
+        // Deixa explícito quando o custo vem do país — senão o usuário vê um
+        // número diferente do cadastro principal e acha que é erro.
+        const elCusto = document.getElementById('calc-info-cost');
+        elCusto.textContent = formatDualCurrency(custoEf.value, custoEf.currency);
+        const chip = elCusto.closest('.info-chip');
+        if (chip) {
+            const marca = chip.querySelector('.calc-cost-src');
+            if (custoEf.fonte === 'pais') {
+                if (!marca) elCusto.insertAdjacentHTML('afterend', `<span class="calc-cost-src" title="Custo cadastrado para ${cpSel.country}">${cpSel.country}</span>`);
+                else { marca.textContent = cpSel.country; marca.title = `Custo cadastrado para ${cpSel.country}`; }
+            } else if (marca) marca.remove();
+        }
         document.getElementById('calc-info-tax').textContent = product.tax + '%';
         document.getElementById('calc-info-variable').textContent = product.variableCosts + '%';
 
@@ -185,8 +280,11 @@ const CalculatorModule = {
     _getGrossMarginPerSale() {
         const product = this._selectedProduct;
         if (!product) return 0;
-        const priceUSD = convertToUSD(this._getEffectivePrice(), product.priceCurrency);
-        const costUSD = convertToUSD(product.cost, product.costCurrency);
+        const cp = this._getCountryEntry();
+        const priceCurrency = (cp && cp.currency) ? cp.currency : product.priceCurrency;
+        const custo = this._getEffectiveCost();
+        const priceUSD = convertToUSD(this._getEffectivePrice(), priceCurrency);
+        const costUSD = convertToUSD(custo.value, custo.currency);
         return priceUSD - costUSD - (priceUSD * product.tax / 100) - (priceUSD * product.variableCosts / 100);
     },
 
@@ -194,7 +292,7 @@ const CalculatorModule = {
         const product = this._selectedProduct;
         if (!product) return null;
 
-        const cpa = parseFloat(document.getElementById('calc-cpa').value) || 0;
+        const cpa = NumFmt.val('calc-cpa') || 0;
         const cpaCurrency = document.getElementById('calc-currency').value;
         const effectivePrice = this._getEffectivePrice();
 
@@ -208,7 +306,7 @@ const CalculatorModule = {
     // ---- Section A: Sales Simulation ----
     calcSectionA() {
         const data = this._getCurrentCalcData();
-        const salesInput = parseInt(document.getElementById('calc-a-sales').value) || 0;
+        const salesInput = Math.trunc(NumFmt.val('calc-a-sales')) || 0;
         const resultsEl = document.getElementById('calc-a-results');
         const scenariosEl = document.getElementById('calc-a-scenarios');
 
@@ -235,7 +333,7 @@ const CalculatorModule = {
         const tbody = document.getElementById('calc-a-scenarios-tbody');
 
         // Custom editable row (FIRST)
-        const customQty = parseInt(document.getElementById('calc-a-custom-qty')?.value) || 0;
+        const customQty = Math.trunc(NumFmt.val('calc-a-custom-qty')) || 0;
         const customProfit = customQty > 0 ? customQty * data.profitPerSale : 0;
         const customBudget = customQty > 0 ? customQty * data.cpaUSD : 0;
         const customRevenue = customQty > 0 ? customQty * data.priceUSD : 0;
@@ -277,7 +375,7 @@ const CalculatorModule = {
         const data = this._getCurrentCalcData();
         if (!data) return;
 
-        const customQty = parseInt(document.getElementById('calc-a-custom-qty').value) || 0;
+        const customQty = Math.trunc(NumFmt.val('calc-a-custom-qty')) || 0;
 
         const profitEl = document.getElementById('calc-a-custom-profit');
         const budgetEl = document.getElementById('calc-a-custom-budget');
@@ -303,7 +401,7 @@ const CalculatorModule = {
     // ---- Section B: Profit Target → Budget ----
     calcSectionB() {
         const data = this._getCurrentCalcData();
-        const target = parseFloat(document.getElementById('calc-b-target').value) || 0;
+        const target = NumFmt.val('calc-b-target') || 0;
         const targetCurrency = document.getElementById('calc-b-currency').value;
         const resultsEl = document.getElementById('calc-b-results');
 
@@ -327,7 +425,7 @@ const CalculatorModule = {
     // ---- Section C+E+F: Orçamento → Previsão + Break-Even + Margem ----
     calcSectionCEF() {
         const data = this._getCurrentCalcData();
-        const budget = parseFloat(document.getElementById('calc-c-budget').value) || 0;
+        const budget = NumFmt.val('calc-c-budget') || 0;
         const budgetCurrency = document.getElementById('calc-c-currency').value;
         const resultsEl = document.getElementById('calc-c-results');
 
@@ -361,7 +459,7 @@ const CalculatorModule = {
         }
 
         // — Part F: meta de margem % —
-        const marginPct = parseFloat(document.getElementById('calc-f-margin').value);
+        const marginPct = NumFmt.val('calc-f-margin');
         const fRows = ['calc-f-results-row', 'calc-f-cpa-row', 'calc-f-roas-row', 'calc-f-status-row'];
         const hasMargin = !isNaN(marginPct) && marginPct >= 0 && grossMargin > 0;
 
@@ -405,10 +503,10 @@ const CalculatorModule = {
 
     // ---- Section G: CPC Ideal ----
     calcSectionG() {
-        const cpaTarget = parseFloat(document.getElementById('calc-g-cpa-target').value) || 0;
+        const cpaTarget = NumFmt.val('calc-g-cpa-target') || 0;
         const currency = document.getElementById('calc-g-currency').value;
-        const convRate = parseFloat(document.getElementById('calc-g-conv-rate').value) || 0;
-        const ctr = parseFloat(document.getElementById('calc-g-ctr').value) || 0;
+        const convRate = NumFmt.val('calc-g-conv-rate') || 0;
+        const ctr = NumFmt.val('calc-g-ctr') || 0;
         const resultsEl = document.getElementById('calc-g-results');
         const scenariosEl = document.getElementById('calc-g-scenarios');
 
@@ -469,10 +567,10 @@ const CalculatorModule = {
 
     // ---- Section H: CPA Desejado / Vendas ----
     calcSectionH() {
-        const cpa = parseFloat(document.getElementById('calc-h-cpa').value) || 0;
+        const cpa = NumFmt.val('calc-h-cpa') || 0;
         const currency = document.getElementById('calc-h-currency').value;
-        const budget = parseFloat(document.getElementById('calc-h-budget').value) || 0;
-        const salesTarget = parseInt(document.getElementById('calc-h-sales-target').value) || 0;
+        const budget = NumFmt.val('calc-h-budget') || 0;
+        const salesTarget = Math.trunc(NumFmt.val('calc-h-sales-target')) || 0;
         const resultsEl = document.getElementById('calc-h-results');
 
         if (cpa <= 0 || (budget <= 0 && salesTarget <= 0)) {
@@ -524,16 +622,16 @@ const CalculatorModule = {
 
     // ---- Section I: Campaign P&L ----
     calcSectionI() {
-        const sales = parseInt(document.getElementById('calc-i-sales').value) || 0;
-        const cpa = parseFloat(document.getElementById('calc-i-cpa').value) || 0;
+        const sales = Math.trunc(NumFmt.val('calc-i-sales')) || 0;
+        const cpa = NumFmt.val('calc-i-cpa') || 0;
         const adsCurrency = document.getElementById('calc-i-ads-currency').value;
-        const budgetSpent = parseFloat(document.getElementById('calc-i-budget-spent').value) || 0;
-        const price = parseFloat(document.getElementById('calc-i-price').value) || 0;
+        const budgetSpent = NumFmt.val('calc-i-budget-spent') || 0;
+        const price = NumFmt.val('calc-i-price') || 0;
         const priceCurrency = document.getElementById('calc-i-price-currency').value;
-        const cost = parseFloat(document.getElementById('calc-i-cost').value) || 0;
+        const cost = NumFmt.val('calc-i-cost') || 0;
         const costCurrency = document.getElementById('calc-i-cost-currency').value;
-        const taxPct = parseFloat(document.getElementById('calc-i-tax').value) || 0;
-        const variablePct = parseFloat(document.getElementById('calc-i-variable').value) || 0;
+        const taxPct = NumFmt.val('calc-i-tax') || 0;
+        const variablePct = NumFmt.val('calc-i-variable') || 0;
         const resultsEl = document.getElementById('calc-i-results');
         const simulateEl = document.getElementById('calc-i-simulate');
 
@@ -618,7 +716,7 @@ const CalculatorModule = {
         const d = this._sectionIData;
         if (!d) return;
 
-        const simSales = parseInt(document.getElementById('calc-i-sim-sales').value) || 0;
+        const simSales = Math.trunc(NumFmt.val('calc-i-sim-sales')) || 0;
         const simResults = document.getElementById('calc-i-sim-results');
 
         if (simSales <= 0) {
@@ -653,9 +751,9 @@ const CalculatorModule = {
             return;
         }
 
-        const cpaTarget = parseFloat(document.getElementById('calc-d-cpa-target').value) || 0;
-        const cpaReal = parseFloat(document.getElementById('calc-d-cpa-real').value) || 0;
-        const targetProfit = parseFloat(document.getElementById('calc-d-target-profit').value) || 0;
+        const cpaTarget = NumFmt.val('calc-d-cpa-target') || 0;
+        const cpaReal = NumFmt.val('calc-d-cpa-real') || 0;
+        const targetProfit = NumFmt.val('calc-d-target-profit') || 0;
         const cpaCurrency = document.getElementById('calc-currency').value;
         const profitCurrency = document.getElementById('calc-d-profit-currency').value;
 

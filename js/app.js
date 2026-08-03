@@ -1034,6 +1034,123 @@ function convertToBRL(value, fromCurrency) {
     return usd * brlRate;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   NumFmt — pontuação de milhar enquanto o usuário digita.
+
+   `<input type="number">` NÃO aceita separador de milhar: qualquer
+   caractere não numérico faz o navegador zerar o .value. Por isso os
+   campos convertidos viram type="text" + inputmode="decimal", e toda
+   leitura passa a usar NumFmt.val() em vez de parseFloat(.value) —
+   senão "110.000" viraria 110 no parseFloat e o cálculo sairia errado.
+   ═══════════════════════════════════════════════════════════════ */
+const NumFmt = {
+    // "1.234,56" | "1234.56" | "1,234.56" → 1234.56
+    parse(raw) {
+        if (raw == null) return 0;
+        let s = String(raw).trim();
+        if (!s) return 0;
+        const neg = /^-/.test(s);
+        s = s.replace(/[^\d.,]/g, '');
+        if (!s) return 0;
+        const ultimaVirgula = s.lastIndexOf(',');
+        const ultimoPonto = s.lastIndexOf('.');
+        // O separador decimal é o ÚLTIMO que aparecer; o outro é de milhar.
+        if (ultimaVirgula > -1 && ultimoPonto > -1) {
+            if (ultimaVirgula > ultimoPonto) s = s.replace(/\./g, '').replace(',', '.');
+            else s = s.replace(/,/g, '');
+        } else if (ultimaVirgula > -1) {
+            // Só vírgula: decimal se sobrar 1-2 dígitos depois dela; senão é milhar.
+            const depois = s.length - ultimaVirgula - 1;
+            s = (depois > 0 && depois <= 2) ? s.replace(',', '.') : s.replace(/,/g, '');
+        } else if (ultimoPonto > -1) {
+            const depois = s.length - ultimoPonto - 1;
+            if (depois === 3 && s.replace(/\./g, '').length > 3 && (s.match(/\./g) || []).length >= 1) {
+                // "110.000" — 3 casas e mais de um grupo: é milhar, não decimal.
+                const grupos = s.split('.');
+                if (grupos.length > 1 && grupos.slice(1).every(g => g.length === 3)) s = s.replace(/\./g, '');
+            }
+        }
+        const n = parseFloat(s);
+        if (!Number.isFinite(n)) return 0;
+        return neg ? -n : n;
+    },
+
+    // Leitura ESTRITA no formato pt-BR que este helper renderiza:
+    // ponto é sempre milhar, vírgula é sempre decimal. Usada nos campos que
+    // o próprio NumFmt controla — adivinhar ali quebraria estados
+    // intermediários de digitação como "1.1000" (que é 11000, não 1,1).
+    parseBr(raw) {
+        if (raw == null) return 0;
+        const s = String(raw).trim().replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : 0;
+    },
+
+    // Valor numérico limpo de um input (aceita id ou elemento).
+    val(elOrId) {
+        const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+        if (!el) return 0;
+        // Campo gerenciado por nós → formato conhecido; senão, heurística.
+        return el.dataset?.numfmt ? this.parseBr(el.value) : this.parse(el.value);
+    },
+
+    // 1234.56 → "1.234,56" (mantém o que o usuário digitou depois da vírgula)
+    format(n, casasMax = 2) {
+        if (!Number.isFinite(n)) return '';
+        return n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: casasMax });
+    },
+
+    // Escreve um número num input formatado, sem disparar evento.
+    set(elOrId, n) {
+        const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+        if (!el) return;
+        el.value = (n === '' || n == null || !Number.isFinite(Number(n))) ? '' : this.format(Number(n));
+    },
+
+    // Liga a formatação ao vivo. Preserva a posição do cursor contando
+    // os dígitos à esquerda dele — reposicionar por índice bruto faria o
+    // cursor pular toda vez que um ponto fosse inserido.
+    attach(el) {
+        if (!el || el.dataset.numfmt) return;
+        el.dataset.numfmt = '1';
+        if (el.type === 'number') { el.type = 'text'; el.setAttribute('inputmode', 'decimal'); }
+
+        el.addEventListener('input', () => {
+            const antes = el.value;
+            const cursor = el.selectionStart ?? antes.length;
+            const digitosAntesDoCursor = (antes.slice(0, cursor).match(/[\d]/g) || []).length;
+
+            // Preserva vírgula/ponto final enquanto digita ("1.234," ainda em curso)
+            const terminaComSeparador = /[.,]$/.test(antes);
+            const decimaisEmCurso = antes.match(/[.,](\d{1,2})$/);
+
+            const n = NumFmt.parseBr(antes);
+            if (antes.trim() === '' || antes.trim() === '-') return;
+
+            let novo = NumFmt.format(Math.trunc(Math.abs(n)));
+            if (n < 0) novo = '-' + novo;
+            if (terminaComSeparador) novo += ',';
+            else if (decimaisEmCurso) novo += ',' + decimaisEmCurso[1];
+
+            if (novo === antes) return;
+            el.value = novo;
+
+            // Recoloca o cursor após a mesma quantidade de dígitos
+            let vistos = 0, pos = 0;
+            for (; pos < novo.length; pos++) {
+                if (/\d/.test(novo[pos])) vistos++;
+                if (vistos >= digitosAntesDoCursor) { pos++; break; }
+            }
+            try { el.setSelectionRange(pos, pos); } catch { /* input sem seleção */ }
+        });
+    },
+
+    attachAll(ids) {
+        ids.forEach(id => this.attach(typeof id === 'string' ? document.getElementById(id) : id));
+    },
+};
+window.NumFmt = NumFmt;
+
 function convertCurrency(value, fromCurrency, toCurrency) {
     if (fromCurrency === toCurrency) return value;
     // Always go through USD as intermediate

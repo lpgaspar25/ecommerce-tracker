@@ -101,6 +101,9 @@ const ProductsModule = {
         // AI description button
         document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
 
+        // Importar preços/custos por país de outro produto
+        document.getElementById('btn-import-country-costs')?.addEventListener('click', () => this.openImportCountryCosts());
+
         // Image upload
         const imgInput = document.getElementById('prod-image-input');
         const imgZone = document.getElementById('prod-image-zone');
@@ -327,14 +330,16 @@ const ProductsModule = {
     // Back-compat: old shape { country, currency, price } becomes { country, currency, tiers: [{qty:1, price}] }
     _normalizeCountryPrice(cp) {
         if (!cp) return null;
+        // cost === null significa "sem custo próprio, use o padrão do produto".
+        const cost = (cp.cost === null || cp.cost === undefined || cp.cost === '') ? null : Number(cp.cost);
         if (Array.isArray(cp.tiers) && cp.tiers.length > 0) {
-            return { country: cp.country, currency: cp.currency, tiers: cp.tiers.map(t => ({ qty: Number(t.qty) || 1, price: Number(t.price) || 0 })) };
+            return { country: cp.country, currency: cp.currency, cost, tiers: cp.tiers.map(t => ({ qty: Number(t.qty) || 1, price: Number(t.price) || 0 })) };
         }
         if (typeof cp.price === 'number' || typeof cp.price === 'string') {
             const p = Number(cp.price) || 0;
-            return { country: cp.country, currency: cp.currency, tiers: p > 0 ? [{ qty: 1, price: p }] : [] };
+            return { country: cp.country, currency: cp.currency, cost, tiers: p > 0 ? [{ qty: 1, price: p }] : [] };
         }
-        return { country: cp.country, currency: cp.currency, tiers: [] };
+        return { country: cp.country, currency: cp.currency, cost, tiers: [] };
     },
 
     addCountryPriceRow(data = null) {
@@ -361,6 +366,12 @@ const ProductsModule = {
                 <select class="input input-sm cp-currency" style="width:80px">
                     ${currencyOptions}
                 </select>
+                <label class="cp-cost-wrap" title="Custo do produto neste país (produto + frete até lá). Deixe vazio para usar o custo padrão do produto.">
+                    <span>Custo</span>
+                    <input type="number" min="0" step="0.01" class="input input-sm cp-cost"
+                           value="${normalized.cost != null && normalized.cost !== '' ? normalized.cost : ''}"
+                           placeholder="padrão" style="width:84px">
+                </label>
                 <button type="button" class="btn btn-secondary btn-sm cp-add-tier-btn" title="Adicionar quantidade">+ Qty</button>
                 <button type="button" class="btn btn-danger btn-sm cp-remove-btn" title="Remover país">&times;</button>
             </div>
@@ -404,6 +415,128 @@ const ProductsModule = {
         container.appendChild(row);
     },
 
+    // ══════════════════════════════════════════════════════════════
+    //  Importar preços/custos por país de outro produto
+    //  Cadastrar 18 países à mão em cada produto novo é o gargalo real;
+    //  quase sempre a tabela de frete é a mesma entre produtos parecidos.
+    // ══════════════════════════════════════════════════════════════
+    openImportCountryCosts() {
+        const atualId = document.getElementById('product-id')?.value || '';
+        const candidatos = (AppState.allProducts || [])
+            .filter(p => p.id !== atualId && Array.isArray(p.countryPrices) && p.countryPrices.length > 0);
+
+        if (!candidatos.length) {
+            showToast('Nenhum outro produto tem países cadastrados para copiar.', 'warning');
+            return;
+        }
+
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        const opcoes = candidatos.map(p => {
+            const nPaises = p.countryPrices.length;
+            const nComCusto = p.countryPrices.filter(cp => cp.cost != null && cp.cost !== '').length;
+            return `<option value="${esc(p.id)}">${esc(p.name)} — ${nPaises} país(es)${nComCusto ? `, ${nComCusto} com custo` : ''}</option>`;
+        }).join('');
+
+        const html = `
+            <div id="modal-import-cc-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:min(480px,92vw);display:flex;flex-direction:column;gap:1rem">
+                    <div>
+                        <strong style="font-size:1rem">Importar países de outro produto</strong>
+                        <p style="margin:0.25rem 0 0;font-size:0.8rem;color:var(--text-muted)">Copia a lista de países com preços, moeda e custo.</p>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.4rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">Produto de origem</label>
+                        <select id="icc-source" class="input" style="width:100%">${opcoes}</select>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.45rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">O que copiar</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="checkbox" id="icc-costs" checked> Custos por país</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="checkbox" id="icc-prices"> Preços e faixas de quantidade</label>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.45rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">Se o país já existir aqui</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="radio" name="icc-mode" value="fill" checked> Preencher só o que está vazio</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="radio" name="icc-mode" value="overwrite"> Sobrescrever</label>
+                    </div>
+                    <div style="display:flex;gap:0.6rem;justify-content:flex-end">
+                        <button id="icc-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="icc-apply" class="btn btn-primary btn-sm">Importar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+
+        const overlay = document.getElementById('modal-import-cc-overlay');
+        const fechar = () => overlay?.remove();
+        document.getElementById('icc-cancel')?.addEventListener('click', fechar);
+        overlay?.addEventListener('click', (e) => { if (e.target === overlay) fechar(); });
+
+        document.getElementById('icc-apply')?.addEventListener('click', () => {
+            const origem = (AppState.allProducts || []).find(p => p.id === document.getElementById('icc-source').value);
+            if (!origem) { fechar(); return; }
+            const copiarCustos = document.getElementById('icc-costs').checked;
+            const copiarPrecos = document.getElementById('icc-prices').checked;
+            const modo = document.querySelector('input[name="icc-mode"]:checked')?.value || 'fill';
+            if (!copiarCustos && !copiarPrecos) { showToast('Escolha ao menos uma coisa para copiar.', 'error'); return; }
+
+            const n = this._aplicarImportacaoPaises(origem, { copiarCustos, copiarPrecos, modo });
+            fechar();
+            showToast(`${n} país(es) importado(s) de "${origem.name}". Revise e salve o produto.`, 'success');
+        });
+
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    _aplicarImportacaoPaises(origem, { copiarCustos, copiarPrecos, modo }) {
+        // Lê o que já está na tela para não perder edições não salvas
+        const atuais = this._getCountryPrices();
+        const porPais = new Map(atuais.map(cp => [cp.country, cp]));
+        let tocados = 0;
+
+        (origem.countryPrices || []).forEach(raw => {
+            const src = this._normalizeCountryPrice(raw);
+            if (!src?.country) return;
+            const existente = porPais.get(src.country);
+
+            if (!existente) {
+                porPais.set(src.country, {
+                    country: src.country,
+                    currency: src.currency || 'USD',
+                    tiers: copiarPrecos ? (src.tiers || []) : [],
+                    price: copiarPrecos ? (src.tiers?.[0]?.price || 0) : 0,
+                    cost: copiarCustos ? src.cost : null,
+                });
+                tocados++;
+                return;
+            }
+
+            let mudou = false;
+            if (copiarCustos && src.cost != null) {
+                // "Preencher" só age quando o campo está realmente vazio.
+                if (modo === 'overwrite' || existente.cost == null) { existente.cost = src.cost; mudou = true; }
+            }
+            if (copiarPrecos && src.tiers?.length) {
+                if (modo === 'overwrite' || !existente.tiers?.length) {
+                    existente.tiers = src.tiers;
+                    existente.price = src.tiers[0]?.price || 0;
+                    existente.currency = src.currency || existente.currency;
+                    mudou = true;
+                }
+            }
+            if (mudou) tocados++;
+        });
+
+        // Redesenha a lista inteira com o resultado
+        const lista = document.getElementById('country-prices-list');
+        if (lista) {
+            lista.innerHTML = '';
+            [...porPais.values()]
+                .sort((a, b) => String(a.country).localeCompare(String(b.country)))
+                .forEach(cp => this.addCountryPriceRow(cp));
+        }
+        return tocados;
+    },
+
     _getCountryPrices() {
         const rows = document.querySelectorAll('#country-prices-list .country-price-row');
         const result = [];
@@ -417,10 +550,18 @@ const ProductsModule = {
                 const price = parseFloat(tr.querySelector('.cp-tier-price').value) || 0;
                 if (qty > 0 && price > 0) tiers.push({ qty, price });
             });
+            // Custo específico deste país (produto + frete até o destino).
+            // Vazio significa "usar o custo padrão do produto" — não zero.
+            const costRaw = row.querySelector('.cp-cost')?.value ?? '';
+            const cost = String(costRaw).trim() === '' ? null : (parseFloat(costRaw) || 0);
+
             if (tiers.length > 0) {
                 // Primary price = lowest-qty tier (usually qty=1) for legacy consumers
                 tiers.sort((a, b) => a.qty - b.qty);
-                result.push({ country, currency, tiers, price: tiers[0].price });
+                result.push({ country, currency, tiers, price: tiers[0].price, cost });
+            } else if (cost != null) {
+                // País cadastrado só para registrar o custo, sem tabela de preço
+                result.push({ country, currency, tiers: [], price: 0, cost });
             }
         });
         return result;

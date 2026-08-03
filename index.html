@@ -888,10 +888,16 @@
 
                                 <!-- Country Prices -->
                                 <div class="prod-section-card">
-                                    <div class="prod-section-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
-                                        Preços por País
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="ProductsModule.addCountryPriceRow()">+ Adicionar</button>
+                                    <div class="prod-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.6rem">
+                                        <span>Preços e custos por País</span>
+                                        <span style="display:flex;gap:0.4rem">
+                                            <button type="button" class="btn btn-secondary btn-sm" id="btn-import-country-costs" title="Copiar a tabela de países de outro produto">
+                                                <i data-lucide="copy" style="width:13px;height:13px;vertical-align:-2px"></i> Importar de outro produto
+                                            </button>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="ProductsModule.addCountryPriceRow()">+ Adicionar</button>
+                                        </span>
                                     </div>
+                                    <p class="prod-hint" style="font-size:0.72rem;color:var(--text-muted);margin:0 0 0.6rem">O custo por país cobre o frete até o destino. Deixe vazio para usar o custo padrão do produto.</p>
                                     <div id="country-prices-list" style="display:flex;flex-direction:column;gap:0.5rem"></div>
                                 </div>
 
@@ -1674,6 +1680,12 @@
                         <label>Selecione o Produto</label>
                         <select id="calc-product" class="input input-lg">
                             <option value="">Selecione um produto</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>País <span class="calc-country-hint" title="O custo muda por país por causa do frete até o destino. Selecionar um país usa o preço e o custo cadastrados para ele.">custo/preço do destino</span></label>
+                        <select id="calc-country" class="input input-lg">
+                            <option value="">Padrão do produto</option>
                         </select>
                     </div>
                     <div class="form-group">
