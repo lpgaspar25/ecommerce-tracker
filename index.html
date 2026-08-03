@@ -6128,6 +6128,19 @@
         </div>
     </div>
 
+    <!-- Chaves de API dos provedores de IA (imagem/copy) -->
+    <div id="api-keys-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i data-lucide="key-round" style="width:18px;height:18px;vertical-align:-3px"></i> Chaves de API</h3>
+                <button class="btn-close" id="api-keys-modal-close">&times;</button>
+            </div>
+            <p class="section-subtitle" style="padding:0 20px;margin-top:-4px">Cole a chave de cada provedor que você usa. Fica só neste navegador — nunca sai daqui.</p>
+            <div id="api-keys-list" class="apikeys-list"><!-- renderizado por AIAdGenerator.renderApiKeysModal() --></div>
+        </div>
+    </div>
+
     <!-- AI Consultant Config Modal -->
     <div id="ai-config-modal" class="modal hidden">
         <div class="modal-overlay"></div>

@@ -8886,6 +8886,53 @@ thead:hover .diary-check-col input[type="checkbox"],
     border: 1px solid rgba(16, 163, 127, 0.3);
 }
 
+/* Modal de chaves de API (OpenAI / Google / Grok / futuros) */
+.apikeys-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.5rem 20px 20px;
+}
+.apikeys-row {
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    border-radius: 10px;
+    padding: 0.75rem 0.9rem;
+}
+.apikeys-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+.apikeys-status {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: ui-monospace, monospace;
+}
+.apikeys-status.is-set { color: #22c55e; }
+.apikeys-usage {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0 0 0.55rem;
+    line-height: 1.4;
+}
+.apikeys-row-input {
+    display: flex;
+    gap: 0.5rem;
+}
+.apikeys-row-input .input { flex: 1; min-width: 0; }
+.apikeys-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
+    color: var(--accent, #8b5cf6);
+    text-decoration: none;
+}
+.apikeys-link:hover { text-decoration: underline; }
+
 /* Provider selection cards */
 .ai-provider-options {
     display: flex;

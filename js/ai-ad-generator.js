@@ -17,13 +17,13 @@ const AIAdGenerator = {
     _setup() {
         document.getElementById('aiad-generate')?.addEventListener('click', () => this.generateImages());
         document.getElementById('aiad-gen-copy')?.addEventListener('click', () => this.generateCopy());
-        document.getElementById('aiad-config')?.addEventListener('click', () => this.openConfig());
-        document.getElementById('btn-aiad-config')?.addEventListener('click', () => this.openConfig());
+        document.getElementById('aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
+        document.getElementById('btn-aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
         document.getElementById('aiad-prompt-templates')?.addEventListener('click', () => this.showTemplates());
         document.getElementById('btn-aigen-clear')?.addEventListener('click', () => this.clearAllGenerations());
 
         // Sidebar API Keys button
-        document.getElementById('sidebar-ai-key-btn')?.addEventListener('click', () => this.openConfig());
+        document.getElementById('sidebar-ai-key-btn')?.addEventListener('click', () => this.openApiKeysModal());
 
         // Provider change → update UI
         const providerEl = document.getElementById('aiad-provider');
@@ -71,8 +71,7 @@ const AIAdGenerator = {
         // Update config button label
         const configBtn = document.getElementById('btn-aiad-config');
         if (configBtn) {
-            const label = (provider === 'google' || provider === 'google-imagen2') ? 'Configurar Google AI' : 'Configurar OpenAI';
-            configBtn.innerHTML = `<i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> ${label}`;
+            configBtn.innerHTML = `<i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> Chaves de API`;
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch(e) {}
         }
     },
@@ -83,61 +82,104 @@ const AIAdGenerator = {
         return (sel ? sel.value : null) || localStorage.getItem('aiad_provider') || 'gpt-image-2';
     },
 
-    // ── OpenAI key ───────────────────────────────────────────────────
-    _getOpenAIKey() {
-        return localStorage.getItem('openai_api_key') || '';
+    // Registro dos provedores de IA. Adicionar um novo provedor é só somar um
+    // item aqui — a tela e a persistência são genéricas a partir disso.
+    _PROVIDERS: [
+        {
+            id: 'openai', nome: 'OpenAI', storageKey: 'openai_api_key', prefixo: 'sk-',
+            uso: 'GPT Image 1/2, DALL-E 3, GPT-4o-mini (copy) e a visão do Estúdio.',
+            link: 'https://platform.openai.com/api-keys',
+        },
+        {
+            id: 'google', nome: 'Google AI (Gemini)', storageKey: 'google_ai_api_key', prefixo: 'AIza',
+            uso: 'Google Imagen 2/3 e o Gemini Image no Estúdio.',
+            link: 'https://aistudio.google.com/app/apikey',
+        },
+        {
+            id: 'grok', nome: 'xAI (Grok)', storageKey: 'grok_api_key', prefixo: 'xai-',
+            uso: 'Geração de imagem com os modelos Grok Image.',
+            link: 'https://console.x.ai',
+        },
+    ],
+
+    _getKey(providerId) {
+        const p = this._PROVIDERS.find(x => x.id === providerId);
+        return (p && localStorage.getItem(p.storageKey)) || '';
     },
-    _setOpenAIKey(key) {
-        if (key) localStorage.setItem('openai_api_key', key);
-        else localStorage.removeItem('openai_api_key');
+    _setKey(providerId, key) {
+        const p = this._PROVIDERS.find(x => x.id === providerId);
+        if (!p) return;
+        if (key) localStorage.setItem(p.storageKey, key);
+        else localStorage.removeItem(p.storageKey);
     },
 
-    // ── Google AI key ────────────────────────────────────────────────
-    _getGoogleKey() {
-        return localStorage.getItem('google_ai_api_key') || '';
-    },
-    _setGoogleKey(key) {
-        if (key) localStorage.setItem('google_ai_api_key', key);
-        else localStorage.removeItem('google_ai_api_key');
+    // Atalhos mantidos por compatibilidade — Studio e outras telas chamam
+    // estes dois direto (ex.: window.AIAdGenerator?._getOpenAIKey?.()).
+    _getOpenAIKey() { return this._getKey('openai'); },
+    _setOpenAIKey(key) { this._setKey('openai', key); },
+    _getGoogleKey() { return this._getKey('google'); },
+    _setGoogleKey(key) { this._setKey('google', key); },
+    _getGrokKey() { return this._getKey('grok'); },
+    _setGrokKey(key) { this._setKey('grok', key); },
+
+    // Mantido por retrocompatibilidade — quem chamava openConfig() foca no
+    // provedor selecionado, mas agora todos aparecem na mesma tela.
+    openConfig() { this.openApiKeysModal(); },
+    _configOpenAI() { this.openApiKeysModal(); },
+    _configGoogle() { this.openApiKeysModal(); },
+
+    // ── Modal único de chaves de API (OpenAI / Google / Grok / futuros) ──
+    openApiKeysModal() {
+        this.renderApiKeysModal();
+        if (typeof openModal === 'function') openModal('api-keys-modal');
     },
 
-    // ── Config dialogs ───────────────────────────────────────────────
-    openConfig() {
-        if (this._getProvider() === 'google') {
-            this._configGoogle();
-        } else {
-            this._configOpenAI();
-        }
-    },
+    renderApiKeysModal() {
+        const lista = document.getElementById('api-keys-list');
+        if (!lista) return;
+        lista.innerHTML = this._PROVIDERS.map(p => {
+            const atual = this._getKey(p.id);
+            const status = atual
+                ? `${this._esc(atual.slice(0, atual.startsWith(p.prefixo) ? p.prefixo.length + 4 : 4))}…${this._esc(atual.slice(-4))}`
+                : 'nenhuma chave';
+            return `
+                <div class="apikeys-row" data-provider="${p.id}">
+                    <div class="apikeys-row-head">
+                        <strong>${this._esc(p.nome)}</strong>
+                        <span class="apikeys-status ${atual ? 'is-set' : ''}">${atual ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> ' : ''}${status}</span>
+                    </div>
+                    <p class="apikeys-usage">${this._esc(p.uso)}</p>
+                    <div class="apikeys-row-input">
+                        <input type="password" class="input input-sm" data-key-input placeholder="${this._esc(p.prefixo)}..." autocomplete="off">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="save">Salvar</button>
+                        ${atual ? '<button type="button" class="btn btn-secondary btn-sm" data-action="remove">Remover</button>' : ''}
+                    </div>
+                    <a href="${p.link}" target="_blank" rel="noopener" class="apikeys-link">Obter chave <i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-1px"></i></a>
+                </div>`;
+        }).join('');
 
-    _configOpenAI() {
-        const current = this._getOpenAIKey();
-        const masked = current ? `${current.slice(0, 7)}…${current.slice(-4)}` : '(vazio)';
-        const newKey = prompt(
-            `Cole sua chave OpenAI (sk-...).\n\nUsada para DALL-E 3 (imagens) + GPT-4o-mini (copies).\nObtenha em: https://platform.openai.com/api-keys\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
-            current
-        );
-        if (newKey === null) return;
-        const trimmed = newKey.trim();
-        if (trimmed && !trimmed.startsWith('sk-')) {
-            if (typeof showToast === 'function') showToast('Chave inválida — deve começar com "sk-"', 'error');
-            return;
-        }
-        this._setOpenAIKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave OpenAI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave OpenAI removida', 'success');
-    },
-
-    _configGoogle() {
-        const current = this._getGoogleKey();
-        const masked = current ? `${current.slice(0, 6)}…${current.slice(-4)}` : '(vazio)';
-        const newKey = prompt(
-            `Cole sua chave Google AI Studio (AIza...).\n\nUsada para Google Imagen 3 e para o Gemini Image no Estúdio.\nObtenha em: https://aistudio.google.com/app/apikey\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
-            current
-        );
-        if (newKey === null) return;
-        const trimmed = newKey.trim();
-        this._setGoogleKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave Google AI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave Google AI removida', 'success');
+        lista.querySelectorAll('.apikeys-row').forEach(row => {
+            const providerId = row.dataset.provider;
+            const p = this._PROVIDERS.find(x => x.id === providerId);
+            const input = row.querySelector('[data-key-input]');
+            row.querySelector('[data-action="save"]')?.addEventListener('click', () => {
+                const val = input.value.trim();
+                if (!val) { if (typeof showToast === 'function') showToast('Cole uma chave antes de salvar', 'error'); return; }
+                if (p.prefixo && !val.startsWith(p.prefixo)) {
+                    if (typeof showToast === 'function') showToast(`Chave inválida — deve começar com "${p.prefixo}"`, 'error');
+                    return;
+                }
+                this._setKey(providerId, val);
+                if (typeof showToast === 'function') showToast(`Chave ${p.nome} salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`, 'success');
+                this.renderApiKeysModal();
+            });
+            row.querySelector('[data-action="remove"]')?.addEventListener('click', () => {
+                this._setKey(providerId, '');
+                if (typeof showToast === 'function') showToast(`Chave ${p.nome} removida`, 'success');
+                this.renderApiKeysModal();
+            });
+        });
+        if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch (e) {}
     },
 
     // ── Generate images ───────────────────────────────────────────────
