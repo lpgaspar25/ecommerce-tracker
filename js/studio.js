@@ -477,7 +477,7 @@ Responda APENAS com JSON válido:
     }
 
     // Analisa um criativo validado e devolve o esqueleto de prompt.
-    async function criarPadraoDeImagem(file, nomeManual) {
+    async function criarPadraoDeImagem(file, nomeManual, nicho, subnicho) {
         const { base64, mediaType, dataUrl } = await _arquivoParaBase64(file);
         const txt = await _visaoIA(SISTEMA_ESQUELETO, base64, mediaType,
             'Analise este criativo e escreva o esqueleto de prompt reutilizável, seguindo as regras.');
@@ -501,6 +501,8 @@ Responda APENAS com JSON válido:
         const padrao = {
             id,
             nome: (nomeManual || '').trim() || parsed.nomeSugerido || 'Padrão sem nome',
+            nicho: (nicho || '').trim(),
+            subnicho: (subnicho || '').trim(),
             esqueleto: parsed.esqueleto,
             aspecto: parsed.aspecto || '1:1',
             observacao: parsed.observacao || '',
@@ -1113,9 +1115,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         }
         box.innerHTML = carregando + d.fotos.map(f => `
             <div class="studio-foto" data-id="${f.id}">
-                <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy">
+                <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy" data-expandir="${f.id}">
                 <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}</span>
                 <div class="studio-foto-acoes">
+                    <button class="btn-icon" data-acao="capa" data-id="${f.id}" title="Definir como capa do produto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="baixar" data-id="${f.id}" title="Baixar em resolução cheia"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="criativo" data-id="${f.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="excluir" data-id="${f.id}" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
@@ -1125,6 +1128,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         box.querySelectorAll('button[data-acao]').forEach(b => {
             b.addEventListener('click', () => _acaoFoto(b.dataset.acao, b.dataset.id));
+        });
+        box.querySelectorAll('img[data-expandir]').forEach(img => {
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', () => _abrirLightbox(img.dataset.expandir));
         });
     }
 
@@ -1139,6 +1146,28 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             const a = document.createElement('a');
             a.href = url; a.download = `${_handle(f.presetLabel)}-${id}.png`; a.click();
             setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        } else if (acao === 'capa') {
+            const p = (AppState.allProducts || []).find(x => x.id === _state.productId);
+            if (!p) { showToast('Produto não encontrado', 'error'); return; }
+            const rec = await MediaStore.get(f.mediaId);
+            if (!rec?.blob) { showToast('Arquivo não encontrado', 'error'); return; }
+            // O modelo de imagem do produto guarda base64 direto (dataUrl) — é o
+            // mesmo formato de quando o usuário sobe uma foto manualmente. Uma
+            // foto gerada por IA costuma vir grande (1024×1024+); comprime antes
+            // de virar a capa, senão pesa demais no localStorage.
+            let dataUrl;
+            try {
+                dataUrl = await comprimirImagemParaDataUrl(rec.blob, 1500, 0.9);
+            } catch (e) {
+                showToast('Falha ao preparar a imagem: ' + e.message, 'error');
+                return;
+            }
+            p.images = p.images || [];
+            p.images.unshift({ dataUrl, name: `${_handle(f.presetLabel || p.name)}.jpg` });
+            if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
+            if (typeof EventBus !== 'undefined') EventBus.emit('productsChanged');
+            showToast(`Definida como capa de "${p.name}"`, 'success');
 
         } else if (acao === 'excluir') {
             await MediaStore.del(f.mediaId);
@@ -1256,9 +1285,31 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function _renderPadroes() {
         const box = document.getElementById('studio-padroes');
         if (!box) return;
-        const lista = _state.padroes || [];
-        if (!lista.length) {
+        const todos = _state.padroes || [];
+
+        // Filtro por nicho — só faz sentido mostrar quando existe mais de um.
+        const filtroSel = document.getElementById('studio-padroes-filtro-nicho');
+        const filtroBox = filtroSel?.closest('.studio-padroes-filtro');
+        const nichos = [...new Set(todos.map(p => p.nicho).filter(Boolean))].sort();
+        if (filtroSel) {
+            const atual = filtroSel.value;
+            filtroSel.innerHTML = '<option value="">Todos os nichos</option>'
+                + nichos.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('');
+            filtroSel.value = nichos.includes(atual) ? atual : '';
+            if (filtroBox) filtroBox.style.display = nichos.length > 1 ? '' : 'none';
+            if (!filtroSel._ligado) {
+                filtroSel.addEventListener('change', () => _renderPadroes());
+                filtroSel._ligado = true;
+            }
+        }
+        const lista = filtroSel?.value ? todos.filter(p => p.nicho === filtroSel.value) : todos;
+
+        if (!todos.length) {
             box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
+            return;
+        }
+        if (!lista.length) {
+            box.innerHTML = `<p class="studio-vazio">Nenhum padrão no nicho "${_esc(filtroSel.value)}".</p>`;
             return;
         }
         box.innerHTML = lista.map(p => `
@@ -1266,6 +1317,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
                 <div class="studio-padrao-info">
                     <strong>${_esc(p.nome)}</strong>
+                    ${p.nicho ? `<span class="studio-padrao-nicho"><i data-lucide="tag" style="width:11px;height:11px;vertical-align:-1px"></i> ${_esc(p.nicho)}${p.subnicho ? ' — ' + _esc(p.subnicho) : ''}</span>` : ''}
                     <small>${_esc(p.observacao || '')}</small>
                     <span class="studio-padrao-tags">
                         ${(p.marcadores || []).map(m => `<em>${_esc(m.replace(/[{}]/g, ''))}</em>`).join('')}
@@ -1335,12 +1387,16 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         if (!file) return;
         const status = document.getElementById('studio-padrao-status');
         const nome = (document.getElementById('studio-padrao-nome')?.value || '').trim();
+        const nicho = (document.getElementById('studio-padrao-nicho')?.value || '').trim();
+        const subnicho = (document.getElementById('studio-padrao-subnicho')?.value || '').trim();
         if (status) status.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Analisando o criativo…';
         _icones();
         try {
-            const p = await criarPadraoDeImagem(file, nome);
-            const campo = document.getElementById('studio-padrao-nome');
-            if (campo) campo.value = '';
+            const p = await criarPadraoDeImagem(file, nome, nicho, subnicho);
+            ['studio-padrao-nome', 'studio-padrao-nicho', 'studio-padrao-subnicho'].forEach(id => {
+                const campo = document.getElementById(id);
+                if (campo) campo.value = '';
+            });
             if (status) status.textContent = '';
             _renderPadroes();
             showToast(`Padrão "${p.nome}" criado a partir do criativo.`, 'success');
@@ -1468,6 +1524,47 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             EventBus.on('productsChanged', () => _preencherProdutos());
             EventBus.on('tabChanged', (tab) => { if (tab === 'studio') render(); });
         }
+
+        // Lightbox das fotos geradas — mesmo padrão de fechar do lightbox de Criativos.
+        document.getElementById('studio-lightbox-close')?.addEventListener('click', _fecharLightbox);
+        document.getElementById('studio-media-lightbox')?.addEventListener('click', (e) => {
+            if (e.target.id === 'studio-media-lightbox') _fecharLightbox();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('studio-media-lightbox')?.style.display === 'flex') _fecharLightbox();
+        });
+    }
+
+    let _lightboxUrl = null;
+
+    // Mostra a foto em resolução cheia (a grade só tem a miniatura webp). A
+    // imagem real fica no IndexedDB — busca pelo mediaId na hora do clique.
+    async function _abrirLightbox(fotoId) {
+        const d = _dados(_state.productId);
+        const f = (d.fotos || []).find(x => x.id === fotoId);
+        if (!f) return;
+        const box = document.getElementById('studio-media-lightbox');
+        const body = document.getElementById('studio-lightbox-body');
+        const cap = document.getElementById('studio-lightbox-caption');
+        if (!box || !body) return;
+        if (cap) cap.textContent = f.presetLabel || f.preset || '';
+        body.innerHTML = '<div class="creative-lightbox-loading">Carregando…</div>';
+        box.style.display = 'flex';
+
+        if (_lightboxUrl) { try { URL.revokeObjectURL(_lightboxUrl); } catch {} _lightboxUrl = null; }
+        const url = f.mediaId ? await MediaStore.getObjectUrl(f.mediaId) : '';
+        const src = url || f.thumb;
+        if (!src) { body.innerHTML = '<div class="creative-lightbox-loading">Sem imagem salva.</div>'; return; }
+        if (url) _lightboxUrl = url;
+        body.innerHTML = `<img src="${_esc(src)}" alt="${_esc(f.presetLabel || '')}" style="max-width:100%;max-height:80vh;border-radius:10px">`;
+    }
+
+    function _fecharLightbox() {
+        const box = document.getElementById('studio-media-lightbox');
+        const body = document.getElementById('studio-lightbox-body');
+        if (body) body.innerHTML = '';
+        if (box) box.style.display = 'none';
+        if (_lightboxUrl) { try { URL.revokeObjectURL(_lightboxUrl); } catch {} _lightboxUrl = null; }
     }
 
     return {

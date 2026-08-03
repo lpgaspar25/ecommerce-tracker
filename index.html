@@ -4125,10 +4125,26 @@
                         </h3>
                         <div class="studio-padrao-novo">
                             <input type="text" id="studio-padrao-nome" class="input input-sm" placeholder="Nome do padrão (opcional) — ex.: Caixa preta com luz de cima">
+                            <input type="text" id="studio-padrao-nicho" class="input input-sm" list="studio-nichos-sugeridos" placeholder="Nicho (opcional) — ex.: Óculos">
+                            <input type="text" id="studio-padrao-subnicho" class="input input-sm" list="studio-subnichos-sugeridos" placeholder="Sub-nicho (opcional) — ex.: Aviador">
+                            <datalist id="studio-nichos-sugeridos">
+                                <option value="Pet"><option value="Óculos"><option value="Moda"><option value="Beleza">
+                                <option value="Casa"><option value="Eletrônicos"><option value="Fitness"><option value="Bebê">
+                                <option value="Automotivo">
+                            </datalist>
+                            <datalist id="studio-subnichos-sugeridos">
+                                <option value="Bota"><option value="Tênis"><option value="Bolsa"><option value="Roupa">
+                                <option value="Coleira"><option value="Brinquedo"><option value="Cama">
+                            </datalist>
                             <input type="file" id="studio-padrao-input" accept="image/*" hidden>
                             <button id="studio-padrao-pick" class="btn btn-secondary btn-sm"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir criativo validado</button>
                         </div>
                         <div id="studio-padrao-status" class="studio-padrao-status"></div>
+                        <div class="studio-padroes-filtro">
+                            <select id="studio-padroes-filtro-nicho" class="input input-sm" style="width:auto">
+                                <option value="">Todos os nichos</option>
+                            </select>
+                        </div>
                         <div id="studio-padroes" class="studio-padroes"></div>
                     </div>
 
@@ -6139,6 +6155,13 @@
             <p class="section-subtitle" style="padding:0 20px;margin-top:-4px">Cole a chave de cada provedor que você usa. Fica só neste navegador — nunca sai daqui.</p>
             <div id="api-keys-list" class="apikeys-list"><!-- renderizado por AIAdGenerator.renderApiKeysModal() --></div>
         </div>
+    </div>
+
+    <!-- Lightbox das fotos geradas no Estúdio (fora de qualquer tab-panel de propósito) -->
+    <div id="studio-media-lightbox" class="creative-lightbox" style="display:none">
+        <button type="button" class="creative-lightbox-close" id="studio-lightbox-close" aria-label="Fechar">&times;</button>
+        <div class="creative-lightbox-body" id="studio-lightbox-body"></div>
+        <div class="creative-lightbox-caption" id="studio-lightbox-caption"></div>
     </div>
 
     <!-- AI Consultant Config Modal -->

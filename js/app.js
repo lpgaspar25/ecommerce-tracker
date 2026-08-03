@@ -873,6 +873,62 @@ function escapeHtml(raw) {
         .replace(/'/g, '&#039;');
 }
 
+// Comprime uma imagem (Blob/File) pra JPEG, limitando o lado maior a maxDim —
+// nunca AUMENTA uma imagem já menor. Usado em qualquer upload de imagem que
+// precise ficar leve sem perder qualidade visível (criativos, capa de
+// produto): qualidade 0.9 em JPEG é visualmente indistinguível do original
+// pra fotos, e cortar o lado maior em 1500px já cobre os formatos de anúncio
+// mais comuns (Meta pede no máximo 1440px de largura recomendada).
+// GIF fica de fora — comprimir pra JPEG destruiria a animação.
+function comprimirImagem(blob, maxDim = 1500, quality = 0.9) {
+    return new Promise((resolve, reject) => {
+        if (!blob || !String(blob.type || '').startsWith('image/') || blob.type === 'image/gif') {
+            resolve({ blob, comprimiu: false });
+            return;
+        }
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            const largura = img.naturalWidth || img.width;
+            const altura = img.naturalHeight || img.height;
+            const maior = Math.max(largura, altura);
+            const escala = maior > maxDim ? maxDim / maior : 1; // nunca aumenta
+            const w = Math.max(1, Math.round(largura * escala));
+            const h = Math.max(1, Math.round(altura * escala));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            // Fundo branco: PNG com transparência viraria preto ao virar JPEG
+            // (JPEG não tem canal alfa) sem isso.
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+
+            canvas.toBlob((out) => {
+                if (!out) { reject(new Error('Falha ao comprimir a imagem')); return; }
+                resolve({ blob: out, comprimiu: true, width: w, height: h });
+            }, 'image/jpeg', quality);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); };
+        img.src = url;
+    });
+}
+
+// Mesma compressão, mas devolve dataURL (base64) — usado onde a imagem é
+// guardada direto no localStorage (ex.: fotos de produto) em vez de no
+// IndexedDB via MediaStore.
+async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9) {
+    const { blob: comprimido } = await comprimirImagem(blob, maxDim, quality);
+    return await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(new Error('Falha ao converter a imagem'));
+        r.readAsDataURL(comprimido);
+    });
+}
+
 // Real brand SVG icons (small, inline, 14px) so badges show the official logo
 const BRAND_ICONS = {
     facebook: '<svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>',

@@ -266,16 +266,31 @@ const CreativesModule = {
             showToast('Arquivo muito grande (máx. 60MB).', 'error');
             return;
         }
+
+        // Imagem: comprime pra JPEG (lado maior até 1500px, nunca aumenta) antes
+        // de guardar — os criativos que sobem costumam ser PNG de vários MB, e
+        // isso pesa tanto no IndexedDB quanto no upload do formulário.
+        let arquivoFinal = file;
+        if (!isVideo) {
+            try {
+                const { blob, comprimiu } = await comprimirImagem(file);
+                if (comprimiu) {
+                    const base = (file.name || 'imagem').replace(/\.[^.]+$/, '');
+                    arquivoFinal = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+                }
+            } catch (e) { console.warn('compressão falhou, usando arquivo original', e); }
+        }
+
         let thumb = '';
         try {
-            thumb = isVideo ? await this._videoThumb(file) : await this._imageThumb(file);
+            thumb = isVideo ? await this._videoThumb(arquivoFinal) : await this._imageThumb(arquivoFinal);
         } catch (e) { console.warn('thumb failed', e); }
         const prev = this._formMedia || {};
         this._formMedia = {
-            file,
+            file: arquivoFinal,
             mediaType: isVideo ? 'video' : 'image',
             mediaThumb: thumb || '',
-            mediaName: file.name || '',
+            mediaName: arquivoFinal.name || '',
             mediaId: '',
             prevMediaId: prev.prevMediaId || prev.mediaId || '',
             changed: true,
@@ -750,11 +765,24 @@ const CreativesModule = {
         const createdCreatives = [];
 
         for (let i = 0; i < total; i++) {
-            const file = this._bulkFiles[i];
+            const arquivoOriginal = this._bulkFiles[i];
             try {
-                const isVideo = (file.type || '').startsWith('video');
+                const isVideo = (arquivoOriginal.type || '').startsWith('video');
                 const mediaType = defaults.type || (isVideo ? 'video' : 'imagem');
                 const mediaTypeStored = isVideo ? 'video' : 'image';
+
+                // Imagem: comprime pra JPEG (lado maior até 1500px, nunca aumenta)
+                // antes de guardar — mesmo motor do formulário único.
+                let file = arquivoOriginal;
+                if (!isVideo) {
+                    try {
+                        const { blob, comprimiu } = await comprimirImagem(arquivoOriginal);
+                        if (comprimiu) {
+                            const base = (arquivoOriginal.name || 'imagem').replace(/\.[^.]+$/, '');
+                            file = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+                        }
+                    } catch (err) { console.warn('compressão falhou para', arquivoOriginal.name, err); }
+                }
 
                 // Generate thumbnail
                 let thumb = '';
@@ -775,8 +803,9 @@ const CreativesModule = {
                 }
 
                 // Nome automático — mesma lógica do formulário único, pra não
-                // ter dois jeitos de nomear criativo na ferramenta.
-                const nameWithoutExt = this._gerarNomeAutomatico({ fileName: file.name, productId, type: mediaType })
+                // ter dois jeitos de nomear criativo na ferramenta. Usa o nome
+                // ORIGINAL do arquivo (antes da troca de extensão pra .jpg).
+                const nameWithoutExt = this._gerarNomeAutomatico({ fileName: arquivoOriginal.name, productId, type: mediaType })
                     || `Criativo ${i + 1}`;
 
                 const data = {
