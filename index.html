@@ -941,6 +941,25 @@
                 <button id="btn-add-goal" class="btn btn-primary">+ Nova Meta</button>
             </div>
 
+            <!-- ── Meta de Lucro da Loja (mensal, multi-produto) ── -->
+            <div class="card" style="margin-bottom:1rem">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+                    <div>
+                        <h3 style="margin:0"><i data-lucide="target" style="width:16px;height:16px;vertical-align:-3px"></i> Meta de Lucro da Loja</h3>
+                        <p class="section-subtitle" style="margin:0.2rem 0 0">Meta mensal de lucro com todos os produtos. Realizado cruza vendas da Shopify, custo por país e gasto do Diário.</p>
+                    </div>
+                    <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+                        <select id="store-goal-select" class="input input-sm" style="width:auto"></select>
+                        <button id="btn-store-goal-new" class="btn btn-primary btn-sm" type="button"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Nova meta</button>
+                        <button id="btn-store-goal-del" class="btn btn-secondary btn-sm" type="button" title="Excluir a meta selecionada"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+                        <button id="store-goal-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                    </div>
+                </div>
+                <div id="store-goal-card-body" style="margin-top:0.85rem">
+                    <div id="store-goal-body"></div>
+                </div>
+            </div>
+
             <!-- ── Calculadora de Vendas Necessárias (live) ── -->
             <div class="card" style="margin-bottom:1rem">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
@@ -6137,6 +6156,7 @@
     <script src="js/sheets.js"></script>
     <script src="js/products.js"></script>
     <script src="js/goals.js"></script>
+    <script src="js/store-goal.js"></script>
     <script src="js/diary.js"></script>
     <script src="js/dashboard.js"></script>
     <script src="js/dash-customize.js"></script>
