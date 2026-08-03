@@ -9,6 +9,9 @@
         _aspect: '1024x1024',
         _aspectLabel: 'Square',
         _outputs: 3,
+        // Mesma chave de storage do dropdown "aiad-provider" no AI Ad
+        // Generator — escolher aqui ou lá é a mesma preferência, não duas.
+        _provider: localStorage.getItem('aiad_provider') || 'gpt-image-2',
         _refImage: null, // { name, dataUrl }
         _busy: false,
 
@@ -20,6 +23,7 @@
         _setup() {
             this._bindTabs();
             this._bindAspect();
+            this._bindProvider();
             this._bindOutputs();
             this._bindUpload();
             this._bindTextarea();
@@ -76,6 +80,32 @@
                     this._aspect = item.dataset.aspect;
                     this._aspectLabel = item.dataset.aspectLabel || 'Square';
                     document.getElementById('adhub-aspect-label').textContent = this._aspectLabel;
+                    wrap.classList.remove('adhub-dropdown-open');
+                });
+            });
+        },
+
+        _bindProvider() {
+            const trigger = document.getElementById('adhub-provider-trigger');
+            const menu = document.getElementById('adhub-provider-menu');
+            const wrap = document.getElementById('adhub-provider-dropdown');
+            const label = document.getElementById('adhub-provider-label');
+            if (!trigger || !menu || !wrap) return;
+
+            // Reflete a preferência salva (pode ter vindo do AI Ad Generator).
+            const atual = menu.querySelector(`[data-provider="${this._provider}"]`);
+            if (label && atual) label.textContent = atual.dataset.providerLabel;
+
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                wrap.classList.toggle('adhub-dropdown-open');
+                this._closeOtherDropdowns(wrap);
+            });
+            menu.querySelectorAll('[data-provider]').forEach(item => {
+                item.addEventListener('click', () => {
+                    this._provider = item.dataset.provider;
+                    localStorage.setItem('aiad_provider', this._provider);
+                    if (label) label.textContent = item.dataset.providerLabel || item.dataset.provider;
                     wrap.classList.remove('adhub-dropdown-open');
                 });
             });
@@ -312,6 +342,7 @@
                         prompt: finalPrompt,
                         size: this._aspect,
                         count: this._outputs,
+                        provider: this._provider,
                     });
                     if (ta) {
                         ta.value = '';
