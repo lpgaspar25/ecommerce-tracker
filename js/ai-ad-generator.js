@@ -86,17 +86,21 @@ const AIAdGenerator = {
     // item aqui — a tela e a persistência são genéricas a partir disso.
     _PROVIDERS: [
         {
-            id: 'openai', nome: 'OpenAI', storageKey: 'openai_api_key', prefixo: 'sk-',
+            id: 'openai', nome: 'OpenAI', storageKey: 'openai_api_key', prefixos: ['sk-'],
             uso: 'GPT Image 1/2, DALL-E 3, GPT-4o-mini (copy) e a visão do Estúdio.',
             link: 'https://platform.openai.com/api-keys',
         },
         {
-            id: 'google', nome: 'Google AI (Gemini)', storageKey: 'google_ai_api_key', prefixo: 'AIza',
+            // A Google trocou o formato em 2026: "AIzaSy..." (Standard key) está
+            // sendo descontinuado em set/2026; o AI Studio já emite "AQ...."
+            // (Auth key) por padrão. Os dois são válidos até lá — aceitar só um
+            // rejeitaria a chave que a maioria dos usuários novos recebe hoje.
+            id: 'google', nome: 'Google AI (Gemini)', storageKey: 'google_ai_api_key', prefixos: ['AIzaSy', 'AQ.'],
             uso: 'Google Imagen 2/3 e o Gemini Image no Estúdio.',
             link: 'https://aistudio.google.com/app/apikey',
         },
         {
-            id: 'grok', nome: 'xAI (Grok)', storageKey: 'grok_api_key', prefixo: 'xai-',
+            id: 'grok', nome: 'xAI (Grok)', storageKey: 'grok_api_key', prefixos: ['xai-'],
             uso: 'Geração de imagem com os modelos Grok Image.',
             link: 'https://console.x.ai',
         },
@@ -139,8 +143,9 @@ const AIAdGenerator = {
         if (!lista) return;
         lista.innerHTML = this._PROVIDERS.map(p => {
             const atual = this._getKey(p.id);
+            const prefixoUsado = (p.prefixos || []).find(pre => atual.startsWith(pre));
             const status = atual
-                ? `${this._esc(atual.slice(0, atual.startsWith(p.prefixo) ? p.prefixo.length + 4 : 4))}…${this._esc(atual.slice(-4))}`
+                ? `${this._esc(atual.slice(0, prefixoUsado ? prefixoUsado.length + 4 : 4))}…${this._esc(atual.slice(-4))}`
                 : 'nenhuma chave';
             return `
                 <div class="apikeys-row" data-provider="${p.id}">
@@ -150,7 +155,7 @@ const AIAdGenerator = {
                     </div>
                     <p class="apikeys-usage">${this._esc(p.uso)}</p>
                     <div class="apikeys-row-input">
-                        <input type="password" class="input input-sm" data-key-input placeholder="${this._esc(p.prefixo)}..." autocomplete="off">
+                        <input type="password" class="input input-sm" data-key-input placeholder="${this._esc((p.prefixos || []).join(' ou '))}..." autocomplete="off">
                         <button type="button" class="btn btn-secondary btn-sm" data-action="save">Salvar</button>
                         ${atual ? '<button type="button" class="btn btn-secondary btn-sm" data-action="remove">Remover</button>' : ''}
                     </div>
@@ -167,15 +172,15 @@ const AIAdGenerator = {
                 if (!val) { if (typeof showToast === 'function') showToast('Cole uma chave antes de salvar', 'error'); return; }
                 // O prefixo é só um alerta de "colou a coisa errada" — nunca um
                 // bloqueio. Provedores mudam o formato da chave sem avisar (a
-                // Google já tem pelo menos dois formatos válidos de chave), e
-                // travar o salvamento nisso deixa o usuário sem conseguir usar
-                // uma chave real só porque não bate com o padrão que eu conhecia.
-                const foraDoPadrao = p.prefixo && !val.startsWith(p.prefixo);
+                // Google tem dois formatos válidos em paralelo até set/2026), e
+                // travar o salvamento nisso deixa uma chave real sem poder ser
+                // usada só porque não bate com nenhum padrão que eu conhecia.
+                const foraDoPadrao = (p.prefixos || []).length && !p.prefixos.some(pre => val.startsWith(pre));
                 this._setKey(providerId, val);
                 if (typeof showToast === 'function') {
                     showToast(
                         foraDoPadrao
-                            ? `Chave ${p.nome} salva — formato incomum (não começa com "${p.prefixo}"). Se a geração falhar, confira se colou a chave certa.`
+                            ? `Chave ${p.nome} salva — formato incomum (esperava começar com "${p.prefixos.join('" ou "')}"). Se a geração falhar, confira se colou a chave certa.`
                             : `Chave ${p.nome} salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`,
                         foraDoPadrao ? 'warning' : 'success'
                     );
