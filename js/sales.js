@@ -869,6 +869,7 @@ const SalesModule = (() => {
         _renderFirstSale();
         _renderInsights();
         _renderMdgxRanking();
+        _renderGeoRanking();
         if (window.lucide?.createIcons) lucide.createIcons();
     }
 
@@ -888,6 +889,215 @@ const SalesModule = (() => {
             }
         }
         return byProd;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  RANKING GEOGRÁFICO — pedidos por país + produto âncora por país
+    //  "Âncora" = o produto que domina a receita de um país (o que
+    //  sustenta aquele mercado), não apenas o mais recente ou o 1º da lista.
+    // ══════════════════════════════════════════════════════════════
+
+    // Agrega pedidos por país E, dentro de cada país, por produto —
+    // uma passada só serve às duas rankings (pedidos por país / âncora).
+    function _aggregateByCountry(orders) {
+        const byCountry = new Map(); // cc -> {cc, name, count, revenue, products: Map(pid -> {title, sales, revenue})}
+        for (const o of (orders || [])) {
+            const cc = (o.shipping_address?.country_code || '').toUpperCase() || '—';
+            const name = o.shipping_address?.country || cc;
+            const cur = o.currency || _state.currency || 'BRL';
+            const orderValue = parseFloat(o.total_price) || 0;
+            const orderUsd = (typeof convertToUSD === 'function') ? convertToUSD(orderValue, cur) : orderValue;
+
+            if (!byCountry.has(cc)) byCountry.set(cc, { cc, name, count: 0, revenue: 0, products: new Map() });
+            const e = byCountry.get(cc);
+            e.count++;
+            e.revenue += orderUsd;
+
+            for (const li of (o.line_items || [])) {
+                const pid = String(li.product_id || '');
+                if (!pid) continue;
+                const qty = li.quantity || 0;
+                const unitPrice = parseFloat(li.price) || 0;
+                const lineUsd = (typeof convertToUSD === 'function') ? convertToUSD(unitPrice * qty, cur) : unitPrice * qty;
+                if (!e.products.has(pid)) e.products.set(pid, { title: li.title || pid, sales: 0, revenue: 0 });
+                const pe = e.products.get(pid);
+                pe.sales += qty;
+                pe.revenue += lineUsd;
+            }
+        }
+        return byCountry;
+    }
+
+    let _geoRankShowAll = false;
+
+    async function _renderGeoRanking() {
+        const totalEl = document.getElementById('sales-geo-ranking-total');
+        const compareEl = document.getElementById('sales-geo-ranking-compare');
+        const listEl = document.getElementById('sales-geo-ranking-list');
+        const anchorEl = document.getElementById('sales-anchor-table');
+        if (!listEl && !anchorEl) return;
+
+        const curOrders = _state.filtered || [];
+        const byCountry = _aggregateByCountry(curOrders);
+        const totalOrders = curOrders.length;
+        if (totalEl) totalEl.textContent = _fmtNumber(totalOrders);
+
+        // Mesma comparação pareada (hora-a-hora quando "hoje") do ranking de produtos,
+        // pra não comparar um dia inteiro com um dia ainda em andamento.
+        const { from: pFrom, to: pTo } = _previousRange(_state.from, _state.to);
+        let prevByCountry = new Map();
+        let prevTotal = 0;
+        let pairedHourLabel = '';
+        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+            try {
+                const cacheKey = `${pFrom}|${pTo}`;
+                let prevOrders;
+                if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
+                    prevOrders = _mdgxPrevCache.orders;
+                } else {
+                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    _mdgxPrevCache = { key: cacheKey, orders: prevOrders };
+                }
+                prevOrders = (prevOrders || []).filter(_buildFilterPredicate());
+
+                const todayStr = _todayISO();
+                const isSingleDay = _state.from === _state.to;
+                if (isSingleDay && _state.from === todayStr) {
+                    const now = new Date();
+                    pairedHourLabel = ` até ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    const cutoffMins = now.getHours() * 60 + now.getMinutes();
+                    prevOrders = (prevOrders || []).filter(o => {
+                        if (!o.created_at) return true;
+                        const d = new Date(o.created_at);
+                        return (d.getHours() * 60 + d.getMinutes()) <= cutoffMins;
+                    });
+                }
+
+                prevByCountry = _aggregateByCountry(prevOrders || []);
+                prevTotal = prevOrders.length;
+            } catch { /* sem comparador, segue sem delta */ }
+        }
+
+        if (compareEl) {
+            if (prevTotal > 0) {
+                const deltaPct = ((totalOrders - prevTotal) / prevTotal) * 100;
+                const sign = deltaPct >= 0 ? '+' : '';
+                const cls = deltaPct > 0 ? 'mdgx-ranking-compare-up' : deltaPct < 0 ? 'mdgx-ranking-compare-down' : 'mdgx-ranking-compare-neutral';
+                const arrow = deltaPct > 0 ? '↑' : deltaPct < 0 ? '↓' : '→';
+                const periodLbl = pairedHourLabel ? `ontem${pairedHourLabel}` : 'período anterior';
+                compareEl.className = 'mdgx-ranking-compare ' + cls;
+                compareEl.innerHTML = `${arrow} ${sign}${deltaPct.toFixed(1)}% vs ${periodLbl} (${prevTotal})`;
+            } else if (totalOrders > 0) {
+                compareEl.className = 'mdgx-ranking-compare mdgx-ranking-compare-up';
+                compareEl.innerHTML = '↑ Novo (sem período anterior)';
+            } else if (compareEl) {
+                compareEl.className = 'mdgx-ranking-compare mdgx-ranking-compare-neutral';
+                compareEl.innerHTML = '';
+            }
+        }
+
+        const displayCcy = _state.calc?.spendCurrency || _state.currency || 'BRL';
+        const ranked = [...byCountry.values()].map(e => {
+            const prev = prevByCountry.get(e.cc);
+            const prevCount = prev?.count || 0;
+            let delta = null;
+            if (prevCount === 0 && e.count > 0) delta = { type: 'new', label: 'Novo' };
+            else if (prevCount > 0) {
+                const pct = ((e.count - prevCount) / prevCount) * 100;
+                delta = pct > 0 ? { type: 'up', label: `+${pct.toFixed(0)}%` }
+                    : pct < 0 ? { type: 'down', label: `${pct.toFixed(0)}%` }
+                    : { type: 'neutral', label: '0%' };
+            }
+            return { ...e, pct: totalOrders > 0 ? (e.count / totalOrders) * 100 : 0, delta };
+        }).sort((a, b) => b.count - a.count);
+
+        // ── Bloco 1: Ranking de pedidos por país ──
+        if (listEl) {
+            if (!ranked.length) {
+                listEl.innerHTML = '<div class="mdgx-ranking-empty">Sem pedidos no período.</div>';
+            } else {
+                const visibleCount = _geoRankShowAll ? ranked.length : Math.min(5, ranked.length);
+                const visible = ranked.slice(0, visibleCount);
+                let itemsHtml = visible.map((e, i) => {
+                    const deltaHtml = e.delta ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${e.delta.type}">${e.delta.label}</span>` : '';
+                    return `<div class="mdgx-ranking-item">
+                        <div class="geo-rank-badge">#${i + 1}</div>
+                        <div class="mdgx-ranking-info">
+                            <div class="mdgx-ranking-name">${_esc(e.name)} <span class="sales-tz-note">${_esc(e.cc)}</span></div>
+                            <div class="mdgx-ranking-meta">
+                                <span class="mdgx-ranking-price">${_fmtMoney(_convertFromUSD(e.revenue, displayCcy), displayCcy)}</span>
+                                <span class="mdgx-ranking-sold">${_fmtNumber(e.count)} pedido${e.count !== 1 ? 's' : ''} · ${e.pct.toFixed(1)}%</span>
+                            </div>
+                        </div>
+                        ${deltaHtml}
+                    </div>`;
+                }).join('');
+                if (ranked.length > 5) {
+                    itemsHtml += _geoRankShowAll
+                        ? `<button type="button" class="mdgx-ranking-expand" id="geo-ranking-collapse-btn"><i data-lucide="chevron-up" style="width:13px;height:13px"></i> Mostrar menos</button>`
+                        : `<button type="button" class="mdgx-ranking-expand" id="geo-ranking-expand-btn"><i data-lucide="chevron-down" style="width:13px;height:13px"></i> Ver mais ${ranked.length - visibleCount} país(es)</button>`;
+                }
+                listEl.innerHTML = itemsHtml;
+                document.getElementById('geo-ranking-expand-btn')?.addEventListener('click', () => { _geoRankShowAll = true; _renderGeoRanking(); });
+                document.getElementById('geo-ranking-collapse-btn')?.addEventListener('click', () => { _geoRankShowAll = false; _renderGeoRanking(); });
+            }
+        }
+
+        // ── Bloco 2: Produto âncora por país ──
+        // Âncora = o produto de maior receita dentro daquele país — o que
+        // sustenta aquele mercado, não necessariamente o mais vendido em unidades.
+        if (anchorEl) {
+            const localProducts = AppState.allProducts || AppState.products || [];
+            const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+            const localProductFor = (shopifyPid, title) => {
+                let lp = null;
+                if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                    lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) || null;
+                }
+                if (!lp && title) lp = localProducts.find(p => norm(p.name) === norm(title)) || null;
+                return lp;
+            };
+
+            const rows = ranked.filter(e => e.products.size > 0).map(e => {
+                const prods = [...e.products.entries()].map(([pid, p]) => ({ pid, ...p })).sort((a, b) => b.revenue - a.revenue);
+                const anchor = prods[0];
+                const runnerUp = prods[1];
+                const productTotalRevenue = prods.reduce((s, p) => s + p.revenue, 0);
+                const share = productTotalRevenue > 0 ? (anchor.revenue / productTotalRevenue) * 100 : 0;
+                const lp = localProductFor(anchor.pid, anchor.title);
+                return { ...e, anchor, runnerUp, share, dispName: lp?.name || anchor.title || anchor.pid };
+            });
+
+            if (!rows.length) {
+                anchorEl.innerHTML = '<p class="sales-empty" style="padding:1rem">—</p>';
+            } else {
+                anchorEl.innerHTML = `<table class="sales-geo-table">
+                    <thead><tr><th>País</th><th>Produto âncora</th><th class="num">Vendas</th><th class="num">Receita</th><th class="num">% do país</th><th>2º colocado</th></tr></thead>
+                    <tbody>${rows.map(r => {
+                        const domina = r.share >= 60;
+                        return `<tr>
+                            <td><strong>${_esc(r.name)}</strong> <span class="sales-tz-note">${_esc(r.cc)}</span></td>
+                            <td>${_esc(r.dispName)}${domina ? ' <span class="sales-anchor-badge" title="Este produto concentra a maior parte da receita do país">Domina</span>' : ''}</td>
+                            <td class="num">${_fmtNumber(r.anchor.sales)}</td>
+                            <td class="num">${_fmtMoney(_convertFromUSD(r.anchor.revenue, displayCcy), displayCcy)}</td>
+                            <td class="num">${r.share.toFixed(1)}%</td>
+                            <td>${r.runnerUp ? _esc(r.runnerUp.title) : '—'}</td>
+                        </tr>`;
+                    }).join('')}</tbody>
+                </table>`;
+            }
+        }
+    }
+
+    function _bindGeoRankingToggle() {
+        const toggle = document.getElementById('sales-geo-ranking-toggle');
+        const body = document.getElementById('sales-geo-ranking-body');
+        if (!toggle || !body) return;
+        toggle.addEventListener('click', () => {
+            const open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : '';
+            toggle.textContent = open ? '▶' : '▼';
+        });
     }
 
     function _previousRange(from, to) {
@@ -2351,6 +2561,7 @@ const SalesModule = (() => {
         _bindCalculator();
         _renderCalculator();
         _bindPatternsToggle();
+        _bindGeoRankingToggle();
         _renderPatterns();
         // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
         document.getElementById('btn-sales-mdgx-ranking-all')?.addEventListener('click', () => {

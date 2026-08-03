@@ -3783,6 +3783,32 @@
             </div>
 
             <!-- Patterns / Insights -->
+            <!-- Ranking geográfico: pedidos por país + produto que sustenta cada mercado -->
+            <div class="sales-patterns-card">
+                <div class="sales-calc-head">
+                    <strong><i data-lucide="map-pin" style="width:14px;height:14px;vertical-align:-2px"></i> Ranking Geográfico</strong>
+                    <button id="sales-geo-ranking-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                </div>
+                <div class="sales-geo-ranking-body" id="sales-geo-ranking-body">
+                    <div class="dash-card dash-card-mdgx-ranking" style="margin-bottom:1rem">
+                        <div class="mdgx-ranking-header">
+                            <div class="mdgx-ranking-circle"><i data-lucide="globe" style="width:22px;height:22px;color:white"></i></div>
+                            <div class="mdgx-ranking-title-wrap">
+                                <div class="mdgx-ranking-label">Pedidos por País — Período selecionado</div>
+                                <div class="mdgx-ranking-total" id="sales-geo-ranking-total">0</div>
+                                <div class="mdgx-ranking-compare" id="sales-geo-ranking-compare"></div>
+                            </div>
+                        </div>
+                        <div id="sales-geo-ranking-list" class="mdgx-ranking-list"></div>
+                    </div>
+
+                    <div class="sales-pattern-block">
+                        <div class="sales-pattern-title">Produtos âncora por país <span class="sales-tz-note" title="O produto que concentra a maior parte da receita em cada país — o que sustenta aquele mercado">o que sustenta cada mercado</span></div>
+                        <div id="sales-anchor-table"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="sales-patterns-card">
                 <div class="sales-calc-head">
                     <strong><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Padrões &amp; Insights</strong>

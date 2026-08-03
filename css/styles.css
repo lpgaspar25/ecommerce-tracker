@@ -15641,3 +15641,23 @@ body:not([data-theme]) .adh-board-viewport {
     display: inline-block; margin-left: 4px; font-size: 0.62rem;
     font-weight: 600; opacity: 0.85; vertical-align: 1px;
 }
+
+/* ─────────────────────────────────────────────
+   Vendas → Ranking Geográfico (pedidos por país + produto âncora)
+   ───────────────────────────────────────────── */
+.geo-rank-badge {
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(139, 92, 246, 0.1); color: var(--accent, #8b5cf6);
+    font-size: 0.82rem; font-weight: 700;
+}
+.mdgx-ranking-item:nth-child(1) .geo-rank-badge { background: rgba(217, 119, 6, 0.16); color: #d97706; }
+.mdgx-ranking-item:nth-child(2) .geo-rank-badge { background: rgba(107, 114, 128, 0.16); color: #6b7280; }
+.mdgx-ranking-item:nth-child(3) .geo-rank-badge { background: rgba(180, 83, 9, 0.14); color: #b45309; }
+
+.sales-anchor-badge {
+    display: inline-block; margin-left: 0.4rem; padding: 1px 7px;
+    border-radius: 20px; font-size: 0.65rem; font-weight: 700;
+    background: rgba(16, 185, 129, 0.14); color: var(--green, #10b981);
+    vertical-align: middle;
+}
