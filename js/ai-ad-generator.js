@@ -862,7 +862,13 @@ const AIAdGenerator = {
         }
         // Build modal HTML
         const opts = products.map(p => `<option value="${this._esc(p.id)}">${this._esc(p.name)}</option>`).join('');
-        const defaultName = (item.prompt || '').slice(0, 60).trim() || 'AI Creative';
+        // Mesmo gerador de nome do resto da ferramenta (produto + tipo, com
+        // contador) — só cai pro prompt truncado se o CreativesModule não
+        // tiver carregado por algum motivo.
+        const gerarNome = (productId) => (typeof CreativesModule?._gerarNomeAutomatico === 'function')
+            ? CreativesModule._gerarNomeAutomatico({ productId, type: 'Imagem' })
+            : ((item.prompt || '').slice(0, 60).trim() || 'AI Creative');
+        const defaultName = gerarNome('');
         const modalHtml = `
             <div id="modal-save-creative-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;">
                 <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:min(420px,90vw);display:flex;flex-direction:column;gap:1rem;">
@@ -900,6 +906,17 @@ const AIAdGenerator = {
 
         document.getElementById('sc-cancel-btn')?.addEventListener('click', close);
         overlay?.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        // Ao escolher o produto, upgrada o nome pra incluir o nome dele —
+        // mas só se o usuário ainda não mexeu no campo manualmente.
+        const nameInput = document.getElementById('sc-name-input');
+        let nomeEditadoManualmente = false;
+        nameInput?.addEventListener('input', () => { nomeEditadoManualmente = true; });
+        document.getElementById('sc-product-select')?.addEventListener('change', (e) => {
+            if (nomeEditadoManualmente || !nameInput) return;
+            nameInput.value = gerarNome(e.target.value);
+        });
+
         document.getElementById('sc-save-btn')?.addEventListener('click', async () => {
             const productId = document.getElementById('sc-product-select')?.value;
             const name = document.getElementById('sc-name-input')?.value.trim() || defaultName;

@@ -220,6 +220,41 @@ const CreativesModule = {
         }
     },
 
+    // ---- Nome automático do criativo ----
+    // Arquivo "IMG_1234.mp4", hash de export de IA ou screenshot não diz nada
+    // — nesses casos cai pro nome montado a partir do formulário.
+    _ARQUIVO_SEM_NOME_UTIL: /^(img|imagem|image|dsc|dscn|vid|video|mov|movie|whatsapp[\s_-]?(image|video)|screenshot|captura([\s_-]?de[\s_-]?tela)?|print|download|arquivo|file|export|output|untitled|sem[\s_-]?t[ií]tulo|new[\s_-]?(image|video)|photo|foto|clipboard)([\s_-].*)?$/i,
+
+    _nomeDoArquivoUtil(fileName) {
+        if (!fileName) return '';
+        let base = String(fileName).replace(/\.[^./\\]+$/, '').trim();
+        if (!base) return '';
+        // UUID ou hash puro (nome de export automático) não é nome nenhum
+        if (/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(base)) return '';
+        if (/^[0-9a-f]{10,}$/i.test(base)) return '';
+        if (this._ARQUIVO_SEM_NOME_UTIL.test(base)) return '';
+        base = base.replace(/[_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        if (!base) return '';
+        return (base[0].toUpperCase() + base.slice(1)).slice(0, 80);
+    },
+
+    // Nome automático do criativo. Prioriza o nome do arquivo quando ele diz
+    // algo de útil; sem isso, monta a partir do que já foi preenchido no
+    // formulário (produto, tipo, ângulo/hook), com contador pra não colidir
+    // com um criativo existente do mesmo produto com o mesmo rótulo.
+    _gerarNomeAutomatico({ fileName, productId, type, angle, hookType } = {}) {
+        const doArquivo = this._nomeDoArquivoUtil(fileName);
+        if (doArquivo) return doArquivo;
+
+        const p = productId ? (AppState.allProducts || AppState.products || []).find(x => x.id === productId) : null;
+        const partes = [p?.name, type, String(angle || hookType || '').trim()].filter(Boolean);
+        const rotulo = partes.length ? partes.join(' — ') : 'Criativo';
+        if (!productId) return rotulo;
+        const existentes = (AppState.allCreatives || []).filter(c =>
+            c.productId === productId && (c.name || '').startsWith(rotulo)).length;
+        return existentes ? `${rotulo} #${existentes + 1}` : rotulo;
+    },
+
     // ---- Media (foto/vídeo) — blob in IndexedDB, small thumb in localStorage ----
     _formMedia: null,
 
@@ -247,6 +282,17 @@ const CreativesModule = {
             removed: false,
         };
         this._renderFormMediaPreview();
+
+        // Sugere o nome a partir do arquivo — só se o usuário ainda não
+        // escreveu nada, pra nunca sobrescrever o que ele já digitou.
+        const nameInput = document.getElementById('creative-name');
+        if (nameInput && !nameInput.value.trim()) {
+            nameInput.value = this._gerarNomeAutomatico({
+                fileName: file.name,
+                productId: document.getElementById('creative-product')?.value || '',
+                type: document.getElementById('creative-type')?.value || '',
+            });
+        }
     },
 
     _clearFormMedia() {
@@ -481,14 +527,23 @@ const CreativesModule = {
             showToast('Mídia não suportada neste navegador; salvando só os dados.', 'warning');
         }
 
+        const typeVal = document.getElementById('creative-type').value;
+        const angleVal = document.getElementById('creative-angle').value.trim();
+        const hookTypeVal = document.getElementById('creative-hook-type').value;
+        // Sem arquivo (ex.: só colou uma URL de imagem) e sem nome digitado —
+        // o nome nunca fica vazio, mas também nunca sobrescreve o que o
+        // usuário escreveu.
+        const nameVal = document.getElementById('creative-name').value.trim()
+            || this._gerarNomeAutomatico({ productId, type: typeVal, angle: angleVal, hookType: hookTypeVal });
+
         const data = {
             id,
             productId,
-            name: document.getElementById('creative-name').value.trim(),
-            type: document.getElementById('creative-type').value,
-            angle: document.getElementById('creative-angle').value.trim(),
+            name: nameVal,
+            type: typeVal,
+            angle: angleVal,
             hookText: document.getElementById('creative-hook-text').value.trim(),
-            hookType: document.getElementById('creative-hook-type').value,
+            hookType: hookTypeVal,
             platform: document.getElementById('creative-platform').value,
             status: document.getElementById('creative-status').value || 'ativo',
             launchDate: document.getElementById('creative-launch-date').value,
@@ -719,8 +774,10 @@ const CreativesModule = {
                     }
                 }
 
-                // Build creative name from filename (without extension)
-                const nameWithoutExt = (file.name || '').replace(/\.[^.]+$/, '').trim() || `Criativo ${i + 1}`;
+                // Nome automático — mesma lógica do formulário único, pra não
+                // ter dois jeitos de nomear criativo na ferramenta.
+                const nameWithoutExt = this._gerarNomeAutomatico({ fileName: file.name, productId, type: mediaType })
+                    || `Criativo ${i + 1}`;
 
                 const data = {
                     id: generateId('crtv'),
