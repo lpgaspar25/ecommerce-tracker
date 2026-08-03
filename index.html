@@ -588,6 +588,7 @@
             <div class="section-header">
                 <h2>Produtos</h2>
                 <button id="btn-import-shopify" class="btn btn-secondary" title="Importar produtos da Shopify"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Importar da Shopify</button>
+                <button id="btn-import-shopify-details-bulk" class="btn btn-secondary" title="Trazer descrição, fotos e variantes da Shopify para todos os produtos vinculados"><i data-lucide="download-cloud" style="width:14px;height:14px"></i> Importar descrições e fotos</button>
                 <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
             </div>
 
@@ -885,6 +886,9 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Variantes vindas da Shopify (leitura) -->
+                                <div class="prod-section-card" id="prod-shopify-variants" style="display:none"></div>
 
                                 <!-- Country Prices -->
                                 <div class="prod-section-card">

@@ -871,6 +871,86 @@ const ShopifyModule = (() => {
         return result;
     }
 
+    // ══════════════════════════════════════════════════════════════
+    //  Detalhes ricos de produto (descrição, mídia, opções, variantes)
+    //
+    //  Fica FORA do fetchShopifyProducts de propósito: descriptionHtml
+    //  costuma ter vários KB por produto e media traz dezenas de URLs.
+    //  Puxar isso para o catálogo inteiro tornaria a listagem lenta e
+    //  encheria o cache — aqui buscamos só os produtos pedidos.
+    // ══════════════════════════════════════════════════════════════
+    async function fetchProductDetails(shopifyIds) {
+        const ids = (Array.isArray(shopifyIds) ? shopifyIds : [shopifyIds])
+            .map(String).filter(Boolean);
+        if (!ids.length) return {};
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+
+        const gql = `
+            query Detalhes($ids: [ID!]!) {
+              nodes(ids: $ids) {
+                ... on Product {
+                  id title handle status vendor productType tags descriptionHtml
+                  options { name optionValues { name } }
+                  media(first: 30) {
+                    nodes {
+                      mediaContentType alt
+                      ... on MediaImage { image { url width height } }
+                    }
+                  }
+                  variants(first: 100) {
+                    nodes {
+                      id title sku price compareAtPrice availableForSale inventoryQuantity
+                      selectedOptions { name value }
+                      image { url }
+                    }
+                  }
+                }
+              }
+            }`;
+
+        const out = {};
+        // A API aceita no máximo 250 nós por chamada; 50 mantém a resposta leve.
+        for (let i = 0; i < ids.length; i += 50) {
+            const lote = ids.slice(i, i + 50).map(id =>
+                String(id).startsWith('gid://') ? id : `gid://shopify/Product/${id}`);
+            const data = await _graphql(gql, { ids: lote });
+            (data.nodes || []).forEach(p => {
+                if (!p || !p.id) return;
+                const numId = _gidToNumeric(p.id);
+                out[numId] = {
+                    id: numId,
+                    title: p.title,
+                    handle: p.handle,
+                    status: p.status,
+                    vendor: p.vendor || '',
+                    productType: p.productType || '',
+                    tags: p.tags || [],
+                    descriptionHtml: p.descriptionHtml || '',
+                    options: (p.options || []).map(o => ({
+                        name: o.name,
+                        values: (o.optionValues || []).map(v => v.name),
+                    })),
+                    // Só imagens: vídeo e 3D não têm .image e virariam entradas vazias
+                    images: (p.media?.nodes || [])
+                        .filter(m => m.mediaContentType === 'IMAGE' && m.image?.url)
+                        .map(m => ({ url: m.image.url, alt: m.alt || '', width: m.image.width, height: m.image.height })),
+                    variants: (p.variants?.nodes || []).map(v => ({
+                        id: _gidToNumeric(v.id),
+                        title: v.title,
+                        sku: v.sku || '',
+                        price: parseFloat(v.price || '0'),
+                        compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
+                        availableForSale: !!v.availableForSale,
+                        inventory: Number.isFinite(v.inventoryQuantity) ? v.inventoryQuantity : null,
+                        options: (v.selectedOptions || []).map(o => ({ name: o.name, value: o.value })),
+                        image: v.image?.url || '',
+                    })),
+                };
+            });
+        }
+        return out;
+    }
+
     // Per-date totals (all products): { "YYYY-MM-DD": { sales, revenue, currency, orderCount } }
     async function getSalesMapByDate(dateFrom, dateTo, opts = {}) {
         const orders = await fetchOrders(dateFrom, dateTo, opts);
@@ -1792,6 +1872,7 @@ const ShopifyModule = (() => {
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, fetchProductViews, fetchProductViewsByDate,
+        fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
     };

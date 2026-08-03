@@ -15799,3 +15799,22 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .mdgx-name-edit:hover { border-bottom-color: currentColor; }
 .mdgx-name-edit:hover i { opacity: 1 !important; }
+
+/* Produto → variantes importadas da Shopify + origem da imagem */
+.prod-variants-grid { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.prod-variant-chip {
+    display: flex; align-items: center; gap: 0.35rem;
+    padding: 0.25rem 0.55rem 0.25rem 0.25rem; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--bg-hover); font-size: 0.74rem;
+}
+.prod-variant-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.prod-variant-noimg {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; background: rgba(128,128,128,0.15); color: var(--text-muted);
+}
+.prod-variant-price { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.prod-variant-off { color: var(--red); font-size: 0.62rem; font-weight: 700; }
+.prod-image-src {
+    position: absolute; bottom: 2px; left: 2px; font-size: 0.55rem; font-weight: 700;
+    padding: 0 4px; border-radius: 3px; background: rgba(149,191,71,0.9); color: #fff;
+}

@@ -34,6 +34,7 @@ const ProductsModule = {
         // Shopify import
         const importBtn = document.getElementById('btn-import-shopify');
         if (importBtn) importBtn.addEventListener('click', () => this.openShopifyImport());
+        document.getElementById('btn-import-shopify-details-bulk')?.addEventListener('click', () => this.importarDetalhesEmMassa());
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
         if (confirmBtn) confirmBtn.addEventListener('click', () => this._importSelectedShopifyProducts());
         const selectAll = document.getElementById('shopify-import-select-all');
@@ -185,6 +186,7 @@ const ProductsModule = {
             const tagsEl = document.getElementById('product-tags');
             if (tagsEl) tagsEl.value = (product.tags || []).join(', ');
             this._images = (product.images || []).slice();
+            this._renderShopifyVariants(product);
         } else {
             title.textContent = 'Adicionar Produto';
             document.getElementById('product-id').value = '';
@@ -311,6 +313,10 @@ const ProductsModule = {
             Preço Shopify: <strong>${this._esc(price)}</strong> · Estoque: <strong>${stock}</strong><br>
             <span style="opacity:0.7">Ao salvar, o preço será sincronizado automaticamente.</span>
             <div class="prod-shopify-links">
+                <button type="button" class="prod-shopify-link prod-shopify-import" id="btn-import-shopify-details"
+                        title="Trazer descrição, fotos e variantes da Shopify para cá">
+                    <i data-lucide="download" style="width:12px;height:12px"></i> Importar descrição, fotos e variantes
+                </button>
                 ${adminUrl ? `<a href="${this._esc(adminUrl)}" target="_blank" class="prod-shopify-link">
                     <i data-lucide="settings" style="width:12px;height:12px"></i> Editar na Shopify
                 </a>` : ''}
@@ -319,6 +325,8 @@ const ProductsModule = {
                 </a>` : ''}
             </div>
         `;
+        info.querySelector('#btn-import-shopify-details')
+            ?.addEventListener('click', () => this.importarDetalhesDoProdutoAberto());
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
     },
 
@@ -947,11 +955,14 @@ const ProductsModule = {
             return;
         }
         thumbs.style.display = '';
+        // Imagem pode vir de upload (dataUrl base64) ou da Shopify (url do CDN).
+        // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
             <div class="prod-image-thumb">
-                <img src="${img.dataUrl}" alt="${img.name || ''}">
+                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy">
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
+                ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
             </div>
         `).join('');
         thumbs.querySelectorAll('.prod-image-remove').forEach(btn => {
@@ -960,7 +971,163 @@ const ProductsModule = {
                 this._renderProductImages();
             });
         });
-        if (zone) zone.style.display = this._images.length >= 5 ? 'none' : '';
+        // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
+        // Imagens da Shopify são URLs e não contam para esse limite.
+        const enviadas = this._images.filter(im => im.dataUrl).length;
+        if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+    },
+
+    // Mostra as variantes trazidas da Shopify (leitura). Elas existem para
+    // alimentar geração de criativo por variante — não são editáveis aqui,
+    // já que a fonte da verdade continua sendo a Shopify.
+    _renderShopifyVariants(product) {
+        const box = document.getElementById('prod-shopify-variants');
+        if (!box) return;
+        const vars = product?.shopifyVariants || [];
+        if (!vars.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        box.style.display = '';
+        const opts = (product.shopifyOptions || []).map(o => `${o.name}: ${o.values.join(', ')}`).join(' · ');
+        box.innerHTML = `
+            <div class="prod-section-title" style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.4rem">
+                <i data-lucide="layers" style="width:14px;height:14px"></i> Variantes da Shopify
+                <small style="font-weight:400;color:var(--text-muted)">${vars.length} · somente leitura</small>
+            </div>
+            ${opts ? `<p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 0.5rem">${this._esc(opts)}</p>` : ''}
+            <div class="prod-variants-grid">
+                ${vars.map(v => `
+                    <div class="prod-variant-chip" title="${this._esc(v.sku || '')}">
+                        ${v.image ? `<img src="${this._esc(v.image)}" alt="" loading="lazy">` : '<span class="prod-variant-noimg"><i data-lucide="image-off" style="width:14px;height:14px"></i></span>'}
+                        <span class="prod-variant-name">${this._esc(v.title)}</span>
+                        <span class="prod-variant-price">${v.price}</span>
+                        ${v.availableForSale ? '' : '<span class="prod-variant-off">esgotado</span>'}
+                    </div>`).join('')}
+            </div>`;
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Importar descrição, fotos e variantes da Shopify
+    // ══════════════════════════════════════════════════════════════
+
+    // Aplica os detalhes num produto local. Não sobrescreve o que o usuário
+    // escreveu: por padrão só preenche o que está vazio.
+    _aplicarDetalhesShopify(produto, det, { sobrescrever = false } = {}) {
+        if (!produto || !det) return { descricao: false, fotos: 0, variantes: 0 };
+        const res = { descricao: false, fotos: 0, variantes: 0 };
+
+        const descAtual = String(produto.description || '').replace(/<[^>]*>/g, '').trim();
+        if (det.descriptionHtml && (sobrescrever || !descAtual)) {
+            produto.description = det.descriptionHtml;
+            res.descricao = true;
+        }
+
+        if (det.images?.length) {
+            const atuais = produto.images || [];
+            const jaTem = new Set(atuais.map(im => im.url).filter(Boolean));
+            const novas = det.images
+                .filter(im => sobrescrever || !jaTem.has(im.url))
+                .map(im => ({ url: im.url, alt: im.alt || '', name: im.alt || '', width: im.width, height: im.height }));
+            // Uploads locais (base64) são preservados mesmo ao sobrescrever —
+            // eles não vieram da Shopify e seriam perdidos sem volta.
+            const uploads = atuais.filter(im => im.dataUrl);
+            produto.images = sobrescrever ? [...uploads, ...novas] : [...atuais, ...novas];
+            res.fotos = novas.length;
+        }
+
+        if (det.variants?.length) {
+            produto.shopifyVariants = det.variants;
+            produto.shopifyOptions = det.options || [];
+            res.variantes = det.variants.length;
+        }
+        if (det.vendor && (sobrescrever || !produto.vendor)) produto.vendor = det.vendor;
+        if (det.tags?.length && (sobrescrever || !(produto.tags || []).length)) produto.tags = det.tags;
+        if (det.handle) produto.shopifyHandle = det.handle;
+        produto.shopifyDetailsAt = new Date().toISOString();
+        return res;
+    },
+
+    // Descobre o id Shopify de um produto local (vínculo, campo ou nome)
+    _shopifyIdDe(produto) {
+        if (!produto) return null;
+        if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+            const l = ShopifyModule.getLink(produto.id);
+            if (l) return String(l);
+        }
+        if (produto.shopifyId) return String(produto.shopifyId);
+        const cat = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getShopifyProducts)
+            ? ShopifyModule.getShopifyProducts() : [];
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+        const achado = cat.find(sp => norm(sp.title) === norm(produto.name));
+        return achado ? String(achado.id) : null;
+    },
+
+    // Importa para UM produto (usado dentro do formulário aberto)
+    async importarDetalhesDoProdutoAberto() {
+        const id = document.getElementById('product-id')?.value;
+        const produto = (AppState.allProducts || []).find(p => p.id === id);
+        if (!produto) { showToast('Salve o produto antes de importar da Shopify.', 'warning'); return; }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) { showToast('Vincule o produto à Shopify primeiro (Conexão Shopify).', 'error'); return; }
+
+        const btn = document.getElementById('btn-import-shopify-details');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Importando…'; }
+        try {
+            const mapa = await ShopifyModule.fetchProductDetails([sid]);
+            const det = mapa[sid];
+            if (!det) throw new Error('Produto não encontrado na Shopify');
+
+            const temDesc = String(produto.description || '').replace(/<[^>]*>/g, '').trim();
+            const sobrescrever = temDesc
+                ? confirm('Este produto já tem descrição.\n\nOK = substituir pela da Shopify\nCancelar = manter a atual e só trazer fotos/variantes')
+                : false;
+
+            const r = this._aplicarDetalhesShopify(produto, det, { sobrescrever });
+            LocalStore.save('products', AppState.allProducts);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            EventBus.emit('productsChanged');
+
+            // Reabre o formulário para refletir os dados novos
+            this.openForm(produto);
+            showToast(`Importado: ${r.descricao ? 'descrição, ' : ''}${r.fotos} foto(s), ${r.variantes} variante(s).`, 'success');
+        } catch (err) {
+            showToast('Falha ao importar: ' + (err.message || err), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+        }
+    },
+
+    // Importa em MASSA para todos os produtos vinculados
+    async importarDetalhesEmMassa() {
+        const produtos = (AppState.allProducts || []).filter(p => this._shopifyIdDe(p));
+        if (!produtos.length) { showToast('Nenhum produto vinculado à Shopify.', 'warning'); return; }
+        if (!confirm(`Importar descrição, fotos e variantes da Shopify para ${produtos.length} produto(s)?\n\nDescrições já preenchidas na ferramenta são preservadas.`)) return;
+
+        const btn = document.getElementById('btn-import-shopify-details-bulk');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Importando…'; }
+        try {
+            const ids = produtos.map(p => this._shopifyIdDe(p));
+            const mapa = await ShopifyModule.fetchProductDetails(ids);
+            let comDesc = 0, fotos = 0, vars = 0, semDados = 0;
+            produtos.forEach(p => {
+                const det = mapa[this._shopifyIdDe(p)];
+                if (!det) { semDados++; return; }
+                const r = this._aplicarDetalhesShopify(p, det, { sobrescrever: false });
+                if (r.descricao) comDesc++;
+                fotos += r.fotos; vars += r.variantes;
+            });
+            LocalStore.save('products', AppState.allProducts);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            EventBus.emit('productsChanged');
+            this.render();
+            showToast(`${comDesc} descrição(ões), ${fotos} foto(s) e ${vars} variante(s) importadas.${semDados ? ` ${semDados} sem dados na Shopify.` : ''}`, 'success');
+        } catch (err) {
+            showToast('Falha na importação: ' + (err.message || err), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+        }
     },
 
     render() {
