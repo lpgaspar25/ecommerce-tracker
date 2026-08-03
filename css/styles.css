@@ -15818,3 +15818,35 @@ body:not([data-theme]) .adh-board-viewport {
     position: absolute; bottom: 2px; left: 2px; font-size: 0.55rem; font-weight: 700;
     padding: 0 4px; border-radius: 3px; background: rgba(149,191,71,0.9); color: #fff;
 }
+
+/* Estúdio → padrões de criativo */
+.studio-padrao-novo { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.studio-padrao-novo .input { flex: 1; min-width: 180px; }
+.studio-padrao-status { font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; min-height: 18px; }
+.studio-padroes { display: flex; flex-direction: column; gap: 0.5rem; }
+.studio-padrao {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--bg-hover);
+}
+.studio-padrao img, .studio-padrao-sem {
+    width: 52px; height: 52px; border-radius: 7px; object-fit: cover; flex-shrink: 0;
+}
+.studio-padrao-sem {
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(128,128,128,0.15); color: var(--text-muted);
+}
+.studio-padrao-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.studio-padrao-info strong { font-size: 0.82rem; }
+.studio-padrao-info small { font-size: 0.7rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-padrao-tags { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 2px; }
+.studio-padrao-tags em {
+    font-style: normal; font-size: 0.58rem; font-weight: 700; padding: 0 5px;
+    border-radius: 4px; background: rgba(139,92,246,0.15); color: var(--accent, #8b5cf6);
+}
+.studio-padrao-tags .studio-padrao-usos { background: rgba(16,185,129,0.15); color: var(--green, #10b981); }
+.studio-padrao-acoes { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
+.studio-prompt-pre {
+    white-space: pre-wrap; word-break: break-word; font-size: 0.72rem; line-height: 1.5;
+    background: var(--bg-input, rgba(0,0,0,0.05)); border: 1px solid var(--border);
+    border-radius: 7px; padding: 0.6rem; margin: 0.25rem 0 0; max-height: 240px; overflow: auto;
+}

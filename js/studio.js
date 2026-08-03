@@ -16,6 +16,7 @@ const StudioModule = (() => {
         // { fotoBase, fotos: [{id, mediaId, thumb, preset, prompt}], pagina: {...}, chat: [] }
         porProduto: {},
         gerando: false,
+        padroes: [],          // padrões de criativo (esqueletos de prompt)
         _urls: [],          // object URLs a revogar
     };
 
@@ -42,12 +43,16 @@ const StudioModule = (() => {
     function _load() {
         try {
             const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-            if (raw && typeof raw === 'object') _state.porProduto = raw.porProduto || {};
+            if (raw && typeof raw === 'object') {
+                _state.porProduto = raw.porProduto || {};
+                _state.padroes = Array.isArray(raw.padroes) ? raw.padroes : [];
+            }
         } catch (e) { console.warn('[Studio] load falhou:', e); }
     }
 
     function _save() {
-        const gravar = () => localStorage.setItem(STORAGE_KEY, JSON.stringify({ porProduto: _state.porProduto }));
+        const gravar = () => localStorage.setItem(STORAGE_KEY,
+            JSON.stringify({ porProduto: _state.porProduto, padroes: _state.padroes || [] }));
         try {
             if (window.StorageManager?.withReclaim) StorageManager.withReclaim(gravar);
             else gravar();
@@ -137,6 +142,20 @@ const StudioModule = (() => {
         const fontes = [];
         const p = (AppState.allProducts || []).find(x => x.id === productId);
         if (p?.shopifyImage) fontes.push({ url: p.shopifyImage, origem: 'Shopify' });
+
+        // Fotos do próprio cadastro: as importadas da Shopify vêm como URL,
+        // as que o usuário subiu vêm como dataUrl. Estas são a fonte principal
+        // depois que o produto é importado com descrição/fotos/variantes.
+        (p?.images || []).forEach(im => {
+            const src = im.url || im.dataUrl;
+            if (src) fontes.push({ url: src, origem: im.dataUrl ? 'Upload' : 'Produto' });
+        });
+
+        // Imagem específica de cada variante (cor/modelo) — é o que permite
+        // gerar criativo por variante em vez de um só para o produto inteiro.
+        (p?.shopifyVariants || []).forEach(v => {
+            if (v.image) fontes.push({ url: v.image, origem: v.title || 'Variante' });
+        });
 
         // Imagens que vieram da captura do fornecedor (extensão / importador)
         try {
@@ -268,6 +287,197 @@ const StudioModule = (() => {
         canvas.height = Math.round(bitmap.height * escala);
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         return canvas.toDataURL('image/webp', 0.6);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PADRÕES DE CRIATIVO
+    //  O usuário sobe um criativo que JÁ validou; a IA olha a imagem e
+    //  escreve o "esqueleto" do prompt que a produziu — com a marca e o
+    //  produto trocados por marcadores. Assim o mesmo enquadramento,
+    //  luz e clima podem ser reaplicados a qualquer outro produto.
+    // ══════════════════════════════════════════════════════════════
+
+    // Marcadores que o esqueleto DEVE usar no lugar do produto/marca reais.
+    const MARCADORES = ['{PRODUTO}', '{DESCRICAO_PRODUTO}', '{MARCA}', '{HEADLINE}', '{SUBHEADLINE}', '{CTA}'];
+
+    const SISTEMA_ESQUELETO = `Você analisa criativos publicitários de e-commerce e escreve o PROMPT que geraria aquela imagem num modelo de imagem por IA.
+
+O prompt precisa ser um ESQUELETO REUTILIZÁVEL, não a descrição de um produto específico. Isso é o mais importante da tarefa.
+
+REGRAS DO ESQUELETO:
+1. Descreva em detalhe: enquadramento, posição e ângulo do produto, superfície/apoio, fundo, gradiente, partículas, direção e qualidade da luz, sombras, textura dos materiais, contraste, clima geral e onde ficam os elementos de marca e texto.
+2. NUNCA cite a marca real, o nome do produto, cores específicas do produto nem detalhes exclusivos dele (logo, emblema, formato de lente). No lugar deles use EXATAMENTE estes marcadores:
+   {PRODUTO} — o produto em si
+   {DESCRICAO_PRODUTO} — características físicas do produto
+   {MARCA} — nome da marca
+   {HEADLINE} — título grande
+   {SUBHEADLINE} — linha de apoio
+   {CTA} — texto do botão
+   Use apenas os marcadores que a imagem realmente pede. Se não há texto na imagem, não invente {HEADLINE}.
+3. Mantenha SEMPRE uma instrução explícita de preservar a estrutura e os detalhes originais do produto, sem alterar cor, forma ou marcações — é o que impede o modelo de inventar outro produto.
+4. Escreva em INGLÊS, num parágrafo corrido e denso, no estilo de prompt fotográfico profissional.
+5. Não use markdown, não numere, não explique. Só o prompt.
+
+Responda APENAS com JSON válido:
+{"nomeSugerido":"...","esqueleto":"...","aspecto":"1:1|4:5|16:9","observacao":"..."}
+- nomeSugerido: rótulo curto em português para este padrão (ex.: "Caixa preta com luz de cima")
+- observacao: uma frase em português dizendo para que tipo de produto este padrão funciona melhor`;
+
+    async function _claudeVisao(system, base64, mediaType, texto) {
+        const key = localStorage.getItem('anthropic_api_key') || '';
+        if (!key) throw new Error('Configure a chave Anthropic (Ad Hub → chave da Anthropic)');
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-api-key': key,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-5',
+                max_tokens: 2000,
+                system,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } },
+                        { type: 'text', text: texto },
+                    ],
+                }],
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error?.message || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    }
+
+    function _arquivoParaBase64(file) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onloadend = () => {
+                const s = String(r.result || '');
+                const virgula = s.indexOf(',');
+                resolve({ base64: s.slice(virgula + 1), mediaType: (s.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg', dataUrl: s });
+            };
+            r.onerror = () => reject(new Error('Não consegui ler o arquivo'));
+            r.readAsDataURL(file);
+        });
+    }
+
+    // Analisa um criativo validado e devolve o esqueleto de prompt.
+    async function criarPadraoDeImagem(file, nomeManual) {
+        const { base64, mediaType, dataUrl } = await _arquivoParaBase64(file);
+        const txt = await _claudeVisao(SISTEMA_ESQUELETO, base64, mediaType,
+            'Analise este criativo e escreva o esqueleto de prompt reutilizável, seguindo as regras.');
+        const parsed = _extrairJson(txt);
+
+        // Sem marcador nenhum o "esqueleto" é só a descrição daquele produto —
+        // aplicá-lo a outro geraria a imagem do produto errado.
+        const temMarcador = MARCADORES.some(m => String(parsed.esqueleto || '').includes(m));
+        if (!temMarcador) throw new Error('A IA não gerou um esqueleto reutilizável (sem marcadores). Tente de novo.');
+
+        const id = 'pad_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const thumb = await _miniatura(await _dataUrlParaBlob(dataUrl));
+        let mediaId = '';
+        if (window.MediaStore?.isSupported?.()) {
+            try {
+                mediaId = 'padrao_' + id;
+                await MediaStore.put(mediaId, await _dataUrlParaBlob(dataUrl), { type: mediaType, name: `${id}.jpg` });
+            } catch { mediaId = ''; }
+        }
+
+        const padrao = {
+            id,
+            nome: (nomeManual || '').trim() || parsed.nomeSugerido || 'Padrão sem nome',
+            esqueleto: parsed.esqueleto,
+            aspecto: parsed.aspecto || '1:1',
+            observacao: parsed.observacao || '',
+            marcadores: MARCADORES.filter(m => parsed.esqueleto.includes(m)),
+            exemploThumb: thumb,
+            exemploMediaId: mediaId,
+            usos: 0,
+            criadoEm: new Date().toISOString(),
+        };
+        _state.padroes = _state.padroes || [];
+        _state.padroes.unshift(padrao);
+        _save();
+        return padrao;
+    }
+
+    async function _dataUrlParaBlob(dataUrl) {
+        return await (await fetch(dataUrl)).blob();
+    }
+
+    // Preenche os marcadores do esqueleto com os dados do produto/marca.
+    function montarPromptDoPadrao(padrao, productId, extras = {}) {
+        if (!padrao) return '';
+        const p = (AppState.allProducts || []).find(x => x.id === productId);
+        const d = _dados(productId);
+        const marca = d.marca;
+        const pagina = d.pagina;
+
+        // Descrição física: prioriza o texto do produto; cai para as opções da
+        // Shopify, que descrevem cor/modelo de forma objetiva.
+        const descTexto = String(p?.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const opcoes = (p?.shopifyOptions || []).map(o => `${o.name}: ${o.values.join('/')}`).join('; ');
+
+        const valores = {
+            '{PRODUTO}': extras.produto || p?.name || 'the product',
+            '{DESCRICAO_PRODUTO}': extras.descricao || descTexto.slice(0, 300) || opcoes || 'the product as shown in the reference photo',
+            '{MARCA}': extras.marca || marca?.nome || p?.vendor || '',
+            '{HEADLINE}': extras.headline || pagina?.hero?.titulo || marca?.tagline || '',
+            '{SUBHEADLINE}': extras.subheadline || pagina?.hero?.subtitulo || '',
+            '{CTA}': extras.cta || pagina?.cta || 'Shop now',
+        };
+
+        let prompt = padrao.esqueleto;
+        Object.entries(valores).forEach(([marc, val]) => {
+            prompt = prompt.split(marc).join(val);
+        });
+        // Marcador sem valor deixaria a palavra crua no prompt final
+        MARCADORES.forEach(m => { prompt = prompt.split(m).join(''); });
+        return prompt.replace(/\s{2,}/g, ' ').trim();
+    }
+
+    // Gera uma imagem aplicando o padrão à foto base do produto.
+    async function gerarComPadrao(padraoId) {
+        const pid = _state.productId;
+        if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
+        const d = _dados(pid);
+        if (!d.fotoBase) { showToast('Escolha a foto base do produto', 'error'); return; }
+        const padrao = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!padrao) { showToast('Padrão não encontrado', 'error'); return; }
+
+        const chave = window.AIAdGenerator?._getOpenAIKey?.() || localStorage.getItem('openai_api_key') || '';
+        if (!chave) { showToast('Configure a chave OpenAI em AI Generations', 'error'); return; }
+
+        _state.gerando = true;
+        _renderFotos();
+        try {
+            const base = await _urlParaBlobPng(d.fotoBase);
+            const prompt = montarPromptDoPadrao(padrao, pid);
+            const blob = await _editarImagem(base, prompt, chave);
+
+            const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            const mediaId = 'studio_' + id;
+            await MediaStore.put(mediaId, blob, { type: blob.type, name: `${padrao.id}.png` });
+            const thumb = await _miniatura(blob);
+            d.fotos.unshift({ id, mediaId, thumb, preset: padrao.id, presetLabel: padrao.nome,
+                              prompt, padraoId: padrao.id, criadoEm: new Date().toISOString() });
+            padrao.usos = (padrao.usos || 0) + 1;
+            _save();
+            showToast(`Gerado com o padrão "${padrao.nome}"`, 'success');
+        } catch (err) {
+            showToast('Falha: ' + String(err.message).slice(0, 140), 'error');
+        } finally {
+            _state.gerando = false;
+            _renderFotos();
+            _renderPadroes();
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -820,6 +1030,103 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _icones();
     }
 
+    function _renderPadroes() {
+        const box = document.getElementById('studio-padroes');
+        if (!box) return;
+        const lista = _state.padroes || [];
+        if (!lista.length) {
+            box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
+            return;
+        }
+        box.innerHTML = lista.map(p => `
+            <div class="studio-padrao" data-id="${p.id}">
+                ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
+                <div class="studio-padrao-info">
+                    <strong>${_esc(p.nome)}</strong>
+                    <small>${_esc(p.observacao || '')}</small>
+                    <span class="studio-padrao-tags">
+                        ${(p.marcadores || []).map(m => `<em>${_esc(m.replace(/[{}]/g, ''))}</em>`).join('')}
+                        ${p.usos ? `<em class="studio-padrao-usos">${p.usos}× usado</em>` : ''}
+                    </span>
+                </div>
+                <div class="studio-padrao-acoes">
+                    <button class="btn btn-primary btn-sm" data-usar="${p.id}" title="Gerar uma foto deste produto usando este padrão">Aplicar</button>
+                    <button class="btn-icon" data-ver="${p.id}" title="Ver o prompt gerado"><i data-lucide="file-text" style="width:13px;height:13px"></i></button>
+                    <button class="btn-icon" data-del-padrao="${p.id}" title="Excluir padrão"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+                </div>
+            </div>`).join('');
+        _icones();
+
+        box.querySelectorAll('[data-usar]').forEach(b =>
+            b.addEventListener('click', () => gerarComPadrao(b.dataset.usar)));
+        box.querySelectorAll('[data-ver]').forEach(b =>
+            b.addEventListener('click', () => _verPrompt(b.dataset.ver)));
+        box.querySelectorAll('[data-del-padrao]').forEach(b =>
+            b.addEventListener('click', async () => {
+                const p = (_state.padroes || []).find(x => x.id === b.dataset.delPadrao);
+                if (!p || !confirm(`Excluir o padrão "${p.nome}"?`)) return;
+                if (p.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                    try { await MediaStore.del(p.exemploMediaId); } catch {}
+                }
+                _state.padroes = _state.padroes.filter(x => x.id !== p.id);
+                _save(); _renderPadroes();
+            }));
+    }
+
+    // Mostra o esqueleto e como ele fica preenchido para o produto atual —
+    // sem isso o padrão é uma caixa-preta e não dá para corrigir nada.
+    function _verPrompt(padraoId) {
+        const p = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!p) return;
+        const preenchido = _state.productId ? montarPromptDoPadrao(p, _state.productId) : '';
+        const html = `
+            <div id="modal-padrao-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;width:min(720px,94vw);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:0.85rem">
+                    <strong style="font-size:1rem">${_esc(p.nome)}</strong>
+                    <div>
+                        <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Esqueleto (com marcadores)</label>
+                        <pre class="studio-prompt-pre">${_esc(p.esqueleto)}</pre>
+                    </div>
+                    ${preenchido ? `<div>
+                        <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Como fica para o produto selecionado</label>
+                        <pre class="studio-prompt-pre">${_esc(preenchido)}</pre>
+                    </div>` : '<p class="studio-vazio">Selecione um produto para ver o prompt preenchido.</p>'}
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                        <button id="padrao-copiar" class="btn btn-secondary btn-sm">Copiar esqueleto</button>
+                        <button id="padrao-fechar" class="btn btn-primary btn-sm">Fechar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const ov = document.getElementById('modal-padrao-overlay');
+        const fechar = () => ov?.remove();
+        document.getElementById('padrao-fechar')?.addEventListener('click', fechar);
+        ov?.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        document.getElementById('padrao-copiar')?.addEventListener('click', () => {
+            navigator.clipboard.writeText(p.esqueleto);
+            showToast('Esqueleto copiado', 'success');
+        });
+    }
+
+    async function _subirPadrao(file) {
+        if (!file) return;
+        const status = document.getElementById('studio-padrao-status');
+        const nome = (document.getElementById('studio-padrao-nome')?.value || '').trim();
+        if (status) status.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Analisando o criativo…';
+        _icones();
+        try {
+            const p = await criarPadraoDeImagem(file, nome);
+            const campo = document.getElementById('studio-padrao-nome');
+            if (campo) campo.value = '';
+            if (status) status.textContent = '';
+            _renderPadroes();
+            showToast(`Padrão "${p.nome}" criado a partir do criativo.`, 'success');
+        } catch (err) {
+            if (status) status.textContent = '';
+            showToast('Falha: ' + (err.message || err), 'error');
+        }
+    }
+
     function _renderMarca() {
         const box = document.getElementById('studio-marca');
         if (!box) return;
@@ -868,7 +1175,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function _selecionarProduto(pid) {
         _state.productId = pid;
-        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets();
+        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderPadroes();
         _renderFotos(); _renderPagina(); _renderChat();
     }
 
@@ -907,6 +1214,12 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         });
 
         document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
+        document.getElementById('studio-padrao-pick')?.addEventListener('click', () => document.getElementById('studio-padrao-input')?.click());
+        document.getElementById('studio-padrao-input')?.addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) _subirPadrao(f);
+        });
         document.getElementById('studio-gerar-pagina')?.addEventListener('click', () => gerarPagina());
         document.getElementById('studio-exportar-csv')?.addEventListener('click', () => exportarCsv());
 
@@ -937,6 +1250,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _dados, _save, _load, _miniatura, _urlParaBlobPng, _editarImagem,
         _claude, _extrairJson, _corpoHtml, _handle,
         _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderMarca, _selecionarProduto,
+        criarPadraoDeImagem, montarPromptDoPadrao, gerarComPadrao, _renderPadroes, MARCADORES,
     };
 })();
 
