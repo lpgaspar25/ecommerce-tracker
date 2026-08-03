@@ -394,6 +394,22 @@ Responda APENAS com JSON válido:
 - nomeSugerido: rótulo curto em português para este padrão (ex.: "Caixa preta com luz de cima")
 - observacao: uma frase em português dizendo para que tipo de produto este padrão funciona melhor`;
 
+    // Transcrição literal do produto ATUAL (diferente do esqueleto, que é
+    // genérico). Nenhum modelo de edição de imagem garante preservar texto
+    // fino sem que ele esteja escrito, palavra por palavra, no prompt — é a
+    // orientação oficial tanto da OpenAI quanto do Google. Sem isso o modelo
+    // "adivinha" (ex.: troca uma marcação real por "Polarized", que é comum
+    // em óculos, ou inventa um logo que não existia na composição).
+    const SISTEMA_MARCACOES = `Você transcreve, de forma literal e exata, todo texto e elemento gráfico de marca visível numa foto de produto.
+
+Liste CADA texto impresso, gravado, em relevo ou bordado (nome de marca, modelo, selos como "Polarized"/"Waterproof", texto em etiquetas, zíperes, embalagem) exatamente como está escrito — sem traduzir, sem corrigir ortografia, sem completar. Se a palavra estiver cortada ou ilegível, transcreva só o que dá pra ler com certeza.
+
+Responda APENAS com JSON válido:
+{"marcacoes":[{"texto":"...","local":"..."}],"temTexto":true|false}
+- texto: a palavra/frase exata, entre aspas no idioma original
+- local: onde está (ex.: "haste direita do óculos", "tampa do estojo")
+- temTexto: false e marcacoes:[] se a foto não tiver nenhum texto/logo visível`;
+
     async function _visaoIA(system, base64, mediaType, texto) {
         const key = _chaveOpenAI();
         if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
@@ -478,6 +494,61 @@ Responda APENAS com JSON válido:
         return await (await fetch(dataUrl)).blob();
     }
 
+    // Lê literalmente o texto/logo visível na foto base ATUAL do produto.
+    // Cacheado por produto e invalidado se a foto base mudar, pra não gastar
+    // uma chamada de visão a cada geração com padrões diferentes.
+    async function _marcacoesDoProduto(pid, base) {
+        const d = _dados(pid);
+        if (d._marcacoesCache && d._marcacoesCache.fonte === d.fotoBase) {
+            return d._marcacoesCache.dados;
+        }
+        const base64 = await _blobParaBase64(base);
+        const txt = await _visaoIA(SISTEMA_MARCACOES, base64, 'image/png',
+            'Transcreva literalmente todo texto e logo visível nesta foto de produto.');
+        const dados = _extrairJson(txt);
+        d._marcacoesCache = { fonte: d.fotoBase, dados };
+        return dados;
+    }
+
+    // Bloco final anexado ao prompt: trava o que já existe no produto real
+    // pra IA não inventar substituto (ex.: "Polarized" no lugar do texto
+    // real) nem acrescentar elemento gráfico que não estava no esqueleto.
+    function _instrucaoPreservacao(marcacoes) {
+        const lista = (marcacoes?.marcacoes || [])
+            .filter(m => m?.texto)
+            .map(m => `"${m.texto}"${m.local ? ` (${m.local})` : ''}`);
+        if (!lista.length) {
+            return ' This is a photo edit of a real product, not a new illustration — do not add any text, logo, tag, plaque, or badge to the product that is not already visible in the input photo.';
+        }
+        return ` This is a photo edit of a real product, not a new illustration. The product in the input photo already has these exact markings — reproduce every one character-for-character, in the same position, without translating, paraphrasing, or substituting them: ${lista.join(', ')}. Do not add any other text, logo, tag, plaque, or badge beyond what is listed here.`;
+    }
+
+    // {DESCRICAO_PRODUTO} vai para um modelo de IMAGEM, então precisa conter
+    // traço físico, não copy de venda. A descrição da Shopify é texto de
+    // marketing ("PROTECT YOUR EYES WITH STYLE…") e o modelo desenhava aquilo
+    // como texto na cena — por isso as opções/variantes vêm primeiro, que são
+    // objetivas (cor, modelo), e o texto livre entra só higienizado.
+    function _descricaoFisica(p) {
+        const opcoes = (p?.shopifyOptions || [])
+            .filter(o => !/^(title|tamanho|size)$/i.test(o.name || ''))
+            .map(o => `${o.name}: ${o.values.join('/')}`)
+            .join('; ');
+        if (opcoes) return opcoes;
+
+        const bruto = String(p?.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!bruto) return '';
+        const frases = bruto.split(/(?<=[.!?])\s+/)
+            // Fora headline gritada e chamada de venda — viram texto na imagem.
+            .filter(f => f && !(f === f.toUpperCase() && f.length > 12))
+            .filter(f => !/^(discover|shop|buy|get|protect|order|dont |don't )/i.test(f.trim()));
+        let saida = '';
+        for (const f of frases) {
+            if ((saida + ' ' + f).trim().length > 180) break;
+            saida = (saida + ' ' + f).trim();
+        }
+        return saida || frases[0] || '';
+    }
+
     // Preenche os marcadores do esqueleto com os dados do produto/marca.
     function montarPromptDoPadrao(padrao, productId, extras = {}) {
         if (!padrao) return '';
@@ -486,14 +557,9 @@ Responda APENAS com JSON válido:
         const marca = d.marca;
         const pagina = d.pagina;
 
-        // Descrição física: prioriza o texto do produto; cai para as opções da
-        // Shopify, que descrevem cor/modelo de forma objetiva.
-        const descTexto = String(p?.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        const opcoes = (p?.shopifyOptions || []).map(o => `${o.name}: ${o.values.join('/')}`).join('; ');
-
         const valores = {
             '{PRODUTO}': extras.produto || p?.name || 'the product',
-            '{DESCRICAO_PRODUTO}': extras.descricao || descTexto.slice(0, 300) || opcoes || 'the product as shown in the reference photo',
+            '{DESCRICAO_PRODUTO}': extras.descricao || _descricaoFisica(p) || 'the product exactly as shown in the reference photo',
             '{MARCA}': extras.marca || marca?.nome || p?.vendor || '',
             '{HEADLINE}': extras.headline || pagina?.hero?.titulo || marca?.tagline || '',
             '{SUBHEADLINE}': extras.subheadline || pagina?.hero?.subtitulo || '',
@@ -533,7 +599,15 @@ Responda APENAS com JSON válido:
         _renderFotos();
         try {
             const base = await _urlParaBlobPng(d.fotoBase);
-            const prompt = montarPromptDoPadrao(padrao, pid);
+            let prompt = montarPromptDoPadrao(padrao, pid);
+            try {
+                const marcacoes = await _marcacoesDoProduto(pid, base);
+                prompt += _instrucaoPreservacao(marcacoes);
+            } catch (e) {
+                // Sem a transcrição a geração segue, só sem a trava extra —
+                // melhor gerar sem a proteção do que travar a feature toda.
+                console.warn('[Studio] não consegui transcrever as marcações do produto:', e.message);
+            }
             const blob = await _editarImagem(base, prompt, chave);
 
             const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
