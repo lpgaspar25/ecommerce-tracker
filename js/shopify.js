@@ -227,7 +227,7 @@ const ShopifyModule = (() => {
     // ── Orders (GraphQL) ──
 
     // Bump this when changing the order shape (cached payloads with old shape get invalidated).
-    const ORDERS_CACHE_VERSION = 'v3'; // bumped to per-day cache
+    const ORDERS_CACHE_VERSION = 'v4'; // v4: line_items ganharam discounted_price
     const DAY_CACHE_KEY = 'etracker_shopify_orders_day_cache';
     // Per-day TTL based on age:
     //   - today:        5 min  (data still changing)
@@ -280,10 +280,14 @@ const ShopifyModule = (() => {
     function _eachDayInRange(from, to) {
         const out = [];
         if (!from || !to) return out;
-        const start = new Date(from + 'T00:00:00');
+        const start = new Date(from + 'T00:00:00');   // meia-noite LOCAL
         const end = new Date(to + 'T00:00:00');
+        // Formatar em LOCAL, não com toISOString (que é UTC). Misturar os dois
+        // deslocava todo o intervalo em -1 dia em qualquer fuso a leste de
+        // Greenwich: pedir 01/08–31/08 em Londres buscava 31/07–30/08.
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            out.push(d.toISOString().slice(0, 10));
+            out.push(iso(d));
         }
         return out;
     }
@@ -310,6 +314,7 @@ const ShopifyModule = (() => {
                     nodes {
                       quantity
                       originalUnitPriceSet { shopMoney { amount currencyCode } }
+                      discountedUnitPriceSet { shopMoney { amount currencyCode } }
                       product { id title }
                       variant { id title }
                     }
@@ -430,6 +435,10 @@ const ShopifyModule = (() => {
                 title: li.product?.title,
                 quantity: li.quantity,
                 price: li.originalUnitPriceSet?.shopMoney?.amount,
+                // Preço realmente cobrado (desconto de linha aplicado). Sem isto,
+                // "50% na segunda unidade" contaria receita pelo preço cheio.
+                discounted_price: li.discountedUnitPriceSet?.shopMoney?.amount
+                    ?? li.originalUnitPriceSet?.shopMoney?.amount,
             })),
         };
     }
@@ -767,7 +776,7 @@ const ShopifyModule = (() => {
                 if (!pid) continue;
                 if (!agg[pid]) agg[pid] = { sales: 0, revenue: 0, currency };
                 agg[pid].sales += item.quantity || 0;
-                agg[pid].revenue += parseFloat(item.price || '0') * (item.quantity || 0);
+                agg[pid].revenue += parseFloat(item.discounted_price ?? item.price ?? '0') * (item.quantity || 0);
             }
         }
         return agg;
@@ -802,7 +811,7 @@ const ShopifyModule = (() => {
                 const key = `${date}|${pid}`;
                 if (!agg[key]) agg[key] = { sales: 0, revenue: 0, currency, date, productId: pid };
                 agg[key].sales += item.quantity || 0;
-                agg[key].revenue += parseFloat(item.price || '0') * (item.quantity || 0);
+                agg[key].revenue += parseFloat(item.discounted_price ?? item.price ?? '0') * (item.quantity || 0);
             }
         }
         return agg;
@@ -821,7 +830,7 @@ const ShopifyModule = (() => {
                 const qty = item.quantity || 0;
                 orderItems += qty;
                 agg[date].sales += qty;
-                agg[date].revenue += parseFloat(item.price || '0') * qty;
+                agg[date].revenue += parseFloat(item.discounted_price ?? item.price ?? '0') * qty;
             }
             if (orderItems > 0) agg[date].orderCount += 1;
         }

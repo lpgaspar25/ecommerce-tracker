@@ -222,7 +222,7 @@ const SalesModule = (() => {
             for (const li of (o.line_items || [])) {
                 const qty = li.quantity || 0;
                 if (!qty) continue;
-                const unitPrice = parseFloat(li.price) || 0;
+                const unitPrice = parseFloat(li.discounted_price ?? li.price) || 0;
                 totalUnits += qty;
                 totalRevenueUSD += conv(unitPrice * qty, o.currency || 'USD');
                 // Find product by id, fallback by title match
@@ -882,7 +882,7 @@ const SalesModule = (() => {
                 const pid = String(li.product_id || '');
                 if (!pid) continue;
                 const qty = li.quantity || 0;
-                const unitPrice = parseFloat(li.price) || 0;
+                const unitPrice = parseFloat(li.discounted_price ?? li.price) || 0;
                 if (!byProd[pid]) byProd[pid] = { sales: 0, revenue: 0, title: li.title || pid, currency: cur };
                 byProd[pid].sales += qty;
                 byProd[pid].revenue += unitPrice * qty;
@@ -917,7 +917,7 @@ const SalesModule = (() => {
                 const pid = String(li.product_id || '');
                 if (!pid) continue;
                 const qty = li.quantity || 0;
-                const unitPrice = parseFloat(li.price) || 0;
+                const unitPrice = parseFloat(li.discounted_price ?? li.price) || 0;
                 const lineUsd = (typeof convertToUSD === 'function') ? convertToUSD(unitPrice * qty, cur) : unitPrice * qty;
                 if (!e.products.has(pid)) e.products.set(pid, { title: li.title || pid, sales: 0, revenue: 0 });
                 const pe = e.products.get(pid);
