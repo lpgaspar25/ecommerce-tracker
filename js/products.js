@@ -101,6 +101,17 @@ const ProductsModule = {
 
         // AI description button
         document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
+        document.getElementById('btn-prod-ai-desc-imgs')?.addEventListener('click', () => this.melhorarImagensDescricao());
+
+        // IA nas imagens do produto
+        document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
+        document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
+        document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
+        const provSel = document.getElementById('prod-img-provider');
+        if (provSel) {
+            provSel.value = localStorage.getItem('studio_img_provider') || 'auto';
+            provSel.addEventListener('change', () => localStorage.setItem('studio_img_provider', provSel.value));
+        }
 
         // Importar preços/custos por país de outro produto
         document.getElementById('btn-import-country-costs')?.addEventListener('click', () => this.openImportCountryCosts());
@@ -961,7 +972,9 @@ const ProductsModule = {
             <div class="prod-image-thumb">
                 <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy">
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
+                <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
+                ${img.melhorada ? '<span class="prod-image-ai" title="Versão melhorada por IA">IA</span>' : ''}
                 ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
             </div>
         `).join('');
@@ -971,10 +984,352 @@ const ProductsModule = {
                 this._renderProductImages();
             });
         });
+        thumbs.querySelectorAll('[data-enhance]').forEach(btn => {
+            btn.addEventListener('click', () => this.melhorarImagem(parseInt(btn.dataset.enhance, 10)));
+        });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
         // Imagens da Shopify são URLs e não contam para esse limite.
         const enviadas = this._images.filter(im => im.dataUrl).length;
         if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  IA nas imagens do produto
+    //  Melhorar qualidade, gerar capa a partir de um padrão de criativo
+    //  e gerar o produto em uso / sobre uma superfície.
+    //
+    //  Nota honesta sobre "melhorar qualidade": nenhum dos provedores faz
+    //  upscale determinístico com chave de API (o do Google existe só no
+    //  Vertex AI, que exige service account). O que acontece aqui é
+    //  RE-SÍNTESE guiada — o modelo redesenha a foto tentando preservar
+    //  tudo. Por isso a original é sempre guardada em `_original`, e dá
+    //  para desfazer imagem por imagem.
+    // ══════════════════════════════════════════════════════════════
+
+    // Imagens do produto vivem no localStorage como base64, então não dá pra
+    // guardar 4K: 1200px em WebP 0.82 é bem melhor que os 800px/0.75 do
+    // upload comum sem estourar a cota.
+    _IMG_MAX: 1200,
+    _IMG_QUALIDADE: 0.82,
+
+    _provedorImagem() {
+        return document.getElementById('prod-img-provider')?.value || 'auto';
+    },
+
+    _statusImagem(texto, cor) {
+        const el = document.getElementById('prod-img-ai-status');
+        if (!el) return;
+        if (!texto) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = '';
+        el.textContent = texto;
+        el.style.color = cor || 'var(--text-muted)';
+    },
+
+    // Contexto textual do produto pro prompt — usa o que está no formulário
+    // agora (pode ter edição não salva), não o que está no AppState.
+    _contextoDoFormulario() {
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        const vendor = (document.getElementById('product-vendor')?.value || '').trim();
+        const desc = (document.getElementById('product-description')?.innerText || '')
+            .replace(/\s+/g, ' ').trim().slice(0, 220);
+        return [nome, vendor && `by ${vendor}`, desc].filter(Boolean).join(' — ');
+    },
+
+    // Melhora um blob e devolve dataUrl WebP na dimensão pedida.
+    async _melhorarBlob(blob, { largura, altura } = {}) {
+        const dim = (largura && altura)
+            ? { largura, altura }
+            : await dimensoesDaImagem(blob);
+
+        const gerado = await ImageAI.editar(blob, ImageAI.promptMelhoria(this._contextoDoFormulario()), {
+            provedor: this._provedorImagem(),
+            largura: dim.largura,
+            altura: dim.altura,
+            // Pede a render MAIOR que o destino de propósito: reduzir depois
+            // no canvas ("supersampling") sai mais nítido do que gerar já no
+            // tamanho final. O Gemini ignora e segue a proporção da referência.
+            alvoPixels: Math.min(8294400, Math.max(1500000, dim.largura * dim.altura * 4)),
+            formato: 'image/webp',
+            compressao: 90,
+        });
+
+        // Normaliza no canvas: garante as dimensões exatas e converte o JPEG
+        // do Gemini (que não tem WebP na saída) para WebP.
+        return await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, {
+            formato: 'image/webp',
+            largura: dim.largura,
+            altura: dim.altura,
+        });
+    },
+
+    async melhorarImagem(idx) {
+        const img = this._images[idx];
+        if (!img) return;
+        const origem = img.dataUrl || img.url;
+        if (!origem) { showToast('Imagem sem origem', 'error'); return; }
+
+        this._statusImagem('Melhorando a imagem…');
+        try {
+            const blob = await bytesDaImagem(origem);
+            const dim = await dimensoesDaImagem(blob);
+            const dataUrl = await this._melhorarBlob(blob, dim);
+
+            // Substitui NA MESMA POSIÇÃO, guardando a original pra desfazer.
+            this._images[idx] = {
+                ...img,
+                dataUrl,
+                url: '',                       // agora é local, não mais o CDN
+                melhorada: true,
+                _original: img._original || { dataUrl: img.dataUrl || '', url: img.url || '' },
+                name: (img.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
+            };
+            this._renderProductImages();
+            this._statusImagem('');
+            showToast(`Imagem ${idx + 1} melhorada (${dim.largura}×${dim.altura}, WebP)`, 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao melhorar: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    async melhorarTodasImagens() {
+        const alvos = this._images
+            .map((im, i) => ({ im, i }))
+            .filter(({ im }) => (im.dataUrl || im.url) && !im.melhorada);
+        if (!alvos.length) { showToast('Nada para melhorar — todas já foram processadas.', 'info'); return; }
+        if (!confirm(`Melhorar ${alvos.length} imagem(ns)? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let n = 0; n < alvos.length; n++) {
+            const { im, i } = alvos[n];
+            this._statusImagem(`Melhorando ${n + 1} de ${alvos.length}…`);
+            try {
+                const blob = await bytesDaImagem(im.dataUrl || im.url);
+                const dim = await dimensoesDaImagem(blob);
+                const dataUrl = await this._melhorarBlob(blob, dim);
+                this._images[i] = {
+                    ...im, dataUrl, url: '', melhorada: true,
+                    _original: im._original || { dataUrl: im.dataUrl || '', url: im.url || '' },
+                    name: (im.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
+                };
+                ok++;
+                this._renderProductImages();
+            } catch (e) {
+                console.warn('[Produtos] falha ao melhorar imagem', i, e.message);
+                falhas++;
+            }
+        }
+        this._statusImagem('');
+        showToast(falhas
+            ? `${ok} melhorada(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) melhorada(s) em WebP.`, falhas ? 'warning' : 'success');
+    },
+
+    // ── Imagens dentro do HTML da descrição ──
+    // Mantém as MESMAS dimensões: a descrição é HTML que vai pra loja e
+    // trocar o tamanho de uma imagem quebraria o layout da página.
+    async melhorarImagensDescricao() {
+        const editor = document.getElementById('product-description');
+        if (!editor) return;
+        const imgs = [...editor.querySelectorAll('img')];
+        if (!imgs.length) { showToast('A descrição não tem imagens.', 'info'); return; }
+        if (!confirm(`Melhorar ${imgs.length} imagem(ns) da descrição? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let i = 0; i < imgs.length; i++) {
+            const el = imgs[i];
+            const origem = el.getAttribute('src');
+            if (!origem) { falhas++; continue; }
+            this._statusImagem(`Melhorando imagem ${i + 1} de ${imgs.length} da descrição…`);
+            try {
+                const blob = await bytesDaImagem(origem);
+                // Dimensão de destino: o que o HTML declara (width/height ou
+                // style) manda; sem isso, o tamanho natural do arquivo.
+                const natural = await dimensoesDaImagem(blob);
+                const largura = parseInt(el.getAttribute('width'), 10) || natural.largura;
+                const altura = parseInt(el.getAttribute('height'), 10) || natural.altura;
+
+                const dataUrl = await this._melhorarBlob(blob, { largura, altura });
+                el.setAttribute('src', dataUrl);
+                el.dataset.melhorada = '1';
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha na imagem da descrição', i, e.message);
+                falhas++;
+            }
+        }
+        this._statusImagem('');
+        showToast(falhas
+            ? `${ok} imagem(ns) da descrição melhorada(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) da descrição melhorada(s).`, falhas ? 'warning' : 'success');
+    },
+
+    // ── Gerar capa a partir de um padrão de criativo (com filtro de nicho) ──
+    abrirGerarCapa() {
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        if (!padroes.length) {
+            showToast('Nenhum padrão de criativo ainda. Crie um no Estúdio de Produto (Padrões de criativo).', 'info');
+            return;
+        }
+        const base = this._images[0];
+        if (!base || !(base.dataUrl || base.url)) {
+            showToast('Adicione ao menos uma foto do produto para servir de base.', 'error');
+            return;
+        }
+
+        const nichos = [...new Set(padroes.map(p => p.nicho).filter(Boolean))].sort();
+        const opcoesNicho = ['<option value="">Todos os nichos</option>']
+            .concat(nichos.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)).join('');
+
+        const cartao = (p) => `
+            <button type="button" class="prod-padrao-card" data-padrao="${p.id}" data-nicho="${escapeHtml(p.nicho || '')}">
+                ${p.exemploThumb ? `<img src="${p.exemploThumb}" alt="">` : '<span class="prod-padrao-sem"></span>'}
+                <span class="prod-padrao-nome">${escapeHtml(p.nome)}</span>
+                ${p.nicho ? `<span class="prod-padrao-nicho">${escapeHtml(p.nicho)}${p.subnicho ? ' · ' + escapeHtml(p.subnicho) : ''}</span>` : ''}
+            </button>`;
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar capa a partir de um padrão</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">Usa a primeira foto do produto como base e reaplica o enquadramento do padrão escolhido.</p>
+            <select id="pcapa-nicho" class="input input-sm">${opcoesNicho}</select>
+            <div id="pcapa-lista" class="prod-padrao-grid">${padroes.map(cartao).join('')}</div>
+        `, (ov) => {
+            const filtro = ov.querySelector('#pcapa-nicho');
+            filtro.addEventListener('change', () => {
+                ov.querySelectorAll('.prod-padrao-card').forEach(c => {
+                    c.style.display = (!filtro.value || c.dataset.nicho === filtro.value) ? '' : 'none';
+                });
+            });
+            ov.querySelectorAll('.prod-padrao-card').forEach(c => {
+                c.addEventListener('click', () => {
+                    const p = padroes.find(x => x.id === c.dataset.padrao);
+                    ov.remove();
+                    if (p) this._gerarComPadrao(p);
+                });
+            });
+        });
+    },
+
+    async _gerarComPadrao(padrao) {
+        const base = this._images[0];
+        this._statusImagem(`Gerando capa com o padrão "${padrao.nome}"…`);
+        try {
+            const blobBase = await bytesDaImagem(base.dataUrl || base.url);
+            // O esqueleto do padrão já vem com marcadores; preenche com o que
+            // está no formulário agora (produto pode nem estar salvo ainda).
+            const idProduto = document.getElementById('product-id')?.value || null;
+            let prompt = window.StudioModule?.montarPromptDoPadrao?.(padrao, idProduto, {
+                produto: (document.getElementById('product-name')?.value || '').trim() || 'the product',
+                marca: (document.getElementById('product-vendor')?.value || '').trim(),
+            }) || padrao.esqueleto;
+
+            // A referência visual do padrão entra como PIXEL quando existe —
+            // descrever a composição em texto não reproduz o enquadramento.
+            const blobs = [blobBase];
+            let refBlob = null;
+            if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                try { refBlob = (await MediaStore.get(padrao.exemploMediaId))?.blob || null; } catch {}
+            }
+            if (!refBlob && padrao.exemploThumb) {
+                try { refBlob = await bytesDaImagem(padrao.exemploThumb); } catch {}
+            }
+            if (refBlob) {
+                blobs.unshift(refBlob);   // [referência, produto] — o prompt fala em "first/second image"
+                prompt = `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting and colour grading. THE SECOND IMAGE is the real product. Rebuild the scene of the first image featuring the product from the second image, keeping that product's exact shape, colour, materials and every marking unchanged. ${prompt}`;
+            }
+
+            const gerado = await ImageAI.editar(blobs, prompt, {
+                provedor: this._provedorImagem(),
+                largura: 1024, altura: 1024,
+                formato: 'image/webp', compressao: 90,
+            });
+            const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+
+            // Capa entra na primeira posição — é o que a lista rotula "Capa".
+            this._images.unshift({ dataUrl, name: `capa-${padrao.id}.webp`, melhorada: true });
+            this._renderProductImages();
+            this._statusImagem('');
+            showToast(`Capa gerada com o padrão "${padrao.nome}"`, 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao gerar capa: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    // ── Produto em uso / sobre uma superfície ──
+    abrirGerarCenario() {
+        const base = this._images[0];
+        if (!base || !(base.dataUrl || base.url)) {
+            showToast('Adicione ao menos uma foto do produto para servir de base.', 'error');
+            return;
+        }
+        const sugestoes = [
+            'being held in a person\'s hand, outdoors',
+            'on top of a rustic wooden table',
+            'on top of a white marble countertop',
+            'being worn by an adult model, natural light',
+            'on top of a car dashboard',
+            'on a beach towel with sand and sea in the background',
+        ];
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar produto em uso</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">Descreva onde/como o produto aparece. Em inglês funciona melhor nos modelos de imagem.</p>
+            <input id="pcen-texto" class="input" placeholder="ex.: on top of a wooden table / being used by a fisherman" list="pcen-sugestoes">
+            <datalist id="pcen-sugestoes">${sugestoes.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+            <div class="prod-cenario-chips">${sugestoes.map(s => `<button type="button" class="prod-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button type="button" class="btn btn-primary btn-sm" id="pcen-gerar">Gerar</button>
+            </div>
+        `, (ov) => {
+            const campo = ov.querySelector('#pcen-texto');
+            ov.querySelectorAll('.prod-cenario-chip').forEach(b => {
+                b.addEventListener('click', () => { campo.value = b.dataset.sug; campo.focus(); });
+            });
+            const gerar = () => {
+                const txt = campo.value.trim();
+                if (!txt) { showToast('Descreva o cenário', 'error'); campo.focus(); return; }
+                ov.remove();
+                this._gerarCenario(txt);
+            };
+            ov.querySelector('#pcen-gerar').addEventListener('click', gerar);
+            campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); gerar(); } });
+            setTimeout(() => campo.focus(), 30);
+        });
+    },
+
+    async _gerarCenario(sobre) {
+        const base = this._images[0];
+        this._statusImagem('Gerando o produto em uso…');
+        try {
+            const blob = await bytesDaImagem(base.dataUrl || base.url);
+            const gerado = await ImageAI.editar(blob, ImageAI.promptCenario(sobre, this._contextoDoFormulario()), {
+                provedor: this._provedorImagem(),
+                largura: 1024, altura: 1024,
+                formato: 'image/webp', compressao: 90,
+            });
+            const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+            this._images.push({ dataUrl, name: 'em-uso.webp', melhorada: true });
+            this._renderProductImages();
+            this._statusImagem('');
+            showToast('Imagem do produto em uso gerada', 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao gerar: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    // Overlay leve reaproveitado pelos dois seletores acima.
+    _abrirOverlay(html, aoAbrir) {
+        document.getElementById('prod-img-overlay')?.remove();
+        const ov = document.createElement('div');
+        ov.id = 'prod-img-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center';
+        ov.innerHTML = `<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;width:min(680px,94vw);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:0.8rem">${html}</div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+        aoAbrir?.(ov);
     },
 
     // Mostra as variantes trazidas da Shopify (leitura). Elas existem para

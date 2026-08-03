@@ -1,6 +1,6 @@
 /* ===========================
    AI Ad Generator
-   - Gera imagens via OpenAI DALL-E 3 OU Google Imagen 3
+   - Gera imagens via OpenAI (GPT Image / DALL-E 3) OU Google Gemini Image
    - Gera copy via OpenAI GPT-4o-mini
    - Comprime imagens para WebP (canvas) antes de salvar
    - Persiste gerações em localStorage
@@ -49,7 +49,7 @@ const AIAdGenerator = {
         const provider = this._getProvider();
         const qualityEl = document.getElementById('aiad-quality');
         if (qualityEl) {
-            const isGoogle = provider === 'google' || provider === 'google-imagen2';
+            const isGoogle = provider === 'google' || provider === 'google-pro';
             qualityEl.disabled = isGoogle;
             qualityEl.style.opacity = isGoogle ? '0.45' : '';
 
@@ -65,7 +65,7 @@ const AIAdGenerator = {
                     <option value="standard">Padrão</option>`;
                 qualityEl.title = 'Qualidade para DALL-E 3';
             } else {
-                qualityEl.title = 'Qualidade não se aplica ao Google Imagen';
+                qualityEl.title = 'Qualidade não se aplica ao Google Gemini Image';
             }
         }
         // Update config button label
@@ -96,7 +96,7 @@ const AIAdGenerator = {
             // (Auth key) por padrão. Os dois são válidos até lá — aceitar só um
             // rejeitaria a chave que a maioria dos usuários novos recebe hoje.
             id: 'google', nome: 'Google AI (Gemini)', storageKey: 'google_ai_api_key', prefixos: ['AIzaSy', 'AQ.'],
-            uso: 'Google Imagen 2/3 e o Gemini Image no Estúdio.',
+            uso: 'Gemini Image (geração e edição) nas telas de IA e no Estúdio.',
             link: 'https://aistudio.google.com/app/apikey',
         },
         {
@@ -211,7 +211,7 @@ const AIAdGenerator = {
         const quality = opts.quality || document.getElementById('aiad-quality')?.value || 'standard';
         const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
 
-        const providerLabel = { 'google': 'Google Imagen 3', 'google-imagen2': 'Google Imagen 2', 'gpt-image-2': 'GPT Image 2', 'gpt-image-1': 'GPT Image 1', 'openai': 'DALL-E 3' }[provider] || provider;
+        const providerLabel = { 'google': 'Gemini Image', 'google-pro': 'Gemini Image Pro', 'gpt-image-2': 'GPT Image 2', 'gpt-image-1': 'GPT Image 1', 'openai': 'DALL-E 3' }[provider] || provider;
         const results = document.getElementById('aiad-results');
         if (results) {
             results.innerHTML = `<div class="aiad-loading">Gerando ${count} imagem(ns) com ${providerLabel}…</div>`;
@@ -222,8 +222,8 @@ const AIAdGenerator = {
             let items;
             if (provider === 'google') {
                 items = await this._generateWithGoogle(prompt, size, count);
-            } else if (provider === 'google-imagen2') {
-                items = await this._generateWithGoogleImagen2(prompt, size, count);
+            } else if (provider === 'google-pro') {
+                items = await this._generateWithGoogle(prompt, size, count, 'gemini-3-pro-image');
             } else if (provider === 'gpt-image-2') {
                 items = await this._generateWithGPTImage(prompt, size, count, quality, 'gpt-image-2');
             } else if (provider === 'gpt-image-1') {
@@ -341,97 +341,77 @@ const AIAdGenerator = {
         }));
     },
 
-    // ── Google Imagen 3 ────────────────────────────────────────────────
-    async _generateWithGoogle(prompt, size, count) {
+    // ── Google (Gemini Image / "Nano Banana") ──────────────────────────
+    // Os modelos Imagen que ficavam aqui (imagen-3.0-generate-001 e
+    // imagen-2.0-generate-001, endpoint :predict) foram DESCONTINUADOS: a doc
+    // oficial anuncia desligamento em 17/08/2026 e manda migrar para os
+    // Nano Banana. Estes usam :generateContent, não :predict, e devolvem a
+    // imagem em candidates[].content.parts[].inlineData — formato diferente.
+    async _generateWithGoogle(prompt, size, count, modeloPreferido) {
         const key = this._getGoogleKey();
         if (!key) {
-            this._configGoogle();
-            throw new Error('Chave Google AI não configurada');
-        }
-
-        // Mapa size → aspectRatio
-        const aspectMap = {
-            '1024x1024': '1:1',
-            '1024x1792': '9:16',
-            '1792x1024': '16:9'
-        };
-        const aspectRatio = aspectMap[size] || '1:1';
-
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${key}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: {
-                        sampleCount: Math.min(count, 4),
-                        aspectRatio,
-                        safetyFilterLevel: 'block_some',
-                        personGeneration: 'allow_adult'
-                    }
-                })
-            }
-        );
-
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message || 'Erro na Google Imagen API');
-
-        const predictions = data.predictions || [];
-        if (!predictions.length) throw new Error('Google Imagen não retornou imagens. Verifique sua chave e região.');
-
-        const now = Date.now();
-        return predictions.map((p, i) => ({
-            id: 'gen_' + (now + i) + '_' + Math.random().toString(36).slice(2, 7),
-            provider: 'google',
-            prompt,
-            size,
-            createdAt: new Date().toISOString(),
-            dataUrl: `data:${p.mimeType || 'image/png'};base64,${p.bytesBase64Encoded}`
-        }));
-    },
-
-    // ── Google Imagen 2 ────────────────────────────────────────────────
-    async _generateWithGoogleImagen2(prompt, size, count) {
-        const key = this._getGoogleKey();
-        if (!key) {
-            this._configGoogle();
+            this.openApiKeysModal();
             throw new Error('Chave Google AI não configurada');
         }
 
         const aspectMap = { '1024x1024': '1:1', '1024x1792': '9:16', '1792x1024': '16:9' };
         const aspectRatio = aspectMap[size] || '1:1';
 
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/imagen-2.0-generate-001:predict?key=${key}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: {
-                        sampleCount: Math.min(count, 4),
-                        aspectRatio,
-                        safetyFilterLevel: 'block_some',
-                        personGeneration: 'allow_adult'
-                    }
-                })
-            }
-        );
+        const modelos = modeloPreferido
+            ? [modeloPreferido, 'gemini-3.1-flash-image', 'gemini-3-pro-image']
+            : ['gemini-3.1-flash-image', 'gemini-3-pro-image'];
 
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message || 'Erro Google Imagen 2');
-        const predictions = data.predictions || [];
-        if (!predictions.length) throw new Error('Google Imagen 2 não retornou imagens. Verifique sua chave e região.');
+        // generateContent devolve UMA imagem por chamada — o paralelo cobre o
+        // "n" que o :predict fazia com sampleCount.
+        const umaImagem = async () => {
+            let ultimoErro = '';
+            for (const modelo of [...new Set(modelos)]) {
+                const res = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                responseModalities: ['IMAGE'],
+                                imageConfig: { aspectRatio, imageSize: '2K' },
+                            },
+                        }),
+                    }
+                );
+                if (!res.ok) {
+                    ultimoErro = (await res.text()).slice(0, 200);
+                    if (res.status === 404 || res.status === 403 || res.status === 400) continue;
+                    throw new Error('Google: ' + ultimoErro);
+                }
+                const data = await res.json();
+                const partes = data?.candidates?.[0]?.content?.parts || [];
+                const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+                const b64 = img?.inlineData?.data || img?.inline_data?.data;
+                if (b64) return { b64, mime: img?.inlineData?.mimeType || 'image/png' };
+                const txt = partes.map(p => p.text).filter(Boolean).join(' ').slice(0, 160);
+                throw new Error('Google não devolveu imagem' + (txt ? `: ${txt}` : '.'));
+            }
+            throw new Error('Google: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
+        };
+
+        const resultados = await Promise.allSettled(
+            Array.from({ length: Math.min(count, 4) }, () => umaImagem())
+        );
+        const ok = resultados.filter(r => r.status === 'fulfilled').map(r => r.value);
+        if (!ok.length) {
+            throw new Error(resultados[0]?.reason?.message || 'Google não retornou imagens');
+        }
 
         const now = Date.now();
-        return predictions.map((p, i) => ({
+        return ok.map((p, i) => ({
             id: 'gen_' + (now + i) + '_' + Math.random().toString(36).slice(2, 7),
-            provider: 'google-imagen2',
+            provider: 'google',
             prompt,
             size,
             createdAt: new Date().toISOString(),
-            dataUrl: `data:${p.mimeType || 'image/png'};base64,${p.bytesBase64Encoded}`
+            dataUrl: `data:${p.mime};base64,${p.b64}`
         }));
     },
 
@@ -575,8 +555,8 @@ const AIAdGenerator = {
         results.innerHTML = items.map((item, i) => `
             <div class="aiad-result-item" data-id="${item.id}">
                 <img src="${srcs[i]}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
-                <div class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
-                    ${ {'google':'Google Imagen 3','google-imagen2':'Google Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
+                <div class="aiad-result-badge ${ String(item.provider || '').startsWith('google') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
+                    ${ {'google':'Gemini Image','google-pro':'Gemini Image Pro','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
                 </div>
                 <div class="aiad-result-actions">
                     <button class="btn btn-secondary btn-sm" data-action="download" data-id="${item.id}" title="Baixar WebP"><i data-lucide="download" style="width:13px;height:13px"></i></button>
@@ -824,7 +804,7 @@ const AIAdGenerator = {
                 <div class="aigen-card-meta">
                     <span class="aigen-card-prompt" title="${this._esc(item.revisedPrompt || item.prompt)}">${this._esc((item.prompt || '').slice(0, 80))}${(item.prompt || '').length > 80 ? '…' : ''}</span>
                     <div class="aigen-card-actions">
-                        <span class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">${ {'google':'Imagen 3','google-imagen2':'Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }</span>
+                        <span class="aiad-result-badge ${ String(item.provider || '').startsWith('google') ? 'aiad-badge-google' : 'aiad-badge-openai'}">${ {'google':'Gemini','google-pro':'Gemini Pro','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }</span>
                         <button class="btn-icon" data-action="save-creative" data-id="${item.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="dl" data-id="${item.id}" title="Baixar"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="cp" data-id="${item.id}" title="Copiar prompt"><i data-lucide="copy" style="width:13px;height:13px"></i></button>

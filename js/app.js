@@ -880,36 +880,66 @@ function escapeHtml(raw) {
 // pra fotos, e cortar o lado maior em 1500px já cobre os formatos de anúncio
 // mais comuns (Meta pede no máximo 1440px de largura recomendada).
 // GIF fica de fora — comprimir pra JPEG destruiria a animação.
-function comprimirImagem(blob, maxDim = 1500, quality = 0.9) {
+//
+// `opcoes` cobre os casos além do padrão:
+//   formato: 'image/webp' pra trocar o container (WebP mantém canal alfa, então
+//            o fundo branco NÃO é aplicado — só JPEG precisa dele).
+//   largura/altura: força dimensões EXATAS, ignorando maxDim. Usado quando a
+//            imagem nova precisa ocupar o lugar de uma antiga sem quebrar o
+//            layout (ex.: imagem dentro do HTML da descrição do produto).
+//   encaixe: 'cover' (padrão quando se força dimensão) recorta o excedente pra
+//            preencher sem distorcer; 'esticar' deforma pra caber.
+function comprimirImagem(blob, maxDim = 1500, quality = 0.9, opcoes = {}) {
     return new Promise((resolve, reject) => {
         if (!blob || !String(blob.type || '').startsWith('image/') || blob.type === 'image/gif') {
             resolve({ blob, comprimiu: false });
             return;
         }
+        const formato = opcoes.formato || 'image/jpeg';
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.onload = () => {
             const largura = img.naturalWidth || img.width;
             const altura = img.naturalHeight || img.height;
-            const maior = Math.max(largura, altura);
-            const escala = maior > maxDim ? maxDim / maior : 1; // nunca aumenta
-            const w = Math.max(1, Math.round(largura * escala));
-            const h = Math.max(1, Math.round(altura * escala));
+
+            let w, h;
+            if (opcoes.largura && opcoes.altura) {
+                w = Math.max(1, Math.round(opcoes.largura));
+                h = Math.max(1, Math.round(opcoes.altura));
+            } else {
+                const maior = Math.max(largura, altura);
+                const escala = maior > maxDim ? maxDim / maior : 1; // nunca aumenta
+                w = Math.max(1, Math.round(largura * escala));
+                h = Math.max(1, Math.round(altura * escala));
+            }
 
             const canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
-            // Fundo branco: PNG com transparência viraria preto ao virar JPEG
-            // (JPEG não tem canal alfa) sem isso.
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, w, h);
-            ctx.drawImage(img, 0, 0, w, h);
+            // Fundo branco só faz sentido em JPEG, que não tem canal alfa —
+            // aplicá-lo em WebP destruiria transparência que o formato suporta.
+            if (formato === 'image/jpeg') {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, w, h);
+            }
+            ctx.imageSmoothingQuality = 'high';
+
+            const forcouDimensao = !!(opcoes.largura && opcoes.altura);
+            if (forcouDimensao && opcoes.encaixe !== 'esticar') {
+                // "cover": preenche o quadro inteiro mantendo a proporção da
+                // origem e recortando o excedente — esticar deformaria o produto.
+                const escala = Math.max(w / largura, h / altura);
+                const dw = largura * escala, dh = altura * escala;
+                ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+            } else {
+                ctx.drawImage(img, 0, 0, w, h);
+            }
             URL.revokeObjectURL(url);
 
             canvas.toBlob((out) => {
                 if (!out) { reject(new Error('Falha ao comprimir a imagem')); return; }
                 resolve({ blob: out, comprimiu: true, width: w, height: h });
-            }, 'image/jpeg', quality);
+            }, formato, quality);
         };
         img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); };
         img.src = url;
@@ -919,13 +949,37 @@ function comprimirImagem(blob, maxDim = 1500, quality = 0.9) {
 // Mesma compressão, mas devolve dataURL (base64) — usado onde a imagem é
 // guardada direto no localStorage (ex.: fotos de produto) em vez de no
 // IndexedDB via MediaStore.
-async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9) {
-    const { blob: comprimido } = await comprimirImagem(blob, maxDim, quality);
+async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9, opcoes = {}) {
+    const { blob: comprimido } = await comprimirImagem(blob, maxDim, quality, opcoes);
     return await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onloadend = () => resolve(String(r.result || ''));
         r.onerror = () => reject(new Error('Falha ao converter a imagem'));
         r.readAsDataURL(comprimido);
+    });
+}
+
+// Baixa os bytes de uma imagem, seja ela base64 (upload local) ou URL remota
+// (CDN da Shopify). Os dois casos aparecem misturados em product.images.
+async function bytesDaImagem(src) {
+    if (!src) throw new Error('Imagem sem origem');
+    const r = await fetch(src);           // funciona pra data: e https: com CORS
+    if (!r.ok) throw new Error(`Não consegui baixar a imagem (HTTP ${r.status})`);
+    return await r.blob();
+}
+
+// Dimensões reais de um blob de imagem — necessário pra devolver a versão
+// melhorada exatamente no mesmo tamanho da original.
+function dimensoesDaImagem(blob) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve({ largura: img.naturalWidth || img.width, altura: img.naturalHeight || img.height });
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); };
+        img.src = url;
     });
 }
 

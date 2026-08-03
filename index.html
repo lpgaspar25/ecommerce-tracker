@@ -670,9 +670,14 @@
                                     <div class="form-group" style="margin:0">
                                         <div class="prod-rich-label">
                                             <label>Descrição</label>
-                                            <button type="button" id="btn-prod-ai-desc" class="btn btn-secondary btn-sm prod-ai-btn">
-                                                <i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar com IA
-                                            </button>
+                                            <span style="display:flex;gap:0.35rem">
+                                                <button type="button" id="btn-prod-ai-desc-imgs" class="btn btn-secondary btn-sm prod-ai-btn" title="Melhorar a qualidade das imagens dentro da descrição, mantendo as mesmas dimensões">
+                                                    <i data-lucide="wand-2" style="width:13px;height:13px;vertical-align:-2px"></i> Melhorar imagens
+                                                </button>
+                                                <button type="button" id="btn-prod-ai-desc" class="btn btn-secondary btn-sm prod-ai-btn">
+                                                    <i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar com IA
+                                                </button>
+                                            </span>
                                         </div>
                                         <div class="prod-rich-toolbar">
                                             <button type="button" class="prod-rich-btn" data-cmd="bold" title="Negrito"><b>B</b></button>
@@ -691,7 +696,25 @@
 
                                 <!-- Media -->
                                 <div class="prod-section-card">
-                                    <label style="display:block;margin-bottom:0.5rem">Mídia</label>
+                                    <div class="prod-midia-head">
+                                        <label style="margin:0">Mídia</label>
+                                        <div class="prod-img-ai-bar">
+                                            <select id="prod-img-provider" class="input input-sm" title="Qual IA gera/melhora as imagens">
+                                                <option value="auto">Automático (Gemini → OpenAI)</option>
+                                                <option value="gemini">Google · Gemini Image</option>
+                                                <option value="openai">OpenAI · GPT Image</option>
+                                            </select>
+                                            <button type="button" id="btn-prod-gen-cover" class="btn btn-secondary btn-sm" title="Gerar uma foto de capa a partir de um padrão de criativo">
+                                                <i data-lucide="stamp" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar capa
+                                            </button>
+                                            <button type="button" id="btn-prod-gen-scene" class="btn btn-secondary btn-sm" title="Gerar o produto em uso / sobre alguma superfície">
+                                                <i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Produto em uso
+                                            </button>
+                                            <button type="button" id="btn-prod-enhance-all" class="btn btn-secondary btn-sm" title="Melhorar a qualidade de todas as imagens">
+                                                <i data-lucide="wand-2" style="width:13px;height:13px;vertical-align:-2px"></i> Melhorar todas
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div id="prod-image-zone" class="prod-image-upload-zone">
                                         <input type="file" id="prod-image-input" accept="image/*" multiple style="display:none">
                                         <i data-lucide="image-plus" style="width:36px;height:36px;color:var(--text-muted)"></i>
@@ -699,6 +722,7 @@
                                         <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('prod-image-input').click()">Adicionar imagem</button>
                                     </div>
                                     <div id="prod-image-thumbs" class="prod-image-thumbs" style="display:none"></div>
+                                    <div id="prod-img-ai-status" class="prod-ai-status" style="display:none"></div>
                                 </div>
 
                             </div>
@@ -4025,8 +4049,8 @@
                             <option value="gpt-image-2" selected>GPT Image 2 (mais recente)</option>
                             <option value="gpt-image-1">GPT Image 1</option>
                             <option value="openai">DALL-E 3</option>
-                            <option value="google">Google Imagen 3</option>
-                            <option value="google-imagen2">Google Imagen 2</option>
+                            <option value="google">Google Gemini Image</option>
+                            <option value="google-pro">Google Gemini Image Pro</option>
                         </select>
                         <select id="aiad-size" class="input input-sm" style="width:auto">
                             <option value="1024x1024">Quadrado 1:1</option>
@@ -4237,8 +4261,8 @@
                                 <button class="adhub-dropdown-item" data-provider="gpt-image-2" data-provider-label="GPT Image 2">GPT Image 2 (mais recente)</button>
                                 <button class="adhub-dropdown-item" data-provider="gpt-image-1" data-provider-label="GPT Image 1">GPT Image 1</button>
                                 <button class="adhub-dropdown-item" data-provider="openai" data-provider-label="DALL-E 3">DALL-E 3</button>
-                                <button class="adhub-dropdown-item" data-provider="google" data-provider-label="Google Imagen 3">Google Imagen 3</button>
-                                <button class="adhub-dropdown-item" data-provider="google-imagen2" data-provider-label="Google Imagen 2">Google Imagen 2</button>
+                                <button class="adhub-dropdown-item" data-provider="google" data-provider-label="Gemini Image">Google Gemini Image</button>
+                                <button class="adhub-dropdown-item" data-provider="google-pro" data-provider-label="Gemini Image Pro">Google Gemini Image Pro</button>
                             </div>
                         </div>
 
@@ -6236,6 +6260,7 @@
     <script src="js/dashboard.js"></script>
     <script src="js/dash-customize.js"></script>
     <script src="js/sidebar.js"></script>
+    <script src="js/image-ai.js"></script>
     <script src="js/ai-ad-generator.js"></script>
     <script src="js/ai-generations.js"></script>
     <script src="js/prompt-templates.js"></script>
