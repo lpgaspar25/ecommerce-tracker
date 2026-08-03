@@ -1864,8 +1864,149 @@ const ShopifyModule = (() => {
         setTimeout(() => renderDashboardWidget(), 500);
     }
 
+    // ══════════════════════════════════════════════════════════════
+    //  ENVIO DE IMAGEM PARA A LOJA  (única escrita que o app faz)
+    //
+    //  Fluxo oficial em 3 passos, porque o app só tem os BYTES da imagem
+    //  (base64 no navegador), não uma URL pública:
+    //    1. stagedUploadsCreate  → devolve um alvo no Google Cloud Storage
+    //    2. POST multipart direto do browser para esse alvo
+    //    3. productUpdate(media:) → anexa a imagem ao produto
+    //
+    //  productCreateMedia existe mas está DEPRECADO ("Use productUpdate or
+    //  productSet instead"), por isso o passo 3 usa productUpdate.
+    // ══════════════════════════════════════════════════════════════
+
+    // Limites publicados pela Shopify para mídia de produto.
+    const IMG_MAX_BYTES = 20 * 1024 * 1024;
+    const IMG_MAX_LADO = 4472;
+
+    async function _criarAlvoDeUpload(nomeArquivo, mimeType, tamanho) {
+        const q = `
+            mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
+                stagedUploadsCreate(input: $input) {
+                    stagedTargets { url resourceUrl parameters { name value } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, {
+            input: [{
+                filename: nomeArquivo,
+                mimeType,
+                // O enum é IMAGE. "PRODUCT_IMAGE" aparece em exemplos antigos
+                // mas não existe mais no schema.
+                resource: 'IMAGE',
+                httpMethod: 'POST',
+                fileSize: String(tamanho),
+            }],
+        });
+        const err = d?.stagedUploadsCreate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        const alvo = d?.stagedUploadsCreate?.stagedTargets?.[0];
+        if (!alvo?.url) throw new Error('A Shopify não devolveu um destino de upload.');
+        return alvo;
+    }
+
+    async function _enviarBytes(alvo, blob, nomeArquivo) {
+        const form = new FormData();
+        // Regra do Google Cloud Storage: os parâmetros vêm ANTES e o arquivo
+        // é obrigatoriamente o ÚLTIMO campo — qualquer campo depois dele é
+        // ignorado em silêncio e o upload falha de forma confusa depois.
+        (alvo.parameters || []).forEach(p => form.append(p.name, p.value));
+        form.append('file', blob, nomeArquivo);
+
+        // Sem Content-Type manual: o browser precisa gerar o boundary sozinho.
+        const r = await fetch(alvo.url, { method: 'POST', body: form, mode: 'cors' });
+        if (!r.ok) {
+            const t = await r.text().catch(() => '');
+            throw new Error(`Falha no upload (HTTP ${r.status}). ${t.slice(0, 160)}`);
+        }
+    }
+
+    // productUpdate devolve a lista INTEIRA de mídia do produto, não só a que
+    // acabou de entrar — sem saber o que já existia antes, não dá pra saber
+    // com segurança qual node é o novo (a ordem devolvida não é garantida).
+    async function _idsDeMidiaAtual(produtoGid) {
+        const q = `query MidiaAtual($id: ID!) { product(id: $id) { media(first: 60) { nodes { id } } } }`;
+        const d = await _graphql(q, { id: produtoGid });
+        return new Set((d?.product?.media?.nodes || []).map(n => n.id));
+    }
+
+    async function _anexarAoProduto(produtoGid, resourceUrl, alt) {
+        const q = `
+            mutation ProductUpdateAddMedia($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+                productUpdate(product: $product, media: $media) {
+                    product { id media(first: 30) { nodes { id status mediaContentType } } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, {
+            product: { id: produtoGid },
+            media: [{ originalSource: resourceUrl, mediaContentType: 'IMAGE', alt: alt || '' }],
+        });
+        const err = d?.productUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.productUpdate?.product?.media?.nodes || [];
+    }
+
+    // Sobe UMA imagem. `origem` pode ser dataUrl (base64) ou URL. `idsConhecidos`
+    // é o Set devolvido por _idsDeMidiaAtual ANTES do upload — usado pra achar
+    // com segurança qual media id é o novo; quando enviar várias em sequência,
+    // o chamador deve ir somando o novo id ao mesmo Set entre as chamadas.
+    async function enviarImagemDoProduto(produtoGid, origem, { nome, alt, idsConhecidos } = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!produtoGid) throw new Error('Produto sem vínculo na Shopify.');
+
+        const blob = await bytesDaImagem(origem);
+        if (blob.size > IMG_MAX_BYTES) {
+            throw new Error(`Imagem de ${(blob.size / 1024 / 1024).toFixed(1)} MB — a Shopify aceita no máximo 20 MB.`);
+        }
+        const dim = await dimensoesDaImagem(blob).catch(() => null);
+        if (dim && (dim.largura > IMG_MAX_LADO || dim.altura > IMG_MAX_LADO)) {
+            throw new Error(`Imagem ${dim.largura}×${dim.altura} — a Shopify aceita no máximo ${IMG_MAX_LADO}px por lado.`);
+        }
+
+        // A extensão do filename precisa casar com o mimeType — divergência é
+        // causa comum de FAILED no processamento do lado da Shopify.
+        const ext = (blob.type.split('/')[1] || 'webp').replace('jpeg', 'jpg');
+        const base = String(nome || 'imagem').replace(/\.[^.]+$/, '') || 'imagem';
+        const nomeArquivo = `${base}.${ext}`;
+
+        const alvo = await _criarAlvoDeUpload(nomeArquivo, blob.type || 'image/webp', blob.size);
+        await _enviarBytes(alvo, blob, nomeArquivo);
+        const nodes = await _anexarAoProduto(produtoGid, alvo.resourceUrl, alt || base);
+
+        const novo = idsConhecidos ? nodes.find(n => !idsConhecidos.has(n.id)) : nodes[nodes.length - 1];
+        return novo || nodes[nodes.length - 1] || null;
+    }
+
+    // Query pública — o chamador (products.js) precisa dela pra montar
+    // idsConhecidos antes de mandar vários uploads em sequência.
+    const idsDeMidiaAtual = _idsDeMidiaAtual;
+
+    // Define qual mídia é a capa (posição 0). Assíncrono do lado da Shopify:
+    // devolve um Job, não o resultado.
+    async function reordenarMidia(produtoGid, movimentos) {
+        const q = `
+            mutation ProductReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+                productReorderMedia(id: $id, moves: $moves) {
+                    job { id done }
+                    mediaUserErrors { field message code }
+                }
+            }`;
+        const d = await _graphql(q, {
+            id: produtoGid,
+            // newPosition é UnsignedInt64 → vai como STRING, e é zero-based.
+            moves: movimentos.map(m => ({ id: m.id, newPosition: String(m.posicao) })),
+        });
+        const err = d?.productReorderMedia?.mediaUserErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.productReorderMedia?.job || null;
+    }
+
     return {
         init, getConfig, isConfigured,
+        enviarImagemDoProduto, reordenarMidia, idsDeMidiaAtual,
         beginInstall, testConnection, disconnect, diagnose,
         fetchOrders, fetchShopifyProducts, getShopifyProducts,
         linkProduct, getLink, autoLinkByName, syncAllLinkedPrices,

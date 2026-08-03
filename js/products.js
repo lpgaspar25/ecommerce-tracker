@@ -108,6 +108,7 @@ const ProductsModule = {
         document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
+        document.getElementById('btn-prod-send-shopify')?.addEventListener('click', () => this.abrirEnviarShopify());
         const provSel = document.getElementById('prod-img-provider');
         if (provSel) {
             provSel.value = localStorage.getItem('studio_img_provider') || 'auto';
@@ -977,6 +978,7 @@ const ProductsModule = {
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
                 ${img.melhorada ? '<span class="prod-image-ai" title="Versão melhorada por IA">IA</span>' : ''}
                 ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
+                ${img.enviadaShopify ? '<span class="prod-image-src" title="Já enviada para a Shopify"><i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i> Enviada</span>' : ''}
             </div>
         `).join('');
         thumbs.querySelectorAll('.prod-image-remove').forEach(btn => {
@@ -1340,6 +1342,137 @@ const ProductsModule = {
         showToast(falhas
             ? `${novas.length} imagem(ns) gerada(s), ${falhas} falharam.`
             : `Galeria gerada: ${novas.length} imagem(ns).`, falhas ? 'warning' : 'success');
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Enviar imagens para a Shopify
+    //  Única escrita que o app faz na loja — por isso é sempre um botão
+    //  explícito com confirmação, nunca automático ao salvar. As imagens
+    //  aqui são re-sintetizadas por IA; empurrar direto pra página que o
+    //  cliente vê sem o usuário conferir seria arriscado.
+    // ══════════════════════════════════════════════════════════════
+
+    abrirEnviarShopify() {
+        const idProduto = document.getElementById('product-id')?.value || null;
+        const produto = idProduto ? (AppState.allProducts || []).find(p => p.id === idProduto) : null;
+        if (!produto) {
+            showToast('Salve o produto antes de enviar imagens para a Shopify.', 'error');
+            return;
+        }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) {
+            showToast('Vincule o produto à Shopify primeiro (Conexão Shopify).', 'error');
+            return;
+        }
+        // "const ShopifyModule" no topo do arquivo não vira propriedade de
+        // window — window.ShopifyModule é sempre undefined. É o identificador
+        // léxico que funciona (já documentado, mesma pegadinha de antes).
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro (Conexão Shopify).', 'error');
+            return;
+        }
+
+        // Só as que ainda não foram — reenviar a mesma imagem duplicaria na
+        // Shopify. `_images` reflete o formulário aberto, pode ter imagem
+        // nova desde a última vez que a tela foi salva.
+        const pendentes = this._images
+            .map((im, i) => ({ im, i }))
+            .filter(({ im }) => (im.dataUrl) && !im.enviadaShopify);
+
+        if (!pendentes.length) {
+            showToast('Nada novo para enviar — imagens da Shopify não precisam reenvio.', 'info');
+            return;
+        }
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Enviar para a Shopify</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">
+                ${pendentes.length} imagem(ns) ${pendentes.length > 1 ? 'vão' : 'vai'} para o produto <strong>${escapeHtml(produto.name)}</strong> na loja.
+                Isso é uma escrita real na Shopify — a imagem fica visível na página do produto.
+            </p>
+            <div class="prod-gal-lista">
+                ${pendentes.map(({ im, i }) => `
+                    <label class="prod-gal-item">
+                        <input type="checkbox" data-idx="${i}" checked>
+                        <img src="${im.dataUrl}" alt="">
+                        <span>${escapeHtml(im.name || `Imagem ${i + 1}`)}${i === 0 ? ' <em>(capa)</em>' : ''}</span>
+                    </label>`).join('')}
+            </div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;align-items:center">
+                <span id="pship-conta" class="prod-gal-conta"></span>
+                <button type="button" class="btn btn-secondary btn-sm" id="pship-cancelar">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-sm" id="pship-enviar">Confirmar envio</button>
+            </div>
+        `, (ov) => {
+            const atualizaConta = () => {
+                const n = ov.querySelectorAll('input[data-idx]:checked').length;
+                ov.querySelector('#pship-conta').textContent = `${n} selecionada(s)`;
+                ov.querySelector('#pship-enviar').disabled = !n;
+            };
+            ov.addEventListener('change', atualizaConta);
+            atualizaConta();
+            ov.querySelector('#pship-cancelar').addEventListener('click', () => ov.remove());
+            ov.querySelector('#pship-enviar').addEventListener('click', () => {
+                const idxs = [...ov.querySelectorAll('input[data-idx]:checked')].map(c => parseInt(c.dataset.idx, 10));
+                ov.remove();
+                this._enviarParaShopify(sid, idxs);
+            });
+        });
+    },
+
+    async _enviarParaShopify(shopifyIdBruto, indices) {
+        const gid = String(shopifyIdBruto).startsWith('gid://') ? shopifyIdBruto : `gid://shopify/Product/${shopifyIdBruto}`;
+
+        this._statusImagem(`Enviando 0 de ${indices.length} para a Shopify…`);
+        let idsConhecidos;
+        try {
+            idsConhecidos = await ShopifyModule.idsDeMidiaAtual(gid);
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Não consegui consultar a Shopify: ' + e.message, 'error');
+            return;
+        }
+
+        let ok = 0, falhas = 0;
+        const capaIdx = indices.includes(0) ? 0 : null;
+        let capaMediaId = null;
+
+        for (let n = 0; n < indices.length; n++) {
+            const i = indices[n];
+            const im = this._images[i];
+            if (!im?.dataUrl) { falhas++; continue; }
+            this._statusImagem(`Enviando ${n + 1} de ${indices.length} para a Shopify…`);
+            try {
+                const media = await ShopifyModule.enviarImagemDoProduto(gid, im.dataUrl, {
+                    nome: im.name, alt: (document.getElementById('product-name')?.value || '').trim(),
+                    idsConhecidos,
+                });
+                if (media?.id) {
+                    idsConhecidos.add(media.id);
+                    im.enviadaShopify = true;
+                    im.shopifyMediaId = media.id;
+                    if (i === capaIdx) capaMediaId = media.id;
+                }
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha ao enviar imagem', i, 'para a Shopify:', e.message);
+                falhas++;
+            }
+        }
+
+        // A imagem marcada "Capa" localmente (posição 0) também vira a
+        // capa na Shopify — sem isso ela entraria no fim da galeria de lá.
+        if (capaMediaId) {
+            this._statusImagem('Definindo capa na Shopify…');
+            try { await ShopifyModule.reordenarMidia(gid, [{ id: capaMediaId, posicao: 0 }]); }
+            catch (e) { console.warn('[Produtos] falha ao definir capa na Shopify:', e.message); }
+        }
+
+        this._statusImagem('');
+        this._renderProductImages();
+        showToast(falhas
+            ? `${ok} enviada(s) para a Shopify, ${falhas} falharam.`
+            : `${ok} imagem(ns) enviada(s) para a Shopify.`, falhas ? 'warning' : 'success');
     },
 
     // ── Gerar capa a partir de um padrão de criativo (com filtro de nicho) ──

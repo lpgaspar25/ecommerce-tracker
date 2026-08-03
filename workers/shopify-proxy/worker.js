@@ -225,12 +225,51 @@ async function shopSession(request, env) {
 
 // ── GraphQL proxy ────────────────────────────────────────────
 
+// Mutations que o app realmente precisa. Tudo o mais é recusado aqui.
+// Motivo: o token guardado no KV tem write_products, então este proxy é o
+// único ponto entre a internet e a capacidade de ALTERAR a loja. Sem esta
+// lista, quem descobrisse uma sessão poderia mandar productDelete.
+const MUTACOES_PERMITIDAS = new Set([
+  'StagedUploadsCreate',
+  'ProductUpdateAddMedia',
+  'ProductReorderMedia',
+]);
+
+// Devolve o motivo da recusa, ou null se pode passar.
+function _mutacaoRecusada(body) {
+  let query;
+  try { query = JSON.parse(body)?.query; } catch { return 'corpo não é JSON válido'; }
+  if (typeof query !== 'string') return 'query ausente';
+
+  // Tira comentários e literais de string antes de procurar a palavra
+  // "mutation" — senão um texto qualquer dentro de uma variável dispararia
+  // falso positivo (ou serviria para esconder uma mutation de verdade).
+  const limpo = query
+    .replace(/#[^\n]*/g, ' ')
+    .replace(/"""[\s\S]*?"""/g, '""')
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+
+  if (!/(^|[\s{(])mutation[\s{]/.test(limpo)) return null;   // é query pura
+
+  const nomes = [...limpo.matchAll(/mutation\s+([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]);
+  if (!nomes.length) return 'mutation anônima não é permitida';
+  const proibida = nomes.find(n => !MUTACOES_PERMITIDAS.has(n));
+  if (proibida) return `mutation não permitida: ${proibida}`;
+  return null;
+}
+
 async function shopGraphql(request, env) {
   if (request.method !== 'POST') return json({ error: 'POST required' }, 405);
   const session = await getSession(request, env);
   if (!session) return json({ error: 'Invalid or missing session' }, 401);
 
   const body = await request.text();
+
+  const recusa = _mutacaoRecusada(body);
+  if (recusa) {
+    return json({ errors: [{ message: `Bloqueado pelo proxy — ${recusa}.` }] }, 403);
+  }
+
   const apiVersion = env.API_VERSION || DEFAULTS.API_VERSION;
 
   const resp = await fetch(`https://${session.shop}/admin/api/${apiVersion}/graphql.json`, {

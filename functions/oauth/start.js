@@ -22,7 +22,13 @@ export async function onRequestGet({ request, env }) {
     return new Response('Missing SHOPIFY_TOKENS KV binding', { status: 500 });
   }
 
-  const scopes = url.searchParams.get('scopes') || env.SCOPES || 'read_orders,read_products,read_all_orders';
+  // write_products/write_files: necessários para enviar as imagens geradas
+  // pela ferramenta de volta para o produto na loja (stagedUploadsCreate →
+  // upload → productUpdate). Sem eles a Shopify recusa a mutation.
+  // ATENÇÃO: mudar esta lista invalida o token já concedido — o usuário
+  // precisa reconectar a loja para os novos escopos valerem.
+  const scopes = url.searchParams.get('scopes') || env.SCOPES
+    || 'read_orders,read_products,read_all_orders,write_products,write_files';
   const nonce = crypto.randomUUID();
 
   // Encode the minimal state client<->Shopify sees
