@@ -15850,3 +15850,10 @@ body:not([data-theme]) .adh-board-viewport {
     background: var(--bg-input, rgba(0,0,0,0.05)); border: 1px solid var(--border);
     border-radius: 7px; padding: 0.6rem; margin: 0.25rem 0 0; max-height: 240px; overflow: auto;
 }
+
+/* Estúdio → escolha do provedor de imagem */
+.studio-provider-row {
+    display: flex; align-items: center; gap: 0.45rem; margin-top: 0.6rem;
+}
+.studio-provider-row label { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; }
+.studio-provider-row select { flex: 1; }

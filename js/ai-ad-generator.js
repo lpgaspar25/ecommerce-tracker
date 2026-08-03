@@ -131,7 +131,7 @@ const AIAdGenerator = {
         const current = this._getGoogleKey();
         const masked = current ? `${current.slice(0, 6)}…${current.slice(-4)}` : '(vazio)';
         const newKey = prompt(
-            `Cole sua chave Google AI Studio (AIza...).\n\nUsada para Google Imagen 3.\nObtenha em: https://aistudio.google.com/app/apikey\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
+            `Cole sua chave Google AI Studio (AIza...).\n\nUsada para Google Imagen 3 e para o Gemini Image no Estúdio.\nObtenha em: https://aistudio.google.com/app/apikey\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
             current
         );
         if (newKey === null) return;

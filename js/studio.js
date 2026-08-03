@@ -209,8 +209,16 @@ const StudioModule = (() => {
         const d = _dados(pid);
         if (!d.fotoBase) { showToast('Escolha a foto base do produto', 'error'); return; }
 
-        const chave = window.AIAdGenerator?._getOpenAIKey?.() || localStorage.getItem('openai_api_key') || '';
-        if (!chave) { showToast('Configure a chave OpenAI em AI Generations', 'error'); return; }
+        // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
+        // quando o usuário selecionou Gemini bloquearia sem motivo.
+        const prov = _provedorImagem();
+        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        if (!chave) {
+            showToast(prov === 'gemini'
+                ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : 'Configure a chave OpenAI em AI Generations → API Keys', 'error');
+            return;
+        }
 
         const presets = PRESETS_FOTO.filter(p => presetIds.includes(p.id));
         if (!presets.length) { showToast('Escolha ao menos um cenário', 'error'); return; }
@@ -256,7 +264,36 @@ const StudioModule = (() => {
         if (ok) showToast(`${ok} foto(s) gerada(s)`, 'success');
     }
 
-    async function _editarImagem(blob, prompt, apiKey) {
+    function _b64ParaBlob(b64, tipo = 'image/png') {
+        const bytes = atob(b64);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        return new Blob([arr], { type: tipo });
+    }
+
+    function _blobParaBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(String(r.result || '').split(',')[1] || '');
+            r.onerror = () => reject(new Error('Falha ao ler a imagem'));
+            r.readAsDataURL(blob);
+        });
+    }
+
+    // Provedor escolhido na tela. Ambos EDITAM a foto real do produto —
+    // gerar do zero inventaria outro produto, que é o que queremos evitar.
+    function _provedorImagem() {
+        return document.getElementById('studio-img-provider')?.value || 'openai';
+    }
+
+    async function _editarImagem(blob, prompt, apiKey, provedor) {
+        const prov = provedor || _provedorImagem();
+        if (prov === 'gemini') return _editarComGemini(blob, prompt);
+        return _editarComOpenAI(blob, prompt, apiKey || _chaveOpenAI());
+    }
+
+    async function _editarComOpenAI(blob, prompt, apiKey) {
+        if (!apiKey) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
         const fd = new FormData();
         fd.append('model', 'gpt-image-1');
         fd.append('image', blob, 'produto.png');
@@ -269,14 +306,48 @@ const StudioModule = (() => {
             headers: { 'Authorization': 'Bearer ' + apiKey },
             body: fd,
         });
-        if (!r.ok) throw new Error((await r.text()).slice(0, 200));
+        if (!r.ok) throw new Error('OpenAI: ' + (await r.text()).slice(0, 200));
         const data = await r.json();
         const b64 = data?.data?.[0]?.b64_json;
-        if (!b64) throw new Error('Resposta sem imagem');
-        const bytes = atob(b64);
-        const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        return new Blob([arr], { type: 'image/png' });
+        if (!b64) throw new Error('OpenAI: resposta sem imagem');
+        return _b64ParaBlob(b64);
+    }
+
+    // Gemini com imagem de entrada. O Imagen 3 (predict) é só texto→imagem e
+    // não serviria aqui: ele inventaria um produto em vez de partir do real.
+    async function _editarComGemini(blob, prompt) {
+        const key = _chaveGoogle();
+        if (!key) throw new Error('Configure a chave Google AI (AI Generations → API Keys)');
+        const modelo = 'gemini-2.5-flash-image';
+        const base64 = await _blobParaBase64(blob);
+        const r = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inline_data: { mime_type: blob.type || 'image/png', data: base64 } },
+                    ],
+                }],
+                generationConfig: { responseModalities: ['IMAGE'] },
+            }),
+        });
+        if (!r.ok) {
+            const t = await r.text();
+            throw new Error('Gemini: ' + t.slice(0, 220));
+        }
+        const data = await r.json();
+        const partes = data?.candidates?.[0]?.content?.parts || [];
+        const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+        const b64 = img?.inlineData?.data || img?.inline_data?.data;
+        if (!b64) {
+            // Modelo às vezes responde só texto (recusa/segurança) — mostrar o motivo
+            const txt = partes.map(p => p.text).filter(Boolean).join(' ').slice(0, 180);
+            throw new Error('Gemini não devolveu imagem' + (txt ? `: ${txt}` : '. Verifique se a chave tem acesso ao modelo de imagem.'));
+        }
+        return _b64ParaBlob(b64, img?.inlineData?.mimeType || 'image/png');
     }
 
     async function _miniatura(blob, maxDim = 320) {
@@ -323,28 +394,23 @@ Responda APENAS com JSON válido:
 - nomeSugerido: rótulo curto em português para este padrão (ex.: "Caixa preta com luz de cima")
 - observacao: uma frase em português dizendo para que tipo de produto este padrão funciona melhor`;
 
-    async function _claudeVisao(system, base64, mediaType, texto) {
-        const key = localStorage.getItem('anthropic_api_key') || '';
-        if (!key) throw new Error('Configure a chave Anthropic (Ad Hub → chave da Anthropic)');
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+    async function _visaoIA(system, base64, mediaType, texto) {
+        const key = _chaveOpenAI();
+        if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-api-key': key,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-5',
+                model: 'gpt-4o',
                 max_tokens: 2000,
-                system,
-                messages: [{
-                    role: 'user',
-                    content: [
-                        { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } },
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: [
                         { type: 'text', text: texto },
-                    ],
-                }],
+                        { type: 'image_url', image_url: { url: `data:${mediaType || 'image/jpeg'};base64,${base64}`, detail: 'high' } },
+                    ] },
+                ],
             }),
         });
         if (!res.ok) {
@@ -352,7 +418,7 @@ Responda APENAS com JSON válido:
             throw new Error(err.error?.message || `HTTP ${res.status}`);
         }
         const data = await res.json();
-        return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        return data.choices?.[0]?.message?.content || '';
     }
 
     function _arquivoParaBase64(file) {
@@ -371,7 +437,7 @@ Responda APENAS com JSON válido:
     // Analisa um criativo validado e devolve o esqueleto de prompt.
     async function criarPadraoDeImagem(file, nomeManual) {
         const { base64, mediaType, dataUrl } = await _arquivoParaBase64(file);
-        const txt = await _claudeVisao(SISTEMA_ESQUELETO, base64, mediaType,
+        const txt = await _visaoIA(SISTEMA_ESQUELETO, base64, mediaType,
             'Analise este criativo e escreva o esqueleto de prompt reutilizável, seguindo as regras.');
         const parsed = _extrairJson(txt);
 
@@ -452,8 +518,16 @@ Responda APENAS com JSON válido:
         const padrao = (_state.padroes || []).find(x => x.id === padraoId);
         if (!padrao) { showToast('Padrão não encontrado', 'error'); return; }
 
-        const chave = window.AIAdGenerator?._getOpenAIKey?.() || localStorage.getItem('openai_api_key') || '';
-        if (!chave) { showToast('Configure a chave OpenAI em AI Generations', 'error'); return; }
+        // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
+        // quando o usuário selecionou Gemini bloquearia sem motivo.
+        const prov = _provedorImagem();
+        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        if (!chave) {
+            showToast(prov === 'gemini'
+                ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : 'Configure a chave OpenAI em AI Generations → API Keys', 'error');
+            return;
+        }
 
         _state.gerando = true;
         _renderFotos();
@@ -484,22 +558,28 @@ Responda APENAS com JSON válido:
     //  CLAUDE — gerador de página e copy interativo
     // ══════════════════════════════════════════════════════════════
 
-    async function _claude(system, mensagens, maxTokens = 3000) {
-        const key = localStorage.getItem('anthropic_api_key') || '';
-        if (!key) throw new Error('Configure a chave Anthropic (Ad Hub → chave da Anthropic)');
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Chave da OpenAI — mesma que o AI Ad Hub já usa.
+    function _chaveOpenAI() {
+        return (window.AIAdGenerator?._getOpenAIKey?.()) || localStorage.getItem('openai_api_key') || '';
+    }
+    function _chaveGoogle() {
+        return (window.AIAdGenerator?._getGoogleKey?.()) || localStorage.getItem('google_ai_api_key') || '';
+    }
+
+    // Texto pela OpenAI. Mantive o nome _claude nas chamadas antigas via alias
+    // para não espalhar mudança por todo o módulo.
+    async function _openai(system, mensagens, maxTokens = 3000) {
+        const key = _chaveOpenAI();
+        if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-api-key': key,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-5',
+                model: 'gpt-4o',
                 max_tokens: maxTokens,
-                system,
-                messages: mensagens,
+                temperature: 0.8,
+                response_format: { type: 'json_object' },
+                messages: [{ role: 'system', content: system }, ...mensagens],
             }),
         });
         if (!res.ok) {
@@ -507,8 +587,9 @@ Responda APENAS com JSON válido:
             throw new Error(err.error?.message || `HTTP ${res.status}`);
         }
         const data = await res.json();
-        return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        return data.choices?.[0]?.message?.content || '';
     }
+    const _claude = _openai;   // alias: o resto do módulo segue chamando _claude
 
     // A IA às vezes embrulha o JSON em ```json — desembrulha antes do parse.
     function _extrairJson(texto) {
@@ -1213,6 +1294,11 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             r.readAsDataURL(f);
         });
 
+        const selProv = document.getElementById('studio-img-provider');
+        if (selProv) {
+            selProv.value = localStorage.getItem('studio_img_provider') || 'openai';
+            selProv.addEventListener('change', () => localStorage.setItem('studio_img_provider', selProv.value));
+        }
         document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
         document.getElementById('studio-padrao-pick')?.addEventListener('click', () => document.getElementById('studio-padrao-input')?.click());
         document.getElementById('studio-padrao-input')?.addEventListener('change', (e) => {
