@@ -802,7 +802,16 @@ const NotificationsModule = {
 // ---- Modal Helpers ----
 function openModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) modal.classList.remove('hidden');
+    if (!modal) return;
+    // Vários modais estão declarados DENTRO da <section> da própria aba. Se o
+    // usuário abre um deles de outra aba (ex.: editar produto pelo ranking de
+    // Vendas), a section está com display:none e o modal fica 0x0 — some sem
+    // erro nenhum. Mover para o body na abertura resolve para todos de uma vez;
+    // os listeners acompanham o elemento, e o id continua o mesmo.
+    if (modal.parentElement !== document.body && modal.closest('.tab-panel')) {
+        document.body.appendChild(modal);
+    }
+    modal.classList.remove('hidden');
 }
 
 function closeModal(modalId) {
