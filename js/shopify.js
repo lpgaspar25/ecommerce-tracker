@@ -238,6 +238,11 @@ const ShopifyModule = (() => {
     const DAY_TTL_YESTERDAY = 6 * 60 * 60 * 1000;
     const DAY_TTL_RECENT    = 7 * 24 * 60 * 60 * 1000;
     const DAY_TTL_OLD       = Infinity;
+    // Dia antigo com ZERO pedidos em cache: se a primeira busca falhou em
+    // silêncio (rede, rate limit) o dia fica com [] e TTL Infinity o
+    // condenaria a zero para sempre. Com 3 dias, uma falha se autocorrige
+    // sozinha em vez de exigir intervenção manual.
+    const DAY_TTL_OLD_EMPTY = 3 * 24 * 60 * 60 * 1000;
 
     function _loadDayCache() {
         try {
@@ -267,14 +272,23 @@ const ShopifyModule = (() => {
             localStorage.setItem(DAY_CACHE_KEY, JSON.stringify({ __v: ORDERS_CACHE_VERSION, days: merged }));
         } catch (e) { console.warn('[Shopify] day cache save failed:', e); }
     }
-    function _ttlForDay(dateStr) {
-        const today = new Date().toISOString().slice(0, 10);
+    function _ttlForDay(dateStr, cacheEntry) {
+        // "Hoje" em data LOCAL — toISOString() é UTC e perto da virada da
+        // noite (em fusos atrás de UTC, como o Brasil) já aponta pro dia
+        // seguinte, classificando "hoje" com o TTL de um dia mais antigo.
+        const agora = new Date();
+        const today = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
         if (dateStr === today) return DAY_TTL_TODAY;
         const t = new Date(today + 'T00:00:00');
         const d = new Date(dateStr + 'T00:00:00');
         const ageDays = Math.round((t - d) / 86400000);
         if (ageDays <= 1) return DAY_TTL_YESTERDAY;
         if (ageDays <= 6) return DAY_TTL_RECENT;
+        // Dia "velho" sem nenhum pedido: pode ser zero de verdade, ou pode
+        // ser uma busca que falhou e ficou presa em [] com TTL Infinity —
+        // aqui não dá para diferenciar os dois, então tratamos como
+        // suspeito e revalida de tempos em tempos.
+        if (cacheEntry && Array.isArray(cacheEntry.orders) && cacheEntry.orders.length === 0) return DAY_TTL_OLD_EMPTY;
         return DAY_TTL_OLD;
     }
     function _eachDayInRange(from, to) {
@@ -352,7 +366,7 @@ const ShopifyModule = (() => {
         const cachedDays = {};
         for (const day of days) {
             const entry = cache[day];
-            const ttl = _ttlForDay(day);
+            const ttl = _ttlForDay(day, entry);
             const fresh = entry && (now - entry.ts) < ttl;
             if (!opts.force && fresh) {
                 cachedDays[day] = entry.orders || [];
@@ -839,8 +853,8 @@ const ShopifyModule = (() => {
 
     // Fetch + cache shopify sales map keyed by "date|localProductId" for the given range.
     // Returns: { "YYYY-MM-DD|localProductId": { sales, revenue, currency } }
-    async function getRealSalesMapByDate(dateFrom, dateTo) {
-        const orders = await fetchOrders(dateFrom, dateTo);
+    async function getRealSalesMapByDate(dateFrom, dateTo, opts = {}) {
+        const orders = await fetchOrders(dateFrom, dateTo, opts);
         const perProductDate = aggregateByProductAndDate(orders);
         const result = {};
         const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);
@@ -858,8 +872,8 @@ const ShopifyModule = (() => {
     }
 
     // Per-date totals (all products): { "YYYY-MM-DD": { sales, revenue, currency, orderCount } }
-    async function getSalesMapByDate(dateFrom, dateTo) {
-        const orders = await fetchOrders(dateFrom, dateTo);
+    async function getSalesMapByDate(dateFrom, dateTo, opts = {}) {
+        const orders = await fetchOrders(dateFrom, dateTo, opts);
         return aggregateByDate(orders);
     }
 

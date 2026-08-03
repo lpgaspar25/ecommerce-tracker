@@ -2242,6 +2242,11 @@ body {
     opacity: 0.6;
 }
 .lab-shopify-refresh:hover { opacity: 1; }
+.lab-shopify-warn {
+    font-size: 0.72rem; line-height: 1.45; padding: 0.5rem 0.65rem;
+    background: rgba(217, 119, 6, 0.1); color: #d97706;
+    border-bottom: 1px solid var(--border);
+}
 .lab-shopify-result-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -10500,9 +10505,26 @@ thead:hover .diary-check-col input[type="checkbox"],
     transition: transform 0.15s, box-shadow 0.15s;
 }
 .lab-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
-.lab-card-ativo { border-left: 3px solid var(--accent); }
+
+/* Um teste ativo é o que precisa de atenção AGORA — antes só uma borda fina
+   de 3px o diferenciava, e ficava indistinguível de um teste já encerrado. */
+.lab-card-ativo {
+    border-left: 4px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 4%, var(--card-bg));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.lab-card-ativo:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 6px 20px rgba(0,0,0,0.12); }
 .lab-card-concluido { border-left: 3px solid #10b981; }
 .lab-card-cancelado { border-left: 3px solid #9ca3af; opacity: 0.75; }
+
+.lab-active-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.55rem;
+    border-radius: 20px; background: var(--accent); color: #fff;
+    text-transform: uppercase; letter-spacing: 0.03em;
+}
+.lab-active-badge i { animation: lab-pulse 1.8s ease-in-out infinite; }
+@keyframes lab-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 .lab-card-header { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.4rem; }
 

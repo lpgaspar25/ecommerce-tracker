@@ -128,7 +128,7 @@ const LabTestsModule = {
     // ===== Shopify Result Tracker =====
     // Auto-pulls Shopify revenue from baseline window (3 days before) and during the test,
     // returns { baselineRevenue, duringRevenue, deltaPct, deltaAbs, verdict, currency, days, ... }
-    async computeShopifyResult(testId) {
+    async computeShopifyResult(testId, opts = {}) {
         const test = this._tests.find(t => t.id === testId);
         if (!test) throw new Error('Teste não encontrado');
         if (!test.dateStart || !test.dateEnd) throw new Error('Datas do teste vazias');
@@ -156,39 +156,56 @@ const LabTestsModule = {
         let duringRevenue = 0, duringSales = 0;
         let currency = (ShopifyModule.getConfig?.()?.shopCurrency) || 'BRL';
 
+        // Um clique manual em "Recalcular" significa "quero o dado real agora"
+        // — não esperar os até 3 dias que o autocorretivo do cache levaria.
+        const fetchOpts = opts.force ? { force: true } : {};
+
+        const somarMapa = (mapa, porProduto) => {
+            let rev = 0, sales = 0, moeda = currency;
+            const entradas = porProduto ? Object.entries(mapa) : Object.values(mapa).map(v => [null, v]);
+            entradas.forEach(([k, v]) => {
+                if (porProduto && !k.endsWith('|' + test.productId)) return;
+                rev += v.revenue || 0;
+                sales += v.sales || 0;
+                if (v.currency) moeda = v.currency;
+            });
+            return { rev, sales, moeda };
+        };
+
         if (isProductTest) {
-            // Filtra por produto específico
-            const baselineMap = await ShopifyModule.getRealSalesMapByDate(baselineFrom, baselineTo);
-            const duringMap = await ShopifyModule.getRealSalesMapByDate(duringFrom, duringTo);
-            Object.entries(baselineMap).forEach(([k, v]) => {
-                if (k.endsWith('|' + test.productId)) {
-                    baselineRevenue += v.revenue || 0;
-                    baselineSales += v.sales || 0;
-                    if (v.currency) currency = v.currency;
-                }
-            });
-            Object.entries(duringMap).forEach(([k, v]) => {
-                if (k.endsWith('|' + test.productId)) {
-                    duringRevenue += v.revenue || 0;
-                    duringSales += v.sales || 0;
-                    if (v.currency) currency = v.currency;
-                }
-            });
+            const baselineMap = await ShopifyModule.getRealSalesMapByDate(baselineFrom, baselineTo, fetchOpts);
+            const duringMap = await ShopifyModule.getRealSalesMapByDate(duringFrom, duringTo, fetchOpts);
+            let b = somarMapa(baselineMap, true), d = somarMapa(duringMap, true);
+            baselineRevenue = b.rev; baselineSales = b.sales; currency = b.moeda || d.moeda || currency;
+            duringRevenue = d.rev; duringSales = d.sales;
+
+            // "Durante" zerado com "antes" positivo é o padrão de uma busca que
+            // falhou em silêncio e ficou presa em cache — não uma loja real que
+            // parou de vender do nada. Tenta de novo ignorando o cache.
+            if (!fetchOpts.force && duringSales === 0 && baselineSales > 0) {
+                const retry = await ShopifyModule.getRealSalesMapByDate(duringFrom, duringTo, { force: true });
+                d = somarMapa(retry, true);
+                duringRevenue = d.rev; duringSales = d.sales;
+                if (d.moeda) currency = d.moeda;
+            }
         } else {
-            // Loja inteira
-            const baselineMap = await ShopifyModule.getSalesMapByDate(baselineFrom, baselineTo);
-            const duringMap = await ShopifyModule.getSalesMapByDate(duringFrom, duringTo);
-            Object.values(baselineMap).forEach(v => {
-                baselineRevenue += v.revenue || 0;
-                baselineSales += v.sales || 0;
-                if (v.currency) currency = v.currency;
-            });
-            Object.values(duringMap).forEach(v => {
-                duringRevenue += v.revenue || 0;
-                duringSales += v.sales || 0;
-                if (v.currency) currency = v.currency;
-            });
+            const baselineMap = await ShopifyModule.getSalesMapByDate(baselineFrom, baselineTo, fetchOpts);
+            const duringMap = await ShopifyModule.getSalesMapByDate(duringFrom, duringTo, fetchOpts);
+            let b = somarMapa(baselineMap, false), d = somarMapa(duringMap, false);
+            baselineRevenue = b.rev; baselineSales = b.sales; currency = b.moeda || d.moeda || currency;
+            duringRevenue = d.rev; duringSales = d.sales;
+
+            if (!fetchOpts.force && duringSales === 0 && baselineSales > 0) {
+                const retry = await ShopifyModule.getSalesMapByDate(duringFrom, duringTo, { force: true });
+                d = somarMapa(retry, false);
+                duringRevenue = d.rev; duringSales = d.sales;
+                if (d.moeda) currency = d.moeda;
+            }
         }
+
+        // Se mesmo forçando ainda vier zero com um "antes" real, o problema não
+        // é cache — é a loja/rede agora. Melhor avisar do que afirmar "-100%".
+        const dadosSuspeitos = duringSales === 0 && baselineSales > 0;
 
         // Normaliza por nº de dias
         const baselineDays = 3;
@@ -411,13 +428,18 @@ const LabTestsModule = {
         });
 
         // ───── Veredicto agora considera LUCRO (não só receita) ─────
+        // "Durante" zerado com "antes" real não vira -100%: mesmo depois do
+        // retry forçado pode ser uma falha de rede momentânea, não a loja
+        // parada. Um veredito confiante e falso é pior que admitir a dúvida.
         let verdict = 'neutro';
         const judgeMetric = deltaProfitPct !== 0 ? deltaProfitPct : deltaPct;
-        if (judgeMetric >= 5) verdict = 'positivo';
+        if (dadosSuspeitos) verdict = 'suspeito';
+        else if (judgeMetric >= 5) verdict = 'positivo';
         else if (judgeMetric <= -5) verdict = 'negativo';
 
         const result = {
             isProductTest,
+            dadosSuspeitos,
             baselineFrom, baselineTo, duringFrom, duringTo,
             baselineDays, duringDays,
             baselineRevenue, baselineSales, baselinePerDay,
@@ -729,7 +751,9 @@ const LabTestsModule = {
                 btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Calculando…';
                 if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
                 try {
-                    await this.computeShopifyResult(testId);
+                    // Clique manual = usuário pedindo dado fresco agora, não o
+                    // que estiver em cache — por isso força.
+                    await this.computeShopifyResult(testId, { force: true });
                     this._renderCards();
                     if (typeof showToast === 'function') showToast('Resultado Shopify atualizado', 'success');
                 } catch (err) {
@@ -918,6 +942,7 @@ const LabTestsModule = {
         <div class="lab-card lab-card-${test.status} ${isSelected ? 'lab-card-bulk-selected' : ''}" data-id="${test.id}">
             <input type="checkbox" class="lab-card-bulk-check" data-id="${test.id}" ${isSelected ? 'checked' : ''} title="Selecionar para ação em massa">
             <div class="lab-card-header">
+                ${test.status === 'ativo' ? '<span class="lab-active-badge"><i data-lucide="circle-dot" style="width:12px;height:12px;vertical-align:-2px"></i> Em teste</span>' : ''}
                 <span class="lab-category-badge" style="background:${cat.bg};color:${cat.color}">${cat.icon} ${cat.label}</span>
                 ${resultBadge}
                 ${isOverdue ? '<span class="lab-overdue-badge"><i data-lucide="alarm-clock" style="width:14px;height:14px;vertical-align:-2px"></i> Vencido</span>' : ''}
@@ -980,6 +1005,9 @@ const LabTestsModule = {
             positivo: { label: 'Aprovado', bg: 'rgba(34,197,94,0.12)', color: '#10b981', icon: 'check-circle-2' },
             negativo: { label: 'Reprovado', bg: 'rgba(239,68,68,0.12)', color: '#ef4444', icon: 'x-circle' },
             neutro: { label: 'Neutro', bg: 'rgba(156,163,175,0.12)', color: '#9ca3af', icon: 'minus-circle' },
+            // "Durante" zerado com "antes" real: provavelmente falha de busca,
+            // não a loja parada. Isso não é um veredito — é um aviso.
+            suspeito: { label: 'Sem dados — reveja', bg: 'rgba(217,119,6,0.14)', color: '#d97706', icon: 'alert-triangle' },
         };
         const v = verdictMap[r.verdict] || verdictMap.neutro;
         const deltaProfit = r.deltaProfitPct || 0;
@@ -1014,6 +1042,11 @@ const LabTestsModule = {
                     <i data-lucide="refresh-cw" style="width:11px;height:11px"></i>
                 </button>
             </div>
+            ${r.dadosSuspeitos ? `<div class="lab-shopify-warn">
+                <i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px"></i>
+                A Shopify não retornou nenhuma venda no período "durante" mesmo depois de tentar de novo sem cache —
+                mais provável ser falha de rede/sessão do que a loja ter parado. Confira a conexão e clique em <strong>recalcular</strong>.
+            </div>` : ''}
             <div class="lab-shopify-result-grid">
                 <div>
                     <small>Baseline (${r.baselineDays}d)</small>
