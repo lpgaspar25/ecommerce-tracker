@@ -1366,39 +1366,17 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _icones();
     }
 
-    function _renderPadroes() {
-        const box = document.getElementById('studio-padroes');
-        if (!box) return;
-        const todos = _state.padroes || [];
+    // Quais categorias estão abertas. null = primeira render (tudo recolhido).
+    let _padroesAbertos = null;
 
-        // Filtro por nicho — só faz sentido mostrar quando existe mais de um.
-        const filtroSel = document.getElementById('studio-padroes-filtro-nicho');
-        const filtroBox = filtroSel?.closest('.studio-padroes-filtro');
-        const nichos = [...new Set(todos.map(p => p.nicho).filter(Boolean))].sort();
-        if (filtroSel) {
-            const atual = filtroSel.value;
-            filtroSel.innerHTML = '<option value="">Todos os nichos</option>'
-                + nichos.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('');
-            filtroSel.value = nichos.includes(atual) ? atual : '';
-            if (filtroBox) filtroBox.style.display = nichos.length > 1 ? '' : 'none';
-            if (!filtroSel._ligado) {
-                filtroSel.addEventListener('change', () => _renderPadroes());
-                filtroSel._ligado = true;
-            }
-        }
-        const lista = filtroSel?.value ? todos.filter(p => p.nicho === filtroSel.value) : todos;
+    function _catDoPadrao(p) { return (p.nicho || '').trim() || 'Sem categoria'; }
 
-        if (!todos.length) {
-            box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
-            return;
-        }
-        if (!lista.length) {
-            box.innerHTML = `<p class="studio-vazio">Nenhum padrão no nicho "${_esc(filtroSel.value)}".</p>`;
-            return;
-        }
-        box.innerHTML = lista.map(p => `
+    function _cardPadrao(p) {
+        return `
             <div class="studio-padrao" data-id="${p.id}">
-                ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
+                ${p.exemploThumb
+                    ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy" data-ampliar-padrao="${p.id}" style="cursor:zoom-in" title="Clique para ampliar">`
+                    : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
                 <div class="studio-padrao-info">
                     <strong>${_esc(p.nome)}</strong>
                     ${p.nicho ? `<span class="studio-padrao-nicho"><i data-lucide="tag" style="width:11px;height:11px;vertical-align:-1px"></i> ${_esc(p.nicho)}${p.subnicho ? ' — ' + _esc(p.subnicho) : ''}</span>` : ''}
@@ -1410,16 +1388,81 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 </div>
                 <div class="studio-padrao-acoes">
                     <button class="btn btn-primary btn-sm" data-usar="${p.id}" title="Gerar uma foto deste produto usando este padrão">Aplicar</button>
+                    <button class="btn-icon" data-cat-padrao="${p.id}" title="Definir categoria (nicho)"><i data-lucide="tag" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-ver="${p.id}" title="Ver o prompt gerado"><i data-lucide="file-text" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-del-padrao="${p.id}" title="Excluir padrão"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
                 </div>
-            </div>`).join('');
+            </div>`;
+    }
+
+    function _renderPadroes() {
+        const box = document.getElementById('studio-padroes');
+        if (!box) return;
+        const todos = _state.padroes || [];
+
+        // O filtro antigo virou redundante com os grupos recolhíveis.
+        const filtroBox = document.getElementById('studio-padroes-filtro-nicho')?.closest('.studio-padroes-filtro');
+        if (filtroBox) filtroBox.style.display = 'none';
+
+        if (!todos.length) {
+            box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
+            return;
+        }
+
+        // Agrupa por categoria (nicho); sem tag cai em "Sem categoria".
+        const grupos = new Map();
+        todos.forEach(p => {
+            const cat = _catDoPadrao(p);
+            if (!grupos.has(cat)) grupos.set(cat, []);
+            grupos.get(cat).push(p);
+        });
+        const cats = [...grupos.keys()].sort((a, b) => {
+            if (a === 'Sem categoria') return 1;   // sempre por último
+            if (b === 'Sem categoria') return -1;
+            return a.localeCompare(b);
+        });
+
+        // Primeira render: tudo recolhido (o usuário pediu — "menu, clico e abre").
+        if (_padroesAbertos === null) _padroesAbertos = new Set();
+
+        box.innerHTML = cats.map(cat => {
+            const itens = grupos.get(cat);
+            const aberto = _padroesAbertos.has(cat);
+            return `
+            <div class="studio-padrao-grupo ${aberto ? 'aberto' : ''}" data-cat="${_esc(cat)}">
+                <button type="button" class="studio-padrao-grupo-head" data-toggle-cat="${_esc(cat)}">
+                    <i data-lucide="chevron-right" class="studio-padrao-chevron" style="width:15px;height:15px"></i>
+                    <span class="studio-padrao-grupo-nome">${_esc(cat)}</span>
+                    <span class="studio-padrao-grupo-conta">${itens.length}</span>
+                </button>
+                <div class="studio-padrao-grupo-corpo"${aberto ? '' : ' hidden'}>
+                    ${itens.map(_cardPadrao).join('')}
+                </div>
+            </div>`;
+        }).join('');
         _icones();
+
+        // Abrir/fechar grupo — toggle direto no DOM, sem re-render.
+        box.querySelectorAll('[data-toggle-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cat = btn.dataset.toggleCat;
+                const grupo = btn.closest('.studio-padrao-grupo');
+                const corpo = grupo.querySelector('.studio-padrao-grupo-corpo');
+                const abrir = corpo.hidden;
+                corpo.hidden = !abrir;
+                grupo.classList.toggle('aberto', abrir);
+                if (abrir) _padroesAbertos.add(cat); else _padroesAbertos.delete(cat);
+            });
+        });
 
         box.querySelectorAll('[data-usar]').forEach(b =>
             b.addEventListener('click', () => gerarComPadrao(b.dataset.usar)));
         box.querySelectorAll('[data-ver]').forEach(b =>
             b.addEventListener('click', () => _verPrompt(b.dataset.ver)));
+        box.querySelectorAll('[data-ampliar-padrao]').forEach(img =>
+            img.addEventListener('click', () => _ampliarPadrao(img.dataset.ampliarPadrao)));
+        box.querySelectorAll('[data-cat-padrao]').forEach(b =>
+            b.addEventListener('click', () => _editarCategoriaPadrao(b.dataset.catPadrao)));
         box.querySelectorAll('[data-del-padrao]').forEach(b =>
             b.addEventListener('click', async () => {
                 const p = (_state.padroes || []).find(x => x.id === b.dataset.delPadrao);
@@ -1430,6 +1473,65 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 _state.padroes = _state.padroes.filter(x => x.id !== p.id);
                 _save(); _renderPadroes(); _renderCenariosRef();
             }));
+    }
+
+    // Amplia o criativo de referência — a miniatura tem ~90px e não dá pra
+    // conferir os detalhes. Busca o arquivo cheio no MediaStore; cai na
+    // miniatura se não houver.
+    async function _ampliarPadrao(padraoId) {
+        const p = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!p) return;
+        let src = p.exemploThumb || '';
+        try {
+            const blob = await _blobDoPadrao(p);
+            if (blob) src = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onloadend = () => res(String(r.result || ''));
+                r.onerror = () => rej(r.error);
+                r.readAsDataURL(blob);
+            });
+        } catch { /* usa a miniatura */ }
+        if (src && typeof abrirImagemAmpliada === 'function') abrirImagemAmpliada(src, p.nome);
+    }
+
+    // Define/edita a categoria (nicho/subnicho) de um padrão — inclusive dos
+    // criativos antigos que foram subidos sem tag.
+    function _editarCategoriaPadrao(padraoId) {
+        const p = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!p) return;
+        const nichos = [...new Set((_state.padroes || []).map(x => x.nicho).filter(Boolean))].sort();
+
+        const html = `
+            <div id="modal-cat-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;width:min(420px,92vw);display:flex;flex-direction:column;gap:0.8rem">
+                    <strong style="font-size:1rem">Categoria de "${_esc(p.nome)}"</strong>
+                    <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Nicho</label>
+                    <input id="cat-nicho" class="input input-sm" list="cat-nichos" value="${_esc(p.nicho || '')}" placeholder="ex.: Óculos de Sol">
+                    <datalist id="cat-nichos">${nichos.map(n => `<option value="${_esc(n)}">`).join('')}</datalist>
+                    <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Sub-nicho (opcional)</label>
+                    <input id="cat-subnicho" class="input input-sm" value="${_esc(p.subnicho || '')}" placeholder="ex.: Aviador">
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                        <button id="cat-cancelar" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="cat-salvar" class="btn btn-primary btn-sm">Salvar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const ov = document.getElementById('modal-cat-overlay');
+        const fechar = () => ov?.remove();
+        ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        document.getElementById('cat-cancelar').addEventListener('click', fechar);
+        document.getElementById('cat-salvar').addEventListener('click', () => {
+            p.nicho = (document.getElementById('cat-nicho').value || '').trim();
+            p.subnicho = (document.getElementById('cat-subnicho').value || '').trim();
+            _save();
+            // Mantém a nova categoria aberta pra o usuário ver onde o item foi parar.
+            if (_padroesAbertos) _padroesAbertos.add(_catDoPadrao(p));
+            fechar();
+            _renderPadroes(); _renderCenariosRef();
+            showToast('Categoria atualizada', 'success');
+        });
+        setTimeout(() => document.getElementById('cat-nicho')?.focus(), 30);
     }
 
     // Mostra o esqueleto e como ele fica preenchido para o produto atual —

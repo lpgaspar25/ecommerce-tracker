@@ -309,11 +309,13 @@ const ImageAI = (() => {
     // único mecanismo que os provedores dão pra distinguir cena de sujeito.
     function promptCenaImagem(contexto = '') {
         const ctx = String(contexto || '').trim();
-        return `Use the two provided images. THE FIRST IMAGE is a background scene/environment. THE SECOND IMAGE is a product.`
+        return `Use the two provided images. THE FIRST IMAGE is a reference scene/environment that was originally made for a DIFFERENT brand. THE SECOND IMAGE is the real product.`
             + ` Create one photorealistic commercial photograph placing the product from the second image naturally into the scene of the first image:`
             + ` correct scale and perspective, lighting, shadows and reflections that match the scene, and realistic contact where the product rests on or is held in the scene.`
             + ` The product must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings as in the second image.`
-            + ` Do not alter the product to match the scene, and do not add any text or logo that is not already visible on the product.`
+            + ` CRITICAL — clean the scene's branding: remove or replace EVERY brand name, logo, emblem, watermark, sticker and promotional text that appears anywhere in the first image (on boxes, packaging, cases, cloths, lens tags, backgrounds, banners or props).`
+            + ` The ONLY brand allowed anywhere in the final image is the product's own brand, exactly as it appears on the product in the second image.`
+            + ` Never keep any brand from the first image — for example a car manufacturer or any company unrelated to the product. Do not invent new text or logos that are not the product's own.`
             + (ctx ? ` The product is: ${ctx}.` : '');
     }
 
