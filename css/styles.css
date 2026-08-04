@@ -16048,6 +16048,9 @@ body:not([data-theme]) .adh-board-viewport {
 .studio-padrao-chevron { transition: transform .15s; flex-shrink: 0; color: var(--text-muted); }
 .studio-padrao-grupo.aberto .studio-padrao-chevron { transform: rotate(90deg); }
 .studio-padrao-grupo-corpo { padding: 0.4rem; display: flex; flex-direction: column; gap: 0.4rem; }
+/* A regra display:flex acima venceria o [hidden] do navegador — sem isto o
+   grupo nunca recolhe visualmente mesmo com o atributo hidden setado. */
+.studio-padrao-grupo-corpo[hidden] { display: none; }
 .studio-prompt-pre {
     white-space: pre-wrap; word-break: break-word; font-size: 0.72rem; line-height: 1.5;
     background: var(--bg-input, rgba(0,0,0,0.05)); border: 1px solid var(--border);
