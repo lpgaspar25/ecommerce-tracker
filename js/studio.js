@@ -220,8 +220,16 @@ const StudioModule = (() => {
             return;
         }
 
+        // Um id pode ser um preset de texto (id cru) ou um cenário de
+        // referência — um criativo que o usuário subiu, cujo AMBIENTE vamos
+        // reaproveitar (id no formato "cen:<padraoId>").
         const presets = PRESETS_FOTO.filter(p => presetIds.includes(p.id));
-        if (!presets.length) { showToast('Escolha ao menos um cenário', 'error'); return; }
+        const cenariosRef = (presetIds || [])
+            .filter(id => String(id).startsWith('cen:'))
+            .map(id => (_state.padroes || []).find(p => p.id === id.slice(4)))
+            .filter(Boolean);
+
+        if (!presets.length && !cenariosRef.length) { showToast('Escolha ao menos um cenário', 'error'); return; }
 
         _state.gerando = true;
         _renderFotos();
@@ -235,33 +243,63 @@ const StudioModule = (() => {
             return;
         }
 
+        const m = d.marca;
+        // A estética da marca entra no prompt da foto — senão a imagem sai
+        // bonita mas sem nada a ver com a loja.
+        const estetica = m ? ` Overall aesthetic: ${(m.tom?.adjetivos || []).join(', ')}. Art direction aimed at ${m.publico?.quem || 'the target buyer'}.` : '';
+        // Contexto curto pro prompt de IMAGEM (o _dossie completo é longo
+        // demais e vira ruído). Só o essencial pra identificar o produto.
+        const prod = (AppState.allProducts || []).find(x => x.id === pid);
+        const contexto = [prod?.name, prod?.vendor && `by ${prod.vendor}`].filter(Boolean).join(' ');
+
         let ok = 0;
+
+        // 1) Cenários de texto (os presets fixos).
         for (const preset of presets) {
             try {
-                const m = d.marca;
-                // A estética da marca entra no prompt da foto — senão a imagem
-                // sai bonita mas sem nada a ver com a loja.
-                const estetica = m ? ` Overall aesthetic: ${(m.tom?.adjetivos || []).join(', ')}. Art direction aimed at ${m.publico?.quem || 'the target buyer'}.` : '';
                 const prompt = `${preset.prompt}${estetica}${extra ? ' ' + extra : ''}`;
                 const blob = await _editarImagem(base, prompt, chave);
-                const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-                const mediaId = 'studio_' + id;
-                await MediaStore.put(mediaId, blob, { type: blob.type, name: `${preset.id}.png` });
-                const thumb = await _miniatura(blob);
-                d.fotos.unshift({ id, mediaId, thumb, preset: preset.id, presetLabel: preset.label,
-                                  prompt, criadoEm: new Date().toISOString() });
+                await _guardarFoto(d, blob, preset.id, preset.label, prompt);
                 ok++;
-                _save();
-                _renderFotos();
+                _save(); _renderFotos();
             } catch (err) {
                 console.error('[Studio] geração falhou:', err);
                 showToast(`${preset.label}: ${String(err.message).slice(0, 120)}`, 'error');
             }
         }
 
+        // 2) Cenários de referência: coloca o produto DENTRO da cena do criativo
+        //    subido. Manda [cena, produto] — a ordem casa com "first/second
+        //    image" do prompt.
+        for (const cen of cenariosRef) {
+            try {
+                const cena = await _blobDoPadrao(cen);
+                if (!cena) throw new Error('sem imagem de referência salva');
+                const promptBase = (window.ImageAI?.promptCenaImagem?.(contexto))
+                    || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
+                const prompt = `${promptBase}${estetica}${extra ? ' ' + extra : ''}`;
+                const blob = await _editarImagem([cena, base], prompt, chave);
+                await _guardarFoto(d, blob, 'cen:' + cen.id, `Cenário: ${cen.nome}`, prompt);
+                ok++;
+                _save(); _renderFotos();
+            } catch (err) {
+                console.error('[Studio] cenário de referência falhou:', err);
+                showToast(`Cenário "${cen.nome}": ${String(err.message).slice(0, 120)}`, 'error');
+            }
+        }
+
         _state.gerando = false;
         _renderFotos();
         if (ok) showToast(`${ok} foto(s) gerada(s)`, 'success');
+    }
+
+    // Grava uma foto gerada (blob → MediaStore + miniatura + registro).
+    async function _guardarFoto(d, blob, preset, presetLabel, prompt) {
+        const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const mediaId = 'studio_' + id;
+        await MediaStore.put(mediaId, blob, { type: blob.type, name: `${_handle(presetLabel)}.png` });
+        const thumb = await _miniatura(blob);
+        d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, criadoEm: new Date().toISOString() });
     }
 
     function _b64ParaBlob(b64, tipo = 'image/png') {
@@ -1102,6 +1140,52 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _icones();
     }
 
+    // Cenários de referência = os criativos subidos (Padrões), usados como
+    // ambiente. Globais — aparecem para qualquer produto. Filtráveis por nicho
+    // (o "catálogo"): escolher "Óculos de Sol" mostra só os desse nicho.
+    function _renderCenariosRef() {
+        const bloco = document.getElementById('studio-cenarios-ref-bloco');
+        const grid = document.getElementById('studio-cenarios-ref');
+        const filtro = document.getElementById('studio-cenarios-ref-cat');
+        if (!bloco || !grid || !filtro) return;
+
+        const todos = _state.padroes || [];
+        if (!todos.length) { bloco.style.display = 'none'; return; }
+        bloco.style.display = '';
+
+        const nichos = [...new Set(todos.map(p => p.nicho).filter(Boolean))].sort();
+        const catAtual = filtro.value;
+        filtro.innerHTML = '<option value="">Todas as categorias</option>'
+            + nichos.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('');
+        filtro.value = nichos.includes(catAtual) ? catAtual : '';
+        if (!filtro._ligado) {
+            filtro.addEventListener('change', () => _renderCenariosRef());
+            filtro._ligado = true;
+        }
+
+        const lista = filtro.value ? todos.filter(p => p.nicho === filtro.value) : todos;
+        // Preserva o que já estava marcado antes do re-render (troca de filtro).
+        const marcados = new Set([...grid.querySelectorAll('input:checked')].map(i => i.value));
+
+        grid.innerHTML = lista.map(p => {
+            const val = 'cen:' + p.id;
+            const sub = [p.nicho, p.subnicho].filter(Boolean).join(' · ');
+            return `
+            <label class="studio-cenario-ref ${marcados.has(val) ? 'is-on' : ''}">
+                <input type="checkbox" value="${val}"${marcados.has(val) ? ' checked' : ''}>
+                ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<span class="studio-cenario-ref-sem"></span>'}
+                <span class="studio-cenario-ref-nome">${_esc(p.nome)}</span>
+                ${sub ? `<span class="studio-cenario-ref-cat">${_esc(sub)}</span>` : ''}
+            </label>`;
+        }).join('');
+
+        // O studio-presets é lido junto no gerar; estes checkboxes vivem em
+        // outro container, então marca/desmarca precisa refletir a classe.
+        grid.querySelectorAll('input').forEach(inp => {
+            inp.addEventListener('change', () => inp.closest('.studio-cenario-ref')?.classList.toggle('is-on', inp.checked));
+        });
+    }
+
     async function _renderFotos() {
         const box = document.getElementById('studio-fotos');
         if (!box) return;
@@ -1344,7 +1428,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                     try { await MediaStore.del(p.exemploMediaId); } catch {}
                 }
                 _state.padroes = _state.padroes.filter(x => x.id !== p.id);
-                _save(); _renderPadroes();
+                _save(); _renderPadroes(); _renderCenariosRef();
             }));
     }
 
@@ -1398,7 +1482,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 if (campo) campo.value = '';
             });
             if (status) status.textContent = '';
-            _renderPadroes();
+            _renderPadroes(); _renderCenariosRef();
             showToast(`Padrão "${p.nome}" criado a partir do criativo.`, 'success');
         } catch (err) {
             if (status) status.textContent = '';
@@ -1454,7 +1538,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function _selecionarProduto(pid) {
         _state.productId = pid;
-        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderPadroes();
+        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderPadroes(); _renderCenariosRef();
         _renderFotos(); _renderPagina(); _renderChat();
     }
 
@@ -1469,7 +1553,9 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         document.getElementById('studio-produto')?.addEventListener('change', (e) => _selecionarProduto(e.target.value));
 
         document.getElementById('studio-gerar-fotos')?.addEventListener('click', () => {
-            const ids = [...document.querySelectorAll('#studio-presets input:checked')].map(i => i.value);
+            // Presets de texto E cenários de referência (containers separados).
+            const ids = [...document.querySelectorAll('#studio-presets input:checked, #studio-cenarios-ref input:checked')]
+                .map(i => i.value);
             const extra = (document.getElementById('studio-foto-extra')?.value || '').trim();
             gerarFotos(ids, extra);
         });

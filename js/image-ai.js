@@ -303,9 +303,23 @@ const ImageAI = (() => {
             + (ctx ? ` The product is: ${ctx}.` : '');
     }
 
+    // Composição com uma FOTO DE CENÁRIO que o usuário subiu: coloca o produto
+    // dentro daquela cena. Segue o padrão de "combining multiple images" das
+    // docs — os papéis vão separados no TEXTO ("first/second image"), que é o
+    // único mecanismo que os provedores dão pra distinguir cena de sujeito.
+    function promptCenaImagem(contexto = '') {
+        const ctx = String(contexto || '').trim();
+        return `Use the two provided images. THE FIRST IMAGE is a background scene/environment. THE SECOND IMAGE is a product.`
+            + ` Create one photorealistic commercial photograph placing the product from the second image naturally into the scene of the first image:`
+            + ` correct scale and perspective, lighting, shadows and reflections that match the scene, and realistic contact where the product rests on or is held in the scene.`
+            + ` The product must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings as in the second image.`
+            + ` Do not alter the product to match the scene, and do not add any text or logo that is not already visible on the product.`
+            + (ctx ? ` The product is: ${ctx}.` : '');
+    }
+
     return {
         editar, provedorPadrao, tamanhoValidoOpenAI,
-        promptMelhoria, promptCenario,
+        promptMelhoria, promptCenario, promptCenaImagem,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
         MODELOS_OPENAI, MODELOS_GEMINI,
     };
