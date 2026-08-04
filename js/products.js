@@ -4,6 +4,25 @@
 
 const ProductsModule = {
     _images: [],
+    // { [codigoIdioma]: { title, descriptionHtml, handle, variants:[{name,values:[]}], traduzidoEm } }
+    _translations: {},
+
+    // código interno → nome PT-BR + nome em inglês (para o prompt da IA).
+    _LANG_INFO: {
+        'Ingles': { nome: 'Inglês', en: 'English' },
+        'Ingles Americano': { nome: 'Inglês (EUA)', en: 'American English' },
+        'Portugues': { nome: 'Português', en: 'Brazilian Portuguese' },
+        'Espanhol': { nome: 'Espanhol', en: 'Spanish' },
+        'Frances': { nome: 'Francês', en: 'French' },
+        'Alemao': { nome: 'Alemão', en: 'German' },
+        'Italiano': { nome: 'Italiano', en: 'Italian' },
+        'Holandes': { nome: 'Holandês', en: 'Dutch' },
+        'Polones': { nome: 'Polonês', en: 'Polish' },
+        'Checol': { nome: 'Tcheco', en: 'Czech' },
+        'Dinamarques': { nome: 'Dinamarquês', en: 'Danish' },
+        'Sueco': { nome: 'Sueco', en: 'Swedish' },
+        'Noruegues': { nome: 'Norueguês', en: 'Norwegian' },
+    },
 
     COUNTRIES: [
         { code: 'GB', label: 'GB — Reino Unido', currency: 'GBP' },
@@ -105,6 +124,10 @@ const ProductsModule = {
 
         // IA nas imagens do produto
         document.getElementById('btn-prod-gen-gallery')?.addEventListener('click', () => this.abrirGerarGaleria());
+
+        // Idiomas mudam quais traduções aparecem (o 1º marcado é a origem).
+        document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb =>
+            cb.addEventListener('change', () => this._renderTraducoes()));
         document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
@@ -199,6 +222,7 @@ const ProductsModule = {
             const tagsEl = document.getElementById('product-tags');
             if (tagsEl) tagsEl.value = (product.tags || []).join(', ');
             this._images = (product.images || []).slice();
+            this._translations = JSON.parse(JSON.stringify(product.translations || {}));
             this._renderShopifyVariants(product);
         } else {
             title.textContent = 'Adicionar Produto';
@@ -227,6 +251,7 @@ const ProductsModule = {
             // FB accounts: render picker fresh with nothing checked
             this._renderFbAccountPicker(null);
             this._images = [];
+            this._translations = {};
         }
 
         // Reset AI status
@@ -234,6 +259,7 @@ const ProductsModule = {
         if (aiStatus) { aiStatus.style.display = 'none'; aiStatus.textContent = ''; }
 
         this._renderProductImages();
+        this._renderTraducoes();
         this.updateProfitPreview();
         this._renderShopifySection(product);
         openModal('product-modal');
@@ -712,6 +738,7 @@ const ProductsModule = {
             sku: (document.getElementById('product-sku')?.value || '').trim(),
             tags: (document.getElementById('product-tags')?.value || '').split(',').map(t => t.trim()).filter(Boolean),
             images: this._images || [],
+            translations: this._translations || {},
             storeId: getWritableStoreId()
         };
     },
@@ -1177,6 +1204,226 @@ const ProductsModule = {
         showToast(falhas
             ? `${ok} imagem(ns) da descrição melhorada(s), ${falhas} falharam.`
             : `${ok} imagem(ns) da descrição melhorada(s).`, falhas ? 'warning' : 'success');
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  TRADUÇÕES
+    //  Traduz título, descrição, URL (handle) e variantes para os idiomas
+    //  marcados em "Idiomas / Mercados" (o 1º é a origem). Ficam guardadas
+    //  no produto (translations[idioma]) e editáveis aqui. As imagens da
+    //  descrição podem ser traduzidas mantendo a dimensão original.
+    // ══════════════════════════════════════════════════════════════
+
+    _abrirTrad: null,
+
+    _idiomasSelecionados() {
+        return [...document.querySelectorAll('#product-languages input[type="checkbox"]:checked')].map(cb => cb.value);
+    },
+
+    _statusTrad(txt, cor) {
+        const el = document.getElementById('prod-trad-status');
+        if (!el) return;
+        if (!txt) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = ''; el.textContent = txt; el.style.color = cor || 'var(--text-muted)';
+    },
+
+    // Chamada de texto pra IA — OpenAI primeiro, Google como reserva. Usada
+    // só pra traduzir (a imagem tem seu próprio caminho no ImageAI).
+    async _traduzirComIA(system, user, { json = false } = {}) {
+        const openAIKey = localStorage.getItem('openai_api_key') || '';
+        const googleKey = localStorage.getItem('google_ai_api_key') || '';
+        if (openAIKey) {
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+                    ...(json ? { response_format: { type: 'json_object' } } : {}),
+                    temperature: 0.3,
+                }),
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.choices?.[0]?.message?.content || '';
+        }
+        if (googleKey) {
+            const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
+                {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: system + (json ? ' Output raw JSON only, no markdown fences.' : '') }] },
+                        contents: [{ parts: [{ text: user }] }],
+                        generationConfig: { temperature: 0.3, ...(json ? { responseMimeType: 'application/json' } : {}) },
+                    }),
+                }
+            );
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message || 'Google AI erro');
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+        throw new Error('Configure a chave OpenAI ou Google AI em Chaves de API');
+    },
+
+    // Conteúdo de origem lido do FORMULÁRIO (pode ter edição não salva).
+    _conteudoOrigem() {
+        const pid = document.getElementById('product-id')?.value;
+        const prod = pid ? (AppState.allProducts || []).find(p => p.id === pid) : null;
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        return {
+            title: nome,
+            descriptionHtml: (document.getElementById('product-description')?.innerHTML || '').trim(),
+            handle: prod?.shopifyHandle || _handleSimples(nome),
+            variants: (prod?.shopifyOptions || []).map(o => ({ name: o.name, values: o.values || [] })),
+        };
+    },
+
+    async _traduzirIdioma(langCode) {
+        const info = this._LANG_INFO[langCode];
+        if (!info) return;
+        const origem = this._conteudoOrigem();
+        if (!origem.title && !origem.descriptionHtml) {
+            showToast('Nada para traduzir — preencha título/descrição.', 'error');
+            return;
+        }
+        this._statusTrad(`Traduzindo para ${info.nome}…`);
+        try {
+            const system = `You are a professional e-commerce translator. Translate the product content given as JSON from its source language into ${info.en}.`
+                + ` Rules: translate naturally for online shoppers, not word-for-word.`
+                + ` descriptionHtml: translate ONLY the human-readable text and keep every HTML tag, attribute and <img> element exactly as-is.`
+                + ` Never translate brand names, model names or trademarks (e.g. Ray-Ban, Shimano, Ferrari, Mercedes-Benz).`
+                + ` handle: a URL slug in ${info.en} — lowercase ASCII, words separated by hyphens, no spaces or accents.`
+                + ` variants: translate each option name and its values (e.g. "Color"→localized, "Black"→localized).`
+                + ` Return ONLY valid JSON: {"title":"...","descriptionHtml":"...","handle":"...","variants":[{"name":"...","values":["..."]}]}`;
+            const txt = await this._traduzirComIA(system, JSON.stringify(origem), { json: true });
+            const t = JSON.parse(txt);
+            this._translations[langCode] = {
+                title: t.title || '',
+                descriptionHtml: t.descriptionHtml || '',
+                handle: (t.handle || '').trim(),
+                variants: Array.isArray(t.variants) ? t.variants : [],
+                traduzidoEm: new Date().toISOString(),
+            };
+            this._abrirTrad = langCode;   // já abre pra revisar
+            this._statusTrad('');
+            this._renderTraducoes();
+            showToast(`Traduzido para ${info.nome}`, 'success');
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao traduzir: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    async _traduzirImagensIdioma(langCode) {
+        const t = this._translations[langCode];
+        const info = this._LANG_INFO[langCode];
+        if (!t) return;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = t.descriptionHtml || '';
+        const imgs = [...tmp.querySelectorAll('img')];
+        if (!imgs.length) { showToast('A descrição traduzida não tem imagens.', 'info'); return; }
+        if (!confirm(`Traduzir o texto de ${imgs.length} imagem(ns) para ${info.nome}? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let i = 0; i < imgs.length; i++) {
+            const el = imgs[i];
+            const origem = el.getAttribute('src');
+            if (!origem) { falhas++; continue; }
+            this._statusTrad(`Traduzindo imagem ${i + 1} de ${imgs.length} para ${info.nome}…`);
+            try {
+                const blob = await bytesDaImagem(origem);
+                const natural = await dimensoesDaImagem(blob);
+                const largura = parseInt(el.getAttribute('width'), 10) || natural.largura;
+                const altura = parseInt(el.getAttribute('height'), 10) || natural.altura;
+                const prompt = ImageAI.promptTraducaoImagem(info.en);
+                const gerado = await ImageAI.editar(blob, prompt, {
+                    provedor: this._provedorImagem(), largura, altura, formato: 'image/webp', compressao: 90,
+                });
+                const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE,
+                    { formato: 'image/webp', largura, altura });
+                el.setAttribute('src', dataUrl);
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha ao traduzir imagem', i, e.message);
+                falhas++;
+            }
+        }
+        t.descriptionHtml = tmp.innerHTML;   // grava as imagens traduzidas de volta
+        this._statusTrad('');
+        this._renderTraducoes();
+        showToast(falhas
+            ? `${ok} imagem(ns) traduzida(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) traduzida(s) para ${info.nome}.`, falhas ? 'warning' : 'success');
+    },
+
+    _tradEditorHtml(code, t) {
+        const temImg = /<img/i.test(t.descriptionHtml || '');
+        const vars = (t.variants || []).map(v =>
+            `<div class="prod-trad-var"><strong>${escapeHtml(v.name)}:</strong> ${(v.values || []).map(escapeHtml).join(', ')}</div>`).join('');
+        return `
+            <div class="prod-trad-editor">
+                <label>Título</label>
+                <input class="input input-sm" data-trad-lang="${code}" data-trad-field="title" value="${escapeHtml(t.title || '')}">
+                <label>URL (handle)</label>
+                <input class="input input-sm" data-trad-lang="${code}" data-trad-field="handle" value="${escapeHtml(t.handle || '')}">
+                <label>Descrição</label>
+                <div class="prod-trad-desc" contenteditable="true" data-trad-lang="${code}" data-trad-field="descriptionHtml">${t.descriptionHtml || ''}</div>
+                ${vars ? `<label>Variantes</label><div class="prod-trad-vars">${vars}</div>` : ''}
+                ${temImg ? `<button type="button" class="btn btn-secondary btn-sm" data-trad-imgs="${code}" style="margin-top:0.5rem"><i data-lucide="languages" style="width:13px;height:13px;vertical-align:-2px"></i> Traduzir imagens da descrição</button>` : ''}
+            </div>`;
+    },
+
+    _renderTraducoes() {
+        const lista = document.getElementById('prod-trad-lista');
+        const origemEl = document.getElementById('prod-trad-origem');
+        if (!lista) return;
+        const idiomas = this._idiomasSelecionados();
+        const origem = idiomas[0];
+        const alvos = idiomas.slice(1);
+        if (origemEl) origemEl.textContent = origem ? (this._LANG_INFO[origem]?.nome || origem) : '—';
+
+        if (!alvos.length) {
+            lista.innerHTML = `<p class="studio-vazio" style="font-size:0.76rem;padding:0.4rem 0">Marque 2 ou mais idiomas em "Idiomas / Mercados" — o 1º é a origem, os demais são traduzidos.</p>`;
+            return;
+        }
+
+        lista.innerHTML = alvos.map(code => {
+            const info = this._LANG_INFO[code] || { nome: code };
+            const t = this._translations[code];
+            const aberto = this._abrirTrad === code;
+            return `
+            <div class="prod-trad-item ${aberto ? 'aberto' : ''}" data-lang="${code}">
+                <div class="prod-trad-head">
+                    <span class="prod-trad-nome">${escapeHtml(info.nome)}</span>
+                    ${t ? `<span class="prod-trad-ok"><i data-lucide="check" style="width:11px;height:11px;vertical-align:-1px"></i> traduzido</span>` : ''}
+                    <span style="flex:1"></span>
+                    ${t ? `<button type="button" class="btn-icon" data-trad-toggle="${code}" title="Ver/editar"><i data-lucide="chevron-${aberto ? 'up' : 'down'}" style="width:14px;height:14px"></i></button>` : ''}
+                    <button type="button" class="btn btn-secondary btn-sm" data-trad-run="${code}">${t ? 'Retraduzir' : 'Traduzir com IA'}</button>
+                </div>
+                ${aberto && t ? this._tradEditorHtml(code, t) : ''}
+            </div>`;
+        }).join('');
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+
+        lista.querySelectorAll('[data-trad-run]').forEach(b =>
+            b.addEventListener('click', () => this._traduzirIdioma(b.dataset.tradRun)));
+        lista.querySelectorAll('[data-trad-toggle]').forEach(b =>
+            b.addEventListener('click', () => {
+                this._abrirTrad = this._abrirTrad === b.dataset.tradToggle ? null : b.dataset.tradToggle;
+                this._renderTraducoes();
+            }));
+        lista.querySelectorAll('[data-trad-imgs]').forEach(b =>
+            b.addEventListener('click', () => this._traduzirImagensIdioma(b.dataset.tradImgs)));
+        // Edição inline reflete direto no objeto guardado.
+        lista.querySelectorAll('[data-trad-field]').forEach(el => {
+            const ev = el.tagName === 'DIV' ? 'input' : 'input';
+            el.addEventListener(ev, () => {
+                const code = el.dataset.tradLang, field = el.dataset.tradField;
+                if (!this._translations[code]) return;
+                this._translations[code][field] = (field === 'descriptionHtml') ? el.innerHTML : el.value;
+            });
+        });
     },
 
     // ── Gerar a GALERIA INTEIRA de uma vez ──

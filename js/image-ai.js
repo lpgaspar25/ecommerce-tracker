@@ -319,9 +319,19 @@ const ImageAI = (() => {
             + (ctx ? ` The product is: ${ctx}.` : '');
     }
 
+    // Traduz o texto DENTRO de uma imagem (banners de descrição) mantendo o
+    // layout. Same-dimensions é garantido pelo canvas do chamador; aqui a
+    // instrução é só trocar o idioma do texto sem mexer em mais nada.
+    function promptTraducaoImagem(idiomaEn) {
+        return `Using the provided image, translate every piece of visible written text into ${idiomaEn}.`
+            + ` Keep everything else in the image EXACTLY the same — layout, composition, the product, colours, logos, fonts, text position, background and dimensions must not change.`
+            + ` Only the human-readable text changes language. Do not translate brand names, model names or trademarks.`
+            + ` Match the original font style, size, colour and position as closely as possible so the layout stays intact.`;
+    }
+
     return {
         editar, provedorPadrao, tamanhoValidoOpenAI,
-        promptMelhoria, promptCenario, promptCenaImagem,
+        promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
         MODELOS_OPENAI, MODELOS_GEMINI,
     };

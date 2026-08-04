@@ -16031,6 +16031,23 @@ body:not([data-theme]) .adh-board-viewport {
 .studio-padrao-tags .studio-padrao-usos { background: rgba(16,185,129,0.15); color: var(--green, #10b981); }
 .studio-padrao-acoes { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
 
+/* Traduções do produto */
+.prod-trad-lista { display: flex; flex-direction: column; gap: 0.4rem; }
+.prod-trad-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.prod-trad-head { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.55rem; }
+.prod-trad-nome { font-size: 0.82rem; font-weight: 600; }
+.prod-trad-ok { font-size: 0.66rem; color: #22c55e; display: inline-flex; align-items: center; gap: 2px; }
+.prod-trad-editor { padding: 0.55rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.35rem; }
+.prod-trad-editor label { font-size: 0.68rem; font-weight: 600; color: var(--text-secondary); }
+.prod-trad-desc {
+    min-height: 90px; max-height: 260px; overflow: auto;
+    border: 1px solid var(--border); border-radius: 7px; padding: 0.5rem;
+    font-size: 0.8rem; background: var(--bg-primary);
+}
+.prod-trad-desc img { max-width: 100%; height: auto; }
+.prod-trad-vars { display: flex; flex-direction: column; gap: 2px; }
+.prod-trad-var { font-size: 0.74rem; color: var(--text-muted); }
+
 /* Padrões agrupados por categoria (accordion recolhível) */
 .studio-padrao-grupo { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 0.4rem; overflow: hidden; }
 .studio-padrao-grupo-head {
