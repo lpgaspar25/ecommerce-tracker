@@ -1681,6 +1681,7 @@ const ProductsModule = {
                 });
                 const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
                 novas.push({ dataUrl, name: `${_handleSimples(rotulo)}.webp`, melhorada: true, cenario: rotulo });
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Galeria: ${rotulo}`, thumb: dataUrl, origem: 'Produto' });
 
                 // Mostra o que já saiu enquanto o resto ainda gera.
                 if (substituir && novas.length === 1) this._images = [];
@@ -1915,6 +1916,7 @@ const ProductsModule = {
             this._images.unshift({ dataUrl, name: `capa-${padrao.id}.webp`, melhorada: true });
             this._renderProductImages();
             this._statusImagem('');
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Capa — ${padrao.nome}`, thumb: dataUrl, origem: 'Produto' });
             showToast(`Capa gerada com o padrão "${padrao.nome}"`, 'success');
         } catch (e) {
             this._statusImagem('');
@@ -1975,6 +1977,7 @@ const ProductsModule = {
             });
             const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
             this._images.push({ dataUrl, name: 'em-uso.webp', melhorada: true });
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Produto em uso: ${sobre}`, thumb: dataUrl, origem: 'Produto' });
             this._renderProductImages();
             this._statusImagem('');
             showToast('Imagem do produto em uso gerada', 'success');

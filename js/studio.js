@@ -300,6 +300,8 @@ const StudioModule = (() => {
         await MediaStore.put(mediaId, blob, { type: blob.type, name: `${_handle(presetLabel)}.png` });
         const thumb = await _miniatura(blob);
         d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, criadoEm: new Date().toISOString() });
+        // Alimenta o histórico global de edições (aba Recent Edits).
+        if (window.RecentEdits?.add) RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio' });
     }
 
     function _b64ParaBlob(b64, tipo = 'image/png') {
@@ -726,6 +728,7 @@ Responda APENAS com JSON válido:
                               criadoEm: new Date().toISOString() });
             padrao.usos = (padrao.usos || 0) + 1;
             _save();
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Padrão: ${padrao.nome}`, thumb, origem: 'Estúdio' });
             showToast(`Gerado com o padrão "${padrao.nome}"`, 'success');
         } catch (err) {
             showToast('Falha: ' + String(err.message).slice(0, 140), 'error');

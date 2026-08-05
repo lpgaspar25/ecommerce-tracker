@@ -4355,13 +4355,18 @@
         <section id="tab-ad-library" class="tab-panel">
             <div class="section-header">
                 <h2><i data-lucide="library" style="width:20px;height:20px;vertical-align:-3px"></i> Ad Library</h2>
+                <span id="adlib-count" style="margin-left:auto;font-size:0.8rem;color:var(--text-muted)"></span>
             </div>
-            <p class="section-subtitle">Banco de inspirações: anúncios salvos e templates por nicho. (Em breve — vai puxar da Meta Ad Library e do seu Swipe.)</p>
-            <div class="aiad-empty" style="padding:4rem 0">
-                <i data-lucide="library" style="width:48px;height:48px;color:var(--text-muted)"></i>
-                <h3>Ad Library em desenvolvimento</h3>
-                <p>Por enquanto, use a aba <a href="#" class="sidebar-link" data-tab="creatives" style="color:var(--accent)">Criativos</a> que tem o Swipe de inspirações.</p>
+            <p class="section-subtitle">Os anúncios que você salva na Mineração (Swipe) ficam aqui. Envie para um board em Saved Inspirations ou direto para o Estúdio como criativo base.</p>
+            <div class="adlib-toolbar">
+                <input type="search" id="adlib-search" class="input input-sm" placeholder="Buscar por título, página, texto…" style="flex:1;max-width:360px">
+                <select id="adlib-format" class="input input-sm" style="width:auto">
+                    <option value="">Todos os formatos</option>
+                    <option value="video">Vídeo</option>
+                    <option value="imagem">Imagem</option>
+                </select>
             </div>
+            <div id="adlib-grid" class="adlib-grid"></div>
         </section>
 
         <!-- ==================== AD LAUNCHER ==================== -->
@@ -6320,6 +6325,7 @@
     <script src="js/pipeline.js"></script>
     <script src="js/swipe.js"></script>
     <script src="js/mining.js"></script>
+    <script src="js/ad-library.js"></script>
     <script src="js/region-tags.js"></script>
     <script src="js/daily-targets.js"></script>
     <script src="js/lab-tests.js"></script>

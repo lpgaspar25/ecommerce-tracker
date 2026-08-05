@@ -4755,6 +4755,27 @@ body {
 .re-card-time { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
 .re-card-actions { display: flex; gap: 0.4rem; }
 .re-card-actions .btn { flex: 1; justify-content: center; font-size: 0.75rem; padding: 0.3rem 0.5rem; }
+.re-card-thumb { border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: rgba(255,255,255,0.04); }
+.re-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.re-tag-origem { background: rgba(16,185,129,0.14); border-color: rgba(16,185,129,0.25); color: var(--green, #10b981); }
+
+/* Ad Library — anúncios salvos do Swipe */
+.adlib-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.adlib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; }
+.adlib-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg-secondary, rgba(255,255,255,0.02)); }
+.adlib-card-thumb { position: relative; aspect-ratio: 1; background: rgba(255,255,255,0.04); }
+.adlib-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.adlib-card-noimg { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.adlib-chip { position: absolute; top: 6px; left: 6px; font-size: 0.6rem; background: rgba(0,0,0,0.65); color: #fff; padding: 1px 6px; border-radius: 999px; }
+.adlib-card-body { padding: 0.55rem; display: flex; flex-direction: column; gap: 3px; }
+.adlib-card-title { font-size: 0.8rem; line-height: 1.25; }
+.adlib-card-author { font-size: 0.68rem; color: var(--text-muted); }
+.adlib-card-note { font-size: 0.7rem; color: var(--text-muted); margin: 2px 0 0; line-height: 1.35; max-height: 2.7em; overflow: hidden; }
+.adlib-card-actions { display: flex; align-items: center; gap: 0.3rem; margin-top: 0.5rem; flex-wrap: wrap; }
+.adlib-card-actions .btn { font-size: 0.72rem; padding: 0.28rem 0.5rem; }
+
+/* Botão "Usar no Estúdio" nas inspirações salvas */
+.inspo-card-usar { width: 100%; margin: 0.4rem 0 0; justify-content: center; font-size: 0.72rem; }
 
 /* ===== Brands extras ===== */
 .brand-avatar {
