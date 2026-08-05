@@ -21,7 +21,7 @@
 
 const DEFAULTS = {
   API_VERSION: '2026-01',
-  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_translations,write_locales,read_translations',
+  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales',
   APP_URL: 'https://app-calculadora-lucas.pages.dev',
 };
 

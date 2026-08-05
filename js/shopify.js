@@ -2097,8 +2097,18 @@ const ShopifyModule = (() => {
         const aviso = typeof opcoes.onProgress === 'function' ? opcoes.onProgress : () => {};
 
         // Idiomas já habilitados na loja (só dá pra registrar em locale enabled).
+        // Se a leitura falhar (ex.: falta read_locales), NÃO trava o envio — os
+        // idiomas costumam já estar habilitados; segue pro registro e a própria
+        // Shopify recusa se algum locale não estiver enabled.
         aviso('Verificando idiomas da loja…');
-        const locales = await _shopLocales();
+        let locales = [];
+        let podeHabilitar = true;
+        try {
+            locales = await _shopLocales();
+        } catch (e) {
+            console.warn('[Shopify] não consegui ler shopLocales:', e.message);
+            podeHabilitar = false;   // sem a lista, não tenta habilitar às cegas
+        }
         const habilitados = new Set(locales.map(l => l.locale));
         const primario = (locales.find(l => l.primary) || {}).locale;
 
@@ -2109,7 +2119,7 @@ const ShopifyModule = (() => {
             if (!locale || locale === primario) continue;   // não traduz para a própria origem
             const t = porIdioma[locale];
             try {
-                if (!habilitados.has(locale)) {
+                if (podeHabilitar && !habilitados.has(locale)) {
                     aviso(`Habilitando idioma ${locale}…`);
                     await _habilitarLocale(locale);
                     habilitados.add(locale);
