@@ -34,6 +34,37 @@ const StudioModule = (() => {
           prompt: 'Extreme close-up macro shot of this exact product showing its material texture and build quality. Keep the product itself completely unchanged. Studio lighting, very sharp focus, shallow depth of field.' },
         { id: 'externo',   label: 'Ambiente externo', icone: 'sun',
           prompt: 'Place this exact product in an outdoor urban setting during golden hour with warm directional sunlight. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Photorealistic lifestyle photography.' },
+
+        // ── Presets de anúncio (prompts fornecidos pelo usuário, verbatim).
+        // Os marcadores ${product.title/niche/market} são preenchidos em
+        // _preencherPromptPreset na hora de gerar. Não editar o texto abaixo.
+        { id: 'kit-hero', label: 'Kit premium (hero)', icone: 'package', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Packshot premium com produto, embalagem e acessórios. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'handheld', label: 'Na mão (escala)', icone: 'hand', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto real na mão, foco em escala e detalhes. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'lifestyle-action', label: 'Lifestyle em ação', icone: 'activity', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto em uso em uma situação coerente com o nicho. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'environment', label: 'No ambiente de uso', icone: 'trees', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto em primeiro plano no ambiente de uso. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, square 1:1 composition.' },
+        { id: 'macro-detail', label: 'Macro (acabamento)', icone: 'zoom-in', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Macro de acabamento, material ou mecanismo principal. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'comparison', label: 'Comparação / variantes', icone: 'columns-2', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Composição demonstrando variantes ou benefícios visuais. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details' },
+        { id: 'ugc', label: 'UGC (cliente)', icone: 'smartphone', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Fotografia natural de cliente, sem headline. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'dark-studio', label: 'Estúdio escuro', icone: 'moon', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Estúdio escuro com iluminação dramática. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'bright-studio', label: 'Estúdio claro', icone: 'sun-medium', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Estúdio claro com composição comercial limpa. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+    ];
+
+    // Formatos de saída. `ar` é a proporção pro Gemini; w/h a dimensão exata.
+    const DIMENSOES = [
+        { id: '1x1',  label: 'Quadrado 1:1',   w: 1080, h: 1080, ar: '1:1' },
+        { id: '9x16', label: 'Story 9:16',     w: 1080, h: 1920, ar: '9:16' },
+        { id: '4x5',  label: 'Feed 4:5',       w: 1080, h: 1350, ar: '4:5' },
+        { id: '16x9', label: 'YouTube 16:9',   w: 1920, h: 1080, ar: '16:9' },
+        { id: '4x3',  label: 'Clássico 4:3',   w: 1440, h: 1080, ar: '4:3' },
     ];
 
     // ══════════════════════════════════════════════════════════════
@@ -203,6 +234,54 @@ const StudioModule = (() => {
         return await new Promise(res => canvas.toBlob(res, 'image/png'));
     }
 
+    // Preenche ${product.title/niche/market} dos presets de anúncio. O texto
+    // do prompt NÃO é alterado — só os marcadores são substituídos.
+    function _preencherPromptPreset(template, pid) {
+        const p = (AppState.allProducts || []).find(x => x.id === pid);
+        const title = p?.name || 'the product';
+        const niche = (p?.tags || []).find(Boolean) || p?.vendor || 'general ecommerce';
+        // Mercado a partir do 1º idioma do produto; senão, global.
+        const MERCADO = { Ingles: 'United Kingdom', 'Ingles Americano': 'United States', Portugues: 'Brazil', Espanhol: 'Spain', Frances: 'France', Alemao: 'Germany', Italiano: 'Italy', Holandes: 'Netherlands' };
+        const market = MERCADO[(p?.languages || [])[0]] || 'global market';
+        return String(template)
+            .replace(/\$\{product\.title\}/g, title)
+            .replace(/\$\{product\.niche\}/g, niche)
+            .replace(/\$\{product\.market\}/g, market);
+    }
+
+    // Dimensões marcadas na UI (default: só 1:1 se nada marcado).
+    function _dimensoesSelecionadas() {
+        const ids = [...document.querySelectorAll('#studio-dimensoes input:checked')].map(i => i.value);
+        const sel = DIMENSOES.filter(x => ids.includes(x.id));
+        return sel.length ? sel : [DIMENSOES[0]];
+    }
+
+    // Reenquadra um blob para a dimensão dada, mantendo o criativo idêntico.
+    // Deriva da MESMA base → as versões saem iguais, só em formatos diferentes.
+    async function _reframeParaDimensao(blob, dim) {
+        const prompt = (window.ImageAI?.promptReframe?.())
+            || 'Reframe this image to the new aspect ratio, keep the content identical, extend the background.';
+        const gerado = await ImageAI.editar([blob], prompt, {
+            provedor: _provedorImagem(),
+            largura: dim.w, altura: dim.h, aspectRatio: dim.ar,
+            formato: 'image/webp', compressao: 92,
+        });
+        // Força a dimensão EXATA (a API devolve algo próximo).
+        const { blob: norm } = await comprimirImagem(gerado, 4096, 0.92, { formato: 'image/webp', largura: dim.w, altura: dim.h });
+        return norm;
+    }
+
+    // Salva um criativo em cada dimensão pedida. A base (square) é salva
+    // direto no 1:1; as demais são reenquadradas a partir dela.
+    async function _salvarNasDimensoes(d, baseBlob, presetId, label, prompt, dims) {
+        for (const dim of dims) {
+            const ehQuadrado = dim.id === '1x1';
+            const outBlob = ehQuadrado ? baseBlob : await _reframeParaDimensao(baseBlob, dim);
+            const rotulo = dims.length > 1 ? `${label} · ${dim.label}` : label;
+            await _guardarFoto(d, outBlob, presetId, rotulo, prompt, dim.id);
+        }
+    }
+
     async function gerarFotos(presetIds, extra = '') {
         const pid = _state.productId;
         if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
@@ -252,14 +331,17 @@ const StudioModule = (() => {
         const prod = (AppState.allProducts || []).find(x => x.id === pid);
         const contexto = [prod?.name, prod?.vendor && `by ${prod.vendor}`].filter(Boolean).join(' ');
 
+        const dims = _dimensoesSelecionadas();
         let ok = 0;
 
-        // 1) Cenários de texto (os presets fixos).
+        // 1) Cenários de texto (os presets fixos). Os presets de anúncio têm
+        //    marcadores ${product.*} que são preenchidos aqui.
         for (const preset of presets) {
             try {
-                const prompt = `${preset.prompt}${estetica}${extra ? ' ' + extra : ''}`;
+                const promptPreset = _preencherPromptPreset(preset.prompt, pid);
+                const prompt = `${promptPreset}${estetica}${extra ? ' ' + extra : ''}`;
                 const blob = await _editarImagem(base, prompt, chave);
-                await _guardarFoto(d, blob, preset.id, preset.label, prompt);
+                await _salvarNasDimensoes(d, blob, preset.id, preset.label, prompt, dims);
                 ok++;
                 _save(); _renderFotos();
             } catch (err) {
@@ -279,7 +361,7 @@ const StudioModule = (() => {
                     || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
                 const prompt = `${promptBase}${estetica}${extra ? ' ' + extra : ''}`;
                 const blob = await _editarImagem([cena, base], prompt, chave);
-                await _guardarFoto(d, blob, 'cen:' + cen.id, `Cenário: ${cen.nome}`, prompt);
+                await _salvarNasDimensoes(d, blob, 'cen:' + cen.id, `Cenário: ${cen.nome}`, prompt, dims);
                 ok++;
                 _save(); _renderFotos();
             } catch (err) {
@@ -294,12 +376,12 @@ const StudioModule = (() => {
     }
 
     // Grava uma foto gerada (blob → MediaStore + miniatura + registro).
-    async function _guardarFoto(d, blob, preset, presetLabel, prompt) {
+    async function _guardarFoto(d, blob, preset, presetLabel, prompt, dimId) {
         const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
         const mediaId = 'studio_' + id;
         await MediaStore.put(mediaId, blob, { type: blob.type, name: `${_handle(presetLabel)}.png` });
         const thumb = await _miniatura(blob);
-        d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, criadoEm: new Date().toISOString() });
+        d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, dim: dimId || '1x1', criadoEm: new Date().toISOString() });
         // Alimenta o histórico global de edições (aba Recent Edits).
         if (window.RecentEdits?.add) RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio' });
     }
@@ -1203,8 +1285,9 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         box.innerHTML = carregando + d.fotos.map(f => `
             <div class="studio-foto" data-id="${f.id}">
                 <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy" data-expandir="${f.id}">
-                <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}</span>
+                <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}${f.dim && f.dim !== '1x1' ? ` · ${_esc((DIMENSOES.find(x => x.id === f.dim) || {}).label || f.dim)}` : ''}</span>
                 <div class="studio-foto-acoes">
+                    <button class="btn-icon" data-acao="versoes" data-id="${f.id}" title="Gerar este criativo em outros formatos (story, 16:9, 4:3…)"><i data-lucide="ratio" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="capa" data-id="${f.id}" title="Definir como capa do produto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="baixar" data-id="${f.id}" title="Baixar em resolução cheia"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="criativo" data-id="${f.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
@@ -1233,6 +1316,9 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             const a = document.createElement('a');
             a.href = url; a.download = `${_handle(f.presetLabel)}-${id}.png`; a.click();
             setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        } else if (acao === 'versoes') {
+            _abrirVersoes(f);
 
         } else if (acao === 'capa') {
             const p = (AppState.allProducts || []).find(x => x.id === _state.productId);
@@ -1289,6 +1375,68 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             EventBus.emit('creativesChanged');
             showToast('Salvo em Meus Criativos', 'success');
         }
+    }
+
+    // Picker de formatos + geração das versões de um criativo JÁ pronto.
+    // Todas derivam do mesmo blob → saem idênticas, só reenquadradas.
+    function _abrirVersoes(f) {
+        const jaTem = f.dim || '1x1';
+        const html = `
+            <div id="modal-versoes-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.1rem;width:min(420px,92vw);display:flex;flex-direction:column;gap:0.7rem">
+                    <strong style="font-size:0.95rem">Gerar este criativo em outros formatos</strong>
+                    <p style="margin:0;font-size:0.76rem;color:var(--text-muted)">Sai o mesmo criativo, só reenquadrado — a IA estende o fundo sem mexer no produto.</p>
+                    <div class="studio-dim-grid">
+                        ${DIMENSOES.map(dim => `
+                            <label class="studio-dim-chip ${dim.id === jaTem ? 'studio-dim-ja' : ''}">
+                                <input type="checkbox" value="${dim.id}" ${dim.id === jaTem ? 'disabled' : ''}>
+                                <span>${_esc(dim.label)}${dim.id === jaTem ? ' (atual)' : ''}</span>
+                            </label>`).join('')}
+                    </div>
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                        <button id="versoes-cancelar" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="versoes-gerar" class="btn btn-primary btn-sm">Gerar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const ov = document.getElementById('modal-versoes-overlay');
+        const fechar = () => ov?.remove();
+        ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        document.getElementById('versoes-cancelar').addEventListener('click', fechar);
+        document.getElementById('versoes-gerar').addEventListener('click', async () => {
+            const ids = [...ov.querySelectorAll('input:checked')].map(i => i.value);
+            const dims = DIMENSOES.filter(x => ids.includes(x.id));
+            fechar();
+            if (!dims.length) { showToast('Escolha ao menos um formato.', 'error'); return; }
+            await _gerarVersoes(f, dims);
+        });
+    }
+
+    async function _gerarVersoes(f, dims) {
+        const prov = _provedorImagem();
+        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        if (!chave) { showToast('Configure a chave de IA em Chaves de API', 'error'); return; }
+
+        const rec = await MediaStore.get(f.mediaId);
+        if (!rec?.blob) { showToast('Arquivo original não encontrado.', 'error'); return; }
+
+        const d = _dados(_state.productId);
+        _state.gerando = true; _renderFotos();
+        let ok = 0;
+        for (const dim of dims) {
+            try {
+                const outBlob = await _reframeParaDimensao(rec.blob, dim);
+                await _guardarFoto(d, outBlob, f.preset, `${f.presetLabel} · ${dim.label}`, f.prompt, dim.id);
+                ok++;
+                _save(); _renderFotos();
+            } catch (e) {
+                console.error('[Studio] versão falhou', dim.id, e);
+                showToast(`${dim.label}: ${String(e.message).slice(0, 120)}`, 'error');
+            }
+        }
+        _state.gerando = false; _renderFotos();
+        if (ok) showToast(`${ok} versão(ões) gerada(s)`, 'success');
     }
 
     function _renderPagina() {

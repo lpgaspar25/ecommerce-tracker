@@ -196,10 +196,11 @@ const ImageAI = (() => {
         }
         parts.push({ text: prompt });
 
-        // aspectRatio é omitido de propósito: sem ele o modelo segue a
-        // proporção da imagem de referência (garantia da doc), que é o que
-        // queremos ao melhorar/reaproveitar uma foto existente.
+        // Sem aspectRatio o modelo segue a proporção da referência (bom pra
+        // melhorar/reaproveitar). Mas quando o chamador PEDE uma proporção
+        // (reenquadrar pra story/16:9/4:3), passamos explícito.
         const imageConfig = { imageSize: opcoes.imageSize || '2K' };
+        if (opcoes.aspectRatio) imageConfig.aspectRatio = opcoes.aspectRatio;
 
         let ultimoErro = '';
         for (const modelo of MODELOS_GEMINI) {
@@ -329,9 +330,18 @@ const ImageAI = (() => {
             + ` Match the original font style, size, colour and position as closely as possible so the layout stays intact.`;
     }
 
+    // Reenquadra um criativo já pronto para outra proporção/tamanho SEM mudar
+    // o conteúdo — é como o mesmo criativo vira story, 16:9, 4:3 etc. e continua
+    // idêntico. Outpainting: estende o fundo, nunca corta/distorce o produto.
+    function promptReframe() {
+        return `Reframe this exact image to the new canvas/aspect ratio without changing its content.`
+            + ` Keep the product, its position and size, the overall composition, colours, lighting and style IDENTICAL to the input image — this must look like the same creative, only in a different format.`
+            + ` Extend the existing background naturally (outpainting) to fill the new area. Do NOT crop, stretch, distort, zoom or duplicate the product, and do not add any new text, logo or element.`;
+    }
+
     return {
         editar, provedorPadrao, tamanhoValidoOpenAI,
-        promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem,
+        promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
         MODELOS_OPENAI, MODELOS_GEMINI,
     };

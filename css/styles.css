@@ -15699,6 +15699,21 @@ body:not([data-theme]) .adh-board-viewport {
     background: color-mix(in srgb, var(--purple, #8b5cf6) 10%, transparent);
 }
 
+/* Formatos de saída (dimensões) */
+.studio-dim-row { margin-top: 0.7rem; }
+.studio-dim-row > label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.35rem; }
+.studio-dim-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.studio-dim-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer;
+    font-size: 0.72rem; padding: 0.3rem 0.55rem;
+    border: 1px solid var(--border); border-radius: 999px;
+}
+.studio-dim-chip:has(input:checked) {
+    border-color: var(--purple, #8b5cf6);
+    background: color-mix(in srgb, var(--purple, #8b5cf6) 12%, transparent);
+}
+.studio-dim-chip.studio-dim-ja { opacity: 0.5; cursor: default; }
+
 /* Cenários de referência (criativos subidos usados como ambiente) */
 .studio-cenarios-ref { margin-top: 0.7rem; }
 .studio-cenarios-ref-head {
