@@ -12,6 +12,13 @@ const ShopifyModule = (() => {
     // Cloudflare Worker that handles OAuth + GraphQL proxy
     const DEFAULT_PROXY_URL = 'https://shopify-proxy.lucasmedia.workers.dev';
 
+    // Escopos que o app pede na conexão. Passados na URL do /oauth/start
+    // porque o parâmetro tem prioridade sobre a env SCOPES do servidor — é a
+    // única forma de garantir a lista certa sem mexer em variável de ambiente.
+    //  reads: pedidos/produtos/idiomas/traduções · writes: produtos (imagem),
+    //  arquivos, traduções, idiomas.
+    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales';
+
     let _config = null;
     let _productLinks = {};
     let _shopifyProducts = [];
@@ -48,6 +55,9 @@ const ShopifyModule = (() => {
         // so that redirect_uri host matches the App URL configured in Shopify Partners.
         const returnUrl = window.location.origin + window.location.pathname;
         const params = new URLSearchParams({ shop, return: returnUrl });
+        // Passa os escopos explicitamente — tem prioridade sobre a env SCOPES
+        // do servidor (que estava presa em só-leitura e ignorava o código).
+        params.set('scopes', OAUTH_SCOPES);
         // Pass custom credentials if user provided them — otherwise server falls back to env secrets
         if (_config.clientId)     params.set('client_id',     _config.clientId);
         if (_config.clientSecret) params.set('client_secret', _config.clientSecret);
