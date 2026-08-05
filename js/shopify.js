@@ -2004,9 +2004,235 @@ const ShopifyModule = (() => {
         return d?.productReorderMedia?.job || null;
     }
 
+    // ══════════════════════════════════════════════════════════════
+    //  TRADUÇÕES  (translatableResource → translationsRegister)
+    //
+    //  Fluxo oficial validado contra o schema, sempre 2 passos por recurso:
+    //    1. LER translatableContent → pega key + digest (hash do valor de
+    //       ORIGEM). O digest muda quando a origem muda; por isso é lido na
+    //       hora, nunca cacheado.
+    //    2. GRAVAR translationsRegister com {locale, key, value, digest}.
+    //
+    //  Keys de Product: title, body_html (descrição), handle. Opção e valor
+    //  de variante são recursos SEPARADOS (ProductOption / ProductOptionValue,
+    //  key "name", GID e digest próprios).
+    // ══════════════════════════════════════════════════════════════
+
+    async function _shopLocales() {
+        const q = `query GetShopLocales { shopLocales { locale name primary published } }`;
+        const d = await _graphql(q, {});
+        return d?.shopLocales || [];
+    }
+
+    async function _habilitarLocale(locale) {
+        const q = `
+            mutation EnableLocale($locale: String!) {
+                shopLocaleEnable(locale: $locale) {
+                    shopLocale { locale name published }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, { locale });
+        const err = d?.shopLocaleEnable?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.shopLocaleEnable?.shopLocale || null;
+    }
+
+    // Lê os campos traduzíveis + digests de um recurso (produto, opção, valor).
+    async function _conteudoTraduzivel(gid) {
+        const q = `
+            query GetTranslatable($id: ID!) {
+                translatableResource(resourceId: $id) {
+                    resourceId
+                    translatableContent { key value digest locale type }
+                }
+            }`;
+        const d = await _graphql(q, { id: gid });
+        const map = {};
+        (d?.translatableResource?.translatableContent || []).forEach(c => { map[c.key] = c; });
+        return map;
+    }
+
+    // Opções e valores de variante do produto (cada um com GID + digest).
+    async function _nestedTraduzivel(gid) {
+        const q = `
+            query GetNested($id: ID!) {
+                translatableResource(resourceId: $id) {
+                    nestedTranslatableResources(first: 100) {
+                        edges { node { resourceId translatableContent { key value digest } } }
+                    }
+                }
+            }`;
+        const d = await _graphql(q, { id: gid });
+        return (d?.translatableResource?.nestedTranslatableResources?.edges || [])
+            .map(e => e.node)
+            .map(n => ({
+                resourceId: n.resourceId,
+                conteudo: (n.translatableContent || []).reduce((a, c) => (a[c.key] = c, a), {}),
+            }));
+    }
+
+    async function _registrarTraducoes(resourceId, translations) {
+        if (!translations.length) return [];
+        const q = `
+            mutation RegisterTranslations($resourceId: ID!, $translations: [TranslationInput!]!) {
+                translationsRegister(resourceId: $resourceId, translations: $translations) {
+                    translations { locale key }
+                    userErrors { field message code }
+                }
+            }`;
+        const d = await _graphql(q, { resourceId, translations });
+        const err = d?.translationsRegister?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.translationsRegister?.translations || [];
+    }
+
+    // Envia as traduções de UM produto para vários idiomas. `porIdioma` é
+    // { [locale]: { title, descriptionHtml, handle, variants:[{name,values}] } }.
+    // `origem` = { variants:[{name,values}] } do idioma de origem, pra casar
+    // os valores traduzidos com os GIDs certos das opções.
+    async function enviarTraducoesDoProduto(produtoGid, porIdioma, opcoes = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!produtoGid) throw new Error('Produto sem vínculo na Shopify.');
+        const aviso = typeof opcoes.onProgress === 'function' ? opcoes.onProgress : () => {};
+
+        // Idiomas já habilitados na loja (só dá pra registrar em locale enabled).
+        aviso('Verificando idiomas da loja…');
+        const locales = await _shopLocales();
+        const habilitados = new Set(locales.map(l => l.locale));
+        const primario = (locales.find(l => l.primary) || {}).locale;
+
+        const resultado = { ok: [], falhas: [] };
+        const alvos = Object.keys(porIdioma);
+
+        for (const locale of alvos) {
+            if (!locale || locale === primario) continue;   // não traduz para a própria origem
+            const t = porIdioma[locale];
+            try {
+                if (!habilitados.has(locale)) {
+                    aviso(`Habilitando idioma ${locale}…`);
+                    await _habilitarLocale(locale);
+                    habilitados.add(locale);
+                }
+
+                // 1) Produto: title, body_html, handle. Digest lido AGORA.
+                aviso(`Enviando ${locale}: texto…`);
+                let bodyHtml = t.descriptionHtml || '';
+                // Imagens traduzidas viram base64 na descrição — a loja não
+                // renderiza data: em body_html. Hospeda como arquivo e troca.
+                bodyHtml = await _hospedarImagensData(bodyHtml, (m) => aviso(`Enviando ${locale}: ${m}`));
+
+                const cont = await _conteudoTraduzivel(produtoGid);
+                const traducoesProduto = [];
+                const add = (key, value) => {
+                    const c = cont[key];
+                    if (c && value != null && String(value).trim()) {
+                        traducoesProduto.push({ locale, key, value: String(value), translatableContentDigest: c.digest });
+                    }
+                };
+                add('title', t.title);
+                add('body_html', bodyHtml);
+                add('handle', t.handle);
+                await _registrarTraducoes(produtoGid, traducoesProduto);
+
+                // 2) Opções/valores de variante (recursos separados).
+                if ((t.variants || []).length) {
+                    aviso(`Enviando ${locale}: variantes…`);
+                    await _traduzirVariantes(produtoGid, t.variants, opcoes.variantesOrigem || [], locale);
+                }
+
+                resultado.ok.push(locale);
+            } catch (e) {
+                console.warn('[Shopify] falha ao traduzir', locale, e.message);
+                resultado.falhas.push({ locale, erro: e.message });
+            }
+        }
+        return resultado;
+    }
+
+    // Casa cada opção/valor traduzido com o GID certo pelo VALOR de origem.
+    async function _traduzirVariantes(produtoGid, variantesTraduzidas, variantesOrigem, locale) {
+        const nested = await _nestedTraduzivel(produtoGid);
+        // Índice: valor de origem (lowercase) → { resourceId, digest } do "name".
+        const porValor = new Map();
+        nested.forEach(n => {
+            const c = n.conteudo?.name;
+            if (c && c.value) porValor.set(String(c.value).toLowerCase().trim(), { resourceId: n.resourceId, digest: c.digest });
+        });
+
+        for (let oi = 0; oi < variantesTraduzidas.length; oi++) {
+            const optT = variantesTraduzidas[oi];
+            const optO = variantesOrigem[oi];
+            if (!optO) continue;
+            // Nome da opção (Color → Farbe)
+            const alvoNome = porValor.get(String(optO.name).toLowerCase().trim());
+            if (alvoNome && optT.name) {
+                try { await _registrarTraducoes(alvoNome.resourceId, [{ locale, key: 'name', value: optT.name, translatableContentDigest: alvoNome.digest }]); } catch (e) { console.warn('[Shopify] opção', e.message); }
+            }
+            // Valores (Black → Schwarz), casados por posição via valor de origem.
+            // for-of com await (forEach(async) não aguardaria nem trataria erro).
+            const valores = optO.values || [];
+            for (let vi = 0; vi < valores.length; vi++) {
+                const alvo = porValor.get(String(valores[vi]).toLowerCase().trim());
+                const valTrad = (optT.values || [])[vi];
+                if (alvo && valTrad) {
+                    try { await _registrarTraducoes(alvo.resourceId, [{ locale, key: 'name', value: valTrad, translatableContentDigest: alvo.digest }]); } catch (e) { console.warn('[Shopify] valor', e.message); }
+                }
+            }
+        }
+    }
+
+    // Troca imagens data: (base64) da descrição por arquivos hospedados na
+    // Shopify, senão a loja não renderiza e o body_html fica gigante.
+    async function _hospedarImagensData(html, aviso = () => {}) {
+        if (!html || !html.includes('data:image')) return html;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const imgs = [...tmp.querySelectorAll('img')].filter(im => (im.getAttribute('src') || '').startsWith('data:'));
+        for (let i = 0; i < imgs.length; i++) {
+            aviso(`hospedando imagem ${i + 1}/${imgs.length}`);
+            try {
+                const url = await _hospedarArquivoImagem(imgs[i].getAttribute('src'), `desc-${Date.now()}-${i}`);
+                if (url) imgs[i].setAttribute('src', url);
+            } catch (e) { console.warn('[Shopify] hospedar imagem descrição:', e.message); }
+        }
+        return tmp.innerHTML;
+    }
+
+    // Sobe um data:URL para a Files da loja e devolve a URL pública (poll).
+    async function _hospedarArquivoImagem(dataUrl, nome) {
+        const blob = await bytesDaImagem(dataUrl);
+        const ext = (blob.type.split('/')[1] || 'webp').replace('jpeg', 'jpg');
+        const arquivo = `${nome}.${ext}`;
+        const alvo = await _criarAlvoDeUpload(arquivo, blob.type || 'image/webp', blob.size);
+        await _enviarBytes(alvo, blob, arquivo);
+
+        const q = `
+            mutation FileCreate($files: [FileCreateInput!]!) {
+                fileCreate(files: $files) {
+                    files { id fileStatus ... on MediaImage { image { url } } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, { files: [{ originalSource: alvo.resourceUrl, contentType: 'IMAGE' }] });
+        const err = d?.fileCreate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        const fileId = d?.fileCreate?.files?.[0]?.id;
+        let url = d?.fileCreate?.files?.[0]?.image?.url;
+        // fileCreate processa async — faz poll até a URL aparecer.
+        for (let i = 0; i < 10 && !url && fileId; i++) {
+            await new Promise(r => setTimeout(r, 900));
+            const pq = `query FileUrl($id: ID!) { node(id: $id) { ... on MediaImage { image { url } fileStatus } } }`;
+            const pd = await _graphql(pq, { id: fileId });
+            url = pd?.node?.image?.url;
+        }
+        return url || '';
+    }
+
     return {
         init, getConfig, isConfigured,
         enviarImagemDoProduto, reordenarMidia, idsDeMidiaAtual,
+        enviarTraducoesDoProduto, localesDaLoja: _shopLocales,
         beginInstall, testConnection, disconnect, diagnose,
         fetchOrders, fetchShopifyProducts, getShopifyProducts,
         linkProduct, getLink, autoLinkByName, syncAllLinkedPrices,

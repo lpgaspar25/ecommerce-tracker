@@ -225,15 +225,48 @@ async function shopSession(request, env) {
 
 // ── GraphQL proxy ────────────────────────────────────────────
 
-// Mutations que o app realmente precisa. Tudo o mais é recusado aqui.
-// Motivo: o token guardado no KV tem write_products, então este proxy é o
-// único ponto entre a internet e a capacidade de ALTERAR a loja. Sem esta
-// lista, quem descobrisse uma sessão poderia mandar productDelete.
-const MUTACOES_PERMITIDAS = new Set([
-  'StagedUploadsCreate',
-  'ProductUpdateAddMedia',
-  'ProductReorderMedia',
+// CAMPOS raiz de mutation que o app realmente precisa. Tudo o mais é recusado.
+// Checamos o CAMPO invocado (o que de fato executa), não o nome da operação —
+// o nome é só um rótulo; uma "mutation RegisterTranslations { productDelete }"
+// executaria productDelete apesar do nome. O token no KV tem write_products,
+// então este proxy é o único ponto entre a internet e o poder de ALTERAR a loja.
+const CAMPOS_MUTATION_PERMITIDOS = new Set([
+  'stagedUploadsCreate',
+  'productUpdate',
+  'productReorderMedia',
+  'translationsRegister',
+  'shopLocaleEnable',
+  'fileCreate',
 ]);
+
+// Extrai os campos raiz invocados dentro do corpo de uma mutation (nível de
+// seleção 1). Um campo raiz é um identificador seguido de "(" (argumentos) ou
+// "{" (seleção) no topo do bloco — alias "x: campo(...)" resolve para "campo".
+function _camposRaizDaMutation(q) {
+  const start = q.search(/\bmutation\b/);
+  if (start < 0) return null;                 // não é mutation
+  let i = start + 'mutation'.length;
+  // Pula nome + defs de variáveis: acha o "{" do corpo com paren-depth 0
+  // (defaults de variável podem conter "{}", mas sempre dentro de "(...)").
+  let paren = 0;
+  for (; i < q.length; i++) {
+    const c = q[i];
+    if (c === '(') paren++;
+    else if (c === ')') paren--;
+    else if (c === '{' && paren === 0) { i++; break; }
+  }
+  const campos = [];
+  let depth = 1, buf = '';
+  for (; i < q.length && depth > 0; i++) {
+    const c = q[i];
+    if (depth === 1 && /[A-Za-z0-9_]/.test(c)) { buf += c; continue; }
+    if (c === '(') { if (depth === 1 && buf) campos.push(buf); buf = ''; continue; }
+    if (c === '{') { if (depth === 1 && buf) campos.push(buf); depth++; buf = ''; continue; }
+    if (c === '}') { depth--; buf = ''; continue; }
+    buf = '';
+  }
+  return campos;
+}
 
 // Devolve o motivo da recusa, ou null se pode passar.
 function _mutacaoRecusada(body) {
@@ -241,20 +274,19 @@ function _mutacaoRecusada(body) {
   try { query = JSON.parse(body)?.query; } catch { return 'corpo não é JSON válido'; }
   if (typeof query !== 'string') return 'query ausente';
 
-  // Tira comentários e literais de string antes de procurar a palavra
-  // "mutation" — senão um texto qualquer dentro de uma variável dispararia
-  // falso positivo (ou serviria para esconder uma mutation de verdade).
+  // Tira comentários e literais de string antes de analisar — senão texto
+  // dentro de uma variável poderia esconder um campo proibido.
   const limpo = query
     .replace(/#[^\n]*/g, ' ')
     .replace(/"""[\s\S]*?"""/g, '""')
     .replace(/"(?:[^"\\]|\\.)*"/g, '""');
 
-  if (!/(^|[\s{(])mutation[\s{]/.test(limpo)) return null;   // é query pura
+  if (!/(^|[\s{(])mutation[\s{]/.test(limpo)) return null;   // query pura → passa
 
-  const nomes = [...limpo.matchAll(/mutation\s+([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]);
-  if (!nomes.length) return 'mutation anônima não é permitida';
-  const proibida = nomes.find(n => !MUTACOES_PERMITIDAS.has(n));
-  if (proibida) return `mutation não permitida: ${proibida}`;
+  const campos = _camposRaizDaMutation(limpo);
+  if (!campos || !campos.length) return 'não consegui identificar o campo da mutation';
+  const proibido = campos.find(c => !CAMPOS_MUTATION_PERMITIDOS.has(c));
+  if (proibido) return `campo de mutation não permitido: ${proibido}`;
   return null;
 }
 

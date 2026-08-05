@@ -7,21 +7,23 @@ const ProductsModule = {
     // { [codigoIdioma]: { title, descriptionHtml, handle, variants:[{name,values:[]}], traduzidoEm } }
     _translations: {},
 
-    // código interno → nome PT-BR + nome em inglês (para o prompt da IA).
+    // código interno → nome PT-BR + nome em inglês (prompt da IA) + locale
+    // Shopify (para enviar tradução). "Ingles Americano" não tem locale
+    // Shopify próprio (a loja usa "en"), então fica sem envio.
     _LANG_INFO: {
-        'Ingles': { nome: 'Inglês', en: 'English' },
-        'Ingles Americano': { nome: 'Inglês (EUA)', en: 'American English' },
-        'Portugues': { nome: 'Português', en: 'Brazilian Portuguese' },
-        'Espanhol': { nome: 'Espanhol', en: 'Spanish' },
-        'Frances': { nome: 'Francês', en: 'French' },
-        'Alemao': { nome: 'Alemão', en: 'German' },
-        'Italiano': { nome: 'Italiano', en: 'Italian' },
-        'Holandes': { nome: 'Holandês', en: 'Dutch' },
-        'Polones': { nome: 'Polonês', en: 'Polish' },
-        'Checol': { nome: 'Tcheco', en: 'Czech' },
-        'Dinamarques': { nome: 'Dinamarquês', en: 'Danish' },
-        'Sueco': { nome: 'Sueco', en: 'Swedish' },
-        'Noruegues': { nome: 'Norueguês', en: 'Norwegian' },
+        'Ingles': { nome: 'Inglês', en: 'English', locale: 'en' },
+        'Ingles Americano': { nome: 'Inglês (EUA)', en: 'American English', locale: '' },
+        'Portugues': { nome: 'Português', en: 'Brazilian Portuguese', locale: 'pt-BR' },
+        'Espanhol': { nome: 'Espanhol', en: 'Spanish', locale: 'es' },
+        'Frances': { nome: 'Francês', en: 'French', locale: 'fr' },
+        'Alemao': { nome: 'Alemão', en: 'German', locale: 'de' },
+        'Italiano': { nome: 'Italiano', en: 'Italian', locale: 'it' },
+        'Holandes': { nome: 'Holandês', en: 'Dutch', locale: 'nl' },
+        'Polones': { nome: 'Polonês', en: 'Polish', locale: 'pl' },
+        'Checol': { nome: 'Tcheco', en: 'Czech', locale: 'cs' },
+        'Dinamarques': { nome: 'Dinamarquês', en: 'Danish', locale: 'da' },
+        'Sueco': { nome: 'Sueco', en: 'Swedish', locale: 'sv' },
+        'Noruegues': { nome: 'Norueguês', en: 'Norwegian', locale: 'nb' },
     },
 
     COUNTRIES: [
@@ -128,6 +130,7 @@ const ProductsModule = {
         // Idiomas mudam quais traduções aparecem (o 1º marcado é a origem).
         document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb =>
             cb.addEventListener('change', () => this._renderTraducoes()));
+        document.getElementById('btn-prod-trad-shopify')?.addEventListener('click', () => this._enviarTraducoesShopify());
         document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
@@ -1383,6 +1386,14 @@ const ProductsModule = {
         const alvos = idiomas.slice(1);
         if (origemEl) origemEl.textContent = origem ? (this._LANG_INFO[origem]?.nome || origem) : '—';
 
+        // Botão de envio só faz sentido com Shopify conectado e algo traduzido.
+        const btnShopify = document.getElementById('btn-prod-trad-shopify');
+        if (btnShopify) {
+            const temTraducao = alvos.some(c => this._translations[c]);
+            const shopifyOk = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured();
+            btnShopify.style.display = (temTraducao && shopifyOk) ? '' : 'none';
+        }
+
         if (!alvos.length) {
             lista.innerHTML = `<p class="studio-vazio" style="font-size:0.76rem;padding:0.4rem 0">Marque 2 ou mais idiomas em "Idiomas / Mercados" — o 1º é a origem, os demais são traduzidos.</p>`;
             return;
@@ -1424,6 +1435,60 @@ const ProductsModule = {
                 this._translations[code][field] = (field === 'descriptionHtml') ? el.innerHTML : el.value;
             });
         });
+    },
+
+    // Envia as traduções guardadas para a Shopify — todos os idiomas que já
+    // foram traduzidos, não só um. Escrita real na loja, então confirma antes.
+    async _enviarTraducoesShopify() {
+        const pid = document.getElementById('product-id')?.value;
+        const produto = pid ? (AppState.allProducts || []).find(p => p.id === pid) : null;
+        if (!produto) { showToast('Salve o produto antes de enviar traduções.', 'error'); return; }
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro.', 'error'); return;
+        }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) { showToast('Vincule o produto à Shopify primeiro.', 'error'); return; }
+        const gid = String(sid).startsWith('gid://') ? sid : `gid://shopify/Product/${sid}`;
+
+        // Monta { localeShopify: traducao } só dos idiomas já traduzidos e que
+        // têm locale Shopify (Inglês-EUA não tem locale próprio).
+        const porIdioma = {};
+        const nomes = [];
+        this._idiomasSelecionados().slice(1).forEach(code => {
+            const t = this._translations[code];
+            const info = this._LANG_INFO[code];
+            if (t && info?.locale) { porIdioma[info.locale] = t; nomes.push(info.nome); }
+        });
+        if (!Object.keys(porIdioma).length) {
+            showToast('Traduza ao menos um idioma antes de enviar.', 'error'); return;
+        }
+        if (!confirm(`Enviar ${nomes.length} tradução(ões) — ${nomes.join(', ')} — para a Shopify?\n\nIsso grava as traduções na loja (título, descrição, URL e variantes por idioma).`)) return;
+
+        // Variantes de origem: casam os valores traduzidos com os GIDs certos.
+        const variantesOrigem = (produto.shopifyOptions || []).map(o => ({ name: o.name, values: o.values || [] }));
+
+        this._statusTrad('Enviando traduções para a Shopify…');
+        const btn = document.getElementById('btn-prod-trad-shopify');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await ShopifyModule.enviarTraducoesDoProduto(gid, porIdioma, {
+                variantesOrigem,
+                onProgress: (m) => this._statusTrad(m),
+            });
+            this._statusTrad('');
+            const okNomes = res.ok.map(loc => Object.entries(this._LANG_INFO).find(([, v]) => v.locale === loc)?.[1]?.nome || loc);
+            if (res.falhas.length) {
+                showToast(`${res.ok.length} enviada(s), ${res.falhas.length} falharam: ${res.falhas.map(f => f.locale).join(', ')}`, 'warning');
+                console.warn('[Produtos] falhas de tradução Shopify:', res.falhas);
+            } else {
+                showToast(`Traduções enviadas para a Shopify: ${okNomes.join(', ')}`, 'success');
+            }
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao enviar: ' + String(e.message).slice(0, 160), 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     },
 
     // ── Gerar a GALERIA INTEIRA de uma vez ──
