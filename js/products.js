@@ -131,6 +131,7 @@ const ProductsModule = {
         document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb =>
             cb.addEventListener('change', () => this._renderTraducoes()));
         document.getElementById('btn-prod-trad-shopify')?.addEventListener('click', () => this._enviarTraducoesShopify());
+        document.getElementById('btn-prod-trad-pull')?.addEventListener('click', () => this._puxarIdiomasDaLoja());
         document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
@@ -1223,6 +1224,45 @@ const ProductsModule = {
         return [...document.querySelectorAll('#product-languages input[type="checkbox"]:checked')].map(cb => cb.value);
     },
 
+    // locale Shopify → código interno. Casa exato (pt-BR→Portugues) e, se
+    // falhar, pela base do idioma (fr-CA → fr → Frances).
+    _localeParaCodigo(locale) {
+        const l = String(locale || '').toLowerCase();
+        const base = l.split('-')[0];
+        let achado = Object.entries(this._LANG_INFO).find(([, v]) => v.locale && v.locale.toLowerCase() === l);
+        if (!achado) achado = Object.entries(this._LANG_INFO).find(([, v]) => v.locale && v.locale.toLowerCase() === base);
+        return achado ? achado[0] : null;
+    },
+
+    // Marca as checkboxes de idioma a partir dos locales já configurados na
+    // loja Shopify — evita ter que marcar 8 idiomas na mão por produto.
+    async _puxarIdiomasDaLoja() {
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro para puxar os idiomas.', 'error'); return;
+        }
+        this._statusTrad('Buscando idiomas da loja…');
+        try {
+            const locales = await ShopifyModule.localesDaLoja();
+            this._statusTrad('');
+            if (!locales.length) { showToast('A loja não retornou idiomas.', 'info'); return; }
+            const cbs = [...document.querySelectorAll('#product-languages input[type="checkbox"]')];
+            const adicionados = [], semMapa = [];
+            locales.forEach(l => {
+                const code = this._localeParaCodigo(l.locale);
+                if (!code) { semMapa.push(l.locale); return; }
+                const cb = cbs.find(x => x.value === code);
+                if (cb && !cb.checked) { cb.checked = true; adicionados.push(this._LANG_INFO[code]?.nome || code); }
+            });
+            this._renderTraducoes();
+            if (adicionados.length) showToast(`Idiomas marcados: ${adicionados.join(', ')}`, 'success');
+            else showToast('Todos os idiomas da loja já estavam marcados.', 'info');
+            if (semMapa.length) console.warn('[Produtos] locales sem mapa interno:', semMapa);
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao buscar idiomas: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
     _statusTrad(txt, cor) {
         const el = document.getElementById('prod-trad-status');
         if (!el) return;
@@ -1386,13 +1426,16 @@ const ProductsModule = {
         const alvos = idiomas.slice(1);
         if (origemEl) origemEl.textContent = origem ? (this._LANG_INFO[origem]?.nome || origem) : '—';
 
+        const shopifyOk = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured();
         // Botão de envio só faz sentido com Shopify conectado e algo traduzido.
         const btnShopify = document.getElementById('btn-prod-trad-shopify');
         if (btnShopify) {
             const temTraducao = alvos.some(c => this._translations[c]);
-            const shopifyOk = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured();
             btnShopify.style.display = (temTraducao && shopifyOk) ? '' : 'none';
         }
+        // "Puxar idiomas da loja" só aparece com Shopify conectado.
+        const btnPull = document.getElementById('btn-prod-trad-pull');
+        if (btnPull) btnPull.style.display = shopifyOk ? '' : 'none';
 
         if (!alvos.length) {
             lista.innerHTML = `<p class="studio-vazio" style="font-size:0.76rem;padding:0.4rem 0">Marque 2 ou mais idiomas em "Idiomas / Mercados" — o 1º é a origem, os demais são traduzidos.</p>`;
