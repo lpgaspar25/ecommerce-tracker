@@ -7,8 +7,9 @@
 // Purges only REGENERABLE caches (rebuilt from network/derived data) in priority order.
 const StorageManager = {
     // Keys safe to drop — they get rebuilt on demand. Heaviest / most-disposable first.
+    // etracker_shopify_orders_day_cache e etracker_lab_tests saíram daqui: agora
+    // vivem no IndexedDB (js/kv-store.js), fora do teto apertado do localStorage.
     _purgeable: [
-        'etracker_shopify_orders_day_cache',
         'etracker_shopify_orders_cache',
         'etracker_creative_metrics',
         'ai_ad_generations_v1',   // índice das gerações de IA (a chave real; os bytes ficam no IndexedDB)

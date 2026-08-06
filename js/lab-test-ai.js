@@ -335,7 +335,7 @@ Se não houver dados suficientes (sem produto, sem datas), retorne:
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     },
 
-    _createAll() {
+    async _createAll() {
         if (typeof LabTestsModule === 'undefined') return;
         const products = AppState.allProducts || AppState.products || [];
         let created = 0;
@@ -368,7 +368,7 @@ Se não houver dados suficientes (sem produto, sem datas), retorne:
             // Mirror to diary
             try { LabTestsModule._syncTestToDiary(newTest); } catch (e) { console.warn('Sync to diary failed', e); }
         });
-        LabTestsModule._persist();
+        await LabTestsModule._persist();
         LabTestsModule._renderCards();
 
         const msg = created

@@ -254,20 +254,36 @@ const ShopifyModule = (() => {
     // sozinha em vez de exigir intervenção manual.
     const DAY_TTL_OLD_EMPTY = 3 * 24 * 60 * 60 * 1000;
 
-    function _loadDayCache() {
+    // Cache por dia (até 365 entradas, cada uma com os pedidos daquele dia)
+    // vive no IndexedDB via KVStore — é o que mais engordava o localStorage,
+    // já que é alimentado toda vez que algo pede vendas por período (Diário,
+    // Diagnóstico, resultado Shopify do Laboratório etc.).
+    async function _loadDayCache() {
         try {
-            const raw = localStorage.getItem(DAY_CACHE_KEY);
-            if (!raw) return {};
-            const parsed = JSON.parse(raw);
-            if (parsed.__v !== ORDERS_CACHE_VERSION) return {}; // version mismatch → reset
+            let parsed = (typeof KVStore !== 'undefined') ? await KVStore.get(DAY_CACHE_KEY) : null;
+            if (parsed === null) parsed = await _migrarDayCacheDeLocalStorage();
+            if (!parsed || parsed.__v !== ORDERS_CACHE_VERSION) return {}; // sem dado ou versão mudou → reset
             return parsed.days || {};
         } catch { return {}; }
     }
-    function _saveDayCache(days) {
+    // Migração única do dado antigo em localStorage pro IndexedDB.
+    async function _migrarDayCacheDeLocalStorage() {
+        let parsed = null;
+        try {
+            const raw = localStorage.getItem(DAY_CACHE_KEY);
+            if (raw) {
+                parsed = JSON.parse(raw);
+                if (typeof KVStore !== 'undefined') await KVStore.set(DAY_CACHE_KEY, parsed);
+            }
+        } catch (e) { console.warn('[Shopify] migração do day cache falhou:', e); }
+        try { localStorage.removeItem(DAY_CACHE_KEY); } catch {}
+        return parsed;
+    }
+    async function _saveDayCache(days) {
         try {
             // Race-condition safe: merge with the latest on-disk cache so concurrent
             // fetchOrders calls don't overwrite each other's days.
-            const onDisk = _loadDayCache();
+            const onDisk = await _loadDayCache();
             const merged = { ...onDisk, ...days };
             // For overlapping keys, keep whichever has the most recent ts (i.e., freshest data wins)
             for (const k of Object.keys(days)) {
@@ -279,7 +295,7 @@ const ShopifyModule = (() => {
                 const k = keys.shift();
                 delete merged[k];
             }
-            localStorage.setItem(DAY_CACHE_KEY, JSON.stringify({ __v: ORDERS_CACHE_VERSION, days: merged }));
+            await KVStore.set(DAY_CACHE_KEY, { __v: ORDERS_CACHE_VERSION, days: merged });
         } catch (e) { console.warn('[Shopify] day cache save failed:', e); }
     }
     function _ttlForDay(dateStr, cacheEntry) {
@@ -368,7 +384,7 @@ const ShopifyModule = (() => {
         if (!dateFrom || !dateTo) return [];
 
         const days = _eachDayInRange(dateFrom, dateTo);
-        const cache = _loadDayCache();
+        const cache = await _loadDayCache();
         const now = Date.now();
 
         // Identify which days need fetching (missing OR expired by TTL)
@@ -407,7 +423,7 @@ const ShopifyModule = (() => {
                 }
             }
         }
-        if (toFetch.length) _saveDayCache(cache);
+        if (toFetch.length) await _saveDayCache(cache);
 
         // Combine all days in chronological order
         const all = [];
