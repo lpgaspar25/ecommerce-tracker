@@ -263,6 +263,7 @@ const StudioModule = (() => {
             || 'Reframe this image to the new aspect ratio, keep the content identical, extend the background.';
         const gerado = await ImageAI.editar([blob], prompt, {
             provedor: _provedorImagem(),
+            modelo: _modeloImagem() || undefined,
             largura: dim.w, altura: dim.h, aspectRatio: dim.ar,
             formato: 'image/webp', compressao: 92,
         });
@@ -340,7 +341,7 @@ const StudioModule = (() => {
             try {
                 const promptPreset = _preencherPromptPreset(preset.prompt, pid);
                 const prompt = `${promptPreset}${estetica}${extra ? ' ' + extra : ''}`;
-                const blob = await _editarImagem(base, prompt, chave);
+                const blob = await _editarImagem(base, prompt);
                 await _salvarNasDimensoes(d, blob, preset.id, preset.label, prompt, dims);
                 ok++;
                 _save(); _renderFotos();
@@ -360,7 +361,7 @@ const StudioModule = (() => {
                 const promptBase = (window.ImageAI?.promptCenaImagem?.(contexto))
                     || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
                 const prompt = `${promptBase}${estetica}${extra ? ' ' + extra : ''}`;
-                const blob = await _editarImagem([cena, base], prompt, chave);
+                const blob = await _editarImagem([cena, base], prompt);
                 await _salvarNasDimensoes(d, blob, 'cen:' + cen.id, `Cenário: ${cen.nome}`, prompt, dims);
                 ok++;
                 _save(); _renderFotos();
@@ -386,13 +387,6 @@ const StudioModule = (() => {
         if (window.RecentEdits?.add) RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio' });
     }
 
-    function _b64ParaBlob(b64, tipo = 'image/png') {
-        const bytes = atob(b64);
-        const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        return new Blob([arr], { type: tipo });
-    }
-
     function _blobParaBase64(blob) {
         return new Promise((resolve, reject) => {
             const r = new FileReader();
@@ -408,94 +402,23 @@ const StudioModule = (() => {
         return document.getElementById('studio-img-provider')?.value || 'openai';
     }
 
+    // Versão específica do modelo, se o usuário fixou uma na tela. Vazio
+    // deixa o ImageAI usar a cascata padrão (mais recente disponível).
+    function _modeloImagem() {
+        return document.getElementById('studio-img-modelo')?.value || '';
+    }
+
     // Aceita 1 ou 2 imagens. Com 2, a primeira é a referência de composição
     // e a segunda é o produto real — a doc dos dois provedores manda separar
-    // esses papéis pelo TEXTO do prompt, não por campo da API.
-    async function _editarImagem(blobs, prompt, apiKey, provedor) {
+    // esses papéis pelo TEXTO do prompt, não por campo da API. Delega pro
+    // motor compartilhado (js/image-ai.js) — mesma cascata de modelos usada
+    // na página de Produto, com fallback automático e versão fixável.
+    async function _editarImagem(blobs, prompt, provedor) {
         const lista = Array.isArray(blobs) ? blobs.filter(Boolean) : [blobs];
-        const prov = provedor || _provedorImagem();
-        if (prov === 'gemini') return _editarComGemini(lista, prompt);
-        return _editarComOpenAI(lista, prompt, apiKey || _chaveOpenAI());
-    }
-
-    async function _editarComOpenAI(blobs, prompt, apiKey) {
-        if (!apiKey) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
-        const lista = Array.isArray(blobs) ? blobs : [blobs];
-        const fd = new FormData();
-        fd.append('model', 'gpt-image-1');
-        // Múltiplas imagens usam o campo "image[]" repetido (até 16).
-        if (lista.length > 1) {
-            lista.forEach((b, i) => fd.append('image[]', b, `img${i + 1}.png`));
-        } else {
-            fd.append('image', lista[0], 'produto.png');
-        }
-        fd.append('prompt', prompt);
-        fd.append('size', '1024x1024');
-        fd.append('quality', 'high');
-        // Default da API é "low" — com low o modelo reinterpreta o produto em
-        // vez de preservá-lo, que é o oposto do que a feature precisa.
-        fd.append('input_fidelity', 'high');
-        fd.append('n', '1');
-        const r = await fetch('https://api.openai.com/v1/images/edits', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + apiKey },
-            body: fd,
+        return ImageAI.editar(lista, prompt, {
+            provedor: provedor || _provedorImagem(),
+            modelo: _modeloImagem() || undefined,
         });
-        if (!r.ok) throw new Error('OpenAI: ' + (await r.text()).slice(0, 200));
-        const data = await r.json();
-        const b64 = data?.data?.[0]?.b64_json;
-        if (!b64) throw new Error('OpenAI: resposta sem imagem');
-        return _b64ParaBlob(b64);
-    }
-
-    // Ordem de tentativa. O gemini-2.5-flash-image (Nano Banana original) tem
-    // desligamento anunciado para 02/10/2026, então fica só como último
-    // recurso. O 3-pro é o único da família com referência de ESTILO, que é
-    // exatamente o que o padrão de criativo é; o 3.1-flash é o substituto
-    // oficial do depreciado e cobre bem múltiplas imagens.
-    const MODELOS_GEMINI = ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
-
-    async function _editarComGemini(blobs, prompt) {
-        const key = _chaveGoogle();
-        if (!key) throw new Error('Configure a chave Google AI (AI Generations → API Keys)');
-        const lista = Array.isArray(blobs) ? blobs : [blobs];
-
-        // Exemplos oficiais multi-imagem põem as IMAGENS antes do texto, para
-        // que "first/second image" no prompt case com a ordem enviada.
-        const parts = [];
-        for (const b of lista) {
-            parts.push({ inline_data: { mime_type: b.type || 'image/png', data: await _blobParaBase64(b) } });
-        }
-        parts.push({ text: prompt });
-
-        let ultimoErro = '';
-        for (const modelo of MODELOS_GEMINI) {
-            const r = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts }],
-                    generationConfig: { responseModalities: ['IMAGE'], imageConfig: { imageSize: '2K' } },
-                }),
-            });
-            if (!r.ok) {
-                ultimoErro = (await r.text()).slice(0, 220);
-                // Modelo indisponível para esta chave: tenta o próximo da lista.
-                if (r.status === 404 || r.status === 403 || r.status === 400) continue;
-                throw new Error('Gemini: ' + ultimoErro);
-            }
-            const data = await r.json();
-            const partes = data?.candidates?.[0]?.content?.parts || [];
-            const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
-            const b64 = img?.inlineData?.data || img?.inline_data?.data;
-            if (b64) return _b64ParaBlob(b64, img?.inlineData?.mimeType || 'image/png');
-            // Respondeu só texto (recusa/segurança) — o motivo importa mais
-            // que tentar outro modelo, que responderia igual.
-            const txt = partes.map(p => p.text).filter(Boolean).join(' ').slice(0, 180);
-            throw new Error('Gemini não devolveu imagem' + (txt ? `: ${txt}` : '.'));
-        }
-        throw new Error('Gemini: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
     }
 
     async function _miniatura(blob, maxDim = 320) {
@@ -799,7 +722,7 @@ Responda APENAS com JSON válido:
                 console.warn('[Studio] não consegui transcrever as marcações do produto:', e.message);
             }
             // Ordem importa: o prompt fala em "first/second image".
-            const blob = await _editarImagem(referencia ? [referencia, base] : [base], prompt, chave);
+            const blob = await _editarImagem(referencia ? [referencia, base] : [base], prompt);
 
             const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
             const mediaId = 'studio_' + id;
@@ -1832,10 +1755,28 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         });
 
         const selProv = document.getElementById('studio-img-provider');
+        const selMod = document.getElementById('studio-img-modelo');
+        // Só mostra as versões do provedor escolhido; se o modelo salvo era de
+        // outro provedor, volta pro Padrão em vez de manter algo escondido.
+        const sincronizarModeloImagem = () => {
+            if (!selMod) return;
+            const prov = selProv?.value;
+            [...selMod.querySelectorAll('optgroup')].forEach(g => { g.hidden = g.dataset.provedor !== prov; });
+            const opt = selMod.selectedOptions[0];
+            if (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden) selMod.value = '';
+        };
         if (selProv) {
             selProv.value = localStorage.getItem('studio_img_provider') || 'openai';
-            selProv.addEventListener('change', () => localStorage.setItem('studio_img_provider', selProv.value));
+            selProv.addEventListener('change', () => {
+                localStorage.setItem('studio_img_provider', selProv.value);
+                sincronizarModeloImagem();
+            });
         }
+        if (selMod) {
+            selMod.value = localStorage.getItem('studio_img_modelo') || '';
+            selMod.addEventListener('change', () => localStorage.setItem('studio_img_modelo', selMod.value));
+        }
+        sincronizarModeloImagem();
         document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
         document.getElementById('studio-padrao-pick')?.addEventListener('click', () => document.getElementById('studio-padrao-input')?.click());
         document.getElementById('studio-padrao-input')?.addEventListener('change', (e) => {

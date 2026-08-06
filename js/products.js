@@ -137,10 +137,31 @@ const ProductsModule = {
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
         document.getElementById('btn-prod-send-shopify')?.addEventListener('click', () => this.abrirEnviarShopify());
         const provSel = document.getElementById('prod-img-provider');
+        const modSel = document.getElementById('prod-img-modelo');
+        // Em "Automático" não dá pra fixar versão — não se sabe de antemão
+        // qual dos dois provedores vai atender. Some as opções e trava o
+        // select nesse caso; nos demais, mostra só as versões do provedor.
+        const sincronizarModeloImagem = () => {
+            if (!modSel) return;
+            const prov = provSel?.value;
+            const auto = prov === 'auto';
+            modSel.disabled = auto;
+            [...modSel.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== prov; });
+            const opt = modSel.selectedOptions[0];
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) modSel.value = '';
+        };
         if (provSel) {
             provSel.value = localStorage.getItem('studio_img_provider') || 'auto';
-            provSel.addEventListener('change', () => localStorage.setItem('studio_img_provider', provSel.value));
+            provSel.addEventListener('change', () => {
+                localStorage.setItem('studio_img_provider', provSel.value);
+                sincronizarModeloImagem();
+            });
         }
+        if (modSel) {
+            modSel.value = localStorage.getItem('studio_img_modelo') || '';
+            modSel.addEventListener('change', () => localStorage.setItem('studio_img_modelo', modSel.value));
+        }
+        sincronizarModeloImagem();
 
         // Importar preços/custos por país de outro produto
         document.getElementById('btn-import-country-costs')?.addEventListener('click', () => this.openImportCountryCosts());
@@ -1062,6 +1083,11 @@ const ProductsModule = {
         return document.getElementById('prod-img-provider')?.value || 'auto';
     },
 
+    // Versão específica do modelo, se fixada na tela. Vazio = cascata padrão.
+    _modeloImagem() {
+        return document.getElementById('prod-img-modelo')?.value || '';
+    },
+
     _statusImagem(texto, cor) {
         const el = document.getElementById('prod-img-ai-status');
         if (!el) return;
@@ -1089,6 +1115,7 @@ const ProductsModule = {
 
         const gerado = await ImageAI.editar(blob, ImageAI.promptMelhoria(this._contextoDoFormulario()), {
             provedor: this._provedorImagem(),
+            modelo: this._modeloImagem() || undefined,
             largura: dim.largura,
             altura: dim.altura,
             // Pede a render MAIOR que o destino de propósito: reduzir depois
@@ -1381,7 +1408,8 @@ const ProductsModule = {
                 const altura = parseInt(el.getAttribute('height'), 10) || natural.altura;
                 const prompt = ImageAI.promptTraducaoImagem(info.en);
                 const gerado = await ImageAI.editar(blob, prompt, {
-                    provedor: this._provedorImagem(), largura, altura, formato: 'image/webp', compressao: 90,
+                    provedor: this._provedorImagem(), modelo: this._modeloImagem() || undefined,
+                    largura, altura, formato: 'image/webp', compressao: 90,
                 });
                 const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE,
                     { formato: 'image/webp', largura, altura });
@@ -1676,6 +1704,7 @@ const ProductsModule = {
 
                 const gerado = await ImageAI.editar(blobs, prompt, {
                     provedor: this._provedorImagem(),
+                    modelo: this._modeloImagem() || undefined,
                     largura: 1024, altura: 1024,
                     formato: 'image/webp', compressao: 90,
                 });
@@ -1907,6 +1936,7 @@ const ProductsModule = {
 
             const gerado = await ImageAI.editar(blobs, prompt, {
                 provedor: this._provedorImagem(),
+                modelo: this._modeloImagem() || undefined,
                 largura: 1024, altura: 1024,
                 formato: 'image/webp', compressao: 90,
             });
@@ -1972,6 +2002,7 @@ const ProductsModule = {
             const blob = await bytesDaImagem(base.dataUrl || base.url);
             const gerado = await ImageAI.editar(blob, ImageAI.promptCenario(sobre, this._contextoDoFormulario()), {
                 provedor: this._provedorImagem(),
+                modelo: this._modeloImagem() || undefined,
                 largura: 1024, altura: 1024,
                 formato: 'image/webp', compressao: 90,
             });

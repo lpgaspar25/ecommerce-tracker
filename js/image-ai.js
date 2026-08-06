@@ -46,6 +46,17 @@ const ImageAI = (() => {
     // anunciado para 02/10/2026, então fica só como último recurso.
     const MODELOS_GEMINI = ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
 
+    // Rótulos pra UI escolher uma versão específica em vez da cascata
+    // automática. A 1ª de cada lista é sempre a recomendada/mais recente.
+    const NOMES_MODELO = {
+        'gpt-image-2': 'GPT Image 2 (mais recente)',
+        'gpt-image-1.5': 'GPT Image 1.5',
+        'gpt-image-1': 'GPT Image 1',
+        'gemini-3-pro-image': 'Gemini 3 Pro Image (mais recente)',
+        'gemini-3.1-flash-image': 'Gemini 3.1 Flash Image',
+        'gemini-2.5-flash-image': 'Gemini 2.5 Flash Image (desliga 02/10/2026)',
+    };
+
     function _chaveOpenAI() {
         return (window.AIAdGenerator?._getKey?.('openai')) || localStorage.getItem('openai_api_key') || '';
     }
@@ -133,8 +144,14 @@ const ImageAI = (() => {
             ? tamanhoValidoOpenAI(opcoes.largura, opcoes.altura, opcoes.alvoPixels).texto
             : null;
 
+        // Se o chamador pediu uma versão específica, tenta só ela — o
+        // usuário escolheu de propósito, cair pra outra seria ignorar a
+        // escolha. Sem pedido explícito, mantém a cascata (mais recente
+        // primeiro, com fallback pro que a chave tiver disponível).
+        const modelos = (opcoes.modelo && MODELOS_OPENAI.includes(opcoes.modelo)) ? [opcoes.modelo] : MODELOS_OPENAI;
+
         let ultimoErro = '';
-        for (const modelo of MODELOS_OPENAI) {
+        for (const modelo of modelos) {
             // Só o gpt-image-2 aceita dimensão arbitrária; nos demais cai no
             // tamanho fixo mais próximo e o chamador reenquadra no canvas.
             const size = (modelo === 'gpt-image-2' && tamanhoLivre)
@@ -202,8 +219,10 @@ const ImageAI = (() => {
         const imageConfig = { imageSize: opcoes.imageSize || '2K' };
         if (opcoes.aspectRatio) imageConfig.aspectRatio = opcoes.aspectRatio;
 
+        const modelos = (opcoes.modelo && MODELOS_GEMINI.includes(opcoes.modelo)) ? [opcoes.modelo] : MODELOS_GEMINI;
+
         let ultimoErro = '';
-        for (const modelo of MODELOS_GEMINI) {
+        for (const modelo of modelos) {
             const r = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${chave}`, {
                 method: 'POST',
@@ -343,7 +362,7 @@ const ImageAI = (() => {
         editar, provedorPadrao, tamanhoValidoOpenAI,
         promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
-        MODELOS_OPENAI, MODELOS_GEMINI,
+        MODELOS_OPENAI, MODELOS_GEMINI, NOMES_MODELO,
     };
 })();
 
