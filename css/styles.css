@@ -15502,6 +15502,39 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .loja-save-status { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Agente de Loja — comando em texto livre + preview/confirm antes de tocar
+   na Shopify de verdade. */
+.loja-agente { margin-bottom: 1.1rem; border-color: var(--accent-light); }
+.loja-agente-input-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+.loja-agente-input-row textarea { flex: 1; min-height: 46px; resize: vertical; }
+.loja-agente-input-row .btn { flex: none; align-self: stretch; }
+.loja-spin { animation: spin 1s linear infinite; }
+.loja-agente-status {
+    display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem;
+    color: var(--text-muted); margin-top: 0.7rem;
+}
+.loja-agente-erro {
+    margin-top: 0.7rem; font-size: 0.82rem; color: var(--red, #d33);
+    background: rgba(211, 51, 51, 0.08); border-radius: 8px; padding: 0.6rem 0.75rem; line-height: 1.4;
+}
+.loja-agente-aviso {
+    margin-top: 0.6rem; font-size: 0.78rem; color: var(--text-muted);
+    background: rgba(245, 158, 11, 0.08); border-radius: 8px; padding: 0.55rem 0.7rem; line-height: 1.4;
+}
+.loja-agente-sucesso {
+    margin-top: 0.7rem; font-size: 0.82rem; color: rgb(34, 197, 94);
+    background: rgba(34, 197, 94, 0.1); border-radius: 8px; padding: 0.55rem 0.75rem;
+}
+.loja-plano {
+    margin-top: 0.85rem; border: 1px solid var(--accent-light); border-radius: 10px;
+    padding: 0.85rem 1rem; background: rgba(124, 58, 237, 0.03);
+}
+.loja-plano-entendimento { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.55rem; font-style: italic; }
+.loja-plano-produto { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem; }
+.loja-plano-mudancas { margin: 0 0 0.75rem; padding-left: 1.1rem; font-size: 0.85rem; line-height: 1.7; }
+.loja-plano-mudancas s { color: var(--text-muted); }
+.loja-plano-acoes { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
+
 /* ============================================================
    Capturas (BK Dashboard / Payoneer via extensão)
    ============================================================ */

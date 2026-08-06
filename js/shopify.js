@@ -2266,6 +2266,82 @@ const ShopifyModule = (() => {
         return url || '';
     }
 
+    // ── Agente de Loja (Fase 1: campos de produto + atribuição de template) ──
+
+    // Lista os temas da loja (precisa do escopo read_themes — se a sessão
+    // ainda não tem esse escopo, a Shopify recusa com um erro de permissão
+    // que o chamador deve tratar mostrando "reautorize a loja").
+    async function fetchThemes() {
+        const gql = `{ themes(first: 20) { nodes { id name role } } }`;
+        const data = await _graphql(gql);
+        return (data?.themes?.nodes || []).map(t => ({ id: t.id, name: t.name, role: t.role }));
+    }
+
+    // Templates de PRODUTO de um tema (templates/product.*.json — Online
+    // Store 2.0). A API de files não filtra por prefixo, então pagina os
+    // arquivos do tema e filtra no cliente. Tema costuma ter poucas
+    // centenas de arquivos — 250 já cobre a esmagadora maioria das lojas.
+    async function fetchProductTemplates(themeId) {
+        const gql = `query ThemeFiles($id: ID!, $after: String) {
+            theme(id: $id) {
+                files(first: 250, after: $after) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes { filename }
+                }
+            }
+        }`;
+        const templates = [];
+        let after = null;
+        for (let pagina = 0; pagina < 6; pagina++) {
+            const data = await _graphql(gql, { id: themeId, after });
+            const conn = data?.theme?.files;
+            for (const f of (conn?.nodes || [])) {
+                const m = /^templates\/product(?:\.([a-z0-9-]+))?\.(?:json|liquid)$/i.exec(f.filename || '');
+                if (m) templates.push({ filename: f.filename, suffix: m[1] || null });
+            }
+            if (!conn?.pageInfo?.hasNextPage) break;
+            after = conn.pageInfo.endCursor;
+        }
+        return templates;
+    }
+
+    // Aplica campos simples de produto (título, status, template) — tudo
+    // via productUpdate, já liberado no allowlist do Worker. Preço NÃO
+    // entra aqui: mora na variante, não no produto (ver updateVariantPrice).
+    async function updateProductFields(gid, campos) {
+        const input = { id: gid };
+        if ('title' in campos) input.title = campos.title;
+        if ('status' in campos) input.status = campos.status;
+        if ('templateSuffix' in campos) input.templateSuffix = campos.templateSuffix || null;
+        const gql = `mutation ProdUpdate($input: ProductUpdateInput!) {
+            productUpdate(product: $input) {
+                product { id title status templateSuffix }
+                userErrors { field message }
+            }
+        }`;
+        const data = await _graphql(gql, { input });
+        const err = data?.productUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return data?.productUpdate?.product;
+    }
+
+    // Preço mora na variante — productVariantsBulkUpdate, também já
+    // liberado no allowlist.
+    async function updateVariantPrice(productGid, variantGid, price, compareAtPrice) {
+        const variant = { id: variantGid, price: String(price) };
+        if (compareAtPrice !== undefined) variant.compareAtPrice = compareAtPrice === null ? null : String(compareAtPrice);
+        const gql = `mutation VarUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants { id price compareAtPrice }
+                userErrors { field message }
+            }
+        }`;
+        const data = await _graphql(gql, { productId: productGid, variants: [variant] });
+        const err = data?.productVariantsBulkUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return data?.productVariantsBulkUpdate?.productVariants?.[0];
+    }
+
     return {
         init, getConfig, isConfigured,
         enviarImagemDoProduto, reordenarMidia, idsDeMidiaAtual,
@@ -2279,5 +2355,6 @@ const ShopifyModule = (() => {
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
+        fetchThemes, fetchProductTemplates, updateProductFields, updateVariantPrice,
     };
 })();
