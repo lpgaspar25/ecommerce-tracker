@@ -55,6 +55,7 @@ const LojaModule = (() => {
                 <div><button class="btn btn-primary" id="loja-snip-add"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Novo snippet</button></div>
             </div>
             ${todas ? '' : _renderAgenteBox()}
+            ${todas ? '' : _renderCriarSecaoBox()}
             <p class="loja-intro">
                 Guarde aqui trechos de código Liquid, CSS ou JS do tema — seções, snippets, ajustes que você já fez — pra reaproveitar sem precisar abrir o editor de tema toda vez.
                 ${todas ? ' Mostrando snippets de todas as lojas.' : ''}
@@ -62,7 +63,7 @@ const LojaModule = (() => {
             <div id="loja-snip-list">${_renderSnippetsList(lista, todas)}</div>
         `;
         _wireCodigoEvents(storeId);
-        if (!todas) _wireAgenteEvents();
+        if (!todas) { _wireAgenteEvents(); _wireCriarSecaoEvents(storeId); }
         _icones();
     }
 
@@ -92,6 +93,36 @@ Regras:
 - Se o pedido não deixar claro qual produto da lista, ou não corresponder a nenhum, produtoId null e confianca "baixa" — não chute.
 - Se o pedido pedir uma ação fora do escopo (editar código/Liquid, mexer em coleção, etc.), devolva mudancas vazio e explique em "entendimento" que isso ainda não é suportado.`;
 
+    // ── Criar seção com IA ────────────────────────────────────────────────
+    // Gera uma seção Liquid completa (não edita produto nenhum) a partir de
+    // um pedido em texto livre. Conhecimento condensado de skills reais de
+    // engenharia Shopify (sticky add-to-cart, seletor visual de variantes)
+    // que o usuário trouxe — generalizado pra qualquer seção, não só essas.
+    const SISTEMA_CRIAR_SECAO = `Você é um engenheiro Shopify sênior especializado em temas Online Store 2.0 (Dawn e similares). Gera código Liquid completo, correto e pronto pra colar no editor de código da Shopify, a partir de um pedido em português.
+
+Responda em JSON:
+{
+  "nome": "nome curto do snippet, até 40 caracteres (ex.: 'Carrossel de avaliações por categoria')",
+  "tipo": "secao" | "snippet",
+  "caminhoTema": "caminho relativo à raiz do tema, ex.: sections/carrossel-avaliacoes.liquid",
+  "codigo": "o arquivo Liquid COMPLETO — HTML + {% style %} + <script> + {% schema %} quando for seção",
+  "explicacao": "1-2 frases em pt-BR explicando o que a seção faz e o que ela preserva/integra do tema",
+  "comoConfigurar": ["bullet 1 em pt-BR explicando uma configuração específica que a seção gerada tem, e o efeito prático dela", "bullet 2...", "..."],
+  "avisoCodigoAntigo": "se o pedido sugerir que já existe uma versão anterior (ex.: 'transforma esse código que eu já tenho' ou 'substitui o carrossel atual'), uma frase avisando pra remover a instalação antiga (bloco de Liquid personalizado, snippet duplicado) pra não ficar duas rodando juntas. Vazio se não se aplica."
+}
+
+Regras de engenharia (não pule nenhuma):
+- Seção autônoma quando o componente pode ocupar seu próprio lugar no template ou só melhora algo existente via JavaScript. Snippet só quando for reutilizado por várias seções — e nesse caso avise em "explicacao" que ele precisa ser chamado por uma seção com {% render %}, não aparece sozinho no personalizador.
+- SEMPRE inclua {% schema %} com "name" (até 25 caracteres) e "presets" pra aparecer em "Adicionar seção". Restrinja "templates"/"enabled_on" aos tipos de página que o código realmente usa (ex.: product, se usa objeto product).
+- Nunca deixe valores fixos que o lojista claramente vai querer editar — texto, cor, imagem, número visual (tamanho/espaçamento) — tudo isso vira "settings" no schema, com o tipo certo (text/textarea/richtext/image_picker/url/color/color_scheme/range/select/checkbox/product/collection). Listas repetíveis (cards, depoimentos, itens) viram "blocks", nunca um número fixo de campos numerados.
+- Se o pedido envolve TRANSFORMAR um seletor nativo de variantes em algo visual: reaproveite os inputs/labels originais (mova pra um wrapper, não recrie o formulário) pra manter preço/mídia/disponibilidade sincronizados com o tema. Nunca construa um <form> de compra paralelo.
+- Se o pedido envolve preço: guarde centavos numéricos em data-*, nunca a saída do filtro "money" (pode vir com HTML embutido tipo <span class="money">). Formate no JavaScript.
+- Escope CSS e IDs com {{ section.id }} (ou {{ block.id }} em blocks) pra não vazar estilo/script entre múltiplas instâncias da mesma seção na página.
+- Se o código tem estado que precisa sobreviver a edições no personalizador da Shopify (reordenar, editar em tempo real), escute "shopify:section:load"/"shopify:section:unload" e destrua listeners/observers antigos antes de reinicializar.
+- Acessibilidade: mantenha inputs nativos (radio/checkbox) no DOM mesmo se ocultos visualmente, com foco de teclado visível; aria-label descritivo; respeite prefers-reduced-motion.
+- "comoConfigurar" tem que citar os NOMES REAIS dos settings que você colocou no schema (não genérico) — o usuário vai ler isso pra saber o que cada opção faz no personalizador.
+- Não invente objeto Liquid que não existe. Se não tiver certeza de um objeto/filtro, prefira uma abordagem mais simples e correta a uma mais impressionante e arriscada.`;
+
     // ── Provedor de IA do Agente — chave e modelo PRÓPRIOS, independentes
     // da chave OpenAI compartilhada por Estúdio/Lançamento/Produtos. Cada
     // provedor guarda sua própria chave (localStorage, mesmo padrão já usado
@@ -120,12 +151,12 @@ Regras:
     function _salvarModeloIA(provedor, modelo) { localStorage.setItem(MODELO_KEY_PREFIX + provedor, modelo); }
     function _salvarChaveIA(provedor, chave) { localStorage.setItem(CHAVE_KEY_PREFIX + provedor, chave); }
 
-    async function _chamarOpenAI(modelo, chave, system, userContent) {
+    async function _chamarOpenAI(modelo, chave, system, userContent, maxTokens = 1200) {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
             body: JSON.stringify({
-                model: modelo, max_tokens: 1200, temperature: 0.3,
+                model: modelo, max_tokens: maxTokens, temperature: 0.3,
                 response_format: { type: 'json_object' },
                 messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
             }),
@@ -135,7 +166,7 @@ Regras:
         return data.choices?.[0]?.message?.content || '';
     }
 
-    async function _chamarAnthropic(modelo, chave, system, userContent) {
+    async function _chamarAnthropic(modelo, chave, system, userContent, maxTokens = 1200) {
         const res = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -144,20 +175,20 @@ Regras:
                 // Sem isso a Anthropic recusa CORS de chamada direta do navegador.
                 'anthropic-dangerous-direct-browser-access': 'true',
             },
-            body: JSON.stringify({ model: modelo, max_tokens: 1200, system, messages: [{ role: 'user', content: userContent }] }),
+            body: JSON.stringify({ model: modelo, max_tokens: maxTokens, system, messages: [{ role: 'user', content: userContent }] }),
         });
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
         const data = await res.json();
         return data.content?.[0]?.text || '';
     }
 
-    async function _chamarXAI(modelo, chave, system, userContent) {
+    async function _chamarXAI(modelo, chave, system, userContent, maxTokens = 1200) {
         // API da xAI é compatível com o formato da OpenAI (mesmo endpoint shape).
         const res = await fetch('https://api.x.ai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
             body: JSON.stringify({
-                model: modelo, max_tokens: 1200, temperature: 0.3,
+                model: modelo, max_tokens: maxTokens, temperature: 0.3,
                 messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
             }),
         });
@@ -166,7 +197,7 @@ Regras:
         return data.choices?.[0]?.message?.content || '';
     }
 
-    async function _chamarGemini(modelo, chave, system, userContent) {
+    async function _chamarGemini(modelo, chave, system, userContent, maxTokens = 1200) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(chave)}`;
         const res = await fetch(url, {
             method: 'POST',
@@ -174,7 +205,7 @@ Regras:
             body: JSON.stringify({
                 contents: [{ role: 'user', parts: [{ text: userContent }] }],
                 systemInstruction: { parts: [{ text: system }] },
-                generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1200, temperature: 0.3 },
+                generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, temperature: 0.3 },
             }),
         });
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
@@ -182,13 +213,13 @@ Regras:
         return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
 
-    async function _pedirPlanoIA(system, userContent) {
+    async function _pedirPlanoIA(system, userContent, maxTokens = 1200) {
         const { provedor, modelo, chave } = _configIA();
         if (!chave) throw new Error(`Configure a chave de API do provedor (${_provedorInfo(provedor).label}) no ícone de engrenagem, ao lado de "Pedir à IA".`);
-        if (provedor === 'openai') return _chamarOpenAI(modelo, chave, system, userContent);
-        if (provedor === 'anthropic') return _chamarAnthropic(modelo, chave, system, userContent);
-        if (provedor === 'xai') return _chamarXAI(modelo, chave, system, userContent);
-        if (provedor === 'gemini') return _chamarGemini(modelo, chave, system, userContent);
+        if (provedor === 'openai') return _chamarOpenAI(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'anthropic') return _chamarAnthropic(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'xai') return _chamarXAI(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'gemini') return _chamarGemini(modelo, chave, system, userContent, maxTokens);
         throw new Error('Provedor de IA desconhecido: ' + provedor);
     }
 
@@ -450,7 +481,81 @@ Regras:
         }
     }
 
+    // ── Criar seção com IA — UI ──────────────────────────────────────────
+    function _renderCriarSecaoBox() {
+        return `
+            <div class="loja-card loja-agente">
+                <h3 class="loja-card-title"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Criar seção com IA</h3>
+                <p class="loja-card-hint">Descreva a seção que você quer — a IA gera o código Liquid completo (schema incluído), salva como snippet novo aqui embaixo, e explica como configurar cada opção. Usa o mesmo provedor/chave de "Pedir à IA" acima.</p>
+                <div class="loja-agente-input-row">
+                    <textarea id="loja-criar-pedido" class="input" rows="2" placeholder="Ex.: transformar meu seletor de variantes em cards visuais com foto, ou criar um carrossel de avaliações segmentado por categoria"></textarea>
+                    <button type="button" class="btn btn-primary" id="loja-criar-enviar">Criar</button>
+                </div>
+                <div id="loja-criar-resultado"></div>
+            </div>
+        `;
+    }
+
+    function _wireCriarSecaoEvents(storeId) {
+        document.getElementById('loja-criar-enviar')?.addEventListener('click', () => _processarCriarSecao(storeId));
+    }
+
+    async function _processarCriarSecao(storeId) {
+        const campo = document.getElementById('loja-criar-pedido');
+        const pedido = (campo?.value || '').trim();
+        const resultado = document.getElementById('loja-criar-resultado');
+        if (!pedido || !resultado) return;
+        resultado.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Gerando código — seções completas demoram um pouco mais…</div>`;
+        _icones();
+        try {
+            const txt = await _pedirPlanoIA(SISTEMA_CRIAR_SECAO, pedido, 8000);
+            const plano = _extrairJson(txt);
+            if (!plano.codigo || !String(plano.codigo).trim()) throw new Error('A IA não devolveu código — tente descrever de novo, com mais detalhe.');
+
+            const novo = {
+                id: generateId('snip'), storeId,
+                nome: plano.nome || 'Seção gerada por IA',
+                descricao: plano.explicacao || '',
+                tag: plano.tipo === 'snippet' ? 'snippet' : 'secao',
+                codigo: plano.codigo,
+                caminhoTema: _sanitizarCaminhoTema(plano.caminhoTema || ''),
+                criadoEm: _agora(), atualizadoEm: _agora(),
+            };
+            _snippets.unshift(novo);
+            _expandidos.add(novo.id);
+            await KVStore.set(SNIPPETS_KEY, _snippets);
+
+            const bullets = (plano.comoConfigurar || []).map(b => `<li>${escapeHtml(b)}</li>`).join('');
+            resultado.innerHTML = `
+                <div class="loja-plano">
+                    <div class="loja-plano-produto"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Salvo como snippet: "${escapeHtml(novo.nome)}"</div>
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0.4rem 0">${escapeHtml(plano.explicacao || '')}</p>
+                    ${bullets ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem">Como configurar:</div><ul class="loja-instalar-passos">${bullets}</ul>` : ''}
+                    ${plano.avisoCodigoAntigo ? `<div class="loja-agente-aviso">${escapeHtml(plano.avisoCodigoAntigo)}</div>` : ''}
+                </div>
+            `;
+            campo.value = '';
+
+            // Atualiza só a lista de snippets — preserva o resultado acima
+            // (um renderCodigo() completo apagaria essa explicação).
+            const todas = isAllStoresSelected();
+            const lista = todas ? _snippets : _snippets.filter(s => s.storeId === getCurrentStoreId());
+            const box = document.getElementById('loja-snip-list');
+            if (box) box.innerHTML = _renderSnippetsList(lista, todas);
+            _icones();
+        } catch (e) {
+            resultado.innerHTML = `<div class="loja-agente-erro">Erro: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
     function _tagLabel(tagId) { return TAGS_SNIPPET.find(t => t.id === tagId)?.label || tagId; }
+
+    // Caminho de arquivo NO TEMA (relativo à raiz do tema), não caminho do
+    // sistema — cola frequente vem do Finder/VS Code com "~/", "./" ou "/"
+    // na frente.
+    function _sanitizarCaminhoTema(valor) {
+        return String(valor || '').trim().replace(/^~\/?/, '').replace(/^\.\/+/, '').replace(/^\/+/, '');
+    }
 
     function _slug(texto) {
         // ̀-ͯ = acentos combinantes depois do NFD — escrito em
@@ -544,20 +649,32 @@ Regras:
                         <i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Instalar no tema
                     </button>
                     <div class="loja-instalar-painel" id="loja-instalar-${s.id}" style="display:none">
-                        <div class="form-group">
-                            <label>Tema</label>
-                            <select class="input" data-instalar-tema="${s.id}"><option>Carregando temas…</option></select>
+                        <div class="loja-instalar-bloco">
+                            <h4>Manual — sem abrir nada por você</h4>
+                            <p class="loja-card-hint">Baixa o arquivo pronto (nome e conteúdo certos) pra você instalar do seu jeito — CLI do tema, editor de código, repositório com GitHub conectado, ou mandar pra outra pessoa.</p>
+                            <ol class="loja-instalar-passos">
+                                <li>Baixe o arquivo abaixo — já sai com o nome certo: <code>${escapeHtml((s.caminhoTema || '').split('/').pop() || 'arquivo.liquid')}</code>.</li>
+                                <li>No admin da Shopify: <strong>Loja virtual → Temas → ⋮ no tema → Editar código</strong>.</li>
+                                <li>Na pasta <strong>${(s.caminhoTema || '').startsWith('snippets/') ? 'Snippets' : (s.caminhoTema || '').startsWith('sections/') ? 'Sections' : (s.caminhoTema || '').startsWith('assets/') ? 'Assets' : 'correspondente'}</strong>, clique em <strong>Adicionar um novo arquivo</strong> (ou abra o já existente) com o caminho <code>${escapeHtml(s.caminhoTema || '(defina o caminho acima)')}</code>.</li>
+                                <li>Cole o conteúdo do arquivo baixado e salve.</li>
+                            </ol>
+                            <div class="loja-instalar-acoes">
+                                <button type="button" class="btn btn-secondary btn-sm" data-instalar-baixar-arquivo="${s.id}">
+                                    <i data-lucide="download" style="width:13px;height:13px;vertical-align:-2px"></i> Baixar arquivo
+                                </button>
+                            </div>
                         </div>
-                        <div class="loja-instalar-status" data-instalar-status="${s.id}"></div>
-                        <ol class="loja-instalar-passos">
-                            <li>Clique em <strong>Copiar código</strong>.</li>
-                            <li>Clique em <strong>Abrir editor de código</strong> — abre o tema escolhido na Shopify, numa aba nova.</li>
-                            <li>Na pasta indicada, crie (ou abra) o arquivo <code>${escapeHtml(s.caminhoTema || '(defina o caminho acima)')}</code>.</li>
-                            <li>Cole (Cmd/Ctrl+V) e salve.</li>
-                        </ol>
-                        <div class="loja-instalar-acoes">
-                            <button type="button" class="btn btn-secondary btn-sm" data-instalar-copiar="${s.id}">Copiar código</button>
-                            <button type="button" class="btn btn-primary btn-sm" data-instalar-abrir="${s.id}">Abrir editor de código</button>
+                        <div class="loja-instalar-bloco" id="loja-instalar-shopify-${s.id}">
+                            <h4>Direto pela Shopify</h4>
+                            <div class="form-group">
+                                <label>Tema</label>
+                                <select class="input" data-instalar-tema="${s.id}"><option>Carregando temas…</option></select>
+                            </div>
+                            <div class="loja-instalar-status" data-instalar-status="${s.id}"></div>
+                            <div class="loja-instalar-acoes">
+                                <button type="button" class="btn btn-secondary btn-sm" data-instalar-copiar="${s.id}">Copiar código</button>
+                                <button type="button" class="btn btn-primary btn-sm" data-instalar-abrir="${s.id}">Abrir editor de código</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -587,13 +704,22 @@ Regras:
         // não garante disparar 'input' em toda troca — só 'change' — então
         // depender de um só handler pra escrever deixava o <select> de tag
         // com o valor sempre desatualizado.
-        const _gravarCampo = (ev) => {
+        const _gravarCampo = (ev, { sanitizarCaminho } = {}) => {
             const tgt = ev.target.closest('[data-snip-field]');
             if (!tgt) return null;
             const item = ev.target.closest('.loja-snippet-item');
             const s = _snippets.find(x => x.id === item?.dataset.snip);
             if (!s) return null;
-            s[tgt.dataset.snipField] = tgt.value;
+            let valor = tgt.value;
+            // Caminho de arquivo, não caminho do sistema — cola frequente vem
+            // do Finder/VS Code com "~/", "./" ou "/" na frente (ex.: usuário
+            // copiou "Copiar caminho" de outro app). Isso quebraria a
+            // detecção de colisão e o link do editor, então limpa no blur.
+            if (sanitizarCaminho && tgt.dataset.snipField === 'caminhoTema') {
+                valor = _sanitizarCaminhoTema(valor);
+                tgt.value = valor;
+            }
+            s[tgt.dataset.snipField] = valor;
             s.atualizadoEm = _agora();
             // Nome digitado no corpo expandido — reflete no rótulo do cabeçalho
             // (que fica visível mesmo aberto) sem precisar re-renderizar tudo.
@@ -609,7 +735,7 @@ Regras:
             _debounce = setTimeout(() => KVStore.set(SNIPPETS_KEY, _snippets), 400);
         });
         box?.addEventListener('change', (ev) => {
-            if (!_gravarCampo(ev)) return;
+            if (!_gravarCampo(ev, { sanitizarCaminho: true })) return;
             clearTimeout(_debounce);
             KVStore.set(SNIPPETS_KEY, _snippets);
         });
@@ -669,18 +795,28 @@ Regras:
             document.querySelector(`[data-snip="${id}"] [data-snip-field="caminhoTema"]`)?.focus();
             return;
         }
-        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
-            showToast('Conecte a Shopify primeiro (menu do perfil → Shopify)', 'error');
-            return;
-        }
         const painel = document.getElementById(`loja-instalar-${id}`);
         if (!painel) return;
         const estavaAberto = painel.style.display !== 'none';
         painel.style.display = estavaAberto ? 'none' : '';
         if (estavaAberto) return;
 
+        // Bloco manual — baixar o arquivo funciona sempre, sem depender de
+        // sessão Shopify nenhuma.
+        painel.querySelector('[data-instalar-baixar-arquivo]').onclick = () => _baixarArquivoDoSnippet(s);
+
+        // Bloco "direto pela Shopify" — só faz sentido com sessão ativa;
+        // sem conexão, mostra um aviso simples em vez de travar o painel
+        // inteiro (o bloco manual continua funcionando do mesmo jeito).
+        const blocoShopify = document.getElementById(`loja-instalar-shopify-${id}`);
         const temaSel = painel.querySelector('[data-instalar-tema]');
         const status = painel.querySelector('[data-instalar-status]');
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            blocoShopify.innerHTML = `<h4>Direto pela Shopify</h4><div class="loja-agente-aviso">Conecte a Shopify (menu do perfil → Shopify) pra escolher o tema e abrir o editor direto daqui. O bloco manual acima já funciona sem isso.</div>`;
+            _icones();
+            return;
+        }
+
         temaSel.innerHTML = '<option>Carregando…</option>';
         try {
             const temas = await ShopifyModule.fetchThemes();
@@ -707,6 +843,16 @@ Regras:
             window.open(`https://${shop}/admin/themes/${temaNumerico}/editor`, '_blank');
         };
         _icones();
+    }
+
+    function _baixarArquivoDoSnippet(s) {
+        const nomeArquivo = (s.caminhoTema || '').split('/').pop() || `${_slug(s.nome) || 'arquivo'}.liquid`;
+        const blob = new Blob([s.codigo || ''], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nomeArquivo;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     async function _checarColisaoArquivo(temaId, caminho, statusEl) {

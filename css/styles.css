@@ -15512,7 +15512,11 @@ body:not([data-theme]) .adh-board-viewport {
 .loja-instalar-painel {
     margin-top: 0.75rem; padding: 0.75rem; border: 1px solid var(--border);
     border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02));
+    display: flex; flex-direction: column; gap: 0.85rem;
 }
+.loja-instalar-bloco { padding-top: 0.1rem; }
+.loja-instalar-bloco + .loja-instalar-bloco { border-top: 1px dashed var(--border); padding-top: 0.85rem; }
+.loja-instalar-bloco h4 { margin: 0 0 0.35rem; font-size: 0.82rem; color: var(--text-primary); }
 .loja-instalar-passos { margin: 0.6rem 0; padding-left: 1.2rem; font-size: 0.8rem; line-height: 1.6; color: var(--text-secondary); }
 .loja-instalar-passos code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.76rem; }
 .loja-instalar-acoes { display: flex; gap: 0.5rem; justify-content: flex-end; }
