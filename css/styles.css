@@ -15488,6 +15488,11 @@ body:not([data-theme]) .adh-board-viewport {
     flex: none; background: var(--accent-light); color: var(--accent); font-size: 0.68rem; font-weight: 600;
     padding: 0.14rem 0.5rem; border-radius: 999px; white-space: nowrap;
 }
+.loja-copy-btn {
+    flex: none; display: flex; align-items: center; background: none; border: none;
+    border-left: 1px solid var(--border); color: var(--text-muted); cursor: pointer; padding: 0 0.75rem;
+}
+.loja-copy-btn:hover { color: var(--accent); background: rgba(124, 58, 237, 0.06); }
 .loja-row-x {
     flex: none; background: none; border: none; border-left: 1px solid var(--border);
     color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 0 0.9rem;
@@ -15505,6 +15510,14 @@ body:not([data-theme]) .adh-board-viewport {
 /* Agente de Loja — comando em texto livre + preview/confirm antes de tocar
    na Shopify de verdade. */
 .loja-agente { margin-bottom: 1.1rem; border-color: var(--accent-light); }
+.loja-agente-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.loja-agente-head .loja-card-title { margin-bottom: 0; }
+.loja-agente-head .loja-copy-btn { border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; }
+.loja-agente-config {
+    display: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.75rem 0.85rem; margin-bottom: 0.75rem; background: var(--bg-input, rgba(0,0,0,0.02));
+}
+.loja-agente-config.is-aberta { display: block; }
 .loja-agente-input-row { display: flex; gap: 0.5rem; align-items: flex-start; }
 .loja-agente-input-row textarea { flex: 1; min-height: 46px; resize: vertical; }
 .loja-agente-input-row .btn { flex: none; align-self: stretch; }

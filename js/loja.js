@@ -92,25 +92,104 @@ Regras:
 - Se o pedido não deixar claro qual produto da lista, ou não corresponder a nenhum, produtoId null e confianca "baixa" — não chute.
 - Se o pedido pedir uma ação fora do escopo (editar código/Liquid, mexer em coleção, etc.), devolva mudancas vazio e explique em "entendimento" que isso ainda não é suportado.`;
 
-    function _chaveOpenAI() {
-        return (window.AIAdGenerator?._getOpenAIKey?.()) || localStorage.getItem('openai_api_key') || '';
+    // ── Provedor de IA do Agente — chave e modelo PRÓPRIOS, independentes
+    // da chave OpenAI compartilhada por Estúdio/Lançamento/Produtos. Cada
+    // provedor guarda sua própria chave (localStorage, mesmo padrão já usado
+    // no resto do app) e o modelo escolhido — nunca herda de outro lugar.
+    const PROVEDORES_IA = [
+        { id: 'openai', label: 'OpenAI', modeloPadrao: 'gpt-4o', placeholderChave: 'sk-...' },
+        { id: 'anthropic', label: 'Claude (Anthropic)', modeloPadrao: 'claude-sonnet-5', placeholderChave: 'sk-ant-...' },
+        { id: 'xai', label: 'Grok (xAI)', modeloPadrao: 'grok-2-latest', placeholderChave: 'xai-...' },
+        { id: 'gemini', label: 'Gemini (Google)', modeloPadrao: 'gemini-2.5-flash', placeholderChave: 'AIza...' },
+    ];
+    const PROVEDOR_KEY = 'loja_agente_provedor';
+    const MODELO_KEY_PREFIX = 'loja_agente_modelo_';
+    const CHAVE_KEY_PREFIX = 'loja_agente_chave_';
+
+    function _provedorInfo(id) { return PROVEDORES_IA.find(p => p.id === id) || PROVEDORES_IA[0]; }
+
+    function _configIA() {
+        const provedor = localStorage.getItem(PROVEDOR_KEY) || 'openai';
+        const info = _provedorInfo(provedor);
+        const modelo = localStorage.getItem(MODELO_KEY_PREFIX + provedor) || info.modeloPadrao;
+        const chave = localStorage.getItem(CHAVE_KEY_PREFIX + provedor) || '';
+        return { provedor, modelo, chave };
     }
 
-    async function _openaiJson(system, mensagens, maxTokens = 1200) {
-        const key = _chaveOpenAI();
-        if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+    function _salvarProvedorIA(provedor) { localStorage.setItem(PROVEDOR_KEY, provedor); }
+    function _salvarModeloIA(provedor, modelo) { localStorage.setItem(MODELO_KEY_PREFIX + provedor, modelo); }
+    function _salvarChaveIA(provedor, chave) { localStorage.setItem(CHAVE_KEY_PREFIX + provedor, chave); }
+
+    async function _chamarOpenAI(modelo, chave, system, userContent) {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
             body: JSON.stringify({
-                model: 'gpt-4o', max_tokens: maxTokens, temperature: 0.3,
+                model: modelo, max_tokens: 1200, temperature: 0.3,
                 response_format: { type: 'json_object' },
-                messages: [{ role: 'system', content: system }, ...mensagens],
+                messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
             }),
         });
-        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `HTTP ${res.status}`); }
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`); }
         const data = await res.json();
         return data.choices?.[0]?.message?.content || '';
+    }
+
+    async function _chamarAnthropic(modelo, chave, system, userContent) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json', 'x-api-key': chave,
+                'anthropic-version': '2023-06-01',
+                // Sem isso a Anthropic recusa CORS de chamada direta do navegador.
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: modelo, max_tokens: 1200, system, messages: [{ role: 'user', content: userContent }] }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.content?.[0]?.text || '';
+    }
+
+    async function _chamarXAI(modelo, chave, system, userContent) {
+        // API da xAI é compatível com o formato da OpenAI (mesmo endpoint shape).
+        const res = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: 1200, temperature: 0.3,
+                messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `xAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
+
+    async function _chamarGemini(modelo, chave, system, userContent) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(chave)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: userContent }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 1200, temperature: 0.3 },
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    async function _pedirPlanoIA(system, userContent) {
+        const { provedor, modelo, chave } = _configIA();
+        if (!chave) throw new Error(`Configure a chave de API do provedor (${_provedorInfo(provedor).label}) no ícone de engrenagem, ao lado de "Pedir à IA".`);
+        if (provedor === 'openai') return _chamarOpenAI(modelo, chave, system, userContent);
+        if (provedor === 'anthropic') return _chamarAnthropic(modelo, chave, system, userContent);
+        if (provedor === 'xai') return _chamarXAI(modelo, chave, system, userContent);
+        if (provedor === 'gemini') return _chamarGemini(modelo, chave, system, userContent);
+        throw new Error('Provedor de IA desconhecido: ' + provedor);
     }
 
     function _extrairJson(texto) {
@@ -128,9 +207,34 @@ Regras:
     let _agentePlano = null;
 
     function _renderAgenteBox() {
+        const { provedor, modelo, chave } = _configIA();
         return `
             <div class="loja-card loja-agente">
-                <h3 class="loja-card-title"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Pedir à IA</h3>
+                <div class="loja-agente-head">
+                    <h3 class="loja-card-title"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Pedir à IA</h3>
+                    <button type="button" class="loja-copy-btn" id="loja-agente-config-btn" title="Configurar provedor de IA">
+                        <i data-lucide="settings" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+                <div class="loja-agente-config" id="loja-agente-config">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Provedor</label>
+                            <select class="input" id="loja-agente-provedor">
+                                ${PROVEDORES_IA.map(p => `<option value="${p.id}" ${p.id === provedor ? 'selected' : ''}>${p.label}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Modelo</label>
+                            <input type="text" class="input" id="loja-agente-modelo" value="${escapeHtml(modelo)}" placeholder="${escapeHtml(_provedorInfo(provedor).modeloPadrao)}">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Chave da API (${escapeHtml(_provedorInfo(provedor).label)})</label>
+                        <input type="password" class="input" id="loja-agente-chave" value="${escapeHtml(chave)}" placeholder="${escapeHtml(_provedorInfo(provedor).placeholderChave)}" autocomplete="off">
+                    </div>
+                    <p class="loja-card-hint">Chave só deste Agente — independente da chave OpenAI usada em Estúdio/Lançamento/Produtos.</p>
+                </div>
                 <p class="loja-card-hint">Descreva o que quer mudar num produto — preço, status, template. A IA propõe, você confirma antes de qualquer coisa ir pra loja de verdade.</p>
                 <div class="loja-agente-input-row">
                     <textarea id="loja-agente-pedido" class="input" rows="2" placeholder="Ex.: atualizar o preço do Óculos Ferrari pra 45 e ativar o produto"></textarea>
@@ -143,6 +247,27 @@ Regras:
 
     function _wireAgenteEvents() {
         document.getElementById('loja-agente-enviar')?.addEventListener('click', _processarPedidoAgente);
+
+        document.getElementById('loja-agente-config-btn')?.addEventListener('click', () => {
+            document.getElementById('loja-agente-config')?.classList.toggle('is-aberta');
+        });
+
+        const provSel = document.getElementById('loja-agente-provedor');
+        const modeloInput = document.getElementById('loja-agente-modelo');
+        const chaveInput = document.getElementById('loja-agente-chave');
+
+        provSel?.addEventListener('change', () => {
+            _salvarProvedorIA(provSel.value);
+            // Troca de provedor: recarrega o card de config com o modelo/chave
+            // JÁ salvos daquele provedor (cada um é independente).
+            const cfg = _configIA();
+            if (modeloInput) modeloInput.value = cfg.modelo;
+            if (chaveInput) { chaveInput.value = cfg.chave; chaveInput.placeholder = _provedorInfo(cfg.provedor).placeholderChave; }
+            const label = document.querySelector('#loja-agente-chave')?.closest('.form-group')?.querySelector('label');
+            if (label) label.textContent = `Chave da API (${_provedorInfo(cfg.provedor).label})`;
+        });
+        modeloInput?.addEventListener('change', () => _salvarModeloIA(provSel.value, modeloInput.value.trim() || _provedorInfo(provSel.value).modeloPadrao));
+        chaveInput?.addEventListener('change', () => _salvarChaveIA(provSel.value, chaveInput.value.trim()));
     }
 
     async function _processarPedidoAgente() {
@@ -164,10 +289,7 @@ Regras:
             }));
             resultado.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Pensando…</div>`;
             _icones();
-            const txt = await _openaiJson(SISTEMA_AGENTE, [{
-                role: 'user',
-                content: `Pedido: """${pedido}"""\n\nProdutos existentes (JSON): ${JSON.stringify(listaParaIA)}`,
-            }]);
+            const txt = await _pedirPlanoIA(SISTEMA_AGENTE, `Pedido: """${pedido}"""\n\nProdutos existentes (JSON): ${JSON.stringify(listaParaIA)}`);
             const plano = _extrairJson(txt);
             await _montarPreviewPlano(plano, produtos, pedido);
         } catch (e) {
@@ -330,6 +452,42 @@ Regras:
 
     function _tagLabel(tagId) { return TAGS_SNIPPET.find(t => t.id === tagId)?.label || tagId; }
 
+    function _slug(texto) {
+        // ̀-ͯ = acentos combinantes depois do NFD — escrito em
+        // escape hex de propósito (o caractere literal é invisível e some
+        // silenciosamente em qualquer cópia/colagem).
+        return String(texto || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+    }
+
+    // Extensão do bloco de código no markdown — puramente cosmética (o
+    // Liquid não tem highlighter próprio na maioria dos renderizadores, mas
+    // "liquid" já é reconhecido por GitHub/VS Code).
+    const LINGUAGEM_MD = { secao: 'liquid', snippet: 'liquid', css: 'css', js: 'javascript', outro: '' };
+
+    function _baixarSnippetMarkdown(s) {
+        const linguagem = LINGUAGEM_MD[s.tag] ?? '';
+        const md = [
+            `# ${s.nome || 'Sem nome'}`,
+            '',
+            `**Tipo:** ${_tagLabel(s.tag)}`,
+            s.descricao ? `\n${s.descricao}` : '',
+            '',
+            '```' + linguagem,
+            s.codigo || '',
+            '```',
+            '',
+        ].join('\n');
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${_slug(s.nome) || 'snippet'}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     function _renderSnippetsList(lista, todas) {
         if (!lista.length) return '<div class="loja-empty">Nenhum snippet salvo ainda. Clique em "Novo snippet" pra começar.</div>';
         return lista.map(s => {
@@ -342,6 +500,12 @@ Regras:
                         <span class="loja-snippet-nome">${escapeHtml(s.nome) || 'Sem nome'}</span>
                         <span class="loja-tag-pill" data-tag="${s.tag}">${_tagLabel(s.tag)}</span>
                         ${todas ? `<span class="loja-store-badge">${escapeHtml(_nomeDaLoja(s.storeId))}</span>` : ''}
+                    </button>
+                    <button type="button" class="loja-copy-btn" data-snip-copiar="${s.id}" title="Copiar código">
+                        <i data-lucide="copy" style="width:13px;height:13px"></i>
+                    </button>
+                    <button type="button" class="loja-copy-btn" data-snip-baixar="${s.id}" title="Baixar como Markdown">
+                        <i data-lucide="download" style="width:13px;height:13px"></i>
                     </button>
                     <button type="button" class="loja-row-x" data-snip-del="${s.id}" title="Remover">&times;</button>
                 </div>
@@ -424,6 +588,24 @@ Regras:
             KVStore.set(SNIPPETS_KEY, _snippets);
         });
         box?.addEventListener('click', async (ev) => {
+            const copiar = ev.target.closest('[data-snip-copiar]');
+            if (copiar) {
+                const s = _snippets.find(x => x.id === copiar.dataset.snipCopiar);
+                if (!s) return;
+                try {
+                    await navigator.clipboard.writeText(s.codigo || '');
+                    showToast('Código copiado', 'success');
+                } catch (e) {
+                    showToast('Não consegui copiar: ' + e.message, 'error');
+                }
+                return;
+            }
+            const baixar = ev.target.closest('[data-snip-baixar]');
+            if (baixar) {
+                const s = _snippets.find(x => x.id === baixar.dataset.snipBaixar);
+                if (s) _baixarSnippetMarkdown(s);
+                return;
+            }
             const del = ev.target.closest('[data-snip-del]');
             if (del) {
                 if (!confirm('Remover este snippet?')) return;
