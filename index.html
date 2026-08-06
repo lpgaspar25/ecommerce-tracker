@@ -4140,6 +4140,12 @@
                 </div>
             </div>
 
+            <div class="studio-modo-toggle" id="studio-modo-toggle">
+                <button type="button" class="studio-modo-btn is-active" data-modo="produto"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Produto existente</button>
+                <button type="button" class="studio-modo-btn" data-modo="lancamento"><i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> Lançar produto novo</button>
+            </div>
+
+            <div id="studio-modo-produto">
             <!-- Marca e público: define para QUEM se fala antes de escrever -->
             <div class="studio-bloco">
                 <h3><i data-lucide="fingerprint" style="width:15px;height:15px;vertical-align:-2px"></i> Marca e público
@@ -4273,6 +4279,139 @@
                             <input type="text" id="studio-chat-input" class="input" placeholder="Ex.: deixa o título mais direto, troca o bullet 3 para dor…">
                             <button id="studio-chat-enviar" class="btn btn-primary btn-sm"><i data-lucide="send" style="width:14px;height:14px"></i></button>
                         </div>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /studio-modo-produto -->
+
+            <!-- Lançamento de Produto: cria um produto do zero (ou clonando um
+                 molde da loja), importa fotos, monta a descrição em blocos de
+                 texto+imagem e publica. Fase 1: fluxo local até "Revisar";
+                 publicação real na Shopify é a Fase 2. -->
+            <div id="studio-modo-lancamento" class="hidden">
+                <div class="lanc-stepper" id="lanc-stepper">
+                    <button type="button" class="lanc-step is-active" data-step="1"><span class="lanc-step-num">1</span> Base</button>
+                    <button type="button" class="lanc-step" data-step="2"><span class="lanc-step-num">2</span> Fotos</button>
+                    <button type="button" class="lanc-step" data-step="3"><span class="lanc-step-num">3</span> Descrição</button>
+                    <button type="button" class="lanc-step" data-step="4"><span class="lanc-step-num">4</span> Brinde</button>
+                    <button type="button" class="lanc-step" data-step="5"><span class="lanc-step-num">5</span> Revisar</button>
+                </div>
+
+                <!-- Passo 1: Base -->
+                <div class="lanc-painel" data-painel="1">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="layout-template" style="width:15px;height:15px;vertical-align:-2px"></i> De onde parte a copy?</h3>
+                        <div class="lanc-base-opcoes">
+                            <button type="button" class="lanc-base-opt is-active" id="lanc-base-zero" data-base="zero">
+                                <i data-lucide="file-plus" style="width:18px;height:18px"></i>
+                                <strong>Do zero</strong>
+                                <span>A IA cria a copy sem se basear em outro produto</span>
+                            </button>
+                            <button type="button" class="lanc-base-opt" id="lanc-base-molde" data-base="molde">
+                                <i data-lucide="copy" style="width:18px;height:18px"></i>
+                                <strong>Usar produto da loja como molde</strong>
+                                <span>Copia a estrutura (e o brinde) de um produto que já existe</span>
+                            </button>
+                        </div>
+                        <div id="lanc-molde-picker" class="hidden" style="margin-top:0.8rem">
+                            <label for="lanc-molde-select">Produto-molde</label>
+                            <select id="lanc-molde-select" class="input">
+                                <option value="">-- Escolha um produto da loja --</option>
+                            </select>
+                            <div id="lanc-molde-status" class="lanc-molde-status"></div>
+                        </div>
+                        <div style="margin-top:0.8rem">
+                            <label for="lanc-titulo">Nome do novo produto</label>
+                            <input type="text" id="lanc-titulo" class="input" placeholder="Ex.: Óculos de Sol Ferrari Portofino">
+                        </div>
+                    </div>
+                    <div class="lanc-nav">
+                        <span></span>
+                        <button type="button" class="btn btn-primary" id="lanc-passo1-avancar">Continuar <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+                    </div>
+                </div>
+
+                <!-- Passo 2: Fotos -->
+                <div class="lanc-painel hidden" data-painel="2">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="images" style="width:15px;height:15px;vertical-align:-2px"></i> Fotos do produto</h3>
+                        <p class="lanc-hint">Suba manualmente ou abra o link do fornecedor (Yupoo etc.) no Chrome logado e clique na extensão ETracker — as fotos chegam aqui em tamanho cheio automaticamente.</p>
+                        <input type="file" id="lanc-upload" accept="image/*" multiple hidden>
+                        <button type="button" id="lanc-upload-btn" class="btn btn-secondary btn-sm"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir fotos</button>
+                        <div id="lanc-fotos-status" class="lanc-fotos-status"></div>
+                        <div id="lanc-fotos-grid" class="lanc-fotos-grid"></div>
+                    </div>
+                    <div class="lanc-nav">
+                        <button type="button" class="btn btn-secondary" data-lanc-voltar="1">Voltar</button>
+                        <button type="button" class="btn btn-primary" id="lanc-passo2-avancar">Continuar <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+                    </div>
+                </div>
+
+                <!-- Passo 3: Descrição (em construção) -->
+                <div class="lanc-painel hidden" data-painel="3">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="file-text" style="width:15px;height:15px;vertical-align:-2px"></i> Descrição em blocos</h3>
+                        <p class="lanc-hint">Texto e foto se intercalam, como uma landing page. Escolha como montar — dá pra gerar de novo ou editar cada bloco depois.</p>
+                        <div class="lanc-base-opcoes" id="lanc-desc-modos">
+                            <button type="button" class="lanc-base-opt" id="lanc-desc-modo-ia" data-desc-modo="ia">
+                                <i data-lucide="sparkles" style="width:18px;height:18px"></i>
+                                <strong>Gerar com IA</strong>
+                                <span>A IA olha suas fotos e escreve os blocos do zero</span>
+                            </button>
+                            <button type="button" class="lanc-base-opt hidden" id="lanc-desc-modo-molde" data-desc-modo="molde">
+                                <i data-lucide="copy" style="width:18px;height:18px"></i>
+                                <strong>Copiar o molde e trocar o conteúdo</strong>
+                                <span>Mantém a estrutura do produto-molde, só troca texto e fotos</span>
+                            </button>
+                        </div>
+                        <div id="lanc-desc-status" class="lanc-fotos-status"></div>
+                        <div id="lanc-blocos-lista" class="lanc-blocos-lista"></div>
+                        <div class="lanc-blocos-add">
+                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-texto"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Bloco de texto</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-imagem"><i data-lucide="image-plus" style="width:13px;height:13px;vertical-align:-2px"></i> Bloco de imagem</button>
+                        </div>
+                    </div>
+                    <div class="lanc-nav">
+                        <button type="button" class="btn btn-secondary" data-lanc-voltar="2">Voltar</button>
+                        <button type="button" class="btn btn-primary" id="lanc-passo3-avancar">Continuar <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+                    </div>
+                </div>
+
+                <!-- Passo 4: Brinde -->
+                <div class="lanc-painel hidden" data-painel="4">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="gift" style="width:15px;height:15px;vertical-align:-2px"></i> Brinde</h3>
+                        <label class="lanc-brinde-toggle">
+                            <input type="checkbox" id="lanc-brinde-incluir">
+                            <span>Incluir um brinde no final da descrição</span>
+                        </label>
+                        <div id="lanc-brinde-status" class="lanc-fotos-status"></div>
+                        <div id="lanc-brinde-editor" class="hidden" style="margin-top:0.6rem">
+                            <label for="lanc-brinde-titulo">Título do brinde</label>
+                            <input type="text" id="lanc-brinde-titulo" class="input" placeholder="Ex.: Kit de limpeza premium de brinde">
+                            <label for="lanc-brinde-texto" style="margin-top:0.6rem;display:block">Texto</label>
+                            <div id="lanc-brinde-texto" class="lanc-rich" contenteditable="true"></div>
+                        </div>
+                    </div>
+                    <div class="lanc-nav">
+                        <button type="button" class="btn btn-secondary" data-lanc-voltar="3">Voltar</button>
+                        <button type="button" class="btn btn-primary" data-lanc-avancar="5">Continuar <i data-lucide="arrow-right" style="width:14px;height:14px;vertical-align:-2px"></i></button>
+                    </div>
+                </div>
+
+                <!-- Passo 5: Revisar -->
+                <div class="lanc-painel hidden" data-painel="5">
+                    <div class="studio-bloco">
+                        <h3><i data-lucide="rocket" style="width:15px;height:15px;vertical-align:-2px"></i> Revisar</h3>
+                        <p class="lanc-hint">Publicar de verdade na Shopify ainda depende de liberar <code>productCreate</code> no Worker (Fase 2). Por enquanto, salve como rascunho — fica guardado no navegador, nada se perde.</p>
+                        <div id="lanc-revisar-resumo" class="lanc-revisar-resumo"></div>
+                        <div id="lanc-revisar-preview" class="lanc-revisar-preview"></div>
+                        <div id="lanc-revisar-status" class="lanc-fotos-status"></div>
+                        <button type="button" class="btn btn-primary" id="lanc-salvar-rascunho"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar rascunho</button>
+                    </div>
+                    <div class="lanc-nav">
+                        <button type="button" class="btn btn-secondary" data-lanc-voltar="4">Voltar</button>
+                        <span></span>
                     </div>
                 </div>
             </div>
@@ -6364,6 +6503,7 @@
     <script src="js/kv-store.js"></script>
     <script src="js/creatives.js"></script>
     <script src="js/studio.js"></script>
+    <script src="js/lancamento.js"></script>
     <script src="js/pending-approvals.js"></script>
     <script src="js/ai-consultant.js"></script>
     <script src="js/pipeline.js"></script>

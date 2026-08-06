@@ -469,6 +469,16 @@ function initTabs() {
             if (miningTabBtn) miningTabBtn.click();
         });
     }
+
+    // A extensão abre a aba certa via ?tab=<slug> (ex.: vindo do Importador
+    // ou de uma captura de galeria de fornecedor pro Lançamento no Estúdio).
+    // Isso já era esperado pelo popup.js da extensão, mas nada no app lia o
+    // parâmetro — a aba nunca trocava sozinha.
+    const tabDaUrl = new URLSearchParams(location.search).get('tab');
+    if (tabDaUrl) {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabDaUrl}"]`);
+        if (btn) btn.click();
+    }
 }
 
 // ---- Theme ----

@@ -16116,3 +16116,124 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .studio-provider-row label { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; }
 .studio-provider-row select { flex: 1; }
+
+/* Estúdio → alternador Produto existente / Lançar produto novo */
+.studio-modo-toggle {
+    display: flex; gap: 0.4rem; margin: 0.8rem 0 1.1rem;
+}
+.studio-modo-btn {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-secondary);
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.studio-modo-btn.is-active {
+    border-color: var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* Lançamento de Produto → wizard em passos */
+.lanc-stepper {
+    display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 1rem;
+}
+.lanc-step {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.75rem; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-muted); font-size: 0.78rem; font-weight: 600;
+    cursor: pointer;
+}
+.lanc-step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; background: var(--border);
+    color: var(--text-secondary); font-size: 0.68rem;
+}
+.lanc-step.is-active { border-color: var(--accent); color: var(--accent); }
+.lanc-step.is-active .lanc-step-num { background: var(--accent); color: #fff; }
+.lanc-step.is-done .lanc-step-num { background: var(--success, #10b981); color: #fff; }
+
+.lanc-painel.hidden,
+#studio-modo-produto.hidden,
+#studio-modo-lancamento.hidden,
+#lanc-molde-picker.hidden,
+#lanc-brinde-editor.hidden,
+.lanc-base-opt.hidden { display: none; }
+.lanc-hint { font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0.7rem; line-height: 1.5; }
+.lanc-nav {
+    display: flex; justify-content: space-between; align-items: center; margin-top: 0.9rem;
+}
+.lanc-em-construcao { opacity: 0.75; }
+
+.lanc-base-opcoes { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.lanc-base-opt {
+    flex: 1; min-width: 220px; display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem;
+    padding: 0.9rem; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--text-primary); text-align: left; cursor: pointer;
+}
+.lanc-base-opt strong { font-size: 0.88rem; }
+.lanc-base-opt span { font-size: 0.76rem; color: var(--text-muted); line-height: 1.4; }
+.lanc-base-opt.is-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lanc-molde-status { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem; min-height: 1.1em; }
+
+.lanc-fotos-status { font-size: 0.78rem; color: var(--text-muted); margin: 0.5rem 0; min-height: 1.1em; }
+.lanc-fotos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.6rem; margin-top: 0.6rem; }
+.lanc-foto-item { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.lanc-foto-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.lanc-foto-origem {
+    position: absolute; top: 4px; left: 4px; font-size: 0.6rem;
+    background: rgba(0,0,0,0.65); color: #fff; padding: 1px 5px; border-radius: 4px;
+}
+.lanc-foto-del {
+    position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; border: none;
+    background: rgba(0,0,0,0.65); color: #fff; cursor: pointer;
+}
+.lanc-foto-carregando {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.3rem; aspect-ratio: 1; border: 1px dashed var(--border); border-radius: 8px;
+    font-size: 0.68rem; color: var(--text-muted); text-align: center; padding: 0.3rem;
+}
+
+/* Lançamento → editor de blocos da descrição */
+.lanc-blocos-lista { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.7rem; }
+.lanc-bloco-item {
+    border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem;
+    background: var(--bg-card); position: relative;
+}
+.lanc-bloco-cabecalho {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;
+}
+.lanc-bloco-tipo { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.03em; }
+.lanc-bloco-acoes { display: flex; gap: 0.25rem; }
+.lanc-bloco-acoes button {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.lanc-bloco-acoes button:hover { background: var(--bg-hover, rgba(255,255,255,0.06)); }
+.lanc-rich {
+    min-height: 2.4em; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem;
+    font-size: 0.85rem; line-height: 1.55; background: var(--bg-input, var(--bg-card));
+}
+.lanc-rich:focus { outline: 1px solid var(--accent); }
+.lanc-bloco-imagem-corpo { display: flex; gap: 0.7rem; align-items: center; }
+.lanc-bloco-imagem-corpo img { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.lanc-bloco-imagem-corpo select { flex: 1; }
+.lanc-blocos-add { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
+
+/* Lançamento → brinde */
+.lanc-brinde-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
+.lanc-brinde-toggle input { width: 16px; height: 16px; }
+
+/* Lançamento → revisar */
+.lanc-revisar-resumo {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.5rem;
+    margin: 0.7rem 0; padding: 0.7rem; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-card); font-size: 0.8rem;
+}
+.lanc-revisar-resumo strong { color: var(--text-secondary); }
+.lanc-revisar-preview {
+    max-height: 480px; overflow-y: auto; padding: 0.8rem; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 0.85rem; line-height: 1.6; margin-bottom: 0.6rem;
+}
+.lanc-revisar-preview img { max-width: 100%; border-radius: 8px; display: block; margin: 0.5rem 0; }
+.lanc-preview-brinde { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border); }
