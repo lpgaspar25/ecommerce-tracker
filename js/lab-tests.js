@@ -67,6 +67,24 @@ const LabTestsModule = {
         catch { this._tests = []; }
     },
 
+    // Escreve `valor` na chave deste módulo. Se faltar espaço, libera os
+    // caches regeneráveis do APP INTEIRO (StorageManager) antes de tentar de
+    // novo — bem mais eficaz do que só apagar os backups deste módulo, já
+    // que quem costuma encher o storage é o cache de pedidos da Shopify
+    // (etracker_shopify_orders_day_cache), alimentado toda vez que o botão
+    // "Recalcular resultado Shopify" busca vendas por dia.
+    _salvarComReclaim(valor) {
+        const doSave = () => localStorage.setItem(this._storageKey, JSON.stringify(valor));
+        if (typeof StorageManager !== 'undefined' && StorageManager.withReclaim) {
+            return StorageManager.withReclaim(doSave, 'lab-tests');
+        }
+        try { doSave(); return true; }
+        catch {
+            this._purgeOldBackups();
+            try { doSave(); return true; } catch { return false; }
+        }
+    },
+
     // Multi-tab-safe persist for save/edit flows: re-read disk and merge by id
     // (newer updatedAt wins). For deletions, use _persistOverwrite which skips
     // the merge — otherwise deleted-from-memory items would resurrect from disk.
@@ -76,27 +94,20 @@ const LabTestsModule = {
 
         const merged = this._mergeTests(onDisk, this._tests);
         this._tests = merged;
-        try {
-            localStorage.setItem(this._storageKey, JSON.stringify(merged));
-        } catch (err) {
-            // QuotaExceededError ou similar — tenta liberar backups e re-salvar
-            console.warn('[LabTests] persist falhou, tentando limpar backups:', err);
-            this._purgeOldBackups();
-            try {
-                localStorage.setItem(this._storageKey, JSON.stringify(merged));
-            } catch (err2) {
-                console.error('[LabTests] persist falhou de novo:', err2);
-                if (typeof showToast === 'function') {
-                    showToast('Erro ao salvar: armazenamento cheio. Exporte ou apague itens antigos.', 'error');
-                }
-                throw err2;
+
+        if (!this._salvarComReclaim(merged)) {
+            console.error('[LabTests] persist falhou mesmo após liberar espaço');
+            if (typeof showToast === 'function') {
+                showToast('Erro ao salvar: armazenamento cheio. Exporte ou apague itens antigos.', 'error');
             }
+            throw new Error('Armazenamento cheio — exporte ou apague testes antigos.');
         }
         try { this._writeBackup(merged); } catch {}
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
-    // Apaga TODOS os backups antigos para liberar espaço
+    // Apaga TODOS os backups antigos para liberar espaço — usado como
+    // fallback só quando o StorageManager compartilhado não está carregado.
     _purgeOldBackups() {
         const prefix = `${this._storageKey}_backup_`;
         const keysToRemove = [];
@@ -109,18 +120,11 @@ const LabTestsModule = {
 
     // Used for deletions: write in-memory directly to disk, no merge.
     _persistOverwrite() {
-        try {
-            localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
-        } catch (err) {
-            this._purgeOldBackups();
-            try {
-                localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
-            } catch (err2) {
-                if (typeof showToast === 'function') {
-                    showToast('Erro ao salvar: armazenamento cheio.', 'error');
-                }
-                throw err2;
+        if (!this._salvarComReclaim(this._tests)) {
+            if (typeof showToast === 'function') {
+                showToast('Erro ao salvar: armazenamento cheio. Exporte ou apague itens antigos.', 'error');
             }
+            throw new Error('Armazenamento cheio — exporte ou apague testes antigos.');
         }
         try { this._writeBackup(this._tests); } catch {}
     },
@@ -492,16 +496,18 @@ const LabTestsModule = {
     },
 
     _writeBackup(tests) {
+        const today = new Date().toISOString().slice(0, 10);
+        try { localStorage.setItem(`${this._storageKey}_backup_${today}`, JSON.stringify(tests)); } catch {}
+        // A poda roda MESMO que a escrita de hoje tenha falhado acima — senão,
+        // assim que o storage aperta uma vez, os backups antigos nunca mais
+        // são liberados e o problema só piora dia após dia.
         try {
-            const today = new Date().toISOString().slice(0, 10);
-            localStorage.setItem(`${this._storageKey}_backup_${today}`, JSON.stringify(tests));
-            // Trim backups older than 7 days
             const cutoff = Date.now() - 7 * 86400000;
+            const prefix = `${this._storageKey}_backup_`;
             for (let i = localStorage.length - 1; i >= 0; i--) {
                 const k = localStorage.key(i);
-                if (!k || !k.startsWith(`${this._storageKey}_backup_`)) continue;
-                const dStr = k.slice(`${this._storageKey}_backup_`.length);
-                const d = Date.parse(dStr);
+                if (!k || !k.startsWith(prefix)) continue;
+                const d = Date.parse(k.slice(prefix.length));
                 if (d && d < cutoff) localStorage.removeItem(k);
             }
         } catch {}
