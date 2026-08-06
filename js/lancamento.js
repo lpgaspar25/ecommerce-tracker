@@ -177,6 +177,7 @@ const LancamentoModule = (() => {
             e.target.value = '';
             for (const f of files) await _adicionarFoto(f, 'upload');
         });
+        document.getElementById('lanc-editar-todas')?.addEventListener('click', () => _abrirEditorIA(_state.fotos.map(f => f.id)));
         document.getElementById('lanc-passo2-avancar')?.addEventListener('click', () => {
             if (!_state.fotos.length) { showToast('Adicione ao menos uma foto', 'error'); return; }
             _irParaPasso(3);
@@ -223,14 +224,34 @@ const LancamentoModule = (() => {
         const grid = document.getElementById('lanc-fotos-grid');
         if (!grid) return;
         grid.innerHTML = _state.fotos.map(f => `
-            <div class="lanc-foto-item" data-id="${f.id}">
-                <img src="${f.thumb}" alt="">
-                <span class="lanc-foto-origem">${escapeHtml(f.origem)}</span>
+            <div class="lanc-foto-item${f.editada ? ' is-editada' : ''}" data-id="${f.id}">
+                <img src="${f.thumb}" alt="" data-ampliar="${f.id}" title="Ampliar">
+                <span class="lanc-foto-origem">${escapeHtml(f.origem)}${f.editada ? ' · IA' : ''}</span>
+                <div class="lanc-foto-acoes">
+                    <button type="button" data-editar-uma="${f.id}" title="Editar com IA"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
+                    ${f._original ? `<button type="button" data-desfazer="${f.id}" title="Desfazer edição"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i></button>` : ''}
+                </div>
                 <button type="button" class="lanc-foto-del" data-remover="${f.id}" title="Remover"><i data-lucide="x" style="width:11px;height:11px"></i></button>
             </div>`).join('');
         grid.querySelectorAll('[data-remover]').forEach(btn => {
             btn.addEventListener('click', () => _removerFoto(btn.dataset.remover));
         });
+        grid.querySelectorAll('[data-editar-uma]').forEach(btn => {
+            btn.addEventListener('click', () => _abrirEditorIA([btn.dataset.editarUma]));
+        });
+        grid.querySelectorAll('[data-desfazer]').forEach(btn => {
+            btn.addEventListener('click', () => _desfazerEdicao(btn.dataset.desfazer));
+        });
+        grid.querySelectorAll('[data-ampliar]').forEach(img => {
+            img.addEventListener('click', async () => {
+                const f = _state.fotos.find(x => x.id === img.dataset.ampliar);
+                const url = f && await MediaStore.getObjectUrl(f.mediaId);
+                if (url && typeof abrirImagemAmpliada === 'function') abrirImagemAmpliada(url, f.origem);
+            });
+        });
+        // "Editar todas" só faz sentido quando há foto.
+        const btnLote = document.getElementById('lanc-editar-todas');
+        if (btnLote) btnLote.style.display = _state.fotos.length ? '' : 'none';
         _icones();
     }
 
@@ -300,20 +321,71 @@ const LancamentoModule = (() => {
     }
 
     // ── Passo 3: Descrição em blocos ─────────────────────────────────────
-    const SISTEMA_BLOCOS_ZERO = `Você escreve a descrição de um produto de e-commerce no formato de LANDING PAGE: uma sequência de blocos que alternam texto de venda curto e direto (em português do Brasil) com as fotos reais do produto.
+    // A copy é do CLIENTE da loja, não da UI — o idioma é o da loja (a
+    // Ambreux vende em inglês), nunca "português porque o app é em português".
+    // Esse era o bug: os prompts forçavam PT-BR e traduziam o molde inglês.
+    const IDIOMAS_COPY = [
+        { id: 'en', nome: 'Inglês', instrucao: 'English (British)' },
+        { id: 'pt', nome: 'Português', instrucao: 'Portuguese (Brazil)' },
+        { id: 'es', nome: 'Espanhol', instrucao: 'Spanish' },
+        { id: 'fr', nome: 'Francês', instrucao: 'French' },
+        { id: 'de', nome: 'Alemão', instrucao: 'German' },
+        { id: 'it', nome: 'Italiano', instrucao: 'Italian' },
+        { id: 'nl', nome: 'Holandês', instrucao: 'Dutch' },
+    ];
+
+    const SISTEMA_BLOCOS_ZERO = `Você escreve a descrição de um produto de e-commerce no formato de LANDING PAGE: uma sequência de blocos que alternam texto de venda curto e direto com as fotos reais do produto.
 Você recebe várias fotos do produto, nesta ordem (índice 0, 1, 2...), e o contexto do produto.
 Devolva APENAS um JSON: {"blocos": [{"tipo":"texto","html":"<h3>...</h3><p>...</p>"}, {"tipo":"imagem","indiceFoto":0}, ...]}
-Regras: alterne texto e imagem, nunca dois blocos do mesmo tipo seguidos; não repita indiceFoto; html usa só <h3>, <p>, <strong>, <ul>, <li> (nada de <script>/<style>/atributos); escreva olhando o que aparece de fato em cada foto pra escrever o texto vizinho com precisão; comece e termine com bloco de texto; entre 4 e 8 blocos no total.`;
+Regras: alterne texto e imagem, nunca dois blocos do mesmo tipo seguidos; USE TODAS as fotos recebidas, uma vez cada, sem repetir indiceFoto; html usa só <h3>, <p>, <strong>, <ul>, <li> (nada de <script>/<style>/atributos); escreva olhando o que aparece de fato em cada foto pra escrever o texto vizinho com precisão; comece com bloco de texto.
+IDIOMA: escreva TODO o texto no idioma pedido pelo usuário. Este texto é para o cliente final da loja — não use português a menos que seja explicitamente pedido.`;
 
     const SISTEMA_BLOCOS_MOLDE = `Você adapta a descrição de um produto de e-commerce existente para um produto NOVO, mantendo a MESMA estrutura e o MESMO tom — só troca o conteúdo.
-Você recebe uma lista de blocos de texto (índice + html original, tirados de outro produto) e o nome do produto novo. Reescreva CADA bloco falando do produto novo, mantendo a mesma estrutura de tags HTML e tamanho aproximado, em português do Brasil.
+Você recebe uma lista de blocos de texto (índice + html original, tirados de outro produto) e o nome do produto novo. Reescreva CADA bloco falando do produto novo, mantendo a mesma estrutura de tags HTML e tamanho aproximado.
+IDIOMA — REGRA CRÍTICA: escreva no idioma pedido pelo usuário. Quando o pedido for "manter o idioma original", responda EXATAMENTE no mesmo idioma do html original recebido e NÃO TRADUZA nada. Traduzir a copy de uma loja que vende em inglês para português quebraria a loja.
 Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, "html": "..."}]}`;
+
+    // Detecta o idioma do molde só pra escolher o padrão do seletor — o
+    // usuário sempre pode trocar. Palavras funcionais distintivas: as comuns
+    // entre PT e ES ("de", "para") não servem pra separar os dois.
+    function _detectarIdioma(html) {
+        const txt = ' ' + String(html || '').replace(/<[^>]+>/g, ' ').toLowerCase().replace(/\s+/g, ' ') + ' ';
+        const marcas = {
+            en: [' the ', ' and ', ' with ', ' your ', ' this ', ' of ', ' for '],
+            pt: [' você ', ' seu ', ' sua ', ' não ', ' com ', ' mais ', ' são '],
+            es: [' el ', ' los ', ' las ', ' con ', ' su ', ' más ', ' que '],
+            fr: [' le ', ' les ', ' avec ', ' votre ', ' pour ', ' des '],
+            de: [' und ', ' mit ', ' für ', ' die ', ' der ', ' das '],
+            it: [' il ', ' con ', ' per ', ' della ', ' che ', ' una '],
+            nl: [' het ', ' een ', ' met ', ' voor ', ' van ', ' uw '],
+        };
+        let melhor = '', pontos = 0;
+        for (const [id, lista] of Object.entries(marcas)) {
+            const n = lista.reduce((s, p) => s + (txt.split(p).length - 1), 0);
+            if (n > pontos) { pontos = n; melhor = id; }
+        }
+        return pontos >= 3 ? melhor : '';
+    }
+
+    function _idiomaEscolhido() {
+        return document.getElementById('lanc-desc-idioma')?.value || 'en';
+    }
+
+    function _instrucaoIdioma() {
+        const id = _idiomaEscolhido();
+        if (id === 'original') return 'Mantenha o idioma original do texto recebido — NÃO traduza.';
+        const item = IDIOMAS_COPY.find(x => x.id === id);
+        return `Escreva em ${item ? item.instrucao : 'English (British)'}.`;
+    }
 
     function _bindPasso3() {
         document.getElementById('lanc-desc-modo-ia')?.addEventListener('click', () => { _marcarDescModo('ia'); _gerarBlocosDoZero(); });
         document.getElementById('lanc-desc-modo-molde')?.addEventListener('click', () => { _marcarDescModo('molde'); _gerarBlocosDoMolde(); });
         document.getElementById('lanc-blocos-add-texto')?.addEventListener('click', () => _adicionarBlocoManual('texto'));
         document.getElementById('lanc-blocos-add-imagem')?.addEventListener('click', () => _adicionarBlocoManual('imagem'));
+        // Marca que o usuário escolheu à mão — a detecção automática não
+        // sobrescreve mais a partir daqui.
+        document.getElementById('lanc-desc-idioma')?.addEventListener('change', (e) => { e.target.dataset.tocado = '1'; });
         document.getElementById('lanc-passo3-avancar')?.addEventListener('click', () => {
             if (!_state.blocos.length) { showToast('Gere ou monte a descrição primeiro', 'error'); return; }
             _irParaPasso(4);
@@ -322,7 +394,23 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
 
     // "Copiar o molde" só aparece se o usuário veio de um molde no Passo 1.
     function _prepararPasso3() {
-        document.getElementById('lanc-desc-modo-molde')?.classList.toggle('hidden', !(_state.base === 'molde' && _state.moldeDetalhes));
+        // Cobre voltar do Passo 2 depois de subir/remover foto lá — o trilho
+        // não se atualiza sozinho porque só é redesenhado dentro de _renderBlocos.
+        _renderTrilho();
+
+        const temMolde = !!(_state.base === 'molde' && _state.moldeDetalhes);
+        document.getElementById('lanc-desc-modo-molde')?.classList.toggle('hidden', !temMolde);
+
+        // Adivinha o idioma da loja pelo molde e pré-seleciona — só na
+        // primeira vez, pra não desfazer uma escolha manual do usuário.
+        const sel = document.getElementById('lanc-desc-idioma');
+        if (sel && temMolde && !sel.dataset.tocado) {
+            const detectado = _detectarIdioma(_state.moldeDetalhes.descriptionHtml);
+            if (detectado) {
+                sel.value = detectado;
+                _setDescStatus(`Idioma do molde detectado: ${(IDIOMAS_COPY.find(i => i.id === detectado) || {}).nome || detectado}. Troque acima se quiser outro.`);
+            }
+        }
     }
 
     function _marcarDescModo(modo) {
@@ -335,6 +423,52 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         if (!el) return;
         el.textContent = msg || '';
         el.style.color = tipo === 'error' ? 'var(--danger, #ef4444)' : '';
+    }
+
+    // Tira QUALQUER <img> de um bloco de texto. Defesa em profundidade contra
+    // o pior defeito possível aqui: uma foto do produto-MOLDE sobrar no HTML
+    // e o produto novo nascer publicado com a imagem do produto errado.
+    // Pode entrar por 3 caminhos — parser deixando passar, a IA copiando a
+    // tag ao "manter a estrutura", ou o fallback que devolve o html original.
+    function _semImagens(html) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = String(html || '');
+        tpl.content.querySelectorAll('img, picture, source, svg, script, style, iframe, noscript, link, meta').forEach(el => el.remove());
+        // Remover a TAG não basta: `style="background-image:url(cdn-do-molde/foto.jpg)"`
+        // num <div> comum também é uma imagem do produto errado vazando — só
+        // que via CSS, não via <img>. Tira TODO atributo de risco (on*, src,
+        // href, data-*) de todo elemento; do `style` (que mantemos — é onde
+        // mora o alinhamento centralizado que o molde real usa bastante)
+        // tira especificamente qualquer url(...).
+        tpl.content.querySelectorAll('*').forEach(el => {
+            [...el.attributes].forEach(a => {
+                if (a.name === 'style') {
+                    const limpo = a.value.replace(/url\([^)]*\)/gi, '');
+                    if (limpo.trim()) el.setAttribute('style', limpo); else el.removeAttribute('style');
+                } else {
+                    el.removeAttribute(a.name);
+                }
+            });
+        });
+        return tpl.innerHTML;
+    }
+
+    // A IA erra a chave e a caixa do "tipo" com frequência (image/Imagem/img,
+    // ou "type" no lugar de "tipo"). Antes isso caía no ramo de texto e o
+    // bloco era DESCARTADO em silêncio — a descrição saía sem imagem nenhuma
+    // e o status ainda dizia "N blocos gerados".
+    function _ehBlocoImagem(b) {
+        const t = String(b?.tipo ?? b?.type ?? '').toLowerCase();
+        return t === 'imagem' || t === 'image' || t === 'img' || t === 'foto' || t === 'photo';
+    }
+
+    function _indiceFotoDe(b, total) {
+        const bruto = b?.indiceFoto ?? b?.indice ?? b?.index ?? b?.foto ?? b?.i;
+        let n = parseInt(bruto, 10);
+        if (!Number.isFinite(n)) return null;
+        // Modelo às vezes devolve 1-based; se estourar o range, tenta n-1.
+        if (n >= total && n - 1 < total) n = n - 1;
+        return (n >= 0 && n < total) ? n : null;
     }
 
     async function _gerarBlocosDoZero() {
@@ -352,15 +486,17 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 const base64 = (await _blobParaDataUrl(rec.blob)).split(',')[1];
                 imagens.push({ base64, mediaType: rec.blob.type || 'image/webp' });
             }
-            const contexto = `Produto: ${_state.titulo || 'produto novo'}.`;
+            const contexto = `Produto: ${_state.titulo || 'produto novo'}.\nIdioma: ${_instrucaoIdioma()}\nVocê recebeu ${imagens.length} foto(s) — use todas.`;
             const txt = await _openaiVisaoMulti(SISTEMA_BLOCOS_ZERO, contexto, imagens);
             const parsed = _extrairJson(txt);
-            const gerados = (parsed.blocos || []).map(b => {
-                if (b.tipo === 'imagem') {
-                    const foto = usadas[b.indiceFoto];
-                    return { tipo: 'imagem', fotoId: foto ? foto.id : (usadas[0]?.id || null) };
+            let proxima = 0; // fallback: distribui em ordem, não empilha na foto 0
+            const gerados = (parsed.blocos || parsed.bloco || []).map(b => {
+                if (_ehBlocoImagem(b)) {
+                    const idx = _indiceFotoDe(b, usadas.length);
+                    const foto = usadas[idx !== null ? idx : Math.min(proxima++, usadas.length - 1)];
+                    return { tipo: 'imagem', fotoId: foto ? foto.id : null };
                 }
-                return { tipo: 'texto', html: b.html || '' };
+                return { tipo: 'texto', html: _semImagens(b.html || b.texto || '') };
             }).filter(b => b.tipo !== 'texto' || !!b.html);
             if (!gerados.length) throw new Error('A IA não devolveu blocos válidos');
             _state.blocos = gerados;
@@ -382,7 +518,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             if (blocosTexto.length) {
                 _setDescStatus('Reescrevendo o texto pro novo produto…');
                 const lista = blocosTexto.map(b => `{"indice": ${b._i}, "html": ${JSON.stringify(b.html)}}`).join(',\n');
-                const prompt = `Produto-molde: "${_state.moldeDetalhes.title}". Produto novo: "${_state.titulo}".\nBlocos originais:\n[${lista}]`;
+                const prompt = `Produto-molde: "${_state.moldeDetalhes.title}". Produto novo: "${_state.titulo}".\nIdioma: ${_instrucaoIdioma()}\nBlocos originais:\n[${lista}]`;
                 const txt = await _openaiJson(SISTEMA_BLOCOS_MOLDE, [{ role: 'user', content: prompt }]);
                 const parsed = _extrairJson(txt);
                 (parsed.blocos || []).forEach(b => { reescritos[b.indice] = b.html; });
@@ -395,7 +531,10 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                     const foto = _state.fotos[idxFoto++];
                     return { tipo: 'imagem', fotoId: foto ? foto.id : null };
                 }
-                return { tipo: 'texto', html: reescritos[i] || b.html };
+                // _semImagens é obrigatório aqui: `reescritos[i] || b.html` cai
+                // no HTML ORIGINAL do molde quando a IA pula um índice, e esse
+                // html pode carregar <img> do produto-molde junto.
+                return { tipo: 'texto', html: _semImagens(reescritos[i] || b.html) };
             });
             _state.blocos = finais;
             _renderBlocos();
@@ -405,80 +544,253 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         }
     }
 
-    // Divide um HTML de descrição em blocos texto/imagem pelos filhos de
-    // primeiro nível — usado só pra copiar a ESTRUTURA do molde (o conteúdo
-    // de texto é reescrito depois pela IA; imagem vira posição a preencher).
+    // Divide um HTML de descrição em blocos texto/imagem — usado pra copiar a
+    // ESTRUTURA do molde (o texto é reescrito depois pela IA; imagem vira
+    // posição a preencher com as fotos do produto novo).
+    //
+    // Percorre a árvore INTEIRA, não só os filhos de primeiro nível: descrição
+    // real de Shopify vem de editor WYSIWYG e é muito aninhada — no molde do
+    // usuário as 3 <img> estavam dentro de <div><p><img> e <span><strong><img>,
+    // a 2-4 níveis de profundidade. A versão anterior só olhava o topo e por
+    // isso não achava imagem nenhuma (era o bug de "as fotos não entraram").
     function _dividirEmBlocos(html) {
         const tpl = document.createElement('template');
         tpl.innerHTML = String(html || '');
         const blocos = [];
-        tpl.content.childNodes.forEach(node => {
-            if (node.nodeType === Node.TEXT_NODE) {
-                if (node.textContent.trim()) blocos.push({ tipo: 'texto', html: `<p>${escapeHtml(node.textContent.trim())}</p>` });
-                return;
-            }
-            if (node.nodeType !== Node.ELEMENT_NODE) return;
-            const imgsDentro = node.querySelectorAll ? node.querySelectorAll('img') : [];
-            const soImagem = node.tagName === 'IMG' || (imgsDentro.length === 1 && !node.textContent.trim());
-            if (soImagem) { blocos.push({ tipo: 'imagem' }); return; }
-            if (node.outerHTML && node.outerHTML.trim()) blocos.push({ tipo: 'texto', html: node.outerHTML });
-        });
+        let buffer = '';
+
+        const flush = () => {
+            const limpo = buffer.trim();
+            buffer = '';
+            if (!limpo) return;
+            // Descarta sobra de editor (spans/divs vazios, <br> solto): sem
+            // texto visível, vira um bloco vazio inútil no editor.
+            const aux = document.createElement('template');
+            aux.innerHTML = limpo;
+            if (aux.content.textContent.trim()) blocos.push({ tipo: 'texto', html: limpo });
+        };
+
+        const walk = (node) => {
+            node.childNodes.forEach(n => {
+                if (n.nodeType === Node.TEXT_NODE) { buffer += n.textContent; return; }
+                if (n.nodeType !== Node.ELEMENT_NODE) return;
+                if (n.tagName === 'IMG') { flush(); blocos.push({ tipo: 'imagem' }); return; }
+                if (['META', 'SCRIPT', 'STYLE', 'LINK'].includes(n.tagName)) return;
+                // Só desce se houver imagem lá dentro; senão preserva o HTML
+                // do elemento inteiro (mantém <ul>, <h2>, formatação etc.).
+                if (n.querySelector && n.querySelector('img')) { walk(n); return; }
+                buffer += n.outerHTML;
+            });
+        };
+
+        walk(tpl.content);
+        flush();
         return blocos;
     }
 
+    // ── Editor da descrição ──────────────────────────────────────────────
+    // Redesenhado depois do 1º uso real: o editor antigo era uma pilha de
+    // cartões onde (a) todo bloco novo nascia NO FIM e só subia de posição um
+    // clique de seta por vez, (b) a foto era escolhida num <select> cujas
+    // opções eram "yupoo · a3f9c" (ilegível — o usuário não sabe qual foto é),
+    // e (c) qualquer mudança reescrevia a lista inteira, matando o cursor.
+    // Agora: trilho de fotos sempre visível + ponto de inserção. Clicar numa
+    // foto do trilho joga ela EXATAMENTE onde o ponto está.
+
+    // Onde o próximo bloco entra (índice entre 0 e blocos.length).
+    let _ponto = 0;
+    // Quando o usuário clica numa imagem do documento, o próximo clique no
+    // trilho TROCA aquela foto em vez de inserir uma nova.
+    let _trocandoIdx = null;
+
+    // Puxa o texto dos contenteditable pro estado ANTES de qualquer
+    // re-render — senão o que foi digitado e ainda não deu blur se perde.
+    function _sincronizarTextos() {
+        document.querySelectorAll('#lanc-blocos-lista [data-bloco-texto]').forEach(el => {
+            const i = parseInt(el.dataset.blocoTexto, 10);
+            if (_state.blocos[i] && _state.blocos[i].tipo === 'texto') _state.blocos[i].html = el.innerHTML;
+        });
+    }
+
     function _adicionarBlocoManual(tipo) {
-        if (tipo === 'texto') _state.blocos.push({ tipo: 'texto', html: '<p>Novo texto…</p>' });
-        else _state.blocos.push({ tipo: 'imagem', fotoId: _state.fotos[0]?.id || null });
+        _sincronizarTextos();
+        const bloco = tipo === 'texto'
+            ? { tipo: 'texto', html: '<p></p>' }
+            : { tipo: 'imagem', fotoId: _proximaFotoNaoUsada() };
+        // Inserir desloca todo índice >= _ponto — sem isso, uma troca pendente
+        // (_trocandoIdx) passaria a apontar pro bloco errado.
+        if (_trocandoIdx !== null && _trocandoIdx >= _ponto) _trocandoIdx++;
+        _state.blocos.splice(_ponto, 0, bloco);   // entra NO PONTO, não no fim
+        _ponto++;
         _renderBlocos();
+        if (tipo === 'texto') _focarBloco(_ponto - 1);
+    }
+
+    function _proximaFotoNaoUsada() {
+        const usados = new Set(_state.blocos.filter(b => b.tipo === 'imagem').map(b => b.fotoId));
+        return (_state.fotos.find(f => !usados.has(f.id)) || _state.fotos[0] || {}).id || null;
+    }
+
+    // Clique numa foto do trilho: troca a imagem selecionada, ou insere no ponto.
+    function _usarFoto(fotoId) {
+        _sincronizarTextos();
+        // Checa o tipo, não só a existência: se o índice guardado passou a
+        // apontar pra um bloco de TEXTO (deslocado por remoção/movimento em
+        // outro lugar), gravar fotoId nele seria um campo órfão e silencioso.
+        if (_trocandoIdx !== null && _state.blocos[_trocandoIdx]?.tipo === 'imagem') {
+            _state.blocos[_trocandoIdx].fotoId = fotoId;
+            _trocandoIdx = null;
+        } else {
+            _trocandoIdx = null;
+            _state.blocos.splice(_ponto, 0, { tipo: 'imagem', fotoId });
+            _ponto++;
+        }
+        _renderBlocos();
+    }
+
+    // Distribui de uma vez todas as fotos que ainda não entraram, intercalando
+    // depois de cada bloco de texto — resolve num clique o caso que era o mais
+    // caro no editor antigo (colocar N fotos uma a uma).
+    function _encaixarRestantes() {
+        _sincronizarTextos();
+        const usados = new Set(_state.blocos.filter(b => b.tipo === 'imagem').map(b => b.fotoId));
+        const sobrando = _state.fotos.filter(f => !usados.has(f.id));
+        if (!sobrando.length) return;
+        // Reconstrói o array inteiro abaixo — qualquer troca pendente perderia
+        // o alvo certo, então descarta em vez de arriscar apontar errado.
+        _trocandoIdx = null;
+        const saida = [];
+        let i = 0;
+        _state.blocos.forEach(b => {
+            saida.push(b);
+            if (b.tipo === 'texto' && i < sobrando.length) saida.push({ tipo: 'imagem', fotoId: sobrando[i++].id });
+        });
+        while (i < sobrando.length) saida.push({ tipo: 'imagem', fotoId: sobrando[i++].id });
+        _state.blocos = saida;
+        _ponto = saida.length;
+        _renderBlocos();
+        showToast(`${sobrando.length} foto(s) encaixada(s)`, 'success');
+    }
+
+    function _focarBloco(i) {
+        const el = document.querySelector(`#lanc-blocos-lista [data-bloco-texto="${i}"]`);
+        if (!el) return;
+        el.focus();
+        const sel = window.getSelection();
+        const r = document.createRange();
+        r.selectNodeContents(el); r.collapse(false);
+        sel.removeAllRanges(); sel.addRange(r);
+    }
+
+    // Trilho de fotos: a foto É o botão. Some o <select> de ids ilegíveis.
+    function _renderTrilho() {
+        const el = document.getElementById('lanc-trilho');
+        if (!el) return;
+        const usados = new Set(_state.blocos.filter(b => b.tipo === 'imagem').map(b => b.fotoId));
+        const sobrando = _state.fotos.filter(f => !usados.has(f.id)).length;
+        el.innerHTML = `
+            <div class="lanc-trilho-head">
+                <span>${_trocandoIdx !== null ? 'Clique na foto que vai entrar no lugar' : 'Clique numa foto pra inserir onde está a linha'}</span>
+                <span class="lanc-trilho-contador">${_state.fotos.length - sobrando} de ${_state.fotos.length} usadas</span>
+                ${sobrando ? `<button type="button" class="btn btn-secondary btn-sm" id="lanc-encaixar">Encaixar as ${sobrando} restantes</button>` : ''}
+            </div>
+            <div class="lanc-trilho-fotos">
+                ${_state.fotos.map((f, n) => `
+                    <button type="button" class="lanc-trilho-foto${usados.has(f.id) ? ' is-usada' : ''}" data-usar-foto="${f.id}" title="${escapeHtml(f.origem)}">
+                        <img src="${f.thumb}" alt="">
+                        <span class="lanc-trilho-num">${n + 1}</span>
+                    </button>`).join('') || '<span class="lanc-hint">Nenhuma foto — volte ao passo Fotos.</span>'}
+            </div>`;
+        el.classList.toggle('is-trocando', _trocandoIdx !== null);
+        el.querySelectorAll('[data-usar-foto]').forEach(b => b.addEventListener('click', () => _usarFoto(b.dataset.usarFoto)));
+        document.getElementById('lanc-encaixar')?.addEventListener('click', _encaixarRestantes);
+        _icones();
     }
 
     function _renderBlocos() {
         const lista = document.getElementById('lanc-blocos-lista');
         if (!lista) return;
-        lista.innerHTML = _state.blocos.map((b, i) => {
+        if (_ponto > _state.blocos.length) _ponto = _state.blocos.length;
+
+        const linha = (i) => `<div class="lanc-ponto${i === _ponto ? ' is-ativo' : ''}" data-ponto="${i}"><span>inserir aqui</span></div>`;
+
+        let html = linha(0);
+        _state.blocos.forEach((b, i) => {
             if (b.tipo === 'texto') {
-                return `<div class="lanc-bloco-item" data-idx="${i}">
-                    <div class="lanc-bloco-cabecalho"><span class="lanc-bloco-tipo">Texto</span>${_blocoAcoesHtml(i)}</div>
-                    <div class="lanc-rich" contenteditable="true" data-bloco-texto="${i}">${b.html || ''}</div>
+                html += `<div class="lanc-bl" data-idx="${i}">
+                    ${_acoesHtml(i)}
+                    <div class="lanc-rich lanc-bl-texto" contenteditable="true" data-bloco-texto="${i}">${b.html || ''}</div>
+                </div>`;
+            } else {
+                const foto = _state.fotos.find(f => f.id === b.fotoId);
+                html += `<div class="lanc-bl lanc-bl-img${_trocandoIdx === i ? ' is-trocando' : ''}" data-idx="${i}">
+                    ${_acoesHtml(i)}
+                    ${foto
+                        ? `<img src="${foto.thumb}" alt="" data-trocar="${i}" title="Clique pra trocar a foto">`
+                        : `<div class="lanc-bl-semfoto" data-trocar="${i}">Sem foto — clique e escolha no trilho</div>`}
                 </div>`;
             }
-            const foto = _state.fotos.find(f => f.id === b.fotoId);
-            return `<div class="lanc-bloco-item" data-idx="${i}">
-                <div class="lanc-bloco-cabecalho"><span class="lanc-bloco-tipo">Imagem</span>${_blocoAcoesHtml(i)}</div>
-                <div class="lanc-bloco-imagem-corpo">
-                    ${foto ? `<img src="${foto.thumb}" alt="">` : '<div class="lanc-foto-carregando" style="width:90px;height:90px">sem foto</div>'}
-                    <select data-bloco-foto="${i}">
-                        <option value="">-- Escolha uma foto --</option>
-                        ${_state.fotos.map(f => `<option value="${f.id}" ${f.id === b.fotoId ? 'selected' : ''}>${escapeHtml(f.origem)} · ${f.id.slice(-5)}</option>`).join('')}
-                    </select>
-                </div>
-            </div>`;
-        }).join('');
+            html += linha(i + 1);
+        });
+        lista.innerHTML = html || linha(0);
 
+        lista.querySelectorAll('[data-ponto]').forEach(el => {
+            el.addEventListener('click', () => { _ponto = parseInt(el.dataset.ponto, 10); _trocandoIdx = null; _pintarPonto(); _renderTrilho(); });
+        });
         lista.querySelectorAll('[data-bloco-texto]').forEach(el => {
+            // Clicar dentro de um texto move o ponto pra logo depois dele —
+            // é o "onde eu estou" natural pra próxima inserção.
+            el.addEventListener('focus', () => { _ponto = parseInt(el.dataset.blocoTexto, 10) + 1; _trocandoIdx = null; _pintarPonto(); _renderTrilho(); });
             el.addEventListener('blur', () => {
                 const i = parseInt(el.dataset.blocoTexto, 10);
                 if (_state.blocos[i]) _state.blocos[i].html = el.innerHTML;
             });
         });
-        lista.querySelectorAll('[data-bloco-foto]').forEach(el => {
-            el.addEventListener('change', () => {
-                const i = parseInt(el.dataset.blocoFoto, 10);
-                if (_state.blocos[i]) _state.blocos[i].fotoId = el.value || null;
-                _renderBlocos();
+        lista.querySelectorAll('[data-trocar]').forEach(el => {
+            el.addEventListener('click', () => {
+                const i = parseInt(el.dataset.trocar, 10);
+                _trocandoIdx = (_trocandoIdx === i) ? null : i;
+                _renderBlocos(); _renderTrilho();
             });
         });
         lista.querySelectorAll('[data-mover]').forEach(btn => {
             btn.addEventListener('click', () => _moverBloco(parseInt(btn.dataset.idx, 10), btn.dataset.mover === 'cima' ? -1 : 1));
         });
         lista.querySelectorAll('[data-remover-bloco]').forEach(btn => {
-            btn.addEventListener('click', () => { _state.blocos.splice(parseInt(btn.dataset.removerBloco, 10), 1); _renderBlocos(); });
+            btn.addEventListener('click', () => {
+                _sincronizarTextos();
+                const idx = parseInt(btn.dataset.removerBloco, 10);
+                // Remover desloca tudo depois de idx pra trás em 1 — ajusta ou
+                // descarta a troca pendente pra não migrar pro bloco vizinho.
+                if (_trocandoIdx !== null) {
+                    if (_trocandoIdx === idx) _trocandoIdx = null;
+                    else if (_trocandoIdx > idx) _trocandoIdx--;
+                }
+                _state.blocos.splice(idx, 1);
+                _renderBlocos(); _renderTrilho();
+            });
         });
+        lista.querySelectorAll('[data-editar-foto]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const b = _state.blocos[parseInt(btn.dataset.editarFoto, 10)];
+                if (b?.fotoId) _abrirEditorIA([b.fotoId]);
+            });
+        });
+        _renderTrilho();
         _icones();
     }
 
-    function _blocoAcoesHtml(i) {
-        return `<div class="lanc-bloco-acoes">
+    // Só repinta a linha ativa — não redesenha o documento (não mata o cursor).
+    function _pintarPonto() {
+        document.querySelectorAll('#lanc-blocos-lista [data-ponto]').forEach(el => {
+            el.classList.toggle('is-ativo', parseInt(el.dataset.ponto, 10) === _ponto);
+        });
+    }
+
+    function _acoesHtml(i) {
+        const b = _state.blocos[i];
+        return `<div class="lanc-bl-acoes">
+            ${b?.tipo === 'imagem' ? `<button type="button" data-editar-foto="${i}" title="Editar com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>` : ''}
             <button type="button" data-mover="cima" data-idx="${i}" title="Mover pra cima"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></button>
             <button type="button" data-mover="baixo" data-idx="${i}" title="Mover pra baixo"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></button>
             <button type="button" data-remover-bloco="${i}" title="Remover"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
@@ -488,8 +800,200 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
     function _moverBloco(i, delta) {
         const j = i + delta;
         if (j < 0 || j >= _state.blocos.length) return;
+        _sincronizarTextos();
+        // Swap troca as posições i/j — segue a troca pendente junto.
+        if (_trocandoIdx === i) _trocandoIdx = j;
+        else if (_trocandoIdx === j) _trocandoIdx = i;
         const tmp = _state.blocos[i]; _state.blocos[i] = _state.blocos[j]; _state.blocos[j] = tmp;
         _renderBlocos();
+    }
+
+    // ── Edição de foto por IA (uma, várias ou todas) ────────────────────
+    // Regrava no MESMO mediaId: MediaStore.put é upsert, então todo bloco da
+    // descrição que aponta pra essa foto herda a edição sem precisar mexer em
+    // nada. A original fica guardada em `_original` pra dar Desfazer.
+    const PRESETS_EDICAO = [
+        {
+            id: 'fundo-branco', label: 'Fundo branco', icone: 'square',
+            descricao: 'Recorta o produto e põe fundo branco puro',
+            // Recorte com alfa de verdade e achatamento local sobre #FFFFFF:
+            // dá branco EXATO. Pedir "fundo branco" por prompt sai levemente
+            // degradê e muda a cada chamada.
+            executar: async (blob, ctx) => {
+                const recortado = await ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
+                    provedor: 'openai', background: 'transparent', formato: 'image/png',
+                });
+                return await ImageAI.achatarSobreCor(recortado, '#FFFFFF');
+            },
+            // Se a chave OpenAI não existir (ou o recorte falhar), pinta por prompt.
+            alternativa: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptFundoSolido('pure white (#FFFFFF)', ctx), { formato: 'image/webp', compressao: 92 }),
+        },
+        {
+            id: 'fundo-transparente', label: 'Fundo transparente', icone: 'layers',
+            descricao: 'Recorta o produto e deixa o fundo vazio (PNG)',
+            executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
+                provedor: 'openai', background: 'transparent', formato: 'image/png',
+            }),
+        },
+        {
+            id: 'melhorar', label: 'Melhorar qualidade', icone: 'sparkles',
+            descricao: 'Tira ruído e borrão, recupera detalhe',
+            executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptMelhoria(ctx), { formato: 'image/webp', compressao: 92 }),
+        },
+    ];
+
+    let _edicaoCancelada = false;
+
+    function _abrirEditorIA(fotoIds) {
+        const alvos = (fotoIds && fotoIds.length) ? fotoIds : _state.fotos.map(f => f.id);
+        if (!alvos.length) { showToast('Não há fotos pra editar', 'error'); return; }
+        // Sem isso, abrir o editor duas vezes empilha overlays: o seletor de
+        // preset pega o elemento errado (do overlay antigo) e a edição
+        // silenciosamente não bate na foto que o usuário está vendo.
+        document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
+
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="wand-2" style="width:16px;height:16px;vertical-align:-3px"></i> Editar ${alvos.length === 1 ? 'esta foto' : `${alvos.length} fotos`} com IA</h3>
+                <p class="lanc-hint">Cada foto é uma chamada paga à IA. A original fica guardada — dá pra desfazer.</p>
+                <div class="lanc-preset-grid">
+                    ${PRESETS_EDICAO.map(p => `
+                        <button type="button" class="lanc-preset" data-preset="${p.id}">
+                            <i data-lucide="${p.icone}" style="width:16px;height:16px"></i>
+                            <strong>${p.label}</strong><span>${p.descricao}</span>
+                        </button>`).join('')}
+                </div>
+                <label for="lanc-prompt-livre" style="margin-top:0.7rem;display:block;font-size:0.78rem;color:var(--text-muted)">Ou descreva o que quer mudar</label>
+                <div class="lanc-prompt-row">
+                    <input type="text" id="lanc-prompt-livre" class="input" placeholder="Ex.: deixar o fundo cinza claro, tirar a mão que segura o produto">
+                    <button type="button" class="btn btn-primary" id="lanc-prompt-ok">Aplicar</button>
+                </div>
+                <div class="bulk-progress" id="lanc-edit-prog" style="display:none"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="lanc-edit-fill"></div></div></div>
+                <div id="lanc-edit-status" class="lanc-fotos-status"></div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="lanc-edit-fechar">Fechar</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) _fecharEditorIA(ov); });
+        ov.querySelector('#lanc-edit-fechar').addEventListener('click', () => _fecharEditorIA(ov));
+        ov.querySelectorAll('[data-preset]').forEach(b => {
+            b.addEventListener('click', () => {
+                const p = PRESETS_EDICAO.find(x => x.id === b.dataset.preset);
+                if (p) _aplicarEdicao(alvos, p, ov);
+            });
+        });
+        const aplicarLivre = () => {
+            const texto = ov.querySelector('#lanc-prompt-livre').value.trim();
+            if (!texto) { showToast('Escreva o que você quer mudar', 'error'); return; }
+            _aplicarEdicao(alvos, {
+                label: 'Ajuste personalizado',
+                executar: async (blob, ctx) => ImageAI.editar(blob, _promptLivre(texto, ctx), { formato: 'image/webp', compressao: 92 }),
+            }, ov);
+        };
+        ov.querySelector('#lanc-prompt-ok').addEventListener('click', aplicarLivre);
+        ov.querySelector('#lanc-prompt-livre').addEventListener('keydown', (e) => { if (e.key === 'Enter') aplicarLivre(); });
+        _icones();
+    }
+
+    function _fecharEditorIA(ov) {
+        _edicaoCancelada = true;
+        ov.remove();
+    }
+
+    // Pedido livre do usuário + as travas de preservação do produto, que ele
+    // não vai escrever mas sem as quais o modelo redesenha o produto.
+    function _promptLivre(pedido, contexto) {
+        return `Using the provided product photo, apply this change: ${pedido}.`
+            + ` Keep everything else in the image exactly the same, preserving the original style, lighting and composition.`
+            + ` The product itself must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings.`
+            + ` Do not crop, zoom or rotate the product, and do not add any text or logo that is not already on it.`
+            + (contexto ? ` The product is: ${contexto}.` : '');
+    }
+
+    async function _aplicarEdicao(fotoIds, preset, ov) {
+        _edicaoCancelada = false;
+        const prog = ov.querySelector('#lanc-edit-prog');
+        const fill = ov.querySelector('#lanc-edit-fill');
+        const status = ov.querySelector('#lanc-edit-status');
+        prog.style.display = '';
+        let ok = 0, falhas = 0;
+
+        for (let i = 0; i < fotoIds.length; i++) {
+            if (_edicaoCancelada) break;
+            const foto = _state.fotos.find(f => f.id === fotoIds[i]);
+            if (!foto) continue;
+            status.textContent = `${preset.label} — ${i + 1} de ${fotoIds.length}…`;
+            fill.style.width = `${Math.round((i / fotoIds.length) * 100)}%`;
+            try {
+                const rec = await MediaStore.get(foto.mediaId);
+                if (!rec?.blob) throw new Error('foto não encontrada');
+                // Guarda a original UMA vez (segunda edição não sobrescreve o
+                // ponto de restauração original).
+                if (!foto._original) {
+                    const origId = foto.mediaId + '_orig';
+                    await MediaStore.put(origId, rec.blob, { type: rec.blob.type });
+                    foto._original = origId;
+                }
+                const ctx = _state.titulo || '';
+                let saida;
+                try {
+                    saida = await preset.executar(rec.blob, ctx);
+                } catch (e1) {
+                    if (!preset.alternativa) throw e1;
+                    console.warn('[Lançamento] preset principal falhou, usando alternativa:', e1.message);
+                    saida = await preset.alternativa(rec.blob, ctx);
+                }
+                // Gera a miniatura ANTES de gravar no MediaStore: se
+                // comprimirImagem/_blobParaDataUrl falhar aqui, nada foi
+                // persistido ainda — sem isso, uma falha NESTE passo deixava o
+                // MediaStore com a foto editada mas a UI (foto.thumb/editada)
+                // com a antiga, e uma nova tentativa editava em cima da edição
+                // que a UI dizia ter falhado.
+                const mini = await comprimirImagem(saida, 320, 0.7, { formato: 'image/webp' });
+                const thumbDataUrl = await _blobParaDataUrl(mini.blob);
+                // Upsert no MESMO mediaId: todos os blocos que usam essa foto
+                // passam a mostrar a versão editada automaticamente.
+                await MediaStore.put(foto.mediaId, saida, { type: saida.type });
+                foto.thumb = thumbDataUrl;
+                foto.editada = true;
+                ok++;
+                _renderFotosGrid();
+                if (_state.passoAtual === 3) _renderBlocos();
+            } catch (e) {
+                falhas++;
+                console.error('[Lançamento] edição falhou:', e);
+                status.textContent = 'Erro: ' + String(e.message).slice(0, 160);
+            }
+        }
+        fill.style.width = '100%';
+        if (!_edicaoCancelada) {
+            status.textContent = falhas
+                ? `${ok} foto(s) editada(s), ${falhas} falhou(ram).`
+                : `${ok} foto(s) editada(s).`;
+            showToast(falhas ? `${ok} editada(s), ${falhas} com erro` : `${ok} foto(s) editada(s)`, falhas ? 'warning' : 'success');
+        }
+    }
+
+    // Volta a foto pra versão antes da edição por IA.
+    async function _desfazerEdicao(fotoId) {
+        const foto = _state.fotos.find(f => f.id === fotoId);
+        if (!foto?._original) return;
+        try {
+            const rec = await MediaStore.get(foto._original);
+            if (!rec?.blob) throw new Error('original não encontrada');
+            await MediaStore.put(foto.mediaId, rec.blob, { type: rec.blob.type });
+            const mini = await comprimirImagem(rec.blob, 320, 0.7, { formato: 'image/webp' });
+            foto.thumb = await _blobParaDataUrl(mini.blob);
+            foto.editada = false;
+            _renderFotosGrid();
+            if (_state.passoAtual === 3) _renderBlocos();
+            showToast('Foto restaurada', 'success');
+        } catch (e) {
+            showToast('Não consegui restaurar: ' + e.message, 'error');
+        }
     }
 
     // ── Passo 4: Brinde ───────────────────────────────────────────────
@@ -521,25 +1025,60 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         if (status) status.textContent = 'Herdado do molde — confira e ajuste antes de continuar.';
     }
 
-    // Heurística: acha o primeiro elemento cujo texto cita brinde/bônus/gift
-    // e pega ele + tudo depois como o bloco de brinde — é assim que a página
-    // de referência do usuário estrutura (brinde é a última seção).
+    // Acha a seção de brinde no molde. Trabalha em cima dos BLOCOS já
+    // divididos (mesmo parser da descrição) em vez dos filhos crus do HTML:
+    // pegar "o elemento que cita brinde + tudo depois" trazia metade do
+    // documento junto, porque num HTML aninhado o "elemento" do topo é um
+    // <div> gigante com o resto da página dentro.
     function _detectarBrindeNoMolde(html) {
         if (!html) return null;
+        // Loja em inglês raramente escreve "brinde"/"gift": no molde do
+        // usuário a seção é "Accessories that come with the glasses".
+        const regex = /brinde|b[oô]nus|gift|free\b|gr[aá]tis|acompanha|inclu[íi]d|included|accessories|comes? with|you (?:also )?(?:get|receive)/i;
+        const bloco = _dividirEmBlocos(html).find(b => b.tipo === 'texto' && regex.test(b.html));
+        if (!bloco) return null;
+
         const tpl = document.createElement('template');
-        tpl.innerHTML = html;
-        const filhos = [...tpl.content.childNodes].filter(n => n.nodeType === Node.ELEMENT_NODE || (n.nodeType === Node.TEXT_NODE && n.textContent.trim()));
-        const regex = /brinde|bônus|bonus|gift/i;
-        const idx = filhos.findIndex(n => regex.test(n.textContent || ''));
-        if (idx < 0) return null;
-        const resto = filhos.slice(idx);
-        const tituloEl = resto.find(n => n.nodeType === Node.ELEMENT_NODE && /^H[1-6]$/.test(n.tagName));
-        const titulo = tituloEl ? tituloEl.textContent.trim() : (resto[0].textContent || '').trim().slice(0, 60);
-        // O corpo NÃO repete o título — ele já tem campo próprio no editor;
-        // montar de novo (aqui e no Passo 5) evita <h3> duplicado na prévia.
-        const corpo = resto.filter(n => n !== tituloEl);
-        const html2 = corpo.map(n => n.nodeType === Node.ELEMENT_NODE ? n.outerHTML : `<p>${escapeHtml(n.textContent)}</p>`).join('');
-        return { titulo, html: html2 };
+        tpl.innerHTML = bloco.html;
+        const filhos = [...tpl.content.children];
+
+        // Ancora no elemento que DE FATO casou com a regex — pegar o primeiro
+        // heading do bloco daria o título de outra seção (no molde real,
+        // "Unforgettable experience", que vem depois dos acessórios).
+        let ini = filhos.findIndex(el => regex.test(el.textContent || ''));
+        if (ini < 0) ini = 0;
+
+        // Vai até o próximo heading grande, que já é outra seção.
+        let fim = filhos.length;
+        for (let i = ini + 1; i < filhos.length; i++) {
+            if (/^H[1-3]$/.test(filhos[i].tagName)) { fim = i; break; }
+        }
+        const trecho = filhos.slice(ini, fim);
+        if (!trecho.length) return null;
+
+        // Título = primeira linha do elemento âncora (não o textContent
+        // inteiro, que juntaria a lista de itens dentro do título).
+        const ancora = trecho[0].cloneNode(true);
+        let titulo = (ancora.textContent || '').split('\n').map(l => l.trim()).find(Boolean) || '';
+        titulo = titulo.replace(/\s+/g, ' ').replace(/[:：]\s*$/, '').slice(0, 70);
+
+        // Tira só o pedaço que virou título, de dentro do âncora — remover o
+        // âncora inteiro levaria junto o conteúdo que interessa (no molde
+        // real, a lista "Cleaning cloth / test cards / Original case" mora
+        // no mesmo <div> do cabeçalho "Accessories that come with...").
+        const norm = (s) => String(s || '').replace(/\s+/g, ' ').replace(/[:：]\s*$/, '').trim();
+        if (norm(ancora.textContent) !== norm(titulo)) {
+            const alvo = [...ancora.children].find(el => norm(el.textContent).startsWith(norm(titulo)));
+            if (alvo) alvo.remove();
+        } else {
+            ancora.innerHTML = ''; // o âncora era só o título
+        }
+
+        // O corpo NÃO repete o título — ele já tem campo próprio no editor.
+        const partes = [];
+        if (ancora.textContent.trim()) partes.push(ancora.outerHTML);
+        trecho.slice(1).forEach(el => partes.push(el.outerHTML));
+        return { titulo: titulo || 'Brinde', html: partes.join('') };
     }
 
     // ── Passo 5: Revisar ──────────────────────────────────────────────
@@ -574,14 +1113,20 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         el.innerHTML = '<p class="lanc-hint">Carregando prévia…</p>';
         const partes = [];
         for (const b of _state.blocos) {
-            if (b.tipo === 'texto') { partes.push(b.html || ''); continue; }
+            // _semImagens aqui também: um bloco de texto editado à mão pode ter
+            // recebido um <img> colado direto da página do molde (paste rico
+            // num contenteditable não passa por nenhum outro filtro).
+            if (b.tipo === 'texto') { partes.push(_semImagens(b.html || '')); continue; }
             const foto = _state.fotos.find(f => f.id === b.fotoId);
             if (!foto) { partes.push('<p class="lanc-hint">[bloco de imagem sem foto escolhida]</p>'); continue; }
             const url = await MediaStore.getObjectUrl(foto.mediaId);
             if (url) { _previewUrls.push(url); partes.push(`<img src="${url}" alt="">`); }
         }
         if (_state.brinde.incluir) {
-            partes.push(`<div class="lanc-preview-brinde"><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_state.brinde.html || ''}</div>`);
+            // brinde.html normalmente vem de um recorte bruto do HTML do molde
+            // (_detectarBrindeNoMolde) — sem isso a prévia dispararia um
+            // request de verdade pra imagem do produto errado.
+            partes.push(`<div class="lanc-preview-brinde"><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}</div>`);
         }
         el.innerHTML = partes.join('') || '<p class="lanc-hint">Nada pra mostrar ainda — volte e monte a descrição.</p>';
         _icones();
@@ -601,6 +1146,11 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         if (btn) btn.disabled = true;
         try {
             const agora = new Date().toISOString();
+            // Grava uma cópia SANITIZADA no IndexedDB — não mexe em _state.blocos
+            // (o editor continua mostrando exatamente o que o usuário digitou),
+            // mas o que fica em disco não pode carregar <img>/URL do molde.
+            const blocosSalvos = _state.blocos.map(b => b.tipo === 'texto' ? { ...b, html: _semImagens(b.html || '') } : b);
+            const brindeSalvo = { ..._state.brinde, html: _semImagens(_state.brinde.html || '') };
             const rascunho = {
                 id: _state.rascunhoId || ('lanc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
                 titulo: _state.titulo,
@@ -608,8 +1158,8 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 moldeProductId: _state.moldeProductId,
                 moldeTitulo: _state.moldeDetalhes?.title || '',
                 fotos: _state.fotos,
-                blocos: _state.blocos,
-                brinde: _state.brinde,
+                blocos: blocosSalvos,
+                brinde: brindeSalvo,
                 criadoEm: _state.rascunhoCriadoEm || agora,
                 atualizadoEm: agora,
             };
@@ -679,13 +1229,16 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
 
             // 2) Monta a descrição final com <img> apontando pra URL real.
             setStatus('Montando a descrição…');
+            // _semImagens de novo aqui, na fronteira da publicação: é o último
+            // ponto antes de virar produto na loja, e uma <img> do molde que
+            // escapasse até aqui seria publicada como se fosse do produto novo.
             const partes = _state.blocos.map(b => {
-                if (b.tipo === 'texto') return b.html || '';
+                if (b.tipo === 'texto') return _semImagens(b.html || '');
                 const url = urlPorFotoId[b.fotoId];
                 return url ? `<img src="${url}" alt="">` : '';
             });
             if (_state.brinde.incluir) {
-                partes.push(`<div><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_state.brinde.html || ''}</div>`);
+                partes.push(`<div><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}</div>`);
             }
 
             // 3) Cria o produto (status default de publishProduct já é ACTIVE

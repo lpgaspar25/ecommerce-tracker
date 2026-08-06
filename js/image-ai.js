@@ -40,6 +40,10 @@ const ImageAI = (() => {
 
     // Fallback: gpt-image-2 aceita dimensão livre; os outros, só as fixas.
     const MODELOS_OPENAI = ['gpt-image-2', 'gpt-image-1.5', 'gpt-image-1'];
+    // Doc oficial: "gpt-image-2 ... do not support transparent backgrounds.
+    // Requests with background set to transparent will return an error for
+    // these models; use opaque or auto instead."
+    const OA_SEM_TRANSPARENCIA = ['gpt-image-2', 'gpt-image-2-2026-04-21'];
     const TAMANHOS_FIXOS = ['1024x1024', '1536x1024', '1024x1536'];
 
     // Ordem de tentativa no Google. O 2.5-flash-image tem desligamento
@@ -144,11 +148,27 @@ const ImageAI = (() => {
             ? tamanhoValidoOpenAI(opcoes.largura, opcoes.altura, opcoes.alvoPixels).texto
             : null;
 
+        // Fundo transparente exige formato com canal alfa (png ou webp) — a
+        // doc rejeita jpeg nesse caso.
+        const querAlfa = opcoes.background === 'transparent';
+        let formatoSaida = opcoes.formato ? String(opcoes.formato) : (querAlfa ? 'image/png' : '');
+        if (querAlfa && formatoSaida === 'image/jpeg') formatoSaida = 'image/png';
+
         // Se o chamador pediu uma versão específica, tenta só ela — o
         // usuário escolheu de propósito, cair pra outra seria ignorar a
         // escolha. Sem pedido explícito, mantém a cascata (mais recente
         // primeiro, com fallback pro que a chave tiver disponível).
-        const modelos = (opcoes.modelo && MODELOS_OPENAI.includes(opcoes.modelo)) ? [opcoes.modelo] : MODELOS_OPENAI;
+        let modelos = (opcoes.modelo && MODELOS_OPENAI.includes(opcoes.modelo)) ? [opcoes.modelo] : MODELOS_OPENAI;
+        if (querAlfa) {
+            // Doc oficial: o gpt-image-2 RECUSA background=transparent (devolve
+            // erro). Filtrar antes evita queimar uma chamada só pra tomar 400 —
+            // e evita falhar de vez se o usuário fixou o gpt-image-2 na UI.
+            const pedido = modelos[0];
+            modelos = modelos.filter(m => !OA_SEM_TRANSPARENCIA.includes(m));
+            if (!modelos.length) {
+                throw new Error(`${NOMES_MODELO[pedido] || pedido} não suporta fundo transparente. Escolha GPT Image 1.5 ou 1, ou use "fundo branco".`);
+            }
+        }
 
         let ultimoErro = '';
         for (const modelo of modelos) {
@@ -166,13 +186,15 @@ const ImageAI = (() => {
             fd.append('size', size);
             fd.append('n', '1');
             // WebP direto da API evita um reencode a mais no browser.
-            if (opcoes.formato) {
-                const fmt = String(opcoes.formato).replace('image/', '');
+            if (formatoSaida) {
+                const fmt = formatoSaida.replace('image/', '');
                 fd.append('output_format', fmt);
                 if (fmt === 'webp' || fmt === 'jpeg') {
                     fd.append('output_compression', String(opcoes.compressao ?? 85));
                 }
             }
+            // 'transparent' | 'opaque' | 'auto' — só nos modelos GPT Image.
+            if (opcoes.background) fd.append('background', opcoes.background);
             // A doc é explícita: o gpt-image-2 recusa este parâmetro (já opera
             // sempre em alta fidelidade); nos demais o default é "low", que
             // reinterpreta o produto em vez de preservá-lo.
@@ -192,8 +214,9 @@ const ImageAI = (() => {
             const data = await r.json();
             const b64 = data?.data?.[0]?.b64_json;
             if (!b64) throw new Error('OpenAI: resposta sem imagem');
-            const tipo = opcoes.formato ? String(opcoes.formato) : 'image/png';
-            return _b64ParaBlob(b64, tipo);
+            // formatoSaida (não opcoes.formato): quando coagimos jpeg→png por
+            // causa do alfa, o MIME do Blob tem que acompanhar.
+            return _b64ParaBlob(b64, formatoSaida || 'image/png');
         }
         throw new Error('OpenAI: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
     }
@@ -202,6 +225,12 @@ const ImageAI = (() => {
     async function _editarGemini(blobs, prompt, opcoes = {}) {
         const chave = _chaveGoogle();
         if (!chave) throw new Error('Configure a chave Google AI em Chaves de API');
+        // O Gemini não tem parâmetro de transparência e a saída é sempre
+        // opaca — ele responderia 200 com uma imagem SEM recorte, e ninguém
+        // perceberia que o fundo continua lá. Falhar alto é melhor.
+        if (opcoes.background === 'transparent') {
+            throw new Error('O Gemini não devolve fundo transparente (a API não tem esse parâmetro). Use a OpenAI para recortar, ou peça fundo branco.');
+        }
         const lista = Array.isArray(blobs) ? blobs.filter(Boolean) : [blobs];
         if (!lista.length) throw new Error('Nenhuma imagem de entrada');
 
@@ -274,8 +303,15 @@ const ImageAI = (() => {
                 : _editarOpenAI(blobs, prompt, opcoes);
         }
 
-        const ordem = ['gemini', 'openai'].filter(_temChave);
-        if (!ordem.length) throw new Error('Configure a chave do Google AI ou da OpenAI em Chaves de API');
+        // Fundo transparente só existe na OpenAI — deixar o Gemini tentar
+        // primeiro devolveria 200 com imagem opaca (recorte que não aconteceu).
+        const querAlfa = opcoes.background === 'transparent';
+        const ordem = (querAlfa ? ['openai'] : ['gemini', 'openai']).filter(_temChave);
+        if (!ordem.length) {
+            throw new Error(querAlfa
+                ? 'Fundo transparente exige a chave da OpenAI (o Gemini não suporta)'
+                : 'Configure a chave do Google AI ou da OpenAI em Chaves de API');
+        }
 
         let ultimoErro;
         for (const prov of ordem) {
@@ -358,11 +394,50 @@ const ImageAI = (() => {
             + ` Extend the existing background naturally (outpainting) to fill the new area. Do NOT crop, stretch, distort, zoom or duplicate the product, and do not add any new text, logo or element.`;
     }
 
+    // Recorte de verdade. Só faz sentido junto de background:'transparent' na
+    // OpenAI. O texto reforça o que o parâmetro faz e impede o modelo de
+    // DESENHAR um xadrez "de transparência" como pixel opaco.
+    function promptRecorte(contexto = '') {
+        return `Cut out the product from the provided image and place it on a fully transparent background.`
+            + ` Keep the product completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings.`
+            + ` Remove every background element, prop, surface, hand, text, watermark, shadow and reflection. Keep the product edges clean and complete, including thin details, straps, handles and cables.`
+            + ` Do not draw a checkerboard pattern, do not put any solid colour behind the product, and do not add any text or logo.`
+            + (contexto ? ` The product is: ${contexto}.` : '');
+    }
+
+    // Fundo sólido por PROMPT — o único caminho no Gemini e no gpt-image-2.
+    // Segue o template oficial de "semantic masking" do Google ("change only
+    // the X ... Keep everything else exactly the same").
+    function promptFundoSolido(cor = 'pure white (#FFFFFF)', contexto = '') {
+        return `Using the provided image, change ONLY the background to a plain, seamless, evenly lit ${cor} studio background.`
+            + ` Keep everything else in the image exactly the same, preserving the original style, lighting, and composition.`
+            + ` The product must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings — in the identical position, angle, framing and crop.`
+            + ` Keep a soft, natural contact shadow under the product so it does not look pasted. Remove every other object, prop, hand, text, watermark, gradient and pattern from the background.`
+            + ` Do not crop, zoom, rotate or restyle the product, and do not add any text or logo.`
+            + (contexto ? ` The product is: ${contexto}.` : '');
+    }
+
+    // Achata um PNG/WebP com alfa sobre uma cor sólida, no canvas — sem nova
+    // chamada de API. É o que dá branco EXATO (#FFFFFF) depois de um recorte,
+    // em vez do branco "de estúdio" que o modelo pinta quando você pede por
+    // prompt (que sai levemente degradê e muda a cada chamada).
+    async function achatarSobreCor(blob, cor = '#FFFFFF') {
+        const bmp = await createImageBitmap(blob);
+        const c = document.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = cor;
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(bmp, 0, 0);
+        return await new Promise(r => c.toBlob(r, 'image/webp', 0.92));
+    }
+
     return {
-        editar, provedorPadrao, tamanhoValidoOpenAI,
+        editar, provedorPadrao, tamanhoValidoOpenAI, achatarSobreCor,
         promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
+        promptRecorte, promptFundoSolido,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
-        MODELOS_OPENAI, MODELOS_GEMINI, NOMES_MODELO,
+        MODELOS_OPENAI, MODELOS_GEMINI, NOMES_MODELO, OA_SEM_TRANSPARENCIA,
     };
 })();
 

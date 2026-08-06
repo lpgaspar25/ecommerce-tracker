@@ -4337,7 +4337,10 @@
                         <h3><i data-lucide="images" style="width:15px;height:15px;vertical-align:-2px"></i> Fotos do produto</h3>
                         <p class="lanc-hint">Suba manualmente ou abra o link do fornecedor (Yupoo etc.) no Chrome logado e clique na extensão ETracker — as fotos chegam aqui em tamanho cheio automaticamente.</p>
                         <input type="file" id="lanc-upload" accept="image/*" multiple hidden>
-                        <button type="button" id="lanc-upload-btn" class="btn btn-secondary btn-sm"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir fotos</button>
+                        <div class="lanc-fotos-barra">
+                            <button type="button" id="lanc-upload-btn" class="btn btn-secondary btn-sm"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir fotos</button>
+                            <button type="button" id="lanc-editar-todas" class="btn btn-secondary btn-sm" style="display:none"><i data-lucide="wand-2" style="width:13px;height:13px;vertical-align:-2px"></i> Editar todas com IA</button>
+                        </div>
                         <div id="lanc-fotos-status" class="lanc-fotos-status"></div>
                         <div id="lanc-fotos-grid" class="lanc-fotos-grid"></div>
                     </div>
@@ -4364,11 +4367,25 @@
                                 <span>Mantém a estrutura do produto-molde, só troca texto e fotos</span>
                             </button>
                         </div>
+                        <div class="studio-provider-row">
+                            <label for="lanc-desc-idioma">Idioma da copy</label>
+                            <select id="lanc-desc-idioma" class="input input-sm" title="Idioma em que a descrição será escrita — é a língua da sua loja, não a do app">
+                                <option value="original">Manter o idioma do molde</option>
+                                <option value="en" selected>Inglês</option>
+                                <option value="pt">Português</option>
+                                <option value="es">Espanhol</option>
+                                <option value="fr">Francês</option>
+                                <option value="de">Alemão</option>
+                                <option value="it">Italiano</option>
+                                <option value="nl">Holandês</option>
+                            </select>
+                        </div>
                         <div id="lanc-desc-status" class="lanc-fotos-status"></div>
-                        <div id="lanc-blocos-lista" class="lanc-blocos-lista"></div>
+                        <div id="lanc-trilho" class="lanc-trilho"></div>
+                        <div id="lanc-blocos-lista" class="lanc-doc"></div>
                         <div class="lanc-blocos-add">
-                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-texto"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Bloco de texto</button>
-                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-imagem"><i data-lucide="image-plus" style="width:13px;height:13px;vertical-align:-2px"></i> Bloco de imagem</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-texto"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Texto aqui</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-blocos-add-imagem"><i data-lucide="image-plus" style="width:13px;height:13px;vertical-align:-2px"></i> Foto aqui</button>
                         </div>
                     </div>
                     <div class="lanc-nav">

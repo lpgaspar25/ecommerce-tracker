@@ -16193,32 +16193,130 @@ body:not([data-theme]) .adh-board-viewport {
     font-size: 0.68rem; color: var(--text-muted); text-align: center; padding: 0.3rem;
 }
 
-/* Lançamento → editor de blocos da descrição */
-.lanc-blocos-lista { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.7rem; }
-.lanc-bloco-item {
-    border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem;
-    background: var(--bg-card); position: relative;
+/* Lançamento → editor da descrição (documento + trilho de fotos) */
+
+/* Trilho: a foto É o botão. Substituiu o <select> de "origem · id-curto",
+   que era ilegível — ninguém sabe qual foto é "yupoo · a3f9c". */
+.lanc-trilho {
+    position: sticky; top: 0; z-index: 5; margin: 0.7rem 0;
+    padding: 0.6rem; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-card);
 }
-.lanc-bloco-cabecalho {
-    display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;
+.lanc-trilho.is-trocando { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.lanc-trilho-head {
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+    font-size: 0.76rem; color: var(--text-muted); margin-bottom: 0.5rem;
 }
-.lanc-bloco-tipo { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.03em; }
-.lanc-bloco-acoes { display: flex; gap: 0.25rem; }
-.lanc-bloco-acoes button {
+.lanc-trilho-contador { margin-left: auto; }
+.lanc-trilho-fotos { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.2rem; }
+.lanc-trilho-foto {
+    position: relative; flex: 0 0 auto; width: 64px; height: 64px; padding: 0;
+    border: 2px solid transparent; border-radius: 8px; overflow: hidden;
+    cursor: pointer; background: none;
+}
+.lanc-trilho-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lanc-trilho-foto:hover { border-color: var(--accent); }
+.lanc-trilho-foto.is-usada { opacity: 0.45; }
+.lanc-trilho-num {
+    position: absolute; top: 2px; left: 2px; font-size: 0.6rem; line-height: 1;
+    background: rgba(0,0,0,0.7); color: #fff; padding: 2px 4px; border-radius: 4px;
+}
+
+/* Documento: sem cartão, sem cabeçalho "TEXTO"/"IMAGEM" — parece o resultado */
+.lanc-doc { margin-top: 0.5rem; }
+.lanc-bl { position: relative; border-radius: 8px; }
+.lanc-bl-texto {
+    border: 1px solid transparent; background: transparent; padding: 0.4rem 0.5rem;
+    font-size: 0.88rem; line-height: 1.65;
+}
+.lanc-bl-texto:hover { border-color: var(--border); }
+.lanc-bl-texto:focus { outline: none; border-color: var(--accent); background: var(--bg-input, var(--bg-card)); }
+.lanc-bl-img { padding: 0.3rem 0.5rem; }
+.lanc-bl-img img {
+    max-width: 320px; width: 100%; border-radius: 8px; display: block;
+    border: 2px solid transparent; cursor: pointer;
+}
+.lanc-bl-img.is-trocando img { border-color: var(--accent); }
+.lanc-bl-semfoto {
+    max-width: 320px; padding: 1rem; border: 1px dashed var(--border); border-radius: 8px;
+    font-size: 0.76rem; color: var(--text-muted); text-align: center; cursor: pointer;
+}
+.lanc-bl-acoes {
+    position: absolute; top: 2px; right: 2px; display: none; gap: 0.2rem; z-index: 2;
+}
+.lanc-bl:hover .lanc-bl-acoes { display: flex; }
+.lanc-bl-acoes button {
     width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
-    background: transparent; color: var(--text-secondary); cursor: pointer;
+    background: var(--bg-card); color: var(--text-secondary); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
 }
-.lanc-bloco-acoes button:hover { background: var(--bg-hover, rgba(255,255,255,0.06)); }
+.lanc-bl-acoes button:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Ponto de inserção: mostra ANTES do clique onde a foto/texto vai cair —
+   antes o bloco nascia no fim e subia um clique de seta por vez. */
+.lanc-ponto {
+    height: 10px; margin: 1px 0; cursor: pointer; position: relative;
+    display: flex; align-items: center;
+}
+.lanc-ponto::before {
+    content: ''; flex: 1; height: 2px; border-radius: 2px; background: transparent;
+}
+.lanc-ponto:hover::before { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+.lanc-ponto.is-ativo::before { background: var(--accent); }
+.lanc-ponto span {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    font-size: 0.58rem; line-height: 1; color: var(--accent);
+    background: var(--bg-card); padding: 1px 5px; border-radius: 999px;
+    opacity: 0; white-space: nowrap; pointer-events: none;
+}
+.lanc-ponto.is-ativo span { opacity: 1; }
+
 .lanc-rich {
     min-height: 2.4em; border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.6rem;
     font-size: 0.85rem; line-height: 1.55; background: var(--bg-input, var(--bg-card));
 }
 .lanc-rich:focus { outline: 1px solid var(--accent); }
-.lanc-bloco-imagem-corpo { display: flex; gap: 0.7rem; align-items: center; }
-.lanc-bloco-imagem-corpo img { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
-.lanc-bloco-imagem-corpo select { flex: 1; }
 .lanc-blocos-add { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
+.lanc-fotos-barra { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Fotos da galeria: ações de IA no hover */
+.lanc-foto-acoes {
+    position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;
+    gap: 0.2rem; padding: 3px; opacity: 0; transition: opacity 0.15s;
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+}
+.lanc-foto-item:hover .lanc-foto-acoes { opacity: 1; }
+.lanc-foto-acoes button {
+    width: 22px; height: 22px; border-radius: 5px; border: none;
+    background: rgba(0,0,0,0.6); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+}
+.lanc-foto-acoes button:hover { background: var(--accent); }
+.lanc-foto-item.is-editada { border-color: var(--accent); }
+.lanc-foto-item img { cursor: zoom-in; }
+
+/* Overlay do editor de imagem por IA */
+.lanc-ov {
+    position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.lanc-ov-caixa {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.1rem; width: min(640px, 94vw); max-height: 88vh; overflow: auto;
+}
+.lanc-ov-caixa h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+.lanc-preset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.5rem; margin-top: 0.6rem; }
+.lanc-preset {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem;
+    padding: 0.7rem; border: 1px solid var(--border); border-radius: 9px;
+    background: transparent; color: var(--text-primary); text-align: left; cursor: pointer;
+}
+.lanc-preset:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lanc-preset strong { font-size: 0.83rem; }
+.lanc-preset span { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; }
+.lanc-prompt-row { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
+.lanc-prompt-row .input { flex: 1; }
+.lanc-ov-acoes { display: flex; justify-content: flex-end; margin-top: 0.9rem; }
 
 /* Lançamento → brinde */
 .lanc-brinde-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
