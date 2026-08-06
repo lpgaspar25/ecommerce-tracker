@@ -56,6 +56,8 @@
         <button class="tab-btn" data-tab="fiscal"><i data-lucide="building-2" style="width:14px;height:14px;vertical-align:-2px"></i> Fiscal</button>
         <button class="tab-btn" data-tab="reconciliation"><i data-lucide="scale" style="width:14px;height:14px;vertical-align:-2px"></i> Conciliação</button>
         <button class="tab-btn" data-tab="captures"><i data-lucide="download-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Capturas</button>
+        <button class="tab-btn" data-tab="loja-codigo" hidden>Código & Tema</button>
+        <button class="tab-btn" data-tab="loja-empresa" hidden>Empresa & Site</button>
     </nav>
 
     <!-- App Body: Sidebar + Main -->
@@ -154,6 +156,14 @@
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="laboratorio"><i data-lucide="flask-conical" class="sidebar-icon"></i><span>Laboratório</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="projects"><i data-lucide="clipboard-list" class="sidebar-icon"></i><span>Projetos</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="mineracao"><i data-lucide="pickaxe" class="sidebar-icon"></i><span>Mineração</span></a>
+            </div>
+        </div>
+
+        <div class="sidebar-group">
+            <button class="sidebar-group-header" data-group="loja"><i data-lucide="store" class="sidebar-icon"></i><span>Loja</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
+            <div class="sidebar-group-items" data-group-items="loja">
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="loja-codigo"><i data-lucide="code-2" class="sidebar-icon"></i><span>Código & Tema</span></a>
+                <a href="#" class="sidebar-link sidebar-sublink" data-tab="loja-empresa"><i data-lucide="briefcase" class="sidebar-icon"></i><span>Empresa & Site</span></a>
             </div>
         </div>
 
@@ -4066,6 +4076,16 @@
             <!-- Conteúdo renderizado pelo ReconciliationModule.render() -->
         </section>
 
+        <!-- ==================== LOJA: CÓDIGO & TEMA ==================== -->
+        <section id="tab-loja-codigo" class="tab-panel">
+            <!-- Conteúdo renderizado pelo LojaModule.renderCodigo() -->
+        </section>
+
+        <!-- ==================== LOJA: EMPRESA & SITE ==================== -->
+        <section id="tab-loja-empresa" class="tab-panel">
+            <!-- Conteúdo renderizado pelo LojaModule.renderEmpresa() -->
+        </section>
+
         <!-- ==================== CAPTURAS (BK / Payoneer via extensão) ==================== -->
         <section id="tab-captures" class="tab-panel">
             <!-- Conteúdo renderizado pelo RemoteCapturesModule.render() -->
@@ -6545,6 +6565,7 @@
     <script src="js/fiscal.js"></script>
     <script src="js/reconciliation.js"></script>
     <script src="js/remote-captures.js"></script>
+    <script src="js/loja.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">

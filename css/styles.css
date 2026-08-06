@@ -15430,6 +15430,79 @@ body:not([data-theme]) .adh-board-viewport {
 }
 
 /* ============================================================
+   Loja — Código & Tema / Empresa & Site
+   ============================================================ */
+.loja-intro { margin: 0 0 1.25rem; color: var(--text-secondary); font-size: 0.88rem; line-height: 1.5; }
+.loja-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1rem; }
+.loja-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.1rem 1.15rem 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s;
+}
+.loja-card:hover { border-color: var(--accent-light); }
+.loja-card-wide { grid-column: 1 / -1; }
+.loja-card-title {
+    margin: 0 0 0.5rem; font-size: 0.98rem; font-weight: 700; display: flex;
+    align-items: center; gap: 0.45rem; color: var(--text-primary); flex-wrap: wrap;
+}
+.loja-card-hint { margin: 0 0 0.85rem; color: var(--text-muted); font-size: 0.78rem; line-height: 1.4; }
+.loja-pill {
+    display: inline-block; background: var(--accent-light); color: var(--accent);
+    font-size: 0.7rem; font-weight: 600; padding: 0.18rem 0.5rem; border-radius: 999px; margin-left: auto;
+}
+.loja-empty {
+    text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;
+    font-style: italic; background: var(--bg-input, rgba(0,0,0,0.02)); border-radius: 8px; margin-bottom: 0.5rem;
+}
+/* Accordion — fechado por padrão, só o nome visível; abre no clique. */
+.loja-snippet-item {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-card); margin-bottom: 0.5rem; overflow: hidden; transition: border-color 0.15s;
+}
+.loja-snippet-item:hover { border-color: var(--accent-light); }
+.loja-snippet-item.is-aberto { border-color: var(--accent-light); }
+.loja-snippet-header { display: flex; align-items: stretch; }
+.loja-snippet-toggle {
+    flex: 1; display: flex; align-items: center; gap: 0.55rem; min-width: 0;
+    background: none; border: none; cursor: pointer; text-align: left;
+    padding: 0.6rem 0.5rem 0.6rem 0.75rem; color: var(--text-primary); font: inherit;
+}
+.loja-snippet-toggle:hover { background: rgba(124, 58, 237, 0.04); }
+.loja-snippet-chevron {
+    width: 14px; height: 14px; flex: none; color: var(--text-muted);
+    transition: transform 0.15s;
+}
+.loja-snippet-item.is-aberto .loja-snippet-chevron { transform: rotate(90deg); }
+.loja-snippet-nome {
+    font-weight: 600; font-size: 0.86rem; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; flex: 1; min-width: 0;
+}
+.loja-tag-pill {
+    flex: none; font-size: 0.66rem; font-weight: 600; padding: 0.14rem 0.5rem;
+    border-radius: 999px; background: var(--accent-light); color: var(--accent); white-space: nowrap;
+}
+.loja-tag-pill[data-tag="snippet"] { background: rgba(59, 130, 246, 0.12); color: rgb(59, 130, 246); }
+.loja-tag-pill[data-tag="css"] { background: rgba(236, 72, 153, 0.12); color: rgb(236, 72, 153); }
+.loja-tag-pill[data-tag="js"] { background: rgba(245, 158, 11, 0.12); color: rgb(245, 158, 11); }
+.loja-tag-pill[data-tag="outro"] { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+.loja-store-badge {
+    flex: none; background: var(--accent-light); color: var(--accent); font-size: 0.68rem; font-weight: 600;
+    padding: 0.14rem 0.5rem; border-radius: 999px; white-space: nowrap;
+}
+.loja-row-x {
+    flex: none; background: none; border: none; border-left: 1px solid var(--border);
+    color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 0 0.9rem;
+}
+.loja-row-x:hover { color: var(--red, #d33); background: rgba(211, 51, 51, 0.06); }
+.loja-snippet-item:not(.is-aberto) .loja-snippet-body { display: none; }
+.loja-snippet-body { padding: 0 0.9rem 0.9rem; border-top: 1px dashed var(--border); padding-top: 0.75rem; }
+.loja-code-area {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem; line-height: 1.5; min-height: 160px; resize: vertical;
+    background: var(--bg-input, rgba(0,0,0,0.02));
+}
+.loja-save-status { font-size: 0.75rem; color: var(--text-muted); }
+
+/* ============================================================
    Capturas (BK Dashboard / Payoneer via extensão)
    ============================================================ */
 .captures-intro { color: var(--text-secondary); font-size: 0.88rem; margin: 0 0 1.25rem; line-height: 1.5; }
