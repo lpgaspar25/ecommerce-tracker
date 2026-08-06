@@ -16424,6 +16424,30 @@ body:not([data-theme]) .adh-board-viewport {
     padding: 1.1rem; width: min(640px, 94vw); max-height: 88vh; overflow: auto;
 }
 .lanc-ov-caixa h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+.lanc-provider-row { display: flex; align-items: center; gap: 0.45rem; margin: 0.6rem 0; }
+.lanc-provider-row select { flex: 1; }
+.lanc-editor-fotos-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.76rem; color: var(--text-muted); margin-top: 0.7rem;
+}
+.lanc-link-btn { background: none; border: none; padding: 0; color: var(--accent); font-size: 0.76rem; cursor: pointer; }
+.lanc-link-btn:hover { text-decoration: underline; }
+.lanc-editor-fotos-grid {
+    display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem;
+    max-height: 130px; overflow-y: auto; padding: 0.4rem; border: 1px solid var(--border); border-radius: 8px;
+}
+.lanc-editor-foto-item { position: relative; width: 46px; height: 46px; cursor: pointer; }
+.lanc-editor-foto-item img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; display: block; opacity: 0.4; transition: opacity 0.12s; }
+.lanc-editor-foto-item input { position: absolute; top: 2px; left: 2px; z-index: 1; accent-color: var(--accent); }
+.lanc-editor-foto-item input:checked ~ img { opacity: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+.lanc-cenario-painel { margin-top: 0.7rem; padding: 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02)); }
+.lanc-cenario-painel .input { margin: 0.4rem 0; }
+.lanc-cenario-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.6rem; }
+.lanc-cenario-chip {
+    font-size: 0.68rem; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border);
+    background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.lanc-cenario-chip:hover { border-color: var(--accent); color: var(--text-primary); }
 .lanc-preset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.5rem; margin-top: 0.6rem; }
 .lanc-preset {
     display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem;

@@ -835,55 +835,152 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
     const PRESETS_EDICAO = [
         {
             id: 'fundo-branco', label: 'Fundo branco', icone: 'square',
-            descricao: 'Recorta o produto e põe fundo branco puro',
-            // Recorte com alfa de verdade e achatamento local sobre #FFFFFF:
-            // dá branco EXATO. Pedir "fundo branco" por prompt sai levemente
-            // degradê e muda a cada chamada.
-            executar: async (blob, ctx) => {
+            descricao: 'Recorta local (sem IA) e põe fundo branco puro',
+            // Recorte por SEGMENTAÇÃO local (@imgly/background-removal, WASM,
+            // roda no navegador) + achatamento em canvas: dá branco EXATO e,
+            // ao contrário de pedir "recorte" pra um modelo generativo, é
+            // MATEMATICAMENTE incapaz de alterar um pixel do produto — não
+            // redesenha nada, só classifica fundo/objeto. Sem custo de API.
+            executar: async (blob) => {
+                const recortado = await ImageAI.removerFundoLocal(blob);
+                return await ImageAI.achatarSobreCor(recortado, '#FFFFFF');
+            },
+            // Só cai aqui se o recorte local falhar (lib não carregou, foto
+            // incomum) — voltamos pro caminho antigo via IA generativa.
+            alternativa: async (blob, ctx) => {
                 const recortado = await ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
                     provedor: 'openai', background: 'transparent', formato: 'image/png',
                 });
                 return await ImageAI.achatarSobreCor(recortado, '#FFFFFF');
             },
-            // Se a chave OpenAI não existir (ou o recorte falhar), pinta por prompt.
-            alternativa: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptFundoSolido('pure white (#FFFFFF)', ctx), { formato: 'image/webp', compressao: 92 }),
         },
         {
             id: 'fundo-transparente', label: 'Fundo transparente', icone: 'layers',
-            descricao: 'Recorta o produto e deixa o fundo vazio (PNG)',
-            executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
+            descricao: 'Recorta local (sem IA) e deixa o fundo vazio (PNG)',
+            executar: async (blob) => ImageAI.removerFundoLocal(blob),
+            alternativa: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
                 provedor: 'openai', background: 'transparent', formato: 'image/png',
             }),
         },
         {
             id: 'melhorar', label: 'Melhorar qualidade', icone: 'sparkles',
-            descricao: 'Tira ruído e borrão, recupera detalhe',
-            executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptMelhoria(ctx), { formato: 'image/webp', compressao: 92 }),
+            descricao: 'Tira ruído e borrão, recupera detalhe (IA)',
+            executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptMelhoria(ctx), {
+                formato: 'image/webp', compressao: 92,
+                provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+            }),
+        },
+        {
+            // Não roda direto ao clicar — abre o painel de cenário (chips +
+            // texto) igual ao "Gerar produto em uso" do Estúdio de Produto.
+            id: 'cenario', label: 'Cenário', icone: 'image', especial: 'cenario',
+            descricao: 'Produto em uso ou sobre uma superfície (IA)',
         },
     ];
+
+    // Mesma lista de sugestões do Estúdio de Produto (js/products.js,
+    // abrirGerarCenario) — em inglês porque os modelos de imagem respondem
+    // melhor nesse idioma pra descrição de cena.
+    const SUGESTOES_CENARIO = [
+        "being held in a person's hand, outdoors",
+        'on top of a rustic wooden table',
+        'on top of a white marble countertop',
+        'being worn by an adult model, natural light',
+        'on top of a car dashboard',
+        'on a beach towel with sand and sea in the background',
+    ];
+
+    // Provedor/modelo de IA escolhido pro editor de fotos — mesma chave de
+    // localStorage que Produtos/Estúdio já usam (studio_img_provider/
+    // studio_img_modelo), pra não pedir a mesma escolha 3 vezes no app.
+    function _provedorImagemLanc() {
+        return document.getElementById('lanc-img-provider')?.value || localStorage.getItem('studio_img_provider') || 'auto';
+    }
+    function _modeloImagemLanc() {
+        return document.getElementById('lanc-img-modelo')?.value || localStorage.getItem('studio_img_modelo') || '';
+    }
+    function _seletorProvedorHtml() {
+        const provedorSalvo = localStorage.getItem('studio_img_provider') || 'auto';
+        const modeloSalvo = localStorage.getItem('studio_img_modelo') || '';
+        const opcaoModelo = (id) => `<option value="${id}" ${id === modeloSalvo ? 'selected' : ''}>${ImageAI.NOMES_MODELO[id] || id}</option>`;
+        return `
+            <div class="lanc-provider-row">
+                <select id="lanc-img-provider" class="input input-sm" title="Qual IA gera/melhora as imagens (só usada em 'Melhorar qualidade' e ajuste personalizado)">
+                    <option value="auto" ${provedorSalvo === 'auto' ? 'selected' : ''}>Automático (Gemini → OpenAI)</option>
+                    <option value="gemini" ${provedorSalvo === 'gemini' ? 'selected' : ''}>Google · Gemini Image</option>
+                    <option value="openai" ${provedorSalvo === 'openai' ? 'selected' : ''}>OpenAI · GPT Image</option>
+                </select>
+                <select id="lanc-img-modelo" class="input input-sm" title="Fixar uma versão específica (só vale com um provedor escolhido ao lado)">
+                    <option value="">Padrão (recomendado)</option>
+                    <optgroup label="OpenAI" data-provedor="openai">${ImageAI.MODELOS_OPENAI.map(opcaoModelo).join('')}</optgroup>
+                    <optgroup label="Google Gemini" data-provedor="gemini">${ImageAI.MODELOS_GEMINI.map(opcaoModelo).join('')}</optgroup>
+                </select>
+            </div>`;
+    }
+    function _wireSeletorProvedor(ov) {
+        const provSel = ov.querySelector('#lanc-img-provider');
+        const modSel = ov.querySelector('#lanc-img-modelo');
+        const sincronizar = () => {
+            if (!modSel) return;
+            const auto = provSel?.value === 'auto';
+            modSel.disabled = auto;
+            [...modSel.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== provSel.value; });
+            const opt = modSel.selectedOptions[0];
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) modSel.value = '';
+        };
+        provSel?.addEventListener('change', () => { localStorage.setItem('studio_img_provider', provSel.value); sincronizar(); });
+        modSel?.addEventListener('change', () => localStorage.setItem('studio_img_modelo', modSel.value));
+        sincronizar();
+    }
 
     let _edicaoCancelada = false;
 
     function _abrirEditorIA(fotoIds) {
-        const alvos = (fotoIds && fotoIds.length) ? fotoIds : _state.fotos.map(f => f.id);
-        if (!alvos.length) { showToast('Não há fotos pra editar', 'error'); return; }
+        const preSelecionadas = new Set((fotoIds && fotoIds.length) ? fotoIds : _state.fotos.map(f => f.id));
+        if (!_state.fotos.length) { showToast('Não há fotos pra editar', 'error'); return; }
         // Sem isso, abrir o editor duas vezes empilha overlays: o seletor de
         // preset pega o elemento errado (do overlay antigo) e a edição
         // silenciosamente não bate na foto que o usuário está vendo.
         document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
 
+        // Lê os checkboxes AO VIVO — "editar 1"/"editar todas" só define o
+        // estado inicial marcado; o usuário pode ajustar antes de aplicar.
+        const _fotosSelecionadas = (ov) => [...ov.querySelectorAll('[data-foto-check]:checked')].map(el => el.dataset.fotoCheck);
+
         const ov = document.createElement('div');
         ov.className = 'lanc-ov';
         ov.innerHTML = `
             <div class="lanc-ov-caixa">
-                <h3><i data-lucide="wand-2" style="width:16px;height:16px;vertical-align:-3px"></i> Editar ${alvos.length === 1 ? 'esta foto' : `${alvos.length} fotos`} com IA</h3>
-                <p class="lanc-hint">Cada foto é uma chamada paga à IA. A original fica guardada — dá pra desfazer.</p>
+                <h3><i data-lucide="wand-2" style="width:16px;height:16px;vertical-align:-3px"></i> Editar fotos com IA</h3>
+                <p class="lanc-hint">Fundo branco/transparente rodam localmente, sem custo. Melhorar qualidade, cenário e ajuste personalizado usam IA paga — a original fica guardada, dá pra desfazer.</p>
+                <div class="lanc-editor-fotos-head">
+                    <span>Fotos <strong id="lanc-editor-fotos-count">${preSelecionadas.size}</strong> de ${_state.fotos.length} selecionadas</span>
+                    <span>
+                        <button type="button" class="lanc-link-btn" id="lanc-editor-fotos-todas">Todas</button>
+                        · <button type="button" class="lanc-link-btn" id="lanc-editor-fotos-nenhuma">Nenhuma</button>
+                    </span>
+                </div>
+                <div class="lanc-editor-fotos-grid">
+                    ${_state.fotos.map(f => `
+                        <label class="lanc-editor-foto-item">
+                            <input type="checkbox" data-foto-check="${f.id}" ${preSelecionadas.has(f.id) ? 'checked' : ''}>
+                            <img src="${f.thumb}" alt="">
+                        </label>`).join('')}
+                </div>
+                ${_seletorProvedorHtml()}
                 <div class="lanc-preset-grid">
                     ${PRESETS_EDICAO.map(p => `
                         <button type="button" class="lanc-preset" data-preset="${p.id}">
                             <i data-lucide="${p.icone}" style="width:16px;height:16px"></i>
                             <strong>${p.label}</strong><span>${p.descricao}</span>
                         </button>`).join('')}
+                </div>
+                <div class="lanc-cenario-painel" id="lanc-cenario-painel" style="display:none">
+                    <label for="lanc-cenario-texto" style="font-size:0.78rem;color:var(--text-muted)">Onde/como o produto aparece (funciona melhor em inglês)</label>
+                    <input type="text" id="lanc-cenario-texto" class="input" placeholder="ex.: on top of a wooden table" list="lanc-cenario-sugestoes">
+                    <datalist id="lanc-cenario-sugestoes">${SUGESTOES_CENARIO.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+                    <div class="lanc-cenario-chips">${SUGESTOES_CENARIO.map(s => `<button type="button" class="lanc-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
+                    <button type="button" class="btn btn-primary btn-sm" id="lanc-cenario-aplicar">Gerar cenário</button>
                 </div>
                 <label for="lanc-prompt-livre" style="margin-top:0.7rem;display:block;font-size:0.78rem;color:var(--text-muted)">Ou descreva o que quer mudar</label>
                 <div class="lanc-prompt-row">
@@ -897,20 +994,73 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 </div>
             </div>`;
         document.body.appendChild(ov);
+        _wireSeletorProvedor(ov);
         ov.addEventListener('click', (e) => { if (e.target === ov) _fecharEditorIA(ov); });
         ov.querySelector('#lanc-edit-fechar').addEventListener('click', () => _fecharEditorIA(ov));
+
+        const contadorEl = ov.querySelector('#lanc-editor-fotos-count');
+        const atualizarContador = () => { contadorEl.textContent = _fotosSelecionadas(ov).length; };
+        ov.querySelectorAll('[data-foto-check]').forEach(cb => cb.addEventListener('change', atualizarContador));
+        ov.querySelector('#lanc-editor-fotos-todas').addEventListener('click', () => {
+            ov.querySelectorAll('[data-foto-check]').forEach(cb => cb.checked = true);
+            atualizarContador();
+        });
+        ov.querySelector('#lanc-editor-fotos-nenhuma').addEventListener('click', () => {
+            ov.querySelectorAll('[data-foto-check]').forEach(cb => cb.checked = false);
+            atualizarContador();
+        });
+
+        const _exigirSelecao = () => {
+            const alvos = _fotosSelecionadas(ov);
+            if (!alvos.length) showToast('Selecione ao menos uma foto', 'error');
+            return alvos;
+        };
+
         ov.querySelectorAll('[data-preset]').forEach(b => {
             b.addEventListener('click', () => {
                 const p = PRESETS_EDICAO.find(x => x.id === b.dataset.preset);
-                if (p) _aplicarEdicao(alvos, p, ov);
+                if (!p) return;
+                if (p.especial === 'cenario') {
+                    ov.querySelector('#lanc-cenario-painel').style.display = '';
+                    ov.querySelector('#lanc-cenario-texto')?.focus();
+                    return;
+                }
+                const alvos = _exigirSelecao();
+                if (alvos.length) _aplicarEdicao(alvos, p, ov);
             });
         });
+
+        const campoCenario = ov.querySelector('#lanc-cenario-texto');
+        ov.querySelectorAll('.lanc-cenario-chip').forEach(chip => {
+            chip.addEventListener('click', () => { campoCenario.value = chip.dataset.sug; campoCenario.focus(); });
+        });
+        const aplicarCenario = () => {
+            const texto = campoCenario.value.trim();
+            if (!texto) { showToast('Descreva o cenário', 'error'); campoCenario.focus(); return; }
+            const alvos = _exigirSelecao();
+            if (!alvos.length) return;
+            _aplicarEdicao(alvos, {
+                label: 'Cenário',
+                executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptCenario(texto, ctx), {
+                    formato: 'image/webp', compressao: 92,
+                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                }),
+            }, ov);
+        };
+        ov.querySelector('#lanc-cenario-aplicar').addEventListener('click', aplicarCenario);
+        campoCenario.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); aplicarCenario(); } });
+
         const aplicarLivre = () => {
             const texto = ov.querySelector('#lanc-prompt-livre').value.trim();
             if (!texto) { showToast('Escreva o que você quer mudar', 'error'); return; }
+            const alvos = _exigirSelecao();
+            if (!alvos.length) return;
             _aplicarEdicao(alvos, {
                 label: 'Ajuste personalizado',
-                executar: async (blob, ctx) => ImageAI.editar(blob, _promptLivre(texto, ctx), { formato: 'image/webp', compressao: 92 }),
+                executar: async (blob, ctx) => ImageAI.editar(blob, _promptLivre(texto, ctx), {
+                    formato: 'image/webp', compressao: 92,
+                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                }),
             }, ov);
         };
         ov.querySelector('#lanc-prompt-ok').addEventListener('click', aplicarLivre);

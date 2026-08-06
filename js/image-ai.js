@@ -340,10 +340,11 @@ const ImageAI = (() => {
         // resto — nenhum modelo garante pixel a pixel, então dizer isso no
         // texto é o único mecanismo que os dois provedores oferecem.
         return `Using the provided image, improve ONLY its technical quality.`
-            + ` Remove JPEG compression artefacts, colour banding, noise and blur; recover fine detail in materials, edges, stitching and printed text; improve sharpness and colour accuracy.`
+            + ` Remove JPEG compression artefacts, colour banding, noise and blur; recover fine detail in materials, edges and stitching; improve sharpness and colour accuracy.`
             + ` Keep everything else in the image exactly the same, preserving the original style, lighting, and composition.`
             + ` This is a RESTORATION of an existing photograph, not a new image:`
             + ` the product must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings — in the identical position, angle, framing, crop and background as the input image.`
+            + ` CRITICAL: any brand name, logo, engraving or printed/embossed text on the product (for example on the temple, lens or hinge of glasses) must be reproduced EXACTLY letter-for-letter and pixel-for-pixel as it appears in the input — do not redraw, reinterpret, straighten, sharpen-into-a-different-shape, translate or "clean up" it into different wording or a different logo. If you are not confident you can reproduce that text/logo exactly, leave that region as close to the original pixels as possible instead of guessing.`
             + ` Do not restyle it, do not re-light the scene, do not re-crop or zoom, do not add or remove any element, and do not add any text or logo that is not already visible in the input.`
             + (ctx ? ` The product is: ${ctx}.` : '');
     }
@@ -432,8 +433,31 @@ const ImageAI = (() => {
         return await new Promise(r => c.toBlob(r, 'image/webp', 0.92));
     }
 
+    // Recorte LOCAL por segmentação real — @imgly/background-removal (WASM/
+    // ONNX, roda inteiro no navegador, sem enviar a foto pra lugar nenhum e
+    // sem custo de API). Diferente de pedir "recorte" pra um modelo
+    // generativo (OpenAI/Gemini), isso NÃO PODE alterar um pixel do
+    // produto — o modelo só classifica fundo/objeto pixel a pixel e
+    // composita; não redesenha nada, então logo/texto/gravação saem
+    // idênticos ao original. É a correção real pro problema de a IA
+    // generativa às vezes trocar detalhes da marca durante o "recorte".
+    // Baixa o modelo (~80MB) sob demanda na 1ª vez; o navegador cacheia.
+    let _removerFundoPromise = null;
+    function _carregarRemoverFundo() {
+        if (!_removerFundoPromise) {
+            _removerFundoPromise = import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs')
+                .then(mod => mod.default || mod.removeBackground);
+        }
+        return _removerFundoPromise;
+    }
+    async function removerFundoLocal(blob) {
+        const removeBackground = await _carregarRemoverFundo();
+        if (typeof removeBackground !== 'function') throw new Error('Biblioteca de recorte local não carregou corretamente');
+        return await removeBackground(blob);
+    }
+
     return {
-        editar, provedorPadrao, tamanhoValidoOpenAI, achatarSobreCor,
+        editar, provedorPadrao, tamanhoValidoOpenAI, achatarSobreCor, removerFundoLocal,
         promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
         promptRecorte, promptFundoSolido,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,

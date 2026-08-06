@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E-commerce Tracker — Metas & Previsibilidade</title>
+    <!-- @imgly/background-removal (recorte local de foto, sem IA/custo de
+         API — js/image-ai.js: removerFundoLocal) importa 'onnxruntime-web'
+         como peer dependency via bare specifier. Sem bundler, o navegador
+         não sabe resolver esse nome — precisa deste import map dizendo
+         onde baixar. Tem que vir ANTES de qualquer <script> de módulo. -->
+    <script type="importmap">
+    { "imports": { "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.bundle.min.mjs" } }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
