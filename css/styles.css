@@ -15507,6 +15507,16 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .loja-save-status { font-size: 0.75rem; color: var(--text-muted); }
 
+/* Instalar no tema — fluxo guiado (copiar + abrir editor), nunca escreve
+   sozinho na Shopify (ver comentário em _abrirPainelInstalar). */
+.loja-instalar-painel {
+    margin-top: 0.75rem; padding: 0.75rem; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02));
+}
+.loja-instalar-passos { margin: 0.6rem 0; padding-left: 1.2rem; font-size: 0.8rem; line-height: 1.6; color: var(--text-secondary); }
+.loja-instalar-passos code { background: var(--bg-card); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.76rem; }
+.loja-instalar-acoes { display: flex; gap: 0.5rem; justify-content: flex-end; }
+
 /* Agente de Loja — comando em texto livre + preview/confirm antes de tocar
    na Shopify de verdade. */
 .loja-agente { margin-bottom: 1.1rem; border-color: var(--accent-light); }

@@ -530,8 +530,34 @@ Regras:
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex:1 1 100%">
+                            <label>Caminho no tema <span style="font-weight:400;color:var(--text-muted)">(onde esse código vira arquivo — ex.: sections/nome-da-secao.liquid)</span></label>
+                            <input type="text" class="input" data-snip-field="caminhoTema" value="${escapeHtml(s.caminhoTema || '')}" placeholder="sections/minha-secao.liquid ou snippets/meu-snippet.liquid">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%">
                             <label>Código</label>
                             <textarea class="input loja-code-area" data-snip-field="codigo" placeholder="{% comment %} ... {% endcomment %}" spellcheck="false">${escapeHtml(s.codigo)}</textarea>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-snip-instalar="${s.id}">
+                        <i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Instalar no tema
+                    </button>
+                    <div class="loja-instalar-painel" id="loja-instalar-${s.id}" style="display:none">
+                        <div class="form-group">
+                            <label>Tema</label>
+                            <select class="input" data-instalar-tema="${s.id}"><option>Carregando temas…</option></select>
+                        </div>
+                        <div class="loja-instalar-status" data-instalar-status="${s.id}"></div>
+                        <ol class="loja-instalar-passos">
+                            <li>Clique em <strong>Copiar código</strong>.</li>
+                            <li>Clique em <strong>Abrir editor de código</strong> — abre o tema escolhido na Shopify, numa aba nova.</li>
+                            <li>Na pasta indicada, crie (ou abra) o arquivo <code>${escapeHtml(s.caminhoTema || '(defina o caminho acima)')}</code>.</li>
+                            <li>Cole (Cmd/Ctrl+V) e salve.</li>
+                        </ol>
+                        <div class="loja-instalar-acoes">
+                            <button type="button" class="btn btn-secondary btn-sm" data-instalar-copiar="${s.id}">Copiar código</button>
+                            <button type="button" class="btn btn-primary btn-sm" data-instalar-abrir="${s.id}">Abrir editor de código</button>
                         </div>
                     </div>
                 </div>
@@ -543,7 +569,7 @@ Regras:
     function _wireCodigoEvents(storeId) {
         document.getElementById('loja-snip-add')?.addEventListener('click', async () => {
             const novo = {
-                id: generateId('snip'), storeId, nome: '', descricao: '', tag: 'snippet', codigo: '',
+                id: generateId('snip'), storeId, nome: '', descricao: '', tag: 'snippet', codigo: '', caminhoTema: '',
                 criadoEm: _agora(), atualizadoEm: _agora(),
             };
             _snippets.unshift(novo);
@@ -620,8 +646,82 @@ Regras:
                 const id = toggle.dataset.snipToggle;
                 if (_expandidos.has(id)) _expandidos.delete(id); else _expandidos.add(id);
                 renderCodigo();
+                return;
             }
+            const instalar = ev.target.closest('[data-snip-instalar]');
+            if (instalar) { _abrirPainelInstalar(instalar.dataset.snipInstalar); return; }
         });
+    }
+
+    // ── Instalar no tema (fluxo GUIADO — nunca escreve na Shopify sozinho) ──
+    // A Admin API tem uma mutation pra criar arquivo de tema (themeFilesUpsert),
+    // mas ela exige uma "Protected Scope Exemption" da própria Shopify além do
+    // escopo write_themes — aprovação manual, pode levar semanas, e há relatos
+    // de ACCESS_DENIED mesmo depois de aprovada. Em vez de prometer algo que
+    // pode nunca funcionar de verdade, o fluxo aqui é 100% funcional hoje:
+    // copia o código certo, mostra o caminho certo, e leva direto pro editor
+    // de código do tema escolhido — só falta colar e salvar.
+    async function _abrirPainelInstalar(id) {
+        const s = _snippets.find(x => x.id === id);
+        if (!s) return;
+        if (!s.caminhoTema?.trim()) {
+            showToast('Preencha o "Caminho no tema" primeiro', 'error');
+            document.querySelector(`[data-snip="${id}"] [data-snip-field="caminhoTema"]`)?.focus();
+            return;
+        }
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro (menu do perfil → Shopify)', 'error');
+            return;
+        }
+        const painel = document.getElementById(`loja-instalar-${id}`);
+        if (!painel) return;
+        const estavaAberto = painel.style.display !== 'none';
+        painel.style.display = estavaAberto ? 'none' : '';
+        if (estavaAberto) return;
+
+        const temaSel = painel.querySelector('[data-instalar-tema]');
+        const status = painel.querySelector('[data-instalar-status]');
+        temaSel.innerHTML = '<option>Carregando…</option>';
+        try {
+            const temas = await ShopifyModule.fetchThemes();
+            if (!temas.length) throw new Error('nenhum tema encontrado');
+            temaSel.innerHTML = temas.map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.role === 'MAIN' ? ' (publicado)' : ''}</option>`).join('');
+            const principal = temas.find(t => t.role === 'MAIN') || temas[0];
+            temaSel.value = principal.id;
+            await _checarColisaoArquivo(temaSel.value, s.caminhoTema, status);
+            temaSel.addEventListener('change', () => _checarColisaoArquivo(temaSel.value, s.caminhoTema, status));
+        } catch (e) {
+            temaSel.innerHTML = '<option value="">Erro ao carregar temas</option>';
+            status.innerHTML = `<div class="loja-agente-aviso">Não consegui listar os temas (${escapeHtml(e.message)}). Se ainda não reautorizou a Shopify com o escopo de leitura de temas, reconecte no menu do perfil.</div>`;
+        }
+
+        painel.querySelector('[data-instalar-copiar]').onclick = async () => {
+            try { await navigator.clipboard.writeText(s.codigo || ''); showToast('Código copiado', 'success'); }
+            catch (e) { showToast('Não consegui copiar: ' + e.message, 'error'); }
+        };
+        painel.querySelector('[data-instalar-abrir]').onclick = async () => {
+            try { await navigator.clipboard.writeText(s.codigo || ''); showToast('Código copiado — cole no editor que vai abrir', 'success'); } catch {}
+            const shop = ShopifyModule.getConfig().shop;
+            const temaNumerico = (temaSel.value || '').match(/\/(\d+)$/)?.[1];
+            if (!shop || !temaNumerico) { showToast('Escolha um tema primeiro', 'error'); return; }
+            window.open(`https://${shop}/admin/themes/${temaNumerico}/editor`, '_blank');
+        };
+        _icones();
+    }
+
+    async function _checarColisaoArquivo(temaId, caminho, statusEl) {
+        if (!temaId || !statusEl) return;
+        statusEl.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Checando se o arquivo já existe…</div>`;
+        _icones();
+        try {
+            const arquivos = await ShopifyModule.fetchThemeFiles(temaId);
+            const existe = arquivos.includes(caminho);
+            statusEl.innerHTML = existe
+                ? `<div class="loja-agente-aviso">Já existe um arquivo em <code>${escapeHtml(caminho)}</code> nesse tema — colar e salvar vai SUBSTITUIR o conteúdo dele.</div>`
+                : `<div class="loja-agente-sucesso">Nenhum arquivo em <code>${escapeHtml(caminho)}</code> ainda nesse tema — vai ser um arquivo novo.</div>`;
+        } catch (e) {
+            statusEl.innerHTML = `<div class="loja-agente-aviso">Não consegui checar se o arquivo já existe (${escapeHtml(e.message)}) — confira manualmente antes de salvar.</div>`;
+        }
     }
 
     // ── Empresa & Site ───────────────────────────────────────────────────

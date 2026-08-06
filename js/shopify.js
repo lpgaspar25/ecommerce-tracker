@@ -2277,11 +2277,11 @@ const ShopifyModule = (() => {
         return (data?.themes?.nodes || []).map(t => ({ id: t.id, name: t.name, role: t.role }));
     }
 
-    // Templates de PRODUTO de um tema (templates/product.*.json — Online
-    // Store 2.0). A API de files não filtra por prefixo, então pagina os
-    // arquivos do tema e filtra no cliente. Tema costuma ter poucas
-    // centenas de arquivos — 250 já cobre a esmagadora maioria das lojas.
-    async function fetchProductTemplates(themeId) {
+    // Lista TODOS os arquivos de um tema — a API não filtra por prefixo,
+    // então pagina e devolve tudo; quem chama filtra no cliente. Tema
+    // costuma ter poucas centenas de arquivos — 250×6 páginas cobre a
+    // esmagadora maioria das lojas.
+    async function fetchThemeFiles(themeId) {
         const gql = `query ThemeFiles($id: ID!, $after: String) {
             theme(id: $id) {
                 files(first: 250, after: $after) {
@@ -2290,17 +2290,25 @@ const ShopifyModule = (() => {
                 }
             }
         }`;
-        const templates = [];
+        const arquivos = [];
         let after = null;
         for (let pagina = 0; pagina < 6; pagina++) {
             const data = await _graphql(gql, { id: themeId, after });
             const conn = data?.theme?.files;
-            for (const f of (conn?.nodes || [])) {
-                const m = /^templates\/product(?:\.([a-z0-9-]+))?\.(?:json|liquid)$/i.exec(f.filename || '');
-                if (m) templates.push({ filename: f.filename, suffix: m[1] || null });
-            }
+            for (const f of (conn?.nodes || [])) arquivos.push(f.filename);
             if (!conn?.pageInfo?.hasNextPage) break;
             after = conn.pageInfo.endCursor;
+        }
+        return arquivos;
+    }
+
+    // Templates de PRODUTO de um tema (templates/product.*.json — Online Store 2.0).
+    async function fetchProductTemplates(themeId) {
+        const arquivos = await fetchThemeFiles(themeId);
+        const templates = [];
+        for (const filename of arquivos) {
+            const m = /^templates\/product(?:\.([a-z0-9-]+))?\.(?:json|liquid)$/i.exec(filename || '');
+            if (m) templates.push({ filename, suffix: m[1] || null });
         }
         return templates;
     }
@@ -2355,6 +2363,6 @@ const ShopifyModule = (() => {
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
-        fetchThemes, fetchProductTemplates, updateProductFields, updateVariantPrice,
+        fetchThemes, fetchThemeFiles, fetchProductTemplates, updateProductFields, updateVariantPrice,
     };
 })();
