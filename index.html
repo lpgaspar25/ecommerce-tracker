@@ -4403,11 +4403,14 @@
                 <div class="lanc-painel hidden" data-painel="5">
                     <div class="studio-bloco">
                         <h3><i data-lucide="rocket" style="width:15px;height:15px;vertical-align:-2px"></i> Revisar</h3>
-                        <p class="lanc-hint">Publicar de verdade na Shopify ainda depende de liberar <code>productCreate</code> no Worker (Fase 2). Por enquanto, salve como rascunho — fica guardado no navegador, nada se perde.</p>
+                        <p class="lanc-hint">Publicar sobe as fotos pra Shopify e cria o produto como <strong>ativo, sem publicar em nenhum canal de venda</strong> — fica pronto pra você revisar e publicar manualmente na loja quando quiser.</p>
                         <div id="lanc-revisar-resumo" class="lanc-revisar-resumo"></div>
                         <div id="lanc-revisar-preview" class="lanc-revisar-preview"></div>
                         <div id="lanc-revisar-status" class="lanc-fotos-status"></div>
-                        <button type="button" class="btn btn-primary" id="lanc-salvar-rascunho"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar rascunho</button>
+                        <div class="lanc-revisar-acoes">
+                            <button type="button" class="btn btn-secondary" id="lanc-salvar-rascunho"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar rascunho</button>
+                            <button type="button" class="btn btn-primary" id="lanc-publicar-shopify"><i data-lucide="upload-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Publicar na Shopify</button>
+                        </div>
                     </div>
                     <div class="lanc-nav">
                         <button type="button" class="btn btn-secondary" data-lanc-voltar="4">Voltar</button>

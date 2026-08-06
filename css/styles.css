@@ -16237,3 +16237,4 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .lanc-revisar-preview img { max-width: 100%; border-radius: 8px; display: block; margin: 0.5rem 0; }
 .lanc-preview-brinde { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border); }
+.lanc-revisar-acoes { display: flex; gap: 0.6rem; }

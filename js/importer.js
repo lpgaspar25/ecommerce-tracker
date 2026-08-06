@@ -1480,6 +1480,11 @@ const ImporterModule = (() => {
         parseCSV,
         csvToProducts,
         compressImageFromUrl,
+        // Reaproveitados pelo Lançamento de Produto (Estúdio) pra publicar
+        // produto novo na Shopify — mesmo fluxo productCreate + staged upload.
+        publishProduct,
+        shopifyStagedUploadImage,
+        shopifyGraphQL,
     };
 })();
 

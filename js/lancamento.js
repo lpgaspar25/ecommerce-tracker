@@ -3,17 +3,18 @@
    Cria um produto do zero (ou clonando um produto-molde da loja), importa
    fotos (upload manual ou galeria de fornecedor via extensão Chrome), monta
    a descrição em blocos texto+imagem (do zero por IA, ou copiando a
-   estrutura do molde), herda o brinde do molde e guarda um rascunho.
+   estrutura do molde), herda o brinde do molde, guarda um rascunho e publica
+   de verdade na Shopify (productCreate + staged upload, reaproveitando
+   ImporterModule.publishProduct — liberado no allowlist do Worker na Fase 2).
 
-   Fase 1 (esta): Base, Fotos, Descrição, Brinde e Revisar (rascunho) estão
-   funcionais. Publicação real na Shopify é a Fase 2 — depende de liberar
-   productCreate no allowlist do Worker.
+   Publica ACTIVE mas sem publicar em nenhum canal de venda (decisão do
+   usuário) — fica pronto pra revisão manual antes de ir ao ar.
 
    Armazenamento: fotos (MediaStore) e rascunhos (KVStore) ficam no
    IndexedDB, nunca inline em base64 no localStorage — é o mesmo problema de
-   quota que já resolvemos no Laboratório, então o produto "de verdade" só
-   nasce na publicação (Fase 2), quando as fotos ganham URL real da Shopify;
-   até lá, o Passo 5 é só prévia + rascunho.
+   quota que já resolvemos no Laboratório. A descrição só ganha <img> com URL
+   real na hora de publicar; antes disso (rascunho, prévia) é tudo referência
+   pro IndexedDB.
    =========================== */
 
 const LancamentoModule = (() => {
@@ -33,6 +34,8 @@ const LancamentoModule = (() => {
         _brindeSugerido: false,
         rascunhoId: '',
         rascunhoCriadoEm: '',
+        shopifyProductId: '',
+        shopifyHandle: '',
     };
 
     let _previewUrls = [];
@@ -542,6 +545,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
     // ── Passo 5: Revisar ──────────────────────────────────────────────
     function _bindPasso5() {
         document.getElementById('lanc-salvar-rascunho')?.addEventListener('click', () => _salvarRascunho());
+        document.getElementById('lanc-publicar-shopify')?.addEventListener('click', () => _publicarNaShopify());
     }
 
     function _prepararPasso5() {
@@ -622,6 +626,95 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             showToast('Rascunho salvo', 'success');
         } catch (e) {
             showToast('Erro ao salvar rascunho: ' + e.message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // Publica de verdade: sobe cada foto ÚNICA usada (em bloco e/ou galeria)
+    // uma vez só, monta a descrição final com URLs reais da Shopify (nunca
+    // blob:/base64) e cria o produto via ImporterModule.publishProduct —
+    // mesmo fluxo productCreate + staged upload que o Importador já usa.
+    // Sai ACTIVE mas sem publicar em canal nenhum (decisão já confirmada
+    // pelo usuário) — fica pronto pra revisão manual na Shopify.
+    async function _publicarNaShopify() {
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro (loja → Configurações → Integrações)', 'error');
+            return;
+        }
+        if (typeof ImporterModule === 'undefined') {
+            showToast('Módulo de publicação indisponível — recarregue a página', 'error');
+            return;
+        }
+        if (!_state.titulo.trim()) { showToast('Dá um nome pro produto antes de publicar', 'error'); return; }
+        if (!_state.blocos.length) { showToast('Monte a descrição primeiro', 'error'); return; }
+
+        const shop = ShopifyModule.getConfig();
+        const btn = document.getElementById('lanc-publicar-shopify');
+        const status = document.getElementById('lanc-revisar-status');
+        const setStatus = (msg, tipo) => {
+            if (!status) return;
+            status.textContent = msg;
+            status.style.color = tipo === 'error' ? 'var(--danger, #ef4444)' : '';
+        };
+        if (btn) btn.disabled = true;
+
+        try {
+            // 1) Sobe cada foto ÚNICA (usada em bloco de descrição e/ou na
+            // galeria) uma única vez — reaproveita a mesma URL nos dois lugares.
+            const idsUsados = new Set(_state.fotos.map(f => f.id));
+            _state.blocos.forEach(b => { if (b.tipo === 'imagem' && b.fotoId) idsUsados.add(b.fotoId); });
+            const handle = _handleSimples(_state.titulo);
+            const urlPorFotoId = {};
+            let feitas = 0;
+            for (const fotoId of idsUsados) {
+                const foto = _state.fotos.find(f => f.id === fotoId);
+                if (!foto) continue;
+                const rec = await MediaStore.get(foto.mediaId);
+                if (!rec?.blob) continue;
+                feitas++;
+                setStatus(`Subindo fotos pra Shopify — ${feitas}/${idsUsados.size}…`);
+                urlPorFotoId[fotoId] = await ImporterModule.shopifyStagedUploadImage(shop, rec.blob, `${handle}-${feitas}.webp`);
+            }
+
+            // 2) Monta a descrição final com <img> apontando pra URL real.
+            setStatus('Montando a descrição…');
+            const partes = _state.blocos.map(b => {
+                if (b.tipo === 'texto') return b.html || '';
+                const url = urlPorFotoId[b.fotoId];
+                return url ? `<img src="${url}" alt="">` : '';
+            });
+            if (_state.brinde.incluir) {
+                partes.push(`<div><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_state.brinde.html || ''}</div>`);
+            }
+
+            // 3) Cria o produto (status default de publishProduct já é ACTIVE
+            // — não passamos publishablePublish em canal nenhum de propósito).
+            setStatus('Criando o produto na Shopify…');
+            const payload = {
+                title: _state.titulo,
+                body: partes.join(''),
+                vendor: _state.moldeDetalhes?.vendor || '',
+                type: _state.moldeDetalhes?.productType || '',
+                tags: '',
+                options: [],
+                variants: [{ optionValues: [], price: 0, compareAt: 0, sku: '', cost: 0, barcode: '' }],
+                images: _state.fotos.map(f => ({ src: urlPorFotoId[f.id], alt: '' })).filter(im => im.src),
+                handle,
+            };
+            const criado = await ImporterModule.publishProduct(shop, payload);
+
+            _state.shopifyProductId = criado.id;
+            _state.shopifyHandle = criado.handle;
+            showToast('Produto criado na Shopify', 'success');
+            // _salvarRascunho() mexe no mesmo texto de status — chama ANTES
+            // e sobrescreve por último, senão a confirmação da publicação
+            // (a mais importante) some debaixo do "rascunho salvo".
+            await _salvarRascunho();
+            setStatus(`Publicado — handle "${criado.handle}". Preço e estoque ainda precisam ser ajustados na Shopify; o produto está ACTIVE mas não publicado em nenhum canal de venda.`);
+        } catch (e) {
+            setStatus('Erro: ' + e.message, 'error');
+            showToast('Falha ao publicar: ' + String(e.message).slice(0, 160), 'error');
         } finally {
             if (btn) btn.disabled = false;
         }

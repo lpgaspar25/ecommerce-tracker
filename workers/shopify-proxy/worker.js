@@ -232,7 +232,9 @@ async function shopSession(request, env) {
 // então este proxy é o único ponto entre a internet e o poder de ALTERAR a loja.
 const CAMPOS_MUTATION_PERMITIDOS = new Set([
   'stagedUploadsCreate',
+  'productCreate',
   'productUpdate',
+  'productVariantsBulkUpdate',
   'productReorderMedia',
   'translationsRegister',
   'shopLocaleEnable',
