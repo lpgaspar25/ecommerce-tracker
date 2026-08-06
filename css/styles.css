@@ -16420,8 +16420,17 @@ body:not([data-theme]) .adh-board-viewport {
     backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 1rem;
 }
 .lanc-ov-caixa {
-    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    /* --bg-card sozinho é quase transparente (rgba branco 3%) — funciona
+       "por acaso" quando o que está atrás já é escuro, mas com uma foto
+       vívida do produto bem atrás (ex.: Passo 2) ela vaza através do modal.
+       Mesma receita opaca que .modal-content já usa em outro lugar do app. */
+    background: linear-gradient(135deg, rgba(20, 20, 29, 0.97), rgba(30, 30, 42, 0.97));
+    border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 12px;
     padding: 1.1rem; width: min(640px, 94vw); max-height: 88vh; overflow: auto;
+}
+[data-theme="light"] .lanc-ov-caixa {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 243, 255, 0.98));
+    border-color: rgba(124, 58, 237, 0.15);
 }
 .lanc-ov-caixa h3 { margin: 0 0 0.3rem; font-size: 1rem; }
 .lanc-provider-row { display: flex; align-items: center; gap: 0.45rem; margin: 0.6rem 0; }
