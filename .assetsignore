@@ -1,9 +1,9 @@
-node_modules
-.tools
-.wrangler
-.claude
-.git
-.github
-.cf-pages
+node_modules/
+.tools/
+.wrangler/
+.claude/
+.git/
+.github/
+.cf-pages/
 *.log
 .DS_Store
