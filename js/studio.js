@@ -292,11 +292,13 @@ const StudioModule = (() => {
         // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
         // quando o usuário selecionou Gemini bloquearia sem motivo.
         const prov = _provedorImagem();
-        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        const chave = _chaveParaProvedor(prov);
         if (!chave) {
             showToast(prov === 'gemini'
                 ? 'Configure a chave Google AI em AI Generations → API Keys'
-                : 'Configure a chave OpenAI em AI Generations → API Keys', 'error');
+                : prov === 'openai'
+                    ? 'Configure a chave OpenAI em AI Generations → API Keys'
+                    : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
             return;
         }
 
@@ -693,11 +695,13 @@ Responda APENAS com JSON válido:
         // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
         // quando o usuário selecionou Gemini bloquearia sem motivo.
         const prov = _provedorImagem();
-        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        const chave = _chaveParaProvedor(prov);
         if (!chave) {
             showToast(prov === 'gemini'
                 ? 'Configure a chave Google AI em AI Generations → API Keys'
-                : 'Configure a chave OpenAI em AI Generations → API Keys', 'error');
+                : prov === 'openai'
+                    ? 'Configure a chave OpenAI em AI Generations → API Keys'
+                    : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
             return;
         }
 
@@ -754,6 +758,14 @@ Responda APENAS com JSON válido:
     }
     function _chaveGoogle() {
         return (window.AIAdGenerator?._getGoogleKey?.()) || localStorage.getItem('google_ai_api_key') || '';
+    }
+
+    // Em 'auto' qualquer uma das duas serve — a cascata do ImageAI tenta o
+    // Gemini primeiro e cai pra OpenAI sozinha.
+    function _chaveParaProvedor(prov) {
+        if (prov === 'gemini') return _chaveGoogle();
+        if (prov === 'openai') return _chaveOpenAI();
+        return _chaveGoogle() || _chaveOpenAI();
     }
 
     // Texto pela OpenAI. Mantive o nome _claude nas chamadas antigas via alias
@@ -1338,7 +1350,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     async function _gerarVersoes(f, dims) {
         const prov = _provedorImagem();
-        const chave = prov === 'gemini' ? _chaveGoogle() : _chaveOpenAI();
+        const chave = _chaveParaProvedor(prov);
         if (!chave) { showToast('Configure a chave de IA em Chaves de API', 'error'); return; }
 
         const rec = await MediaStore.get(f.mediaId);
@@ -1756,14 +1768,19 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         const selProv = document.getElementById('studio-img-provider');
         const selMod = document.getElementById('studio-img-modelo');
-        // Só mostra as versões do provedor escolhido; se o modelo salvo era de
-        // outro provedor, volta pro Padrão em vez de manter algo escondido.
+        // Em Automático não dá pra fixar versão — não se sabe de antemão qual
+        // dos dois provedores vai atender. Some as opções e trava o select
+        // nesse caso; nos demais, mostra só as versões do provedor escolhido
+        // (se o modelo salvo era de outro provedor, volta pro Padrão em vez
+        // de manter algo escondido).
         const sincronizarModeloImagem = () => {
             if (!selMod) return;
             const prov = selProv?.value;
-            [...selMod.querySelectorAll('optgroup')].forEach(g => { g.hidden = g.dataset.provedor !== prov; });
+            const auto = prov === 'auto';
+            selMod.disabled = auto;
+            [...selMod.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== prov; });
             const opt = selMod.selectedOptions[0];
-            if (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden) selMod.value = '';
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) selMod.value = '';
         };
         if (selProv) {
             selProv.value = localStorage.getItem('studio_img_provider') || 'openai';
