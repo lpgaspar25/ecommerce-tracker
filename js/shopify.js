@@ -15,9 +15,10 @@ const ShopifyModule = (() => {
     // Escopos que o app pede na conexão. Passados na URL do /oauth/start
     // porque o parâmetro tem prioridade sobre a env SCOPES do servidor — é a
     // única forma de garantir a lista certa sem mexer em variável de ambiente.
-    //  reads: pedidos/produtos/idiomas/traduções · writes: produtos (imagem),
-    //  arquivos, traduções, idiomas.
-    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales';
+    //  reads: pedidos/produtos/idiomas/traduções/temas (só leitura, pro
+    //  seletor de tema/template do Agente de Loja) · writes: produtos
+    //  (imagem), arquivos, traduções, idiomas.
+    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes';
 
     let _config = null;
     let _productLinks = {};

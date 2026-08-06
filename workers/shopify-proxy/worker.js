@@ -21,7 +21,7 @@
 
 const DEFAULTS = {
   API_VERSION: '2026-01',
-  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales',
+  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes',
   APP_URL: 'https://app-calculadora-lucas.pages.dev',
 };
 
@@ -69,7 +69,12 @@ async function oauthStart(request, env, url) {
   const clientId = env.SHOPIFY_CLIENT_ID;
   if (!clientId) return json({ error: 'Worker missing SHOPIFY_CLIENT_ID secret' }, 500);
 
-  const scopes = env.SCOPES || DEFAULTS.SCOPES;
+  // O app manda ?scopes=... explicitamente (js/shopify.js) — isso tem que
+  // ganhar de env.SCOPES, senão mudar escopo no código nunca surte efeito
+  // sem redeployar o Worker toda vez. Esse parâmetro era ignorado até aqui
+  // (bug: o comentário do lado do app já dizia que tinha prioridade, mas o
+  // Worker nunca chegou a ler `url.searchParams.get('scopes')`).
+  const scopes = url.searchParams.get('scopes') || env.SCOPES || DEFAULTS.SCOPES;
 
   // state = random nonce + returnUrl (base64)
   const nonce = crypto.randomUUID();
