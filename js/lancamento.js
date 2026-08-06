@@ -747,10 +747,19 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             });
         });
         lista.querySelectorAll('[data-trocar]').forEach(el => {
-            el.addEventListener('click', () => {
-                const i = parseInt(el.dataset.trocar, 10);
-                _trocandoIdx = (_trocandoIdx === i) ? null : i;
-                _renderBlocos(); _renderTrilho();
+            el.addEventListener('click', () => _alternarTroca(parseInt(el.dataset.trocar, 10)));
+        });
+        lista.querySelectorAll('[data-trocar-foto]').forEach(btn => {
+            btn.addEventListener('click', () => _alternarTroca(parseInt(btn.dataset.trocarFoto, 10)));
+        });
+        lista.querySelectorAll('[data-add-foto-apos]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _sincronizarTextos();
+                const novoIdx = parseInt(btn.dataset.addFotoApos, 10) + 1;
+                if (_trocandoIdx !== null && _trocandoIdx >= novoIdx) _trocandoIdx++;
+                if (_ponto >= novoIdx) _ponto++;
+                _state.blocos.splice(novoIdx, 0, { tipo: 'imagem', fotoId: _proximaFotoNaoUsada() });
+                _renderBlocos();
             });
         });
         lista.querySelectorAll('[data-mover]').forEach(btn => {
@@ -790,11 +799,22 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
     function _acoesHtml(i) {
         const b = _state.blocos[i];
         return `<div class="lanc-bl-acoes">
-            ${b?.tipo === 'imagem' ? `<button type="button" data-editar-foto="${i}" title="Editar com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>` : ''}
+            ${b?.tipo === 'imagem' ? `
+                <button type="button" data-editar-foto="${i}" title="Editar com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>
+                <button type="button" data-trocar-foto="${i}" title="Substituir foto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
+                <button type="button" data-add-foto-apos="${i}" title="Adicionar foto aqui"><i data-lucide="image-plus" style="width:13px;height:13px"></i></button>
+            ` : ''}
             <button type="button" data-mover="cima" data-idx="${i}" title="Mover pra cima"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></button>
             <button type="button" data-mover="baixo" data-idx="${i}" title="Mover pra baixo"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></button>
             <button type="button" data-remover-bloco="${i}" title="Remover"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
         </div>`;
+    }
+
+    // Compartilhado pelo clique na própria foto E pelo botão "Substituir foto"
+    // — os dois entram no mesmo modo de troca (clique numa foto do trilho).
+    function _alternarTroca(i) {
+        _trocandoIdx = (_trocandoIdx === i) ? null : i;
+        _renderBlocos(); _renderTrilho();
     }
 
     function _moverBloco(i, delta) {
