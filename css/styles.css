@@ -3395,6 +3395,7 @@ body {
     gap: 0.5rem;
 }
 .aiad-copy-text:hover { background: var(--bg-card-hover, var(--bg-secondary)); }
+.aiad-copy-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .aiad-copy-text-list { display: flex; flex-direction: column; gap: 0.3rem; }
 
 /* ── Product form (Shopify-style modal) ──────────────────────── */

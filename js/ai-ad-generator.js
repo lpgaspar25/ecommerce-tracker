@@ -666,7 +666,7 @@ const AIAdGenerator = {
                 <h4>${label}</h4>
                 <div class="aiad-copy-text-list">
                     ${(items || []).map(t => `
-                        <div class="aiad-copy-text" data-copy="${this._esc(t)}">
+                        <div class="aiad-copy-text" data-copy="${this._esc(t)}" title="Copiar" role="button" tabindex="0" aria-label="Copiar: ${this._esc(t)}">
                             <span>${this._esc(t)}</span>
                             <i data-lucide="copy" style="width:13px;height:13px;color:var(--text-muted)"></i>
                         </div>
@@ -680,11 +680,17 @@ const AIAdGenerator = {
             renderList('CTAs', parsed.ctas);
         if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch(e) {}
 
+        const copiar = (el) => {
+            navigator.clipboard.writeText(el.dataset.copy).then(() => {
+                if (typeof showToast === 'function') showToast('Copiado: ' + el.dataset.copy.slice(0, 40), 'success');
+            });
+        };
         body.querySelectorAll('.aiad-copy-text').forEach(el => {
-            el.addEventListener('click', () => {
-                navigator.clipboard.writeText(el.dataset.copy).then(() => {
-                    if (typeof showToast === 'function') showToast('Copiado: ' + el.dataset.copy.slice(0, 40), 'success');
-                });
+            el.addEventListener('click', () => copiar(el));
+            // role="button" não dá o comportamento nativo de <button> — Enter/Espaço
+            // precisam ser tratados na mão pra ficar acessível por teclado de verdade.
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copiar(el); }
             });
         });
     },
