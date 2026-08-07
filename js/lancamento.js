@@ -597,6 +597,18 @@ Você recebe uma lista de blocos de texto (índice + html original, tirados de o
 IDIOMA — REGRA CRÍTICA: escreva no idioma pedido pelo usuário. Quando o pedido for "manter o idioma original", responda EXATAMENTE no mesmo idioma do html original recebido e NÃO TRADUZA nada. Traduzir a copy de uma loja que vende em inglês para português quebraria a loja.
 Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, "html": "..."}]}`;
 
+    // LAUNCH-06 — cada chamada gera UMA variação (título + blocos) de um
+    // total de N, pra teste A/B. O contexto de cada chamada inclui os
+    // títulos/abordagens já geradas nas variações anteriores especificamente
+    // pra evitar convergência (a IA repetir a mesma ideia com palavras
+    // diferentes) — sem isso, "variações" tendem a sair quase idênticas.
+    const SISTEMA_VARIACAO = `Você escreve UMA VARIAÇÃO de landing page de produto de e-commerce pra teste A/B — um título e uma sequência de blocos que alternam texto de venda curto e direto com as fotos reais do produto.
+Você recebe várias fotos do produto, nesta ordem (índice 0, 1, 2...), o contexto do produto, e qual variação (de quantas) é esta.
+CADA VARIAÇÃO PRECISA TER UM ÂNGULO DE VENDA DIFERENTE das outras (ex.: benefício emocional, especificação técnica, urgência/escassez, prova social, comparação com uma alternativa pior) — nunca repita a abordagem ou o título de uma variação anterior informada no contexto.
+Devolva APENAS um JSON: {"titulo": "...", "blocos": [{"tipo":"texto","html":"<h3>...</h3><p>...</p>"}, {"tipo":"imagem","indiceFoto":0}, ...]}
+Regras dos blocos: alterne texto e imagem, nunca dois blocos do mesmo tipo seguidos; USE TODAS as fotos recebidas, uma vez cada, sem repetir indiceFoto; html usa só <h3>, <p>, <strong>, <ul>, <li> (nada de <script>/<style>/atributos); comece com bloco de texto.
+IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. Este texto é para o cliente final da loja — não use português a menos que seja explicitamente pedido.`;
+
     // Detecta o idioma do molde só pra escolher o padrão do seletor — o
     // usuário sempre pode trocar. Palavras funcionais distintivas: as comuns
     // entre PT e ES ("de", "para") não servem pra separar os dois.
@@ -645,6 +657,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 onUse: (texto) => { campo.value = texto; campo.focus(); },
             });
         });
+        document.getElementById('lanc-variacoes-btn')?.addEventListener('click', () => _abrirVariacoes());
         document.getElementById('lanc-passo3-avancar')?.addEventListener('click', () => {
             if (!_state.blocos.length) { showToast('Gere ou monte a descrição primeiro', 'error'); return; }
             _irParaPasso(4);
@@ -811,6 +824,148 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         } catch (e) {
             _setDescStatus('Erro: ' + e.message, 'error');
         }
+    }
+
+    // ── Gerar variações (A/B) — LAUNCH-06 ────────────────────────────────
+    // N versões completas (título + copy + foto de capa própria) do MESMO
+    // produto, geradas em lote a partir das mesmas fotos-base — pra revisar
+    // lado a lado e escolher uma antes de continuar pro Brinde/Publicar.
+    // Escopo decidido com o usuário (AskUserQuestion): variações de UM
+    // produto só (não N produtos distintos), variando copy E criativo.
+    function _abrirVariacoes() {
+        if (!_state.fotos.length) { showToast('Adicione fotos no Passo 2 primeiro', 'error'); return; }
+        document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
+
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="git-compare" style="width:16px;height:16px;vertical-align:-3px"></i> Gerar variações (A/B)</h3>
+                <p class="lanc-hint">Cada variação gera um título, uma descrição com abordagem de venda diferente e uma foto de capa própria. Revise e escolha uma antes de continuar.</p>
+                <div id="lanc-var-config">
+                    <label style="font-size:0.78rem;color:var(--text-muted)">Quantas variações?</label>
+                    <div class="lanc-var-qtd-opcoes">
+                        ${[2, 3, 4].map(n => `<button type="button" class="lanc-base-opt" data-qtd="${n}"><strong>${n}</strong></button>`).join('')}
+                    </div>
+                </div>
+                <div id="lanc-var-progresso" style="display:none">
+                    <div class="bulk-progress" style="display:block"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="lanc-var-fill"></div></div></div>
+                    <div id="lanc-var-status" class="lanc-fotos-status"></div>
+                </div>
+                <div id="lanc-var-grid" class="lanc-var-grid"></div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="lanc-var-fechar">Fechar</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.querySelector('#lanc-var-fechar').addEventListener('click', () => ov.remove());
+        ov.querySelectorAll('[data-qtd]').forEach(btn => {
+            btn.addEventListener('click', () => _gerarVariacoes(parseInt(btn.dataset.qtd, 10), ov));
+        });
+        _icones();
+    }
+
+    async function _gerarVariacoes(n, ov) {
+        ov.querySelector('#lanc-var-config').style.display = 'none';
+        const prog = ov.querySelector('#lanc-var-progresso');
+        const fill = ov.querySelector('#lanc-var-fill');
+        const status = ov.querySelector('#lanc-var-status');
+        prog.style.display = '';
+        const variacoes = [];
+        try {
+            const usadas = _state.fotos.slice(0, MAX_FOTOS_VISAO);
+            const imagens = [];
+            for (const f of usadas) {
+                const rec = await MediaStore.get(f.mediaId);
+                if (!rec?.blob) continue;
+                const base64 = (await _blobParaDataUrl(rec.blob)).split(',')[1];
+                imagens.push({ base64, mediaType: rec.blob.type || 'image/webp' });
+            }
+            const baseRec = await MediaStore.get(usadas[0].mediaId);
+
+            for (let i = 0; i < n; i++) {
+                status.textContent = `Variação ${i + 1} de ${n} — escrevendo a copy…`;
+                fill.style.width = `${Math.round((i / n) * 100)}%`;
+
+                const anteriores = variacoes.map(v => v.titulo).filter(Boolean);
+                const contexto = `Produto: ${_state.titulo || 'produto novo'}.\nIdioma: ${_instrucaoIdioma()}\nEsta é a variação ${i + 1} de ${n} — use uma abordagem de venda DIFERENTE das outras.${anteriores.length ? `\nTítulos/abordagens já usados nas variações anteriores (NÃO repita): ${anteriores.join(' | ')}` : ''}\nVocê recebeu ${imagens.length} foto(s) — use todas.`;
+                const txt = await _openaiVisaoMulti(SISTEMA_VARIACAO, contexto, imagens);
+                const parsed = _extrairJson(txt);
+                let proxima = 0;
+                const blocos = (parsed.blocos || []).map(b => {
+                    if (_ehBlocoImagem(b)) {
+                        const idx = _indiceFotoDe(b, usadas.length);
+                        const foto = usadas[idx !== null ? idx : Math.min(proxima++, usadas.length - 1)];
+                        return { tipo: 'imagem', fotoId: foto ? foto.id : null };
+                    }
+                    return { tipo: 'texto', html: _semImagens(b.html || b.texto || '') };
+                }).filter(b => b.tipo !== 'texto' || !!b.html);
+                if (!blocos.length) throw new Error(`Variação ${i + 1}: a IA não devolveu blocos válidos`);
+
+                status.textContent = `Variação ${i + 1} de ${n} — gerando foto de capa…`;
+                const cenario = SUGESTOES_CENARIO[i % SUGESTOES_CENARIO.length];
+                let capaFotoId = usadas[0].id;
+                try {
+                    const capaBlob = await ImageAI.editar(baseRec.blob, ImageAI.promptCenario(cenario, _state.titulo || ''), {
+                        formato: 'image/webp', compressao: 92,
+                        provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                    });
+                    const antesCount = _state.fotos.length;
+                    await _adicionarFoto(capaBlob, `Variação ${i + 1} · capa`);
+                    if (_state.fotos.length > antesCount) {
+                        capaFotoId = _state.fotos[_state.fotos.length - 1].id;
+                        const primeiraImg = blocos.findIndex(b => b.tipo === 'imagem');
+                        if (primeiraImg >= 0) blocos[primeiraImg].fotoId = capaFotoId;
+                    }
+                } catch (e) {
+                    console.warn('[Lançamento] capa da variação falhou, usando foto original:', e.message);
+                }
+
+                variacoes.push({
+                    id: 'var_' + Date.now() + '_' + i,
+                    titulo: parsed.titulo || _state.titulo || `Variação ${i + 1}`,
+                    blocos,
+                    capaFotoId,
+                });
+            }
+            fill.style.width = '100%';
+            status.textContent = `${variacoes.length} variações geradas — escolha uma.`;
+            _renderVariacoesGrid(ov, variacoes);
+        } catch (e) {
+            status.textContent = 'Erro: ' + e.message;
+            status.style.color = 'var(--danger, #ef4444)';
+        }
+    }
+
+    function _renderVariacoesGrid(ov, variacoes) {
+        const grid = ov.querySelector('#lanc-var-grid');
+        grid.innerHTML = variacoes.map((v, i) => {
+            const foto = _state.fotos.find(f => f.id === v.capaFotoId);
+            const primeiroTexto = (v.blocos.find(b => b.tipo === 'texto')?.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+            return `
+            <div class="lanc-var-card">
+                ${foto ? `<img src="${foto.thumb}" alt="">` : '<div class="lanc-var-sem-foto"></div>'}
+                <strong>${escapeHtml(v.titulo)}</strong>
+                <p>${escapeHtml(primeiroTexto)}${primeiroTexto.length >= 140 ? '…' : ''}</p>
+                <button type="button" class="btn btn-primary btn-sm" data-usar-variacao="${i}">Usar esta</button>
+            </div>`;
+        }).join('');
+        grid.querySelectorAll('[data-usar-variacao]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const v = variacoes[parseInt(btn.dataset.usarVariacao, 10)];
+                _sincronizarTextos();
+                _state.titulo = v.titulo;
+                const campoTitulo = document.getElementById('lanc-titulo');
+                if (campoTitulo) campoTitulo.value = v.titulo;
+                _state.blocos = v.blocos;
+                _renderBlocos();
+                _setDescStatus(`Variação aplicada — "${v.titulo}". Edite à vontade.`);
+                ov.remove();
+                showToast('Variação aplicada', 'success');
+            });
+        });
+        _icones();
     }
 
     // Divide um HTML de descrição em blocos texto/imagem — usado pra copiar a

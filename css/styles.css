@@ -16699,6 +16699,18 @@ body:not([data-theme]) .adh-board-viewport {
 .lanc-gerar-fonte-item span { font-size: 0.66rem; line-height: 1.2; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 58px; }
 .lanc-gerar-angulos-head { display: flex; align-items: center; justify-content: space-between; }
 
+/* Lançamento → Gerar variações A/B (LAUNCH-06) */
+.lanc-var-qtd-opcoes { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+.lanc-var-qtd-opcoes .lanc-base-opt { flex: 1; padding: 0.6rem; align-items: center; }
+.lanc-var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.7rem; margin-top: 0.8rem; }
+.lanc-var-card {
+    display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--bg-input, rgba(0,0,0,0.02));
+}
+.lanc-var-card img, .lanc-var-sem-foto { width: 100%; height: 100px; object-fit: cover; border-radius: 6px; background: rgba(255,255,255,0.06); }
+.lanc-var-card strong { font-size: 0.83rem; }
+.lanc-var-card p { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin: 0; flex: 1; }
+
 /* Lançamento → brinde */
 .lanc-brinde-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
 .lanc-brinde-toggle input { width: 16px; height: 16px; }
