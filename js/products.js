@@ -1023,7 +1023,7 @@ const ProductsModule = {
         // Imagem pode vir de upload (dataUrl base64) ou da Shopify (url do CDN).
         // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
-            <div class="prod-image-thumb">
+            <div class="prod-image-thumb" draggable="true" data-pos="${i}" title="Arraste pra reordenar">
                 <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-ampliar="${i}" style="cursor:zoom-in">
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
                 <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
@@ -1051,6 +1051,38 @@ const ProductsModule = {
                 const rotulo = [im.name || im.alt || `Imagem ${Number(el.dataset.ampliar) + 1}`,
                                 im.melhorada ? '(melhorada por IA)' : ''].filter(Boolean).join(' ');
                 abrirImagemAmpliada(im.dataUrl || im.url, rotulo);
+            });
+        });
+        // Reordenar por arrastar — a 1ª posição sempre vira a capa (mesmo
+        // comportamento da galeria da Shopify), sem precisar de botão extra.
+        let _arrastandoDe = null;
+        thumbs.querySelectorAll('.prod-image-thumb').forEach(el => {
+            el.addEventListener('dragstart', (e) => {
+                _arrastandoDe = parseInt(el.dataset.pos, 10);
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', String(_arrastandoDe)); } catch {}
+                el.classList.add('is-arrastando');
+            });
+            el.addEventListener('dragend', () => {
+                el.classList.remove('is-arrastando');
+                thumbs.querySelectorAll('.is-alvo-drop').forEach(t => t.classList.remove('is-alvo-drop'));
+                _arrastandoDe = null;
+            });
+            el.addEventListener('dragover', (e) => {
+                if (_arrastandoDe === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                el.classList.add('is-alvo-drop');
+            });
+            el.addEventListener('dragleave', () => el.classList.remove('is-alvo-drop'));
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                el.classList.remove('is-alvo-drop');
+                const destino = parseInt(el.dataset.pos, 10);
+                if (_arrastandoDe === null || _arrastandoDe === destino) return;
+                const [item] = this._images.splice(_arrastandoDe, 1);
+                this._images.splice(destino, 0, item);
+                this._renderProductImages();
             });
         });
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
