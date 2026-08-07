@@ -38,6 +38,8 @@
         // Registro público — qualquer tela que gera imagem por IA chama isto
         // pra aparecer no histórico. `thumb` é uma miniatura (dataUrl) e
         // `origem` diz de onde veio (Estúdio, Produto, AI Generations).
+        // `produto` é o nome do produto envolvido (quando houver) e `tipo`
+        // é o tipo de operação (ex: "Fundo branco", "Melhorar qualidade").
         add(entry) {
             try {
                 const lista = this._load();
@@ -46,6 +48,8 @@
                     prompt: entry.prompt || '',
                     thumb: entry.thumb || '',
                     origem: entry.origem || '',
+                    produto: entry.produto || '',
+                    tipo: entry.tipo || '',
                     aspect: entry.aspect || '',
                     outputs: entry.outputs || 1,
                     refImage: entry.refImage || null,
@@ -112,15 +116,18 @@
                 : (item.prompt || '');
             const refTag = item.refImage ? `<span class="re-tag"><i data-lucide="image" style="width:10px;height:10px"></i> ref</span>` : '';
             const origemTag = item.origem ? `<span class="re-tag re-tag-origem">${this._esc(item.origem)}</span>` : '';
+            const tipoTag = item.tipo ? `<span class="re-tag">${this._esc(item.tipo)}</span>` : '';
             const thumb = item.thumb
                 ? `<div class="re-card-thumb"><img src="${this._esc(item.thumb)}" alt="" loading="lazy" data-re-zoom="${this._esc(item.id)}" style="cursor:zoom-in"></div>`
                 : '';
             return `<div class="re-card">
                 ${thumb}
+                ${item.produto ? `<div class="re-card-produto">${this._esc(item.produto)}</div>` : ''}
                 <div class="re-card-prompt">${this._esc(prompt)}</div>
                 <div class="re-card-footer">
                     <div class="re-card-tags">
                         ${origemTag}
+                        ${tipoTag}
                         ${item.aspect ? `<span class="re-tag">${this._esc(item.aspect)}</span>` : ''}
                         <span class="re-tag">${item.outputs || 1} img</span>
                         ${refTag}

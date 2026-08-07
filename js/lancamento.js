@@ -1129,6 +1129,15 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 await MediaStore.put(foto.mediaId, saida, { type: saida.type });
                 foto.thumb = thumbDataUrl;
                 foto.editada = true;
+                if (typeof RecentEdits !== 'undefined') {
+                    RecentEdits.add({
+                        prompt: preset.label || 'Edição de foto',
+                        thumb: thumbDataUrl,
+                        origem: 'Lançamento',
+                        tipo: preset.label || '',
+                        produto: _state.titulo || '',
+                    });
+                }
                 ok++;
                 _renderFotosGrid();
                 if (_state.passoAtual === 3) _renderBlocos();

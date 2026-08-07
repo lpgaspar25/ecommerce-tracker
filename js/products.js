@@ -1175,6 +1175,7 @@ const ProductsModule = {
                 _original: img._original || { dataUrl: img.dataUrl || '', url: img.url || '' },
                 name: (img.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
             };
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${idx + 1}`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade', produto: (document.getElementById('product-name')?.value || '').trim() });
             this._renderProductImages();
             this._statusImagem('');
             showToast(`Imagem ${idx + 1} melhorada (${dim.largura}×${dim.altura}, WebP)`, 'success');
@@ -1204,6 +1205,7 @@ const ProductsModule = {
                     _original: im._original || { dataUrl: im.dataUrl || '', url: im.url || '' },
                     name: (im.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
                 };
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${i + 1}`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade', produto: (document.getElementById('product-name')?.value || '').trim() });
                 ok++;
                 this._renderProductImages();
             } catch (e) {
@@ -1244,6 +1246,7 @@ const ProductsModule = {
                 const dataUrl = await this._melhorarBlob(blob, { largura, altura });
                 el.setAttribute('src', dataUrl);
                 el.dataset.melhorada = '1';
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${i + 1} da descrição`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade (descrição)', produto: (document.getElementById('product-name')?.value || '').trim() });
                 ok++;
             } catch (e) {
                 console.warn('[Produtos] falha na imagem da descrição', i, e.message);
@@ -1433,6 +1436,7 @@ const ProductsModule = {
                 const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE,
                     { formato: 'image/webp', largura, altura });
                 el.setAttribute('src', dataUrl);
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Tradução de imagem — ${info.nome}`, thumb: dataUrl, origem: 'Produto', tipo: 'Tradução de imagem', produto: (document.getElementById('product-name')?.value || '').trim() });
                 ok++;
             } catch (e) {
                 console.warn('[Produtos] falha ao traduzir imagem', i, e.message);
@@ -1729,7 +1733,7 @@ const ProductsModule = {
                 });
                 const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
                 novas.push({ dataUrl, name: `${_handleSimples(rotulo)}.webp`, melhorada: true, cenario: rotulo });
-                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Galeria: ${rotulo}`, thumb: dataUrl, origem: 'Produto' });
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Galeria: ${rotulo}`, thumb: dataUrl, origem: 'Produto', tipo: rotulo, produto: (document.getElementById('product-name')?.value || '').trim() });
 
                 // Mostra o que já saiu enquanto o resto ainda gera.
                 if (substituir && novas.length === 1) this._images = [];
@@ -1965,7 +1969,7 @@ const ProductsModule = {
             this._images.unshift({ dataUrl, name: `capa-${padrao.id}.webp`, melhorada: true });
             this._renderProductImages();
             this._statusImagem('');
-            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Capa — ${padrao.nome}`, thumb: dataUrl, origem: 'Produto' });
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Capa — ${padrao.nome}`, thumb: dataUrl, origem: 'Produto', tipo: 'Capa', produto: (document.getElementById('product-name')?.value || '').trim() });
             showToast(`Capa gerada com o padrão "${padrao.nome}"`, 'success');
         } catch (e) {
             this._statusImagem('');
@@ -2027,7 +2031,7 @@ const ProductsModule = {
             });
             const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
             this._images.push({ dataUrl, name: 'em-uso.webp', melhorada: true });
-            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Produto em uso: ${sobre}`, thumb: dataUrl, origem: 'Produto' });
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Produto em uso: ${sobre}`, thumb: dataUrl, origem: 'Produto', tipo: 'Cenário', produto: (document.getElementById('product-name')?.value || '').trim() });
             this._renderProductImages();
             this._statusImagem('');
             showToast('Imagem do produto em uso gerada', 'success');

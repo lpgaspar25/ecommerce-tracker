@@ -349,12 +349,18 @@
                         ta.dispatchEvent(new Event('input'));
                     }
                     // Save to recent edits log
-                    this._logRecentEdit({
-                        prompt: finalPrompt,
-                        aspect: this._aspectLabel,
-                        outputs: this._outputs,
-                        refImage: this._refImage?.name || null,
-                    });
+                    const geradas = AIAdGenerator._getAllGenerations?.() || [];
+                    if (typeof RecentEdits !== 'undefined') {
+                        RecentEdits.add({
+                            prompt: finalPrompt,
+                            thumb: geradas[0]?.thumb || geradas[0]?.dataUrl || '',
+                            origem: 'AI Generations',
+                            tipo: 'Geração de imagem',
+                            aspect: this._aspectLabel,
+                            outputs: this._outputs,
+                            refImage: this._refImage?.name || null,
+                        });
+                    }
                 } catch (genErr) {
                     // Mostra erro persistente no grid em vez de só toast (que some)
                     const grid = document.getElementById('aigen-grid');
@@ -388,24 +394,6 @@
                     sendBtn.classList.remove('adhub-prompt-send-loading');
                 }
                 document.getElementById('aigen-loading-card')?.remove();
-            }
-        },
-
-        _logRecentEdit(entry) {
-            try {
-                const KEY = 'etracker_recent_edits';
-                let list = [];
-                try { list = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch {}
-                list.unshift({
-                    id: 're_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
-                    ...entry,
-                    createdAt: new Date().toISOString(),
-                });
-                if (list.length > 100) list = list.slice(0, 100);
-                localStorage.setItem(KEY, JSON.stringify(list));
-                if (typeof EventBus !== 'undefined') EventBus.emit('recentEditsChanged');
-            } catch (e) {
-                console.warn('[AiGenerations] _logRecentEdit failed', e);
             }
         },
 

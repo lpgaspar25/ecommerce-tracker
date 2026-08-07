@@ -4763,6 +4763,7 @@ body {
 .re-card-thumb { border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: rgba(255,255,255,0.04); }
 .re-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .re-tag-origem { background: rgba(16,185,129,0.14); border-color: rgba(16,185,129,0.25); color: var(--green, #10b981); }
+.re-card-produto { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.02em; }
 
 /* Ad Library — anúncios salvos do Swipe */
 .adlib-toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
