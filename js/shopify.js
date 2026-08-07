@@ -880,8 +880,14 @@ const ShopifyModule = (() => {
 
     // Fetch + cache shopify sales map keyed by "date|localProductId" for the given range.
     // Returns: { "YYYY-MM-DD|localProductId": { sales, revenue, currency } }
+    // opts.countryCode (opcional, DASH-02): filtra os pedidos pelo país de
+    // entrega (shipping_address.country_code, ISO-2) ANTES de agregar —
+    // usado só pra Conversão Real por país no Calendário de Métricas.
     async function getRealSalesMapByDate(dateFrom, dateTo, opts = {}) {
-        const orders = await fetchOrders(dateFrom, dateTo, opts);
+        let orders = await fetchOrders(dateFrom, dateTo, opts);
+        if (opts.countryCode) {
+            orders = orders.filter(o => (o.shipping_address?.country_code || '') === opts.countryCode);
+        }
         const perProductDate = aggregateByProductAndDate(orders);
         const result = {};
         const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);

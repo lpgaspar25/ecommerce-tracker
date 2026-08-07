@@ -9762,6 +9762,7 @@ thead:hover .diary-check-col input[type="checkbox"],
 .mcal-summary-label { color: var(--text-muted); font-weight: 600; }
 .mcal-summary-value { font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; }
 .mcal-summary-compare { color: var(--text-muted); font-size: 0.7rem; }
+.mcal-conv-fonte { font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0; line-height: 1.4; }
 
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
