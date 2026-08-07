@@ -58,6 +58,23 @@ const StudioModule = (() => {
           prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Estúdio claro com composição comercial limpa. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
     ];
 
+    // Ângulos de câmera predefinidos (STUDIO-05). Combinam com os cenários
+    // acima: cada cenário marcado roda uma vez por ângulo marcado. Nome
+    // "câmera" pra não colidir com _renderAngulos()/getTopAngles(), que são
+    // os ângulos de COPY/mensagem vindos dos criativos vencedores.
+    const ANGULOS_CAMERA = [
+        { id: 'frontal',  label: 'Frontal',        instrucao: 'Camera angle: straight-on frontal view, camera at the product\'s own height.' },
+        { id: '3-4-esq',  label: '3/4 esquerdo',   instrucao: 'Camera angle: three-quarter view shot from the front-left of the product.' },
+        { id: '3-4-dir',  label: '3/4 direito',    instrucao: 'Camera angle: three-quarter view shot from the front-right of the product.' },
+        { id: 'lateral',  label: 'Lateral',         instrucao: 'Camera angle: direct side profile, 90 degrees from the front.' },
+        { id: 'traseiro', label: 'Traseiro',        instrucao: 'Camera angle: shot from directly behind, showing the back of the product.' },
+        { id: 'superior', label: 'Superior (topo)', instrucao: 'Camera angle: top-down flat-lay view, camera positioned directly above the product.' },
+        { id: 'macro',    label: 'Detalhe / macro', instrucao: 'Camera angle: extreme close-up macro shot focused on the product\'s texture, material and finish.' },
+        { id: 'em-uso',   label: 'Em uso',          instrucao: 'Camera angle: the product actively being used, in a natural and realistic context.' },
+        { id: 'packshot', label: 'Packshot',        instrucao: 'Camera angle: clean isolated packshot, centered, no distracting elements, catalogue style.' },
+    ];
+    const PRESERVACAO_ANGULO_CAMERA = ' Keep the product itself completely unchanged — same shape, colour, material, branding, logos, text and proportions; only the camera angle/framing changes.';
+
     // Formatos de saída. `ar` é a proporção pro Gemini; w/h a dimensão exata.
     const DIMENSOES = [
         { id: '1x1',  label: 'Quadrado 1:1',   w: 1080, h: 1080, ar: '1:1' },
@@ -256,6 +273,12 @@ const StudioModule = (() => {
         return sel.length ? sel : [DIMENSOES[0]];
     }
 
+    // Ângulos de câmera marcados (vazio = nenhum ângulo específico pedido).
+    function _angulosCameraSelecionados() {
+        const ids = [...document.querySelectorAll('#studio-angulos-camera input:checked')].map(i => i.value);
+        return ANGULOS_CAMERA.filter(a => ids.includes(a.id));
+    }
+
     // Reenquadra um blob para a dimensão dada, mantendo o criativo idêntico.
     // Deriva da MESMA base → as versões saem iguais, só em formatos diferentes.
     async function _reframeParaDimensao(blob, dim) {
@@ -310,8 +333,9 @@ const StudioModule = (() => {
             .filter(id => String(id).startsWith('cen:'))
             .map(id => (_state.padroes || []).find(p => p.id === id.slice(4)))
             .filter(Boolean);
+        const angulos = _angulosCameraSelecionados();
 
-        if (!presets.length && !cenariosRef.length) { showToast('Escolha ao menos um cenário', 'error'); return; }
+        if (!presets.length && !cenariosRef.length && !angulos.length) { showToast('Escolha ao menos um cenário ou ângulo', 'error'); return; }
 
         _state.gerando = true;
         _renderFotos();
@@ -337,19 +361,26 @@ const StudioModule = (() => {
         const dims = _dimensoesSelecionadas();
         let ok = 0;
 
+        // Ângulo cruza com cada cenário marcado; sem ângulo marcado, roda
+        // uma vez só (comportamento de sempre — 100% compatível).
+        const angulosOuUnico = angulos.length ? angulos : [null];
+
         // 1) Cenários de texto (os presets fixos). Os presets de anúncio têm
         //    marcadores ${product.*} que são preenchidos aqui.
         for (const preset of presets) {
-            try {
-                const promptPreset = _preencherPromptPreset(preset.prompt, pid);
-                const prompt = `${promptPreset}${estetica}${extra ? ' ' + extra : ''}`;
-                const blob = await _editarImagem(base, prompt);
-                await _salvarNasDimensoes(d, blob, preset.id, preset.label, prompt, dims);
-                ok++;
-                _save(); _renderFotos();
-            } catch (err) {
-                console.error('[Studio] geração falhou:', err);
-                showToast(`${preset.label}: ${String(err.message).slice(0, 120)}`, 'error');
+            for (const angulo of angulosOuUnico) {
+                try {
+                    const promptPreset = _preencherPromptPreset(preset.prompt, pid);
+                    const prompt = `${promptPreset}${angulo ? ' ' + angulo.instrucao : ''}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem(base, prompt);
+                    const label = angulo ? `${preset.label} · ${angulo.label}` : preset.label;
+                    await _salvarNasDimensoes(d, blob, preset.id, label, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] geração falhou:', err);
+                    showToast(`${preset.label}: ${String(err.message).slice(0, 120)}`, 'error');
+                }
             }
         }
 
@@ -357,19 +388,39 @@ const StudioModule = (() => {
         //    subido. Manda [cena, produto] — a ordem casa com "first/second
         //    image" do prompt.
         for (const cen of cenariosRef) {
-            try {
-                const cena = await _blobDoPadrao(cen);
-                if (!cena) throw new Error('sem imagem de referência salva');
-                const promptBase = (window.ImageAI?.promptCenaImagem?.(contexto))
-                    || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
-                const prompt = `${promptBase}${estetica}${extra ? ' ' + extra : ''}`;
-                const blob = await _editarImagem([cena, base], prompt);
-                await _salvarNasDimensoes(d, blob, 'cen:' + cen.id, `Cenário: ${cen.nome}`, prompt, dims);
-                ok++;
-                _save(); _renderFotos();
-            } catch (err) {
-                console.error('[Studio] cenário de referência falhou:', err);
-                showToast(`Cenário "${cen.nome}": ${String(err.message).slice(0, 120)}`, 'error');
+            for (const angulo of angulosOuUnico) {
+                try {
+                    const cena = await _blobDoPadrao(cen);
+                    if (!cena) throw new Error('sem imagem de referência salva');
+                    const promptBase = (window.ImageAI?.promptCenaImagem?.(contexto))
+                        || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
+                    const prompt = `${promptBase}${angulo ? ' ' + angulo.instrucao : ''}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem([cena, base], prompt);
+                    const label = angulo ? `Cenário: ${cen.nome} · ${angulo.label}` : `Cenário: ${cen.nome}`;
+                    await _salvarNasDimensoes(d, blob, 'cen:' + cen.id, label, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] cenário de referência falhou:', err);
+                    showToast(`Cenário "${cen.nome}": ${String(err.message).slice(0, 120)}`, 'error');
+                }
+            }
+        }
+
+        // 3) Ângulos sozinhos — só quando nenhum cenário/preset foi marcado
+        //    (senão já rodaram cruzados nos blocos 1/2 acima).
+        if (!presets.length && !cenariosRef.length) {
+            for (const angulo of angulos) {
+                try {
+                    const prompt = `${angulo.instrucao}${PRESERVACAO_ANGULO_CAMERA}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem(base, prompt);
+                    await _salvarNasDimensoes(d, blob, 'ang:' + angulo.id, `Ângulo: ${angulo.label}`, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] ângulo falhou:', err);
+                    showToast(`${angulo.label}: ${String(err.message).slice(0, 120)}`, 'error');
+                }
             }
         }
 
@@ -386,7 +437,10 @@ const StudioModule = (() => {
         const thumb = await _miniatura(blob);
         d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, dim: dimId || '1x1', criadoEm: new Date().toISOString() });
         // Alimenta o histórico global de edições (aba Recent Edits).
-        if (window.RecentEdits?.add) RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio' });
+        if (window.RecentEdits?.add) {
+            const nomeProduto = (AppState.allProducts || []).find(x => x.id === _state.productId)?.name || '';
+            RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio', tipo: presetLabel || '', produto: nomeProduto });
+        }
     }
 
     function _blobParaBase64(blob) {
@@ -1160,6 +1214,20 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _icones();
     }
 
+    // Ângulos de câmera predefinidos (checkbox, sem marcação default — só
+    // entram no prompt se o usuário escolher explicitamente).
+    function _renderAngulosCamera() {
+        const box = document.getElementById('studio-angulos-camera');
+        if (!box || box.dataset.pronto) return;
+        box.innerHTML = ANGULOS_CAMERA.map(a => `
+            <label class="studio-preset">
+                <input type="checkbox" value="${a.id}">
+                ${_esc(a.label)}
+            </label>`).join('');
+        box.dataset.pronto = '1';
+        _icones();
+    }
+
     // Cenários de referência = os criativos subidos (Padrões), usados como
     // ambiente. Globais — aparecem para qualquer produto. Filtráveis por nicho
     // (o "catálogo"): escolher "Óculos de Sol" mostra só os desse nicho.
@@ -1726,7 +1794,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function _selecionarProduto(pid) {
         _state.productId = pid;
-        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderPadroes(); _renderCenariosRef();
+        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderAngulosCamera(); _renderPadroes(); _renderCenariosRef();
         _renderFotos(); _renderPagina(); _renderChat();
     }
 
@@ -1879,7 +1947,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         gerarFotos, gerarMarca, gerarPagina, enviarChat, exportarCsv, _contextoDeMarca,
         _dados, _save, _load, _miniatura, _urlParaBlobPng, _editarImagem,
         _claude, _extrairJson, _corpoHtml, _handle,
-        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderMarca, _selecionarProduto,
+        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderAngulosCamera, _renderMarca, _selecionarProduto,
         criarPadraoDeImagem, montarPromptDoPadrao, gerarComPadrao, _renderPadroes, MARCADORES,
     };
 })();
