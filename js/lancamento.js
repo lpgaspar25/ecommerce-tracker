@@ -109,11 +109,62 @@ const LancamentoModule = (() => {
         document.getElementById('lanc-base-zero')?.addEventListener('click', () => _selecionarBase('zero'));
         document.getElementById('lanc-base-molde')?.addEventListener('click', () => _selecionarBase('molde'));
         document.getElementById('lanc-titulo')?.addEventListener('input', (e) => { _state.titulo = e.target.value; });
+        document.getElementById('lanc-titulo-ia')?.addEventListener('click', () => _gerarNomesProduto());
         document.getElementById('lanc-passo1-avancar')?.addEventListener('click', () => {
             if (!_state.titulo.trim()) { showToast('Dá um nome pro produto novo primeiro', 'error'); return; }
             if (_state.base === 'molde' && !_state.moldeProductId) { showToast('Escolha um produto-molde', 'error'); return; }
             _irParaPasso(2);
         });
+    }
+
+    // Sugestão de nome com IA (LAUNCH-01) — usa o que já foi digitado como
+    // tema/semente e, se a base for um molde, o produto-molde como
+    // referência de categoria/marca. Sem nada digitado e sem molde, gera
+    // nomes genéricos vendáveis mesmo assim (o usuário troca por outro).
+    async function _gerarNomesProduto() {
+        const box = document.getElementById('lanc-titulo-sugestoes');
+        const btn = document.getElementById('lanc-titulo-ia');
+        if (!box) return;
+        box.classList.remove('hidden');
+        box.innerHTML = `<div class="lanc-titulo-sug-status"><i data-lucide="loader-2" style="width:14px;height:14px;animation:spin 1s linear infinite"></i> Gerando sugestões…</div>`;
+        _icones();
+        if (btn) btn.disabled = true;
+        try {
+            const tema = (_state.titulo || document.getElementById('lanc-titulo')?.value || '').trim();
+            const molde = _state.base === 'molde' ? _state.moldeDetalhes : null;
+            const contexto = [
+                tema ? `Ideia/tema atual digitado pelo usuário: "${tema}" — gere variações e refinamentos DESSE tema, não troque de produto.` : 'Nada foi digitado ainda — sugira nomes genéricos vendáveis pra um produto novo de dropshipping.',
+                molde ? `Produto usado como molde/inspiração: "${molde.title}"${molde.productType ? ` (categoria: ${molde.productType})` : ''}${molde.vendor ? ` (marca: ${molde.vendor})` : ''}.` : '',
+            ].filter(Boolean).join('\n');
+
+            const sistema = `Você sugere nomes de produtos pra uma loja de dropshipping, focados em conversão — chamativos, específicos e vendáveis, nunca genéricos ("Produto Incrível", "Item Especial" são ruins) nem clickbait enganoso. Responda em português do Brasil, em JSON: {"nomes": ["nome 1", "nome 2", "nome 3", "nome 4", "nome 5"]}. Cada nome até 70 caracteres.`;
+
+            const txt = await _openaiJson(sistema, [{ role: 'user', content: contexto }], 500);
+            const plano = _extrairJson(txt);
+            const nomes = Array.isArray(plano.nomes) ? plano.nomes.filter(Boolean) : [];
+            if (!nomes.length) throw new Error('A IA não devolveu sugestões — tente de novo.');
+
+            box.innerHTML = `
+                <div class="lanc-titulo-sug-lista">
+                    ${nomes.map(n => `<button type="button" class="lanc-titulo-sug-item" data-nome="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}
+                </div>
+                <button type="button" class="lanc-link-btn" id="lanc-titulo-sug-regerar">Gerar outras sugestões</button>
+            `;
+            box.querySelectorAll('[data-nome]').forEach(item => {
+                item.addEventListener('click', () => {
+                    const campo = document.getElementById('lanc-titulo');
+                    campo.value = item.dataset.nome;
+                    _state.titulo = item.dataset.nome;
+                    box.classList.add('hidden');
+                    box.innerHTML = '';
+                });
+            });
+            box.querySelector('#lanc-titulo-sug-regerar')?.addEventListener('click', () => _gerarNomesProduto());
+        } catch (e) {
+            box.innerHTML = `<div class="lanc-titulo-sug-erro">Erro: ${escapeHtml(e.message)}</div>`;
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 
     function _selecionarBase(tipo) {

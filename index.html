@@ -4355,7 +4355,11 @@
                         </div>
                         <div style="margin-top:0.8rem">
                             <label for="lanc-titulo">Nome do novo produto</label>
-                            <input type="text" id="lanc-titulo" class="input" placeholder="Ex.: Óculos de Sol Ferrari Portofino">
+                            <div class="prompt-lib-row">
+                                <input type="text" id="lanc-titulo" class="input" placeholder="Ex.: Óculos de Sol Ferrari Portofino">
+                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-titulo-ia" title="Sugerir nomes com IA"><i data-lucide="sparkles" style="width:14px;height:14px"></i></button>
+                            </div>
+                            <div id="lanc-titulo-sugestoes" class="lanc-titulo-sugestoes hidden"></div>
                         </div>
                     </div>
                     <div class="lanc-nav">

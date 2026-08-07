@@ -9811,6 +9811,18 @@ thead:hover .diary-check-col input[type="checkbox"],
 .nav-map-aqui { flex: 0 0 auto !important; font-size: 0.6rem; font-weight: 700; color: var(--accent); text-transform: uppercase; }
 .nav-map-vazio { color: var(--text-muted); font-size: 0.82rem; padding: 1rem 0; text-align: center; }
 
+/* Lançamento → sugestão de nome com IA (LAUNCH-01) */
+#lanc-titulo-sugestoes.hidden { display: none; }
+.lanc-titulo-sugestoes { margin-top: 0.5rem; padding: 0.6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02)); }
+.lanc-titulo-sug-status { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
+.lanc-titulo-sug-lista { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
+.lanc-titulo-sug-item {
+    text-align: left; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--bg-card); color: var(--text-primary); font-size: 0.83rem; cursor: pointer;
+}
+.lanc-titulo-sug-item:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lanc-titulo-sug-erro { font-size: 0.8rem; color: var(--danger, #ef4444); }
+
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 
