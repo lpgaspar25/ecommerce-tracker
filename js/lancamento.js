@@ -50,6 +50,8 @@ const LancamentoModule = (() => {
         _bindPasso5();
         _bindMensagensExtensao();
 
+        KVStore.get(RASCUNHOS_KEY).then(lista => _atualizarBadgeRascunhos((lista || []).length)).catch(() => {});
+
         // A extensão manda ?modo=lancamento ao abrir/focar a aba — troca de
         // modo na hora, mesmo antes das fotos da galeria chegarem.
         const modo = new URLSearchParams(location.search).get('modo');
@@ -65,8 +67,10 @@ const LancamentoModule = (() => {
 
     function _alternarModo(modo) {
         document.querySelectorAll('.studio-modo-btn').forEach(b => b.classList.toggle('is-active', b.dataset.modo === modo));
-        document.getElementById('studio-modo-produto')?.classList.toggle('hidden', modo === 'lancamento');
+        document.getElementById('studio-modo-produto')?.classList.toggle('hidden', modo !== 'produto');
         document.getElementById('studio-modo-lancamento')?.classList.toggle('hidden', modo !== 'lancamento');
+        document.getElementById('studio-modo-rascunhos')?.classList.toggle('hidden', modo !== 'rascunhos');
+        if (modo === 'rascunhos') _renderRascunhos();
         _icones();
     }
 
@@ -1455,6 +1459,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 fotos: _state.fotos,
                 blocos: blocosSalvos,
                 brinde: brindeSalvo,
+                passoAtual: _state.passoAtual,
                 criadoEm: _state.rascunhoCriadoEm || agora,
                 atualizadoEm: agora,
             };
@@ -1465,6 +1470,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             const idx = lista.findIndex(r => r.id === rascunho.id);
             if (idx >= 0) lista[idx] = rascunho; else lista.unshift(rascunho);
             await KVStore.set(RASCUNHOS_KEY, lista);
+            _atualizarBadgeRascunhos(lista.length);
 
             const status = document.getElementById('lanc-revisar-status');
             if (status) status.textContent = `Rascunho salvo às ${new Date().toLocaleTimeString('pt-BR')}.`;
@@ -1474,6 +1480,158 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         } finally {
             if (btn) btn.disabled = false;
         }
+    }
+
+    // ── Rascunhos: listar, buscar, retomar, duplicar, excluir (LAUNCH-07) ──
+    let _rascunhosCarregados = false;
+
+    function _atualizarBadgeRascunhos(qtd) {
+        const badge = document.getElementById('lanc-rascunhos-badge');
+        if (!badge) return;
+        badge.textContent = String(qtd);
+        badge.classList.toggle('hidden', qtd === 0);
+    }
+
+    async function _renderRascunhos() {
+        const lista = document.getElementById('lanc-rascunhos-lista');
+        if (!lista) return;
+        if (!_rascunhosCarregados) {
+            document.getElementById('lanc-rascunhos-busca')?.addEventListener('input', () => _renderRascunhos());
+            document.getElementById('lanc-rascunhos-filtro')?.addEventListener('change', () => _renderRascunhos());
+            _rascunhosCarregados = true;
+        }
+
+        const todos = ((await KVStore.get(RASCUNHOS_KEY)) || []).slice()
+            .sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
+        _atualizarBadgeRascunhos(todos.length);
+
+        const busca = (document.getElementById('lanc-rascunhos-busca')?.value || '').toLowerCase().trim();
+        const filtroBase = document.getElementById('lanc-rascunhos-filtro')?.value || '';
+        const filtrados = todos.filter(r =>
+            (!busca || (r.titulo || '').toLowerCase().includes(busca))
+            && (!filtroBase || r.base === filtroBase));
+
+        if (!filtrados.length) {
+            lista.innerHTML = `<div class="adhub-empty" style="padding:2.5rem 0">
+                <i data-lucide="file-clock" style="width:36px;height:36px;color:var(--text-muted)"></i>
+                <h3>${todos.length ? 'Nenhum resultado' : 'Nenhum rascunho salvo ainda'}</h3>
+                <p>${todos.length ? 'Tente outro termo ou filtro.' : 'Rascunhos salvos no Passo 5 (Revisar) aparecem aqui.'}</p>
+            </div>`;
+            _icones();
+            return;
+        }
+
+        const PASSOS = ['', 'Base', 'Fotos', 'Descrição', 'Brinde', 'Revisar'];
+        lista.innerHTML = filtrados.map(r => `
+            <div class="lanc-rascunho-card" data-id="${r.id}">
+                <div class="lanc-rascunho-info">
+                    <strong>${escapeHtml(r.titulo || '(sem nome)')}</strong>
+                    <div class="lanc-rascunho-meta">
+                        ${r.base === 'molde' ? `<span class="lanc-tag"><i data-lucide="copy" style="width:10px;height:10px"></i> ${escapeHtml(r.moldeTitulo || 'molde')}</span>` : '<span class="lanc-tag">Do zero</span>'}
+                        <span class="lanc-tag">${r.fotos?.length || 0} foto(s)</span>
+                        <span class="lanc-tag">Passo ${r.passoAtual || 1}/5 · ${PASSOS[r.passoAtual] || 'Base'}</span>
+                        <span class="lanc-rascunho-data">${_tempoRelativo(r.atualizadoEm)}</span>
+                    </div>
+                </div>
+                <div class="lanc-rascunho-acoes">
+                    <button type="button" class="btn btn-sm btn-primary" data-continuar="${r.id}"><i data-lucide="play" style="width:12px;height:12px"></i> Continuar</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-duplicar="${r.id}" title="Duplicar"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-excluir-rascunho="${r.id}" title="Excluir"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
+                </div>
+            </div>`).join('');
+
+        lista.querySelectorAll('[data-continuar]').forEach(btn => {
+            btn.addEventListener('click', () => _continuarRascunho(btn.dataset.continuar));
+        });
+        lista.querySelectorAll('[data-duplicar]').forEach(btn => {
+            btn.addEventListener('click', () => _duplicarRascunho(btn.dataset.duplicar));
+        });
+        lista.querySelectorAll('[data-excluir-rascunho]').forEach(btn => {
+            btn.addEventListener('click', () => _excluirRascunho(btn.dataset.excluirRascunho));
+        });
+        _icones();
+    }
+
+    function _tempoRelativo(iso) {
+        if (!iso) return '';
+        const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+        if (diff < 60) return 'agora';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm atrás';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h atrás';
+        return Math.floor(diff / 86400) + 'd atrás';
+    }
+
+    // Retoma um rascunho exatamente no passo em que foi salvo — hidrata cada
+    // painel na mão porque _irParaPasso() só troca a visibilidade; quem
+    // desenha o conteúdo de cada passo a partir do _state é cada função
+    // _render*/_preparar* específica (nem todas rodam sozinhas ao navegar).
+    async function _continuarRascunho(id) {
+        const lista = (await KVStore.get(RASCUNHOS_KEY)) || [];
+        const r = lista.find(x => x.id === id);
+        if (!r) { showToast('Rascunho não encontrado', 'error'); return; }
+
+        _state.titulo = r.titulo || '';
+        _state.base = r.base || 'zero';
+        _state.moldeProductId = r.moldeProductId || '';
+        _state.moldeDetalhes = null;
+        _state.fotos = r.fotos || [];
+        _state.blocos = r.blocos || [];
+        _state.brinde = r.brinde || { incluir: false, titulo: '', html: '' };
+        _state._brindeSugerido = true; // já resolvido — não deixa o auto-sugerir do molde sobrescrever
+        _state.rascunhoId = r.id;
+        _state.rascunhoCriadoEm = r.criadoEm || '';
+
+        _alternarModo('lancamento');
+
+        // Passo 1
+        const tituloEl = document.getElementById('lanc-titulo');
+        if (tituloEl) tituloEl.value = _state.titulo;
+        _selecionarBase(_state.base);
+        if (_state.base === 'molde' && _state.moldeProductId) {
+            await _carregarProdutosDaLoja();
+            const sel = document.getElementById('lanc-molde-select');
+            if (sel) sel.value = _state.moldeProductId;
+            _selecionarMolde(_state.moldeProductId); // não bloqueia — só refaz moldeDetalhes/status em segundo plano
+        }
+
+        // Passo 2
+        _renderFotosGrid();
+
+        // Passo 3
+        _renderBlocos();
+        _renderTrilho();
+
+        // Passo 4
+        const chk = document.getElementById('lanc-brinde-incluir');
+        if (chk) chk.checked = _state.brinde.incluir;
+        document.getElementById('lanc-brinde-editor')?.classList.toggle('hidden', !_state.brinde.incluir);
+        const brTitulo = document.getElementById('lanc-brinde-titulo');
+        if (brTitulo) brTitulo.value = _state.brinde.titulo || '';
+        const brTexto = document.getElementById('lanc-brinde-texto');
+        if (brTexto) brTexto.innerHTML = _state.brinde.html || '';
+
+        _irParaPasso(r.passoAtual || 1);
+        showToast(`Retomando "${r.titulo}" — passo ${r.passoAtual || 1} de 5`, 'success');
+    }
+
+    async function _duplicarRascunho(id) {
+        const lista = (await KVStore.get(RASCUNHOS_KEY)) || [];
+        const original = lista.find(x => x.id === id);
+        if (!original) return;
+        const agora = new Date().toISOString();
+        const copia = { ...original, id: 'lanc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+            titulo: original.titulo + ' (cópia)', criadoEm: agora, atualizadoEm: agora };
+        lista.unshift(copia);
+        await KVStore.set(RASCUNHOS_KEY, lista);
+        showToast('Rascunho duplicado', 'success');
+        _renderRascunhos();
+    }
+
+    async function _excluirRascunho(id) {
+        if (!confirm('Excluir este rascunho? As fotos enviadas continuam guardadas, só o rascunho some.')) return;
+        const lista = ((await KVStore.get(RASCUNHOS_KEY)) || []).filter(r => r.id !== id);
+        await KVStore.set(RASCUNHOS_KEY, lista);
+        _renderRascunhos();
     }
 
     // Publica de verdade: sobe cada foto ÚNICA usada (em bloco e/ou galeria)

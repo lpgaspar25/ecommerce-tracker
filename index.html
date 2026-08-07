@@ -4169,6 +4169,7 @@
             <div class="studio-modo-toggle" id="studio-modo-toggle">
                 <button type="button" class="studio-modo-btn is-active" data-modo="produto"><i data-lucide="package" style="width:14px;height:14px;vertical-align:-2px"></i> Produto existente</button>
                 <button type="button" class="studio-modo-btn" data-modo="lancamento"><i data-lucide="rocket" style="width:14px;height:14px;vertical-align:-2px"></i> Lançar produto novo</button>
+                <button type="button" class="studio-modo-btn" data-modo="rascunhos"><i data-lucide="file-clock" style="width:14px;height:14px;vertical-align:-2px"></i> Rascunhos <span id="lanc-rascunhos-badge" class="lanc-rascunhos-badge hidden">0</span></button>
             </div>
 
             <div id="studio-modo-produto">
@@ -4467,6 +4468,21 @@
                         <button type="button" class="btn btn-secondary" data-lanc-voltar="4">Voltar</button>
                         <span></span>
                     </div>
+                </div>
+            </div>
+
+            <div id="studio-modo-rascunhos" class="hidden">
+                <div class="studio-bloco">
+                    <div class="lanc-rascunhos-head">
+                        <h3><i data-lucide="file-clock" style="width:15px;height:15px;vertical-align:-2px"></i> Rascunhos</h3>
+                        <input type="search" id="lanc-rascunhos-busca" class="input input-sm" placeholder="Buscar por nome…">
+                        <select id="lanc-rascunhos-filtro" class="input input-sm" style="width:auto">
+                            <option value="">Todos</option>
+                            <option value="zero">Do zero</option>
+                            <option value="molde">Com molde</option>
+                        </select>
+                    </div>
+                    <div id="lanc-rascunhos-lista" class="lanc-rascunhos-lista"></div>
                 </div>
             </div>
         </section>
