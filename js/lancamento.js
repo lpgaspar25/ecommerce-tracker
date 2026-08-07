@@ -240,6 +240,7 @@ const LancamentoModule = (() => {
             if (!_state.fotos.length) { showToast('Adicione ao menos uma foto', 'error'); return; }
             _irParaPasso(3);
         });
+        _bindGerarFotosIA();
     }
 
     // Comprime, guarda o blob cheio no IndexedDB (MediaStore) e mantém só
@@ -317,6 +318,193 @@ const LancamentoModule = (() => {
         const btnLote = document.getElementById('lanc-editar-todas');
         if (btnLote) btnLote.style.display = _state.fotos.length ? '' : 'none';
         _icones();
+    }
+
+    // ── Gerar fotos com IA (LAUNCH-02 Parte B) ──────────────────────────
+    // Diferente do editor acima (que EDITA fotos já adicionadas), isto GERA
+    // fotos novas a partir de uma foto-base (imagem do molde, uma foto já
+    // adicionada, ou um upload) cruzada com cenário × um-ou-mais ângulos —
+    // cada combinação vira uma chamada separada ao ImageAI, e cada saída
+    // entra em _state.fotos pelo mesmo _adicionarFoto usado no upload manual.
+    let _fonteGerarSelecionada = null; // { tipo:'molde'|'existente'|'upload', dado: url|fotoId|File }
+
+    function _bindGerarFotosIA() {
+        document.getElementById('lanc-gerar-fotos-toggle')?.addEventListener('click', () => {
+            const corpo = document.getElementById('lanc-gerar-fotos-corpo');
+            const chevron = document.getElementById('lanc-gerar-fotos-chevron');
+            if (!corpo) return;
+            const abrindo = corpo.classList.contains('hidden');
+            corpo.classList.toggle('hidden');
+            if (chevron) chevron.style.transform = abrindo ? 'rotate(180deg)' : '';
+            if (abrindo) { _renderGerarFonte(); _renderGerarAngulos(); _renderGerarCenarioSugestoes(); }
+        });
+        document.getElementById('lanc-gerar-upload')?.addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            _fonteGerarSelecionada = { tipo: 'upload', dado: f };
+            _renderGerarFonte();
+        });
+        document.getElementById('lanc-gerar-angulos-todos')?.addEventListener('click', () => {
+            document.querySelectorAll('#lanc-gerar-angulos input').forEach(cb => { cb.checked = true; });
+        });
+        document.getElementById('lanc-gerar-descricao-lib')?.addEventListener('click', () => {
+            const campo = document.getElementById('lanc-gerar-descricao');
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
+        document.getElementById('lanc-gerar-fotos-btn')?.addEventListener('click', () => _gerarFotosIA());
+    }
+
+    // Foto-base: imagens do molde (se a base do produto for um molde),
+    // fotos já adicionadas no Passo 2, e um tile de upload — tudo num grid
+    // só pra não obrigar o usuário a decidir "de onde vem" antes de gerar.
+    function _renderGerarFonte() {
+        const box = document.getElementById('lanc-gerar-fonte');
+        if (!box) return;
+        const fontes = [];
+        if (_state.base === 'molde' && _state.moldeDetalhes?.images?.length) {
+            _state.moldeDetalhes.images.forEach(img => fontes.push({ tipo: 'molde', dado: img.url, thumb: img.url, rotulo: 'Molde' }));
+        }
+        _state.fotos.forEach(f => fontes.push({ tipo: 'existente', dado: f.id, thumb: f.thumb, rotulo: f.origem || 'Foto' }));
+
+        // Mantém a seleção atual se ainda existir na lista; senão cai pra
+        // primeira fonte disponível (upload nunca "some" da lista sozinho).
+        if (_fonteGerarSelecionada && _fonteGerarSelecionada.tipo !== 'upload') {
+            const aindaExiste = fontes.some(f => f.tipo === _fonteGerarSelecionada.tipo && f.dado === _fonteGerarSelecionada.dado);
+            if (!aindaExiste) _fonteGerarSelecionada = fontes[0] ? { tipo: fontes[0].tipo, dado: fontes[0].dado } : null;
+        } else if (!_fonteGerarSelecionada && fontes[0]) {
+            _fonteGerarSelecionada = { tipo: fontes[0].tipo, dado: fontes[0].dado };
+        }
+
+        box.innerHTML = fontes.map(f => `
+            <button type="button" class="lanc-gerar-fonte-item${_fonteGerarSelecionada?.tipo === f.tipo && _fonteGerarSelecionada?.dado === f.dado ? ' is-ativa' : ''}" data-fonte-tipo="${f.tipo}" data-fonte-dado="${escapeHtml(String(f.dado))}">
+                <img src="${escapeHtml(f.thumb)}" alt="">
+                <span>${escapeHtml(f.rotulo)}</span>
+            </button>
+        `).join('') + `
+            <button type="button" class="lanc-gerar-fonte-item lanc-gerar-fonte-upload${_fonteGerarSelecionada?.tipo === 'upload' ? ' is-ativa' : ''}" id="lanc-gerar-fonte-upload-btn">
+                <i data-lucide="upload" style="width:16px;height:16px"></i>
+                <span>${_fonteGerarSelecionada?.tipo === 'upload' ? (_fonteGerarSelecionada.dado.name || 'Enviada') : 'Enviar foto'}</span>
+            </button>
+        `;
+        box.querySelectorAll('[data-fonte-tipo]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _fonteGerarSelecionada = { tipo: btn.dataset.fonteTipo, dado: btn.dataset.fonteDado };
+                _renderGerarFonte();
+            });
+        });
+        box.querySelector('#lanc-gerar-fonte-upload-btn')?.addEventListener('click', () => document.getElementById('lanc-gerar-upload')?.click());
+        if (!fontes.length && !_fonteGerarSelecionada) {
+            box.insertAdjacentHTML('afterbegin', `<p class="lanc-hint" style="margin:0 0 0.4rem">Sem fotos ainda — envie uma pra usar como base.</p>`);
+        }
+        _icones();
+    }
+
+    function _renderGerarAngulos() {
+        const box = document.getElementById('lanc-gerar-angulos');
+        if (!box || box.dataset.pronto) return;
+        box.innerHTML = ANGULOS_CAMERA_LANC.map(a => `
+            <label class="studio-preset">
+                <input type="checkbox" value="${a.id}">
+                ${escapeHtml(a.label)}
+            </label>`).join('');
+        box.dataset.pronto = '1';
+        _icones();
+    }
+
+    function _renderGerarCenarioSugestoes() {
+        const dl = document.getElementById('lanc-gerar-cenario-sugestoes');
+        if (dl && !dl.dataset.pronto) {
+            dl.innerHTML = SUGESTOES_CENARIO.map(s => `<option value="${escapeHtml(s)}">`).join('');
+            dl.dataset.pronto = '1';
+        }
+        const chips = document.getElementById('lanc-gerar-cenario-chips');
+        if (chips && !chips.dataset.pronto) {
+            chips.innerHTML = SUGESTOES_CENARIO.map(s => `<button type="button" class="lanc-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('');
+            chips.querySelectorAll('[data-sug]').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const campo = document.getElementById('lanc-gerar-cenario');
+                    campo.value = chip.dataset.sug;
+                    campo.focus();
+                });
+            });
+            chips.dataset.pronto = '1';
+        }
+    }
+
+    async function _blobDaFonteGerar() {
+        if (!_fonteGerarSelecionada) return null;
+        if (_fonteGerarSelecionada.tipo === 'upload') return _fonteGerarSelecionada.dado;
+        if (_fonteGerarSelecionada.tipo === 'molde') return await bytesDaImagem(_fonteGerarSelecionada.dado);
+        if (_fonteGerarSelecionada.tipo === 'existente') {
+            const foto = _state.fotos.find(f => f.id === _fonteGerarSelecionada.dado);
+            if (!foto) return null;
+            const rec = await MediaStore.get(foto.mediaId);
+            return rec?.blob || null;
+        }
+        return null;
+    }
+
+    async function _gerarFotosIA() {
+        const btn = document.getElementById('lanc-gerar-fotos-btn');
+        const prog = document.getElementById('lanc-gerar-prog');
+        const fill = document.getElementById('lanc-gerar-fill');
+        const status = document.getElementById('lanc-gerar-status');
+        const cenario = document.getElementById('lanc-gerar-cenario')?.value.trim() || '';
+        const descricao = document.getElementById('lanc-gerar-descricao')?.value.trim() || '';
+        const angulosIds = [...document.querySelectorAll('#lanc-gerar-angulos input:checked')].map(i => i.value);
+        const angulos = ANGULOS_CAMERA_LANC.filter(a => angulosIds.includes(a.id));
+
+        if (!cenario && !descricao && !angulos.length) {
+            showToast('Descreva um cenário, marque um ângulo, ou escreva o que quer mudar', 'error');
+            return;
+        }
+        let baseBlob;
+        try {
+            baseBlob = await _blobDaFonteGerar();
+        } catch (e) {
+            showToast('Erro ao ler a foto-base: ' + e.message, 'error');
+            return;
+        }
+        if (!baseBlob) {
+            showToast('Escolha uma foto-base primeiro (molde, foto já adicionada, ou envie uma nova)', 'error');
+            return;
+        }
+
+        const combinacoes = angulos.length ? angulos : [null];
+        if (btn) btn.disabled = true;
+        if (prog) prog.style.display = '';
+        let ok = 0, falhas = 0;
+        const ctx = _state.titulo || '';
+
+        for (let i = 0; i < combinacoes.length; i++) {
+            const angulo = combinacoes[i];
+            if (status) status.textContent = `Gerando ${i + 1} de ${combinacoes.length}…`;
+            if (fill) fill.style.width = `${Math.round((i / combinacoes.length) * 100)}%`;
+            try {
+                let prompt = cenario
+                    ? ImageAI.promptCenario(cenario, ctx)
+                    : _promptLivre(descricao || 'adjust the photo following the requested camera angle', ctx);
+                if (angulo) prompt += ` ${angulo.instrucao}`;
+                const gerado = await ImageAI.editar(baseBlob, prompt, {
+                    formato: 'image/webp', compressao: 92,
+                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                });
+                await _adicionarFoto(gerado, angulo ? `Gerada · ${angulo.label}` : 'Gerada por IA');
+                ok++;
+            } catch (e) {
+                console.error('[Lançamento] gerar foto falhou:', e);
+                falhas++;
+            }
+        }
+        if (fill) fill.style.width = '100%';
+        if (btn) btn.disabled = false;
+        const msg = falhas ? `${ok} gerada(s), ${falhas} falhou(ram).` : `${ok} foto(s) gerada(s).`;
+        if (status) status.textContent = msg;
+        showToast(falhas ? `${ok} gerada(s), ${falhas} com erro` : `${ok} foto(s) gerada(s)`, falhas ? 'warning' : 'success');
     }
 
     function _blobParaDataUrl(blob) {
@@ -1229,13 +1417,22 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
 
         const aplicarLivre = () => {
             const texto = ov.querySelector('#lanc-prompt-livre').value.trim();
-            if (!texto) { showToast('Escreva o que você quer mudar', 'error'); return; }
+            // Descrição só é obrigatória se não tiver referência nem ângulo —
+            // com uma das duas, já é instrução suficiente (LAUNCH-02).
+            const anguloSelecionado = !!ov.querySelector('#lanc-editor-angulo')?.value;
+            const temInstrucaoSuficiente = !!_refBlobEditor || anguloSelecionado;
+            if (!texto && !temInstrucaoSuficiente) {
+                showToast('Escreva o que você quer mudar, ou anexe uma referência/ângulo', 'error');
+                return;
+            }
             const alvos = _exigirSelecao();
             if (!alvos.length) return;
             _aplicarEdicao(alvos, {
                 label: 'Ajuste personalizado',
                 executar: async (blob, ctx) => {
-                    let promptBase = _promptLivre(texto, ctx);
+                    let promptBase = texto
+                        ? _promptLivre(texto, ctx)
+                        : `Using the provided product photo, adjust it following the reference image and/or camera angle instruction given. Keep everything else in the image exactly the same, preserving the original style, lighting and composition. The product itself must remain completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings.${ctx ? ` The product is: ${ctx}.` : ''}`;
                     let entrada = blob;
                     if (_refBlobEditor) {
                         entrada = [_refBlobEditor, blob];

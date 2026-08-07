@@ -4380,6 +4380,39 @@
                         </div>
                         <div id="lanc-fotos-status" class="lanc-fotos-status"></div>
                         <div id="lanc-fotos-grid" class="lanc-fotos-grid"></div>
+
+                        <div class="lanc-gerar-fotos-bloco">
+                            <button type="button" class="lanc-gerar-fotos-toggle" id="lanc-gerar-fotos-toggle">
+                                <i data-lucide="sparkles" style="width:14px;height:14px"></i> Gerar fotos com IA
+                                <i data-lucide="chevron-down" style="width:14px;height:14px;margin-left:auto" id="lanc-gerar-fotos-chevron"></i>
+                            </button>
+                            <div class="lanc-gerar-fotos-corpo hidden" id="lanc-gerar-fotos-corpo">
+                                <label style="font-size:0.78rem;color:var(--text-muted)">Foto-base (produto real, sempre preservado)</label>
+                                <div id="lanc-gerar-fonte" class="lanc-gerar-fonte-grid"></div>
+                                <input type="file" id="lanc-gerar-upload" accept="image/*" hidden>
+
+                                <label for="lanc-gerar-cenario" style="margin-top:0.7rem;display:block;font-size:0.78rem;color:var(--text-muted)">Cenário (opcional)</label>
+                                <input type="text" id="lanc-gerar-cenario" class="input" placeholder="ex.: on top of a wooden table" list="lanc-gerar-cenario-sugestoes">
+                                <datalist id="lanc-gerar-cenario-sugestoes"></datalist>
+                                <div id="lanc-gerar-cenario-chips" class="lanc-cenario-chips"></div>
+
+                                <div class="lanc-gerar-angulos-head" style="margin-top:0.7rem">
+                                    <label style="font-size:0.78rem;color:var(--text-muted)">Ângulos (opcional — marque um ou mais)</label>
+                                    <button type="button" class="lanc-link-btn" id="lanc-gerar-angulos-todos">Selecionar todos</button>
+                                </div>
+                                <div id="lanc-gerar-angulos" class="studio-presets"></div>
+
+                                <label for="lanc-gerar-descricao" style="margin-top:0.7rem;display:block;font-size:0.78rem;color:var(--text-muted)">Descreva o que quer mudar (opcional se já tiver cenário ou ângulo)</label>
+                                <div class="prompt-lib-row">
+                                    <input type="text" id="lanc-gerar-descricao" class="input" placeholder="Ex.: fundo cinza claro, sem mão segurando">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="lanc-gerar-descricao-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                                </div>
+
+                                <div class="bulk-progress" id="lanc-gerar-prog" style="display:none"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="lanc-gerar-fill"></div></div></div>
+                                <div id="lanc-gerar-status" class="lanc-fotos-status"></div>
+                                <button type="button" class="btn btn-primary btn-sm" id="lanc-gerar-fotos-btn" style="margin-top:0.6rem"><i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar fotos</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="lanc-nav">
                         <button type="button" class="btn btn-secondary" data-lanc-voltar="1">Voltar</button>
