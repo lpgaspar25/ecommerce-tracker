@@ -12306,6 +12306,13 @@ thead:hover .diary-check-col input[type="checkbox"],
     margin-bottom: 0.75rem;
 }
 
+.shopify-widget-escopo {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin: 0.2rem 0 0.6rem;
+    line-height: 1.4;
+}
+
 .shopify-metric {
     padding: 0.6rem;
     background: var(--bg-input);

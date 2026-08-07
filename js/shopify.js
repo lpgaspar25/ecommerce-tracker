@@ -1770,9 +1770,13 @@ const ShopifyModule = (() => {
                     </button>
                 </div>
 
+                <p class="shopify-widget-escopo">
+                    ${totalShopifyOrders} pedido${totalShopifyOrders === 1 ? '' : 's'} Shopify no período · ${totalShopify} venda${totalShopify === 1 ? '' : 's'} já conciliada${totalShopify === 1 ? '' : 's'} com o diário (produto vinculado + Facebook preenchido)
+                </p>
+
                 <div class="shopify-widget-summary">
-                    <div class="shopify-metric">
-                        <span class="shopify-metric-label">Vendas Shopify</span>
+                    <div class="shopify-metric" title="Só conta vendas de produtos vinculados que já têm o diário do Facebook preenchido — não é o total de pedidos da Shopify.">
+                        <span class="shopify-metric-label">Vendas conciliadas</span>
                         <span class="shopify-metric-value">${totalShopify}</span>
                     </div>
                     <div class="shopify-metric">
