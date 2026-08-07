@@ -705,6 +705,9 @@ Regras de engenharia (não pule nenhuma):
                         <div class="form-group" style="flex:1 1 100%">
                             <div class="loja-code-label-row">
                                 <label>Código</label>
+                                <button type="button" class="loja-copy-btn" data-snip-img="${s.id}" title="Inserir imagem no código">
+                                    <i data-lucide="image-plus" style="width:12px;height:12px"></i>
+                                </button>
                                 <button type="button" class="loja-copy-btn" data-snip-expandir="${s.id}" title="Expandir/recolher código">
                                     <i data-lucide="maximize-2" style="width:12px;height:12px"></i>
                                 </button>
@@ -844,6 +847,13 @@ Regras de engenharia (não pule nenhuma):
             const instalar = ev.target.closest('[data-snip-instalar]');
             if (instalar) { _abrirPainelInstalar(instalar.dataset.snipInstalar); return; }
 
+            const img = ev.target.closest('[data-snip-img]');
+            if (img) {
+                const area = ev.target.closest('.loja-snippet-item')?.querySelector('.loja-code-area');
+                if (area) _abrirInserirImagem(area);
+                return;
+            }
+
             const expandir = ev.target.closest('[data-snip-expandir]');
             if (expandir) {
                 const id = expandir.dataset.snipExpandir;
@@ -855,6 +865,176 @@ Regras de engenharia (não pule nenhuma):
                 return;
             }
         });
+    }
+
+    // ── Inserir imagem no código (LAUNCH-04) ─────────────────────────────
+    // Sobe uma imagem (opcionalmente editada por IA, com os mesmos recursos
+    // de cenário/ângulo/formato/biblioteca de prompts já usados no
+    // Lançamento) pros Arquivos da loja e cola a URL pública no ponto do
+    // cursor do textarea de código — não existe um "campo de imagem" no
+    // código Liquid gerado, então a URL é o jeito de levar uma imagem real
+    // pra dentro de um {% schema %} ou de uma tag <img> que o usuário edite.
+    const SUGESTOES_CENARIO_LOJA = [
+        'clean e-commerce banner, soft studio lighting',
+        'lifestyle scene with natural light, minimal background',
+        'flat lay on a neutral textured surface',
+        'seasonal promotional background, subtle and elegant',
+    ];
+    const ANGULOS_CAMERA_LOJA = [
+        { id: 'frontal',  label: 'Frontal',        instrucao: 'Camera angle: straight-on frontal view.' },
+        { id: '3-4-esq',  label: '3/4 esquerdo',   instrucao: 'Camera angle: three-quarter view from the front-left.' },
+        { id: '3-4-dir',  label: '3/4 direito',    instrucao: 'Camera angle: three-quarter view from the front-right.' },
+        { id: 'lateral',  label: 'Lateral',         instrucao: 'Camera angle: direct side profile, 90 degrees from the front.' },
+        { id: 'superior', label: 'Superior (topo)', instrucao: 'Camera angle: top-down flat-lay view.' },
+        { id: 'em-uso',   label: 'Em uso',          instrucao: 'Camera angle: the product actively being used, in a natural context.' },
+    ];
+    const DIMENSOES_LOJA = [
+        { id: '16x9', label: 'Banner 16:9',   w: 1920, h: 1080, ar: '16:9' },
+        { id: '1x1',  label: 'Quadrado 1:1',  w: 1080, h: 1080, ar: '1:1' },
+        { id: '4x5',  label: 'Retrato 4:5',   w: 1080, h: 1350, ar: '4:5' },
+        { id: '21x9', label: 'Hero 21:9',     w: 2100, h: 900,  ar: '21:9' },
+    ];
+
+    function _provedorImagemLoja() {
+        return localStorage.getItem('studio_img_provider') || 'auto';
+    }
+    function _modeloImagemLoja() {
+        return localStorage.getItem('studio_img_modelo') || '';
+    }
+
+    // Cola texto na posição do cursor de um <textarea> e reemite 'input' pra
+    // o listener que já grava o campo (_gravarCampo) pegar a mudança sozinho
+    // — sem isso a URL entraria no DOM mas nunca no _snippets em memória.
+    function _inserirNoCursor(textarea, texto) {
+        const ini = textarea.selectionStart ?? textarea.value.length;
+        const fim = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = textarea.value.slice(0, ini) + texto + textarea.value.slice(fim);
+        const pos = ini + texto.length;
+        textarea.setSelectionRange(pos, pos);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
+    }
+
+    function _abrirInserirImagem(textarea) {
+        document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
+        let _blobBase = null;
+
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="image-plus" style="width:16px;height:16px;vertical-align:-3px"></i> Inserir imagem no código</h3>
+                <p class="lanc-hint">Sobe a imagem pros Arquivos da loja e cola a URL pública no código, no lugar do cursor.</p>
+                <input type="file" id="loja-img-upload" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary btn-sm" id="loja-img-upload-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Escolher imagem</button>
+                <img id="loja-img-preview" class="lanc-ref-preview" style="display:none;width:60px;height:60px;margin-top:0.4rem">
+                <div class="lanc-avancado" id="loja-img-avancado" style="display:none">
+                    <span style="font-size:0.78rem;color:var(--text-muted)">Editar com IA antes de inserir (opcional — sem nada aqui, sobe a imagem como está)</span>
+                    <div class="prompt-lib-row" style="margin-top:0.4rem">
+                        <input type="text" id="loja-img-cenario" class="input" placeholder="Cenário (ex.: clean e-commerce banner)" list="loja-img-cenario-sugestoes">
+                        <button type="button" class="btn btn-secondary btn-sm" id="loja-img-cenario-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                    </div>
+                    <datalist id="loja-img-cenario-sugestoes">${SUGESTOES_CENARIO_LOJA.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+                    <div class="lanc-cenario-chips">${SUGESTOES_CENARIO_LOJA.map(s => `<button type="button" class="lanc-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
+                    <div class="lanc-avancado-row">
+                        <select id="loja-img-angulo" class="input input-sm" title="Ângulo de câmera (opcional)">
+                            <option value="">Ângulo automático</option>
+                            ${ANGULOS_CAMERA_LOJA.map(a => `<option value="${a.id}">${escapeHtml(a.label)}</option>`).join('')}
+                        </select>
+                        <select id="loja-img-formato" class="input input-sm" title="Formato/proporção de saída (opcional)">
+                            <option value="">Formato original</option>
+                            ${DIMENSOES_LOJA.map(d => `<option value="${d.id}">${escapeHtml(d.label)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <input type="text" id="loja-img-descricao" class="input" style="margin-top:0.4rem" placeholder="Ou descreva o que quer mudar">
+                </div>
+                <div class="bulk-progress" id="loja-img-prog" style="display:none"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="loja-img-fill"></div></div></div>
+                <div id="loja-img-status" class="lanc-fotos-status"></div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="loja-img-fechar">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="loja-img-ok" disabled>Inserir</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.querySelector('#loja-img-fechar').addEventListener('click', () => ov.remove());
+
+        const preview = ov.querySelector('#loja-img-preview');
+        const avancado = ov.querySelector('#loja-img-avancado');
+        const btnOk = ov.querySelector('#loja-img-ok');
+        ov.querySelector('#loja-img-upload-btn').addEventListener('click', () => ov.querySelector('#loja-img-upload').click());
+        ov.querySelector('#loja-img-upload').addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            _blobBase = f;
+            preview.src = URL.createObjectURL(f);
+            preview.style.display = '';
+            avancado.style.display = '';
+            btnOk.disabled = false;
+        });
+        ov.querySelectorAll('.lanc-cenario-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                ov.querySelector('#loja-img-cenario').value = chip.dataset.sug;
+                ov.querySelector('#loja-img-cenario').focus();
+            });
+        });
+        ov.querySelector('#loja-img-cenario-lib')?.addEventListener('click', () => {
+            const campo = ov.querySelector('#loja-img-cenario');
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
+
+        const executar = async () => {
+            const status = ov.querySelector('#loja-img-status');
+            const prog = ov.querySelector('#loja-img-prog');
+            const fill = ov.querySelector('#loja-img-fill');
+            if (!_blobBase) { showToast('Escolha uma imagem primeiro', 'error'); return; }
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+                showToast('Conecte a Shopify (Configurações → Integrações) pra hospedar a imagem', 'error');
+                return;
+            }
+            btnOk.disabled = true;
+            prog.style.display = '';
+            fill.style.width = '30%';
+            try {
+                const cenario = ov.querySelector('#loja-img-cenario').value.trim();
+                const descricao = ov.querySelector('#loja-img-descricao').value.trim();
+                const anguloId = ov.querySelector('#loja-img-angulo').value;
+                const angulo = ANGULOS_CAMERA_LOJA.find(a => a.id === anguloId);
+                const formatoId = ov.querySelector('#loja-img-formato').value;
+                const formato = DIMENSOES_LOJA.find(d => d.id === formatoId);
+
+                let saida = _blobBase;
+                if (cenario || descricao || angulo) {
+                    status.textContent = 'Gerando com IA…';
+                    let prompt = cenario
+                        ? ImageAI.promptCenario(cenario, '')
+                        : `Using the provided image, apply this change: ${descricao || 'adjust following the requested camera angle'}. Keep the rest of the image coherent, professional and suitable for an e-commerce website section.`;
+                    if (angulo) prompt += ` ${angulo.instrucao}`;
+                    saida = await ImageAI.editar(_blobBase, prompt, {
+                        formato: 'image/webp', compressao: 92,
+                        provedor: _provedorImagemLoja(), modelo: _modeloImagemLoja() || undefined,
+                        ...(formato ? { largura: formato.w, altura: formato.h, aspectRatio: formato.ar } : {}),
+                    });
+                }
+                fill.style.width = '70%';
+                status.textContent = 'Subindo pros Arquivos da loja…';
+                const url = await ShopifyModule.hospedarBlobImagem(saida, `secao-${Date.now()}`);
+                if (!url) throw new Error('A Shopify não devolveu a URL da imagem');
+                fill.style.width = '100%';
+                _inserirNoCursor(textarea, url);
+                showToast('Imagem inserida no código', 'success');
+                ov.remove();
+            } catch (e) {
+                status.textContent = 'Erro: ' + e.message;
+                status.style.color = 'var(--danger, #ef4444)';
+                btnOk.disabled = false;
+            }
+        };
+        btnOk.addEventListener('click', executar);
+        _icones();
     }
 
     // ── Instalar no tema (fluxo GUIADO — nunca escreve na Shopify sozinho) ──

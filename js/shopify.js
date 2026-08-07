@@ -2254,9 +2254,11 @@ const ShopifyModule = (() => {
         return tmp.innerHTML;
     }
 
-    // Sobe um data:URL para a Files da loja e devolve a URL pública (poll).
-    async function _hospedarArquivoImagem(dataUrl, nome) {
-        const blob = await bytesDaImagem(dataUrl);
+    // Sobe um BLOB pra Files da loja e devolve a URL pública (poll) — núcleo
+    // compartilhado por _hospedarArquivoImagem (recebe data:URL, usada na
+    // descrição do produto) e hospedarBlobImagem (API pública, usada pelo
+    // botão "Inserir imagem" do Loja/Código — LAUNCH-04).
+    async function _hospedarBlobImagem(blob, nome) {
         const ext = (blob.type.split('/')[1] || 'webp').replace('jpeg', 'jpg');
         const arquivo = `${nome}.${ext}`;
         const alvo = await _criarAlvoDeUpload(arquivo, blob.type || 'image/webp', blob.size);
@@ -2282,6 +2284,19 @@ const ShopifyModule = (() => {
             url = pd?.node?.image?.url;
         }
         return url || '';
+    }
+
+    // Sobe um data:URL para a Files da loja e devolve a URL pública (poll).
+    async function _hospedarArquivoImagem(dataUrl, nome) {
+        return _hospedarBlobImagem(await bytesDaImagem(dataUrl), nome);
+    }
+
+    // Versão pública de _hospedarBlobImagem — usada fora deste módulo (ex.:
+    // "Inserir imagem" no Loja/Código) pra hospedar uma imagem qualquer nos
+    // Arquivos da loja sem precisar vinculá-la a um produto.
+    async function hospedarBlobImagem(blob, nome) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        return _hospedarBlobImagem(blob, nome || `imagem-${Date.now()}`);
     }
 
     // ── Agente de Loja (Fase 1: campos de produto + atribuição de template) ──
@@ -2382,5 +2397,6 @@ const ShopifyModule = (() => {
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
         fetchThemes, fetchThemeFiles, fetchProductTemplates, updateProductFields, updateVariantPrice,
+        hospedarBlobImagem,
     };
 })();
