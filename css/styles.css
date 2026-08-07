@@ -9764,6 +9764,16 @@ thead:hover .diary-check-col input[type="checkbox"],
 .mcal-summary-compare { color: var(--text-muted); font-size: 0.7rem; }
 .mcal-conv-fonte { font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0; line-height: 1.4; }
 
+/* Configurações do menu — reordenar sidebar (NAV-01) */
+.sidebar-order-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 400px; overflow-y: auto; }
+.sidebar-order-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card);
+    font-size: 0.85rem;
+}
+.sidebar-order-acoes { display: flex; gap: 0.2rem; }
+.sidebar-order-acoes .btn-icon:disabled { opacity: 0.25; cursor: default; }
+
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 
