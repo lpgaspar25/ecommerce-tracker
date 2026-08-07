@@ -56,7 +56,6 @@
         <button class="tab-btn" data-tab="ads-manager" hidden>Ads Manager</button>
         <button class="tab-btn" data-tab="ad-hierarchy" hidden>Mapa de Ads</button>
         <button class="tab-btn" data-tab="creative-insights" hidden>Creative Insights</button>
-        <button class="tab-btn" data-tab="brands" hidden>Brands</button>
         <button class="tab-btn" data-tab="recent-edits" hidden>Recent Edits</button>
         <button class="tab-btn" data-tab="saved-inspirations" hidden>Saved Inspirations</button>
         <button class="tab-btn" data-tab="importador">Importador</button>
@@ -135,7 +134,6 @@
             <button class="sidebar-group-header" data-group="creative"><i data-lucide="sparkles" class="sidebar-icon"></i><span>AI Ad Hub</span><i data-lucide="chevron-down" class="sidebar-chevron"></i></button>
             <div class="sidebar-group-items" data-group-items="creative">
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="ad-library"><i data-lucide="library" class="sidebar-icon"></i><span>Ad Library</span></a>
-                <a href="#" class="sidebar-link sidebar-sublink" data-tab="brands"><i data-lucide="building-2" class="sidebar-icon"></i><span>Brands</span></a>
                 <a href="#" class="sidebar-link sidebar-sublink" data-tab="ai-generations">
                     <i data-lucide="wand-2" class="sidebar-icon"></i>
                     <span>AI Generations</span>
@@ -5504,37 +5502,6 @@
             </div>
         </section>
 
-        <!-- ==================== BRANDS ==================== -->
-        <section id="tab-brands" class="tab-panel">
-            <div class="section-header">
-                <h2><i data-lucide="building-2" style="width:20px;height:20px;vertical-align:-3px"></i> Brands</h2>
-                <p class="section-subtitle" style="margin:0">Diretório de marcas para monitorar — siga concorrentes e descubra inspirações no feed.</p>
-            </div>
-            <div class="adhub-tabs">
-                <button class="adhub-tab adhub-tab-active" data-brands-tab="all">All brands</button>
-                <button class="adhub-tab" data-brands-tab="followed">Followed Brands</button>
-            </div>
-            <div class="adhub-toolbar">
-                <button class="btn btn-secondary btn-sm" id="brands-filter-btn"><i data-lucide="filter" style="width:14px;height:14px"></i> Filters</button>
-                <input type="search" class="input input-sm" id="brands-search" placeholder="Search brands…" style="flex:1;max-width:320px">
-                <span class="adhub-count" id="brands-count">0 brands</span>
-            </div>
-            <div class="brands-table-wrap">
-                <table class="brands-table">
-                    <thead>
-                        <tr>
-                            <th>Facebook Page name</th>
-                            <th>Industry</th>
-                            <th data-brands-sort="ads" class="brands-sortable">Ads <i data-lucide="arrow-down" style="width:12px;height:12px"></i></th>
-                            <th style="width:90px">Follow</th>
-                        </tr>
-                    </thead>
-                    <tbody id="brands-tbody"></tbody>
-                </table>
-            </div>
-            <div class="brands-pagination" id="brands-pagination"></div>
-        </section>
-
         <!-- ==================== RECENT EDITS ==================== -->
         <section id="tab-recent-edits" class="tab-panel">
             <div class="section-header">
@@ -6536,7 +6503,6 @@
     <script src="js/ai-generations.js"></script>
     <script src="js/prompt-templates.js"></script>
     <script src="js/recent-edits.js"></script>
-    <script src="js/brands.js"></script>
     <script src="js/saved-inspirations.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
