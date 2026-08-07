@@ -109,7 +109,6 @@ const LancamentoModule = (() => {
         document.getElementById('lanc-base-zero')?.addEventListener('click', () => _selecionarBase('zero'));
         document.getElementById('lanc-base-molde')?.addEventListener('click', () => _selecionarBase('molde'));
         document.getElementById('lanc-titulo')?.addEventListener('input', (e) => { _state.titulo = e.target.value; });
-        document.getElementById('lanc-molde-select')?.addEventListener('change', (e) => _selecionarMolde(e.target.value));
         document.getElementById('lanc-passo1-avancar')?.addEventListener('click', () => {
             if (!_state.titulo.trim()) { showToast('Dá um nome pro produto novo primeiro', 'error'); return; }
             if (_state.base === 'molde' && !_state.moldeProductId) { showToast('Escolha um produto-molde', 'error'); return; }
@@ -131,18 +130,22 @@ const LancamentoModule = (() => {
     }
 
     async function _carregarProdutosDaLoja() {
-        const select = document.getElementById('lanc-molde-select');
-        if (!select || select.dataset.carregado === '1') return;
+        const container = document.getElementById('lanc-molde-select-picker');
+        if (!container || container.dataset.carregado === '1' || typeof ProductPicker === 'undefined') return;
         if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
             _setMoldeStatus('Conecte a Shopify (Configurações → Integrações) pra usar um produto da loja como molde.', 'error');
-            return;
+            return; // não marca carregado — permite tentar de novo depois de conectar
         }
         _setMoldeStatus('Carregando produtos da loja…');
         try {
-            const produtos = await ShopifyModule.fetchShopifyProducts();
-            select.innerHTML = '<option value="">-- Escolha um produto da loja --</option>'
-                + produtos.map(p => `<option value="${p.id}">${escapeHtml(p.title)}</option>`).join('');
-            select.dataset.carregado = '1';
+            await ProductPicker.render(container, {
+                source: 'shopify',
+                instancia: 'lancamento-molde',
+                selectedId: _state.moldeProductId || null,
+                placeholder: 'Buscar produto da loja por nome ou SKU…',
+                onSelect: (item) => _selecionarMolde(item.id),
+            });
+            container.dataset.carregado = '1'; // só marca carregado depois de um render OK — falha permite tentar de novo
             _setMoldeStatus('');
         } catch (e) {
             _setMoldeStatus('Erro ao carregar produtos: ' + e.message, 'error');
@@ -1588,9 +1591,9 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         if (tituloEl) tituloEl.value = _state.titulo;
         _selecionarBase(_state.base);
         if (_state.base === 'molde' && _state.moldeProductId) {
+            // _carregarProdutosDaLoja já lê _state.moldeProductId (setado acima)
+            // como selectedId do picker — nasce com o molde certo pré-selecionado.
             await _carregarProdutosDaLoja();
-            const sel = document.getElementById('lanc-molde-select');
-            if (sel) sel.value = _state.moldeProductId;
             _selecionarMolde(_state.moldeProductId); // não bloqueia — só refaz moldeDetalhes/status em segundo plano
         }
 

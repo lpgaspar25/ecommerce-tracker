@@ -4160,7 +4160,7 @@
         <section id="tab-studio" class="tab-panel">
             <div class="section-header">
                 <h2><i data-lucide="palette" style="width:20px;height:20px;vertical-align:-3px"></i> Estúdio de Produto</h2>
-                <select id="studio-produto" class="input" style="max-width:340px"></select>
+                <div id="studio-produto-picker" style="max-width:340px;flex:1"></div>
                 <div style="margin-left:auto;display:flex;gap:0.5rem" id="studio-pagina-acoes">
                     <button id="studio-exportar-csv" class="btn btn-secondary btn-sm" title="Gera o CSV no formato de importação da Shopify"><i data-lucide="file-down" style="width:14px;height:14px;vertical-align:-2px"></i> Exportar CSV Shopify</button>
                 </div>
@@ -4349,10 +4349,8 @@
                             </button>
                         </div>
                         <div id="lanc-molde-picker" class="hidden" style="margin-top:0.8rem">
-                            <label for="lanc-molde-select">Produto-molde</label>
-                            <select id="lanc-molde-select" class="input">
-                                <option value="">-- Escolha um produto da loja --</option>
-                            </select>
+                            <label>Produto-molde</label>
+                            <div id="lanc-molde-select-picker"></div>
                             <div id="lanc-molde-status" class="lanc-molde-status"></div>
                         </div>
                         <div style="margin-top:0.8rem">
@@ -6546,6 +6544,7 @@
     <script src="js/ai-generations.js"></script>
     <script src="js/prompt-templates.js"></script>
     <script src="js/recent-edits.js"></script>
+    <script src="js/product-picker.js"></script>
     <script src="js/saved-inspirations.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>

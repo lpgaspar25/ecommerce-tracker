@@ -1161,11 +1161,15 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function _icones() { if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
 
     function _preencherProdutos() {
-        const sel = document.getElementById('studio-produto');
-        if (!sel) return;
-        const produtos = (AppState.allProducts || []).filter(p => p.status !== 'inativo');
-        sel.innerHTML = '<option value="">-- Escolha o produto --</option>' +
-            produtos.map(p => `<option value="${_esc(p.id)}"${p.id === _state.productId ? ' selected' : ''}>${_esc(p.name)}</option>`).join('');
+        const container = document.getElementById('studio-produto-picker');
+        if (!container || typeof ProductPicker === 'undefined') return;
+        ProductPicker.render(container, {
+            source: 'local',
+            instancia: 'studio',
+            selectedId: _state.productId || null,
+            placeholder: 'Buscar produto por nome ou SKU…',
+            onSelect: (item) => _selecionarProduto(item.id),
+        });
     }
 
     function _renderAngulos() {
@@ -1811,8 +1815,6 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function init() {
         _load();
-
-        document.getElementById('studio-produto')?.addEventListener('change', (e) => _selecionarProduto(e.target.value));
 
         document.getElementById('studio-gerar-fotos')?.addEventListener('click', () => {
             // Presets de texto E cenários de referência (containers separados).

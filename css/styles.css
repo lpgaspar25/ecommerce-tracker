@@ -16608,3 +16608,38 @@ body:not([data-theme]) .adh-board-viewport {
 .lanc-revisar-preview img { max-width: 100%; border-radius: 8px; display: block; margin: 0.5rem 0; }
 .lanc-preview-brinde { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border); }
 .lanc-revisar-acoes { display: flex; gap: 0.6rem; }
+
+/* ProductPicker — seletor de produto padronizado (STUDIO-03) */
+.ppick { position: relative; }
+.ppick-selecionado {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.5rem;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius); background: rgba(255,255,255,0.04);
+    height: 36px; box-sizing: border-box;
+}
+.ppick-selecionado .ppick-thumb { width: 24px; height: 24px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+.ppick-selecionado .ppick-thumb-vazia { width: 24px; height: 24px; border-radius: 5px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+.ppick-nome { flex: 1; font-size: 0.82rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppick-trocar {
+    background: none; border: none; color: var(--accent); font-size: 0.76rem; font-weight: 600;
+    cursor: pointer; padding: 0.2rem 0.3rem; flex-shrink: 0;
+}
+.ppick-trocar:hover { text-decoration: underline; }
+.ppick-busca-box { position: relative; }
+.ppick-lista {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+    max-height: 320px; overflow-y: auto; padding: 0.35rem;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.ppick-secao-label { font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; padding: 0.3rem 0.5rem; }
+.ppick-item {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.4rem 0.5rem;
+    background: none; border: none; border-radius: 7px; cursor: pointer; text-align: left;
+}
+.ppick-item:hover { background: rgba(139,92,246,0.1); }
+.ppick-item img { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.ppick-item-sem-foto { width: 30px; height: 30px; border-radius: 6px; background: rgba(255,255,255,0.06); flex-shrink: 0; }
+.ppick-item-info { display: flex; flex-direction: column; min-width: 0; }
+.ppick-item-info strong { font-size: 0.82rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppick-item-info small { font-size: 0.7rem; color: var(--text-muted); }
+.ppick-vazio { padding: 0.7rem 0.5rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
