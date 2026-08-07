@@ -890,6 +890,31 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         'on a beach towel with sand and sea in the background',
     ];
 
+    // Mesmos ângulos de câmera do Estúdio de Produto (js/studio.js,
+    // ANGULOS_CAMERA) — duplicado aqui de propósito (mesmo padrão já usado
+    // por SUGESTOES_CENARIO acima) pra não acoplar a ordem de carregamento
+    // dos scripts.
+    const ANGULOS_CAMERA_LANC = [
+        { id: 'frontal',  label: 'Frontal',        instrucao: 'Camera angle: straight-on frontal view, camera at the product\'s own height.' },
+        { id: '3-4-esq',  label: '3/4 esquerdo',   instrucao: 'Camera angle: three-quarter view shot from the front-left of the product.' },
+        { id: '3-4-dir',  label: '3/4 direito',    instrucao: 'Camera angle: three-quarter view shot from the front-right of the product.' },
+        { id: 'lateral',  label: 'Lateral',         instrucao: 'Camera angle: direct side profile, 90 degrees from the front.' },
+        { id: 'traseiro', label: 'Traseiro',        instrucao: 'Camera angle: shot from directly behind, showing the back of the product.' },
+        { id: 'superior', label: 'Superior (topo)', instrucao: 'Camera angle: top-down flat-lay view, camera positioned directly above the product.' },
+        { id: 'macro',    label: 'Detalhe / macro', instrucao: 'Camera angle: extreme close-up macro shot focused on the product\'s texture, material and finish.' },
+        { id: 'em-uso',   label: 'Em uso',          instrucao: 'Camera angle: the product actively being used, in a natural and realistic context.' },
+        { id: 'packshot', label: 'Packshot',        instrucao: 'Camera angle: clean isolated packshot, centered, no distracting elements, catalogue style.' },
+    ];
+
+    // Formatos de saída pro editor de fotos (opcional — "Formato original"
+    // deixa a IA decidir, igual ao comportamento de sempre).
+    const DIMENSOES_LANC = [
+        { id: '1x1',  label: 'Quadrado 1:1',  w: 1080, h: 1080, ar: '1:1' },
+        { id: '9x16', label: 'Story 9:16',    w: 1080, h: 1920, ar: '9:16' },
+        { id: '4x5',  label: 'Feed 4:5',      w: 1080, h: 1350, ar: '4:5' },
+        { id: '16x9', label: 'Paisagem 16:9', w: 1920, h: 1080, ar: '16:9' },
+    ];
+
     // Provedor/modelo de IA escolhido pro editor de fotos — mesma chave de
     // localStorage que Produtos/Estúdio já usam (studio_img_provider/
     // studio_img_modelo), pra não pedir a mesma escolha 3 vezes no app.
@@ -975,6 +1000,25 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                             <strong>${p.label}</strong><span>${p.descricao}</span>
                         </button>`).join('')}
                 </div>
+                <div class="lanc-avancado" id="lanc-avancado">
+                    <span style="font-size:0.78rem;color:var(--text-muted)">Opções avançadas — valem pra Cenário e Ajuste personalizado</span>
+                    <div class="lanc-avancado-row">
+                        <div class="lanc-avancado-ref">
+                            <input type="file" id="lanc-ref-file" accept="image/*" hidden>
+                            <button type="button" class="btn btn-secondary btn-sm" id="lanc-ref-btn"><i data-lucide="image-plus" style="width:13px;height:13px"></i> Foto de referência</button>
+                            <img id="lanc-ref-preview" alt="" class="lanc-ref-preview" style="display:none">
+                            <button type="button" class="btn-icon" id="lanc-ref-remover" style="display:none" title="Remover referência"><i data-lucide="x" style="width:13px;height:13px"></i></button>
+                        </div>
+                        <select id="lanc-editor-angulo" class="input input-sm" title="Ângulo de câmera (opcional)">
+                            <option value="">Ângulo automático</option>
+                            ${ANGULOS_CAMERA_LANC.map(a => `<option value="${a.id}">${escapeHtml(a.label)}</option>`).join('')}
+                        </select>
+                        <select id="lanc-editor-aspecto" class="input input-sm" title="Formato/proporção de saída (opcional)">
+                            <option value="">Formato original</option>
+                            ${DIMENSOES_LANC.map(d => `<option value="${d.id}">${escapeHtml(d.label)}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
                 <div class="lanc-cenario-painel" id="lanc-cenario-painel" style="display:none">
                     <label for="lanc-cenario-texto" style="font-size:0.78rem;color:var(--text-muted)">Onde/como o produto aparece (funciona melhor em inglês)</label>
                     <div class="prompt-lib-row">
@@ -1020,6 +1064,49 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             return alvos;
         };
 
+        // Opções avançadas (STUDIO-09) — foto de referência, ângulo de
+        // câmera e formato/proporção, usadas por Cenário e Ajuste
+        // personalizado. Não valem pra fundo branco/transparente/melhorar
+        // qualidade: são operações locais ou de restauração da MESMA foto,
+        // não geração/recomposição — anexar referência ou trocar ângulo ali
+        // não faz sentido e reabriria a brecha de alterar o produto à toa.
+        let _refBlobEditor = null;
+        const refBtn = ov.querySelector('#lanc-ref-btn');
+        const refFile = ov.querySelector('#lanc-ref-file');
+        const refPreview = ov.querySelector('#lanc-ref-preview');
+        const refRemover = ov.querySelector('#lanc-ref-remover');
+        refBtn?.addEventListener('click', () => refFile.click());
+        refFile?.addEventListener('change', () => {
+            const f = refFile.files?.[0];
+            if (!f) return;
+            _refBlobEditor = f;
+            refPreview.src = URL.createObjectURL(f);
+            refPreview.style.display = '';
+            refRemover.style.display = '';
+        });
+        refRemover?.addEventListener('click', () => {
+            _refBlobEditor = null;
+            refFile.value = '';
+            refPreview.style.display = 'none';
+            refRemover.style.display = 'none';
+        });
+
+        // Monta prompt final + opções do ImageAI.editar a partir do prompt
+        // base (já pronto) e do que estiver marcado nas opções avançadas.
+        const _comOpcoesAvancadas = (promptBase) => {
+            const anguloId = ov.querySelector('#lanc-editor-angulo')?.value || '';
+            const angulo = ANGULOS_CAMERA_LANC.find(a => a.id === anguloId);
+            const dimId = ov.querySelector('#lanc-editor-aspecto')?.value || '';
+            const dim = DIMENSOES_LANC.find(d => d.id === dimId);
+            const prompt = angulo ? `${promptBase} ${angulo.instrucao}` : promptBase;
+            const opts = {
+                formato: 'image/webp', compressao: 92,
+                provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                ...(dim ? { largura: dim.w, altura: dim.h, aspectRatio: dim.ar } : {}),
+            };
+            return { prompt, opts };
+        };
+
         ov.querySelectorAll('[data-preset]').forEach(b => {
             b.addEventListener('click', () => {
                 const p = PRESETS_EDICAO.find(x => x.id === b.dataset.preset);
@@ -1045,10 +1132,16 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             if (!alvos.length) return;
             _aplicarEdicao(alvos, {
                 label: 'Cenário',
-                executar: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptCenario(texto, ctx), {
-                    formato: 'image/webp', compressao: 92,
-                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
-                }),
+                executar: async (blob, ctx) => {
+                    let promptBase = ImageAI.promptCenario(texto, ctx);
+                    let entrada = blob;
+                    if (_refBlobEditor) {
+                        entrada = [_refBlobEditor, blob];
+                        promptBase = `Use the two provided images. THE FIRST IMAGE is a style/composition reference — copy its scene, lighting and framing. THE SECOND IMAGE is the real product photo. ${promptBase} Keep the product from the second image completely unchanged — same shape, colour, material, branding, logos and text.`;
+                    }
+                    const { prompt, opts } = _comOpcoesAvancadas(promptBase);
+                    return ImageAI.editar(entrada, prompt, opts);
+                },
             }, ov);
         };
         ov.querySelector('#lanc-cenario-aplicar').addEventListener('click', aplicarCenario);
@@ -1067,10 +1160,16 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             if (!alvos.length) return;
             _aplicarEdicao(alvos, {
                 label: 'Ajuste personalizado',
-                executar: async (blob, ctx) => ImageAI.editar(blob, _promptLivre(texto, ctx), {
-                    formato: 'image/webp', compressao: 92,
-                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
-                }),
+                executar: async (blob, ctx) => {
+                    let promptBase = _promptLivre(texto, ctx);
+                    let entrada = blob;
+                    if (_refBlobEditor) {
+                        entrada = [_refBlobEditor, blob];
+                        promptBase = `Use the two provided images. THE FIRST IMAGE is a style/composition reference — copy its scene, lighting and framing. THE SECOND IMAGE is the real product photo. ${promptBase} Keep the product from the second image completely unchanged — same shape, colour, material, branding, logos and text.`;
+                    }
+                    const { prompt, opts } = _comOpcoesAvancadas(promptBase);
+                    return ImageAI.editar(entrada, prompt, opts);
+                },
             }, ov);
         };
         ov.querySelector('#lanc-prompt-ok').addEventListener('click', aplicarLivre);

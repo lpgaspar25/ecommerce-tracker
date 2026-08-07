@@ -16497,6 +16497,11 @@ body:not([data-theme]) .adh-board-viewport {
 .lanc-prompt-row { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
 .lanc-prompt-row .input { flex: 1; }
 .lanc-ov-acoes { display: flex; justify-content: flex-end; margin-top: 0.9rem; }
+.lanc-avancado { margin-top: 0.7rem; padding: 0.7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02)); }
+.lanc-avancado-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.lanc-avancado-row select { flex: 1; min-width: 140px; }
+.lanc-avancado-ref { display: flex; align-items: center; gap: 0.4rem; }
+.lanc-ref-preview { width: 30px; height: 30px; object-fit: cover; border-radius: 6px; }
 
 /* Lançamento → brinde */
 .lanc-brinde-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
