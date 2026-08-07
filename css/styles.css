@@ -3787,6 +3787,50 @@ body {
 }
 .prod-image-thumb:hover .prod-image-enhance,
 .prod-image-enhance:focus-visible { opacity: 1; }
+.prod-image-zoom {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    background: rgba(0,0,0,0.65);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity .15s;
+}
+.prod-image-thumb:hover .prod-image-zoom,
+.prod-image-zoom:focus-visible { opacity: 1; }
+
+/* Seletor de imagem (STUDIO-08) */
+.psel-secao-titulo { font-size: 0.76rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem; }
+.psel-secao + .psel-secao { margin-top: 0.8rem; }
+.psel-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.psel-item {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    transition: border-color 0.12s;
+}
+.psel-item:hover { border-color: var(--accent); }
+.psel-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.psel-tag {
+    position: absolute; bottom: 2px; left: 2px; right: 2px;
+    font-size: 0.55rem; font-weight: 700; text-align: center;
+    padding: 1px 2px; border-radius: 3px; background: rgba(0,0,0,0.65); color: #fff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .prod-image-ai {
     position: absolute;
     top: 2px;

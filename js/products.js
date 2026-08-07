@@ -1011,7 +1011,8 @@ const ProductsModule = {
         // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
             <div class="prod-image-thumb" draggable="true" data-pos="${i}" title="Arraste pra reordenar">
-                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-ampliar="${i}" style="cursor:zoom-in">
+                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-trocar="${i}" title="Clique pra trocar esta imagem" style="cursor:pointer">
+                <button type="button" class="prod-image-zoom" data-ampliar="${i}" title="Ampliar"><i data-lucide="zoom-in" style="width:12px;height:12px"></i></button>
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
                 <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
@@ -1029,7 +1030,7 @@ const ProductsModule = {
         thumbs.querySelectorAll('[data-enhance]').forEach(btn => {
             btn.addEventListener('click', () => this.melhorarImagem(parseInt(btn.dataset.enhance, 10)));
         });
-        // Clicar na miniatura amplia — sem isso não dá pra conferir de verdade
+        // Ampliar tem ícone próprio — sem isso não dá pra conferir de verdade
         // se a versão melhorada ficou boa (a miniatura tem ~90px).
         thumbs.querySelectorAll('[data-ampliar]').forEach(el => {
             el.addEventListener('click', () => {
@@ -1039,6 +1040,11 @@ const ProductsModule = {
                                 im.melhorada ? '(melhorada por IA)' : ''].filter(Boolean).join(' ');
                 abrirImagemAmpliada(im.dataUrl || im.url, rotulo);
             });
+        });
+        // Clicar na imagem em si abre o seletor (STUDIO-08) — trocar não fica
+        // restrito ao botão de IA (que só melhora a imagem já presente).
+        thumbs.querySelectorAll('[data-trocar]').forEach(el => {
+            el.addEventListener('click', () => this._abrirSeletorImagem(parseInt(el.dataset.trocar, 10)));
         });
         // Reordenar por arrastar — a 1ª posição sempre vira a capa (mesmo
         // comportamento da galeria da Shopify), sem precisar de botão extra.
@@ -1077,6 +1083,73 @@ const ProductsModule = {
         // Imagens da Shopify são URLs e não contam para esse limite.
         const enviadas = this._images.filter(im => im.dataUrl).length;
         if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+    },
+
+    // Seletor de imagem (STUDIO-08) — clicar numa miniatura da galeria abre
+    // isto em vez de só ampliar. Reúne fotos já usadas neste produto, o que
+    // o Estúdio já gerou pra ele e outras fontes conhecidas (Shopify,
+    // variante, fornecedor, criativo) — sem ficar restrito ao botão de IA.
+    _abrirSeletorImagem(idx) {
+        const pid = document.getElementById('product-id')?.value || '';
+        const geradas = window.StudioModule?._dados?.(pid)?.fotos || [];
+        const outras = window.StudioModule?._fontesDeImagem?.(pid) || [];
+        const proprias = this._images.map((im, i) => ({ im, i })).filter(({ i }) => i !== idx);
+
+        const secao = (titulo, itens, render) => itens.length
+            ? `<div class="psel-secao"><div class="psel-secao-titulo">${this._esc(titulo)}</div><div class="psel-grid">${itens.map(render).join('')}</div></div>`
+            : '';
+
+        const html = `
+            <strong style="font-size:1rem">Escolher imagem</strong>
+            ${secao('Já usadas neste produto', proprias, ({ im, i }) => `
+                <button type="button" class="psel-item" data-fonte="propria" data-idx="${i}">
+                    <img src="${this._esc(im.dataUrl || im.url || '')}" alt="" loading="lazy">
+                </button>`)}
+            ${secao('Geradas por IA (Estúdio)', geradas, (f) => `
+                <button type="button" class="psel-item" data-fonte="gerada" data-media="${this._esc(f.mediaId || '')}" data-thumb="${this._esc(f.thumb || '')}">
+                    <img src="${this._esc(f.thumb || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.presetLabel || 'IA')}</span>
+                </button>`)}
+            ${secao('Outras fontes', outras, (f) => `
+                <button type="button" class="psel-item" data-fonte="outra" data-url="${this._esc(f.url || '')}">
+                    <img src="${this._esc(f.url || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.origem || '')}</span>
+                </button>`)}
+            ${(!proprias.length && !geradas.length && !outras.length) ? '<p style="color:var(--text-muted);font-size:0.85rem">Nenhuma outra imagem encontrada pra este produto — suba uma nova pelo botão de upload.</p>' : ''}
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="psel-cancelar">Cancelar</button>
+            </div>
+        `;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#psel-cancelar')?.addEventListener('click', () => ov.remove());
+            ov.querySelectorAll('.psel-item').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const fonte = btn.dataset.fonte;
+                    const atual = this._images[idx] || {};
+                    try {
+                        if (fonte === 'propria') {
+                            const origem = this._images[parseInt(btn.dataset.idx, 10)];
+                            if (origem) this._images[idx] = { ...origem };
+                        } else if (fonte === 'gerada') {
+                            const mediaId = btn.dataset.media;
+                            const rec = mediaId && window.MediaStore?.isSupported?.() ? await MediaStore.get(mediaId) : null;
+                            const dataUrl = rec?.blob
+                                ? await comprimirImagemParaDataUrl(rec.blob, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' })
+                                : btn.dataset.thumb;
+                            this._images[idx] = { ...atual, dataUrl, url: '', melhorada: true, name: (atual.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp' };
+                        } else if (fonte === 'outra') {
+                            const url = btn.dataset.url;
+                            if (url.startsWith('data:')) this._images[idx] = { ...atual, dataUrl: url, url: '' };
+                            else this._images[idx] = { ...atual, url, dataUrl: '' };
+                        }
+                        ov.remove();
+                        this._renderProductImages();
+                    } catch (e) {
+                        showToast('Falha ao trocar a imagem: ' + String(e.message).slice(0, 140), 'error');
+                    }
+                });
+            });
+        });
     },
 
     // ══════════════════════════════════════════════════════════════

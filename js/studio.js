@@ -223,6 +223,12 @@ const StudioModule = (() => {
             .slice(0, 6)
             .forEach(c => fontes.push({ url: c.mediaThumb || c.imageUrl, origem: 'Criativo', mediaId: c.mediaId || '' }));
 
+        // Fotos que o próprio Estúdio já gerou pra este produto (STUDIO-08) —
+        // sem isso, escolher uma imagem-base sempre voltava pro catálogo
+        // original, mesmo já existindo versões geradas prontas.
+        (_state.porProduto[productId]?.fotos || []).slice(0, 8)
+            .forEach(f => fontes.push({ url: f.thumb, origem: f.presetLabel || 'Gerada', mediaId: f.mediaId || '' }));
+
         // Dedupe por URL
         const vistos = new Set();
         return fontes.filter(f => !vistos.has(f.url) && vistos.add(f.url));
