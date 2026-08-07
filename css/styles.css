@@ -15588,9 +15588,15 @@ body:not([data-theme]) .adh-board-viewport {
 .loja-snippet-body { padding: 0 0.9rem 0.9rem; border-top: 1px dashed var(--border); padding-top: 0.75rem; }
 .loja-code-area {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.8rem; line-height: 1.5; min-height: 160px; resize: vertical;
+    font-size: 0.8rem; line-height: 1.5; min-height: 160px; max-height: 320px; resize: vertical;
     background: var(--bg-input, rgba(0,0,0,0.02));
+    /* Sobrepõe o field-sizing:content herdado de textarea.input — sem isso
+       o campo cresce pra caber TODO o código gerado, sem teto, e a página
+       do card fica gigante assim que a IA devolve uma seção grande. */
+    field-sizing: fixed;
+    overflow-y: auto;
 }
+.loja-code-area.is-expandido { max-height: 70vh; }
 .loja-save-status { font-size: 0.75rem; color: var(--text-muted); }
 
 /* Instalar no tema — fluxo guiado (copiar + abrir editor), nunca escreve
@@ -15610,9 +15616,17 @@ body:not([data-theme]) .adh-board-viewport {
 /* Agente de Loja — comando em texto livre + preview/confirm antes de tocar
    na Shopify de verdade. */
 .loja-agente { margin-bottom: 1.1rem; border-color: var(--accent-light); }
-.loja-agente-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-.loja-agente-head .loja-card-title { margin-bottom: 0; }
+.loja-agente-head { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; }
+.loja-agente-head .loja-card-title { margin-bottom: 0; margin-right: auto; }
 .loja-agente-head .loja-copy-btn { border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem; }
+.loja-agente.is-minimizado .loja-card-corpo { display: none; }
+.loja-vinculo-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 0.62rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 999px;
+    background: rgba(16,185,129,0.14); border: 1px solid rgba(16,185,129,0.25); color: var(--green, #10b981);
+}
+.loja-code-label-row { display: flex; align-items: center; justify-content: space-between; }
+.loja-code-label-row .loja-copy-btn { border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem; }
 .loja-agente-config {
     display: none; border: 1px solid var(--border); border-radius: 8px;
     padding: 0.75rem 0.85rem; margin-bottom: 0.75rem; background: var(--bg-input, rgba(0,0,0,0.02));

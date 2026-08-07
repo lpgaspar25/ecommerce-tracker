@@ -22,6 +22,9 @@ const LojaModule = (() => {
     // fechado, só mostrando o nome. Um snippet recém-criado entra aqui
     // pra abrir automático (senão o usuário criaria um card fechado e vazio).
     const _expandidos = new Set();
+    // Quais textareas de código estão no modo "expandido" (altura maior) —
+    // só de sessão, não precisa persistir.
+    const _codigoExpandido = new Set();
 
     async function _carregar() {
         if (_carregado) return;
@@ -39,6 +42,21 @@ const LojaModule = (() => {
     }
 
     function _agora() { return new Date().toISOString(); }
+
+    // Cards minimizáveis (Pedir à IA / Criar seção com IA) — estado
+    // persistido, senão volta a abrir toda vez que renderCodigo() re-renderiza
+    // o painel (o que acontece a cada ação da lista de snippets).
+    const MINIMIZADOS_KEY = 'etracker_loja_cards_minimizados';
+    function _cardsMinimizados() {
+        try { return JSON.parse(localStorage.getItem(MINIMIZADOS_KEY) || '[]'); } catch { return []; }
+    }
+    function _isCardMinimizado(id) { return _cardsMinimizados().includes(id); }
+    function _alternarCardMinimizado(id) {
+        const lista = _cardsMinimizados();
+        const idx = lista.indexOf(id);
+        if (idx >= 0) lista.splice(idx, 1); else lista.push(id);
+        try { localStorage.setItem(MINIMIZADOS_KEY, JSON.stringify(lista)); } catch {}
+    }
 
     // ── Código & Tema ────────────────────────────────────────────────────
     async function renderCodigo() {
@@ -102,18 +120,23 @@ Regras:
 
 Responda em JSON:
 {
-  "nome": "nome curto do snippet, até 40 caracteres (ex.: 'Carrossel de avaliações por categoria')",
-  "tipo": "secao" | "snippet",
-  "caminhoTema": "caminho relativo à raiz do tema, ex.: sections/carrossel-avaliacoes.liquid",
-  "codigo": "o arquivo Liquid COMPLETO — HTML + {% style %} + <script> + {% schema %} quando for seção",
-  "explicacao": "1-2 frases em pt-BR explicando o que a seção faz e o que ela preserva/integra do tema",
+  "arquivos": [
+    {
+      "nome": "nome curto do arquivo, até 40 caracteres (ex.: 'Carrossel de avaliações por categoria')",
+      "tipo": "secao" | "snippet",
+      "caminhoTema": "caminho relativo à raiz do tema, ex.: sections/carrossel-avaliacoes.liquid",
+      "codigo": "o arquivo Liquid COMPLETO — HTML + {% style %} + <script> + {% schema %} quando for seção"
+    }
+  ],
+  "explicacao": "1-2 frases em pt-BR explicando o que foi gerado e o que preserva/integra do tema",
   "comoConfigurar": ["bullet 1 em pt-BR explicando uma configuração específica que a seção gerada tem, e o efeito prático dela", "bullet 2...", "..."],
   "avisoCodigoAntigo": "se o pedido sugerir que já existe uma versão anterior (ex.: 'transforma esse código que eu já tenho' ou 'substitui o carrossel atual'), uma frase avisando pra remover a instalação antiga (bloco de Liquid personalizado, snippet duplicado) pra não ficar duas rodando juntas. Vazio se não se aplica."
 }
 
 Regras de engenharia (não pule nenhuma):
-- Seção autônoma quando o componente pode ocupar seu próprio lugar no template ou só melhora algo existente via JavaScript. Snippet só quando for reutilizado por várias seções — e nesse caso avise em "explicacao" que ele precisa ser chamado por uma seção com {% render %}, não aparece sozinho no personalizador.
-- SEMPRE inclua {% schema %} com "name" (até 25 caracteres) e "presets" pra aparecer em "Adicionar seção". Restrinja "templates"/"enabled_on" aos tipos de página que o código realmente usa (ex.: product, se usa objeto product).
+- "arquivos" é uma LISTA — quase sempre terá 1 item, mas SEMPRE que o pedido resultar num snippet reutilizável (chamado via {% render %}), gere TAMBÉM a seção que faz esse render como um segundo item da lista, pronta pra colar — nunca devolva um snippet sozinho pedindo pro usuário criar a seção por conta própria. Do mesmo jeito, se o código precisar de um segundo arquivo de apoio (outro snippet, um asset .js/.css separado), inclua todos como itens de "arquivos".
+- Seção autônoma quando o componente pode ocupar seu próprio lugar no template ou só melhora algo existente via JavaScript, sem precisar de nenhum outro arquivo. Snippet só quando for reutilizado por várias seções — e nesse caso o próprio pedido já deve te levar a gerar a seção correspondente junto, conforme a regra acima.
+- SEMPRE inclua {% schema %} com "name" (até 25 caracteres) e "presets" pra aparecer em "Adicionar seção" em toda seção gerada. Restrinja "templates"/"enabled_on" aos tipos de página que o código realmente usa (ex.: product, se usa objeto product).
 - Nunca deixe valores fixos que o lojista claramente vai querer editar — texto, cor, imagem, número visual (tamanho/espaçamento) — tudo isso vira "settings" no schema, com o tipo certo (text/textarea/richtext/image_picker/url/color/color_scheme/range/select/checkbox/product/collection). Listas repetíveis (cards, depoimentos, itens) viram "blocks", nunca um número fixo de campos numerados.
 - Se o pedido envolve TRANSFORMAR um seletor nativo de variantes em algo visual: reaproveite os inputs/labels originais (mova pra um wrapper, não recrie o formulário) pra manter preço/mídia/disponibilidade sincronizados com o tema. Nunca construa um <form> de compra paralelo.
 - Se o pedido envolve preço: guarde centavos numéricos em data-*, nunca a saída do filtro "money" (pode vir com HTML embutido tipo <span class="money">). Formate no JavaScript.
@@ -239,39 +262,45 @@ Regras de engenharia (não pule nenhuma):
 
     function _renderAgenteBox() {
         const { provedor, modelo, chave } = _configIA();
+        const min = _isCardMinimizado('agente');
         return `
-            <div class="loja-card loja-agente">
+            <div class="loja-card loja-agente${min ? ' is-minimizado' : ''}">
                 <div class="loja-agente-head">
                     <h3 class="loja-card-title"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Pedir à IA</h3>
+                    <button type="button" class="loja-copy-btn" data-card-minimizar="agente" title="${min ? 'Expandir' : 'Minimizar'}">
+                        <i data-lucide="${min ? 'chevron-down' : 'chevron-up'}" style="width:14px;height:14px"></i>
+                    </button>
                     <button type="button" class="loja-copy-btn" id="loja-agente-config-btn" title="Configurar provedor de IA">
                         <i data-lucide="settings" style="width:14px;height:14px"></i>
                     </button>
                 </div>
-                <div class="loja-agente-config" id="loja-agente-config">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Provedor</label>
-                            <select class="input" id="loja-agente-provedor">
-                                ${PROVEDORES_IA.map(p => `<option value="${p.id}" ${p.id === provedor ? 'selected' : ''}>${p.label}</option>`).join('')}
-                            </select>
+                <div class="loja-card-corpo">
+                    <div class="loja-agente-config" id="loja-agente-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Provedor</label>
+                                <select class="input" id="loja-agente-provedor">
+                                    ${PROVEDORES_IA.map(p => `<option value="${p.id}" ${p.id === provedor ? 'selected' : ''}>${p.label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Modelo</label>
+                                <input type="text" class="input" id="loja-agente-modelo" value="${escapeHtml(modelo)}" placeholder="${escapeHtml(_provedorInfo(provedor).modeloPadrao)}">
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label>Modelo</label>
-                            <input type="text" class="input" id="loja-agente-modelo" value="${escapeHtml(modelo)}" placeholder="${escapeHtml(_provedorInfo(provedor).modeloPadrao)}">
+                            <label>Chave da API (${escapeHtml(_provedorInfo(provedor).label)})</label>
+                            <input type="password" class="input" id="loja-agente-chave" value="${escapeHtml(chave)}" placeholder="${escapeHtml(_provedorInfo(provedor).placeholderChave)}" autocomplete="off">
                         </div>
+                        <p class="loja-card-hint">Chave só deste Agente — independente da chave OpenAI usada em Estúdio/Lançamento/Produtos.</p>
                     </div>
-                    <div class="form-group">
-                        <label>Chave da API (${escapeHtml(_provedorInfo(provedor).label)})</label>
-                        <input type="password" class="input" id="loja-agente-chave" value="${escapeHtml(chave)}" placeholder="${escapeHtml(_provedorInfo(provedor).placeholderChave)}" autocomplete="off">
+                    <p class="loja-card-hint">Descreva o que quer mudar num produto — preço, status, template. A IA propõe, você confirma antes de qualquer coisa ir pra loja de verdade.</p>
+                    <div class="loja-agente-input-row">
+                        <textarea id="loja-agente-pedido" class="input" rows="2" placeholder="Ex.: atualizar o preço do Óculos Ferrari pra 45 e ativar o produto"></textarea>
+                        <button type="button" class="btn btn-primary" id="loja-agente-enviar">Pedir</button>
                     </div>
-                    <p class="loja-card-hint">Chave só deste Agente — independente da chave OpenAI usada em Estúdio/Lançamento/Produtos.</p>
+                    <div id="loja-agente-resultado"></div>
                 </div>
-                <p class="loja-card-hint">Descreva o que quer mudar num produto — preço, status, template. A IA propõe, você confirma antes de qualquer coisa ir pra loja de verdade.</p>
-                <div class="loja-agente-input-row">
-                    <textarea id="loja-agente-pedido" class="input" rows="2" placeholder="Ex.: atualizar o preço do Óculos Ferrari pra 45 e ativar o produto"></textarea>
-                    <button type="button" class="btn btn-primary" id="loja-agente-enviar">Pedir</button>
-                </div>
-                <div id="loja-agente-resultado"></div>
             </div>
         `;
     }
@@ -281,6 +310,11 @@ Regras de engenharia (não pule nenhuma):
 
         document.getElementById('loja-agente-config-btn')?.addEventListener('click', () => {
             document.getElementById('loja-agente-config')?.classList.toggle('is-aberta');
+        });
+
+        document.querySelector('[data-card-minimizar="agente"]')?.addEventListener('click', () => {
+            _alternarCardMinimizado('agente');
+            renderCodigo();
         });
 
         const provSel = document.getElementById('loja-agente-provedor');
@@ -483,21 +517,33 @@ Regras de engenharia (não pule nenhuma):
 
     // ── Criar seção com IA — UI ──────────────────────────────────────────
     function _renderCriarSecaoBox() {
+        const min = _isCardMinimizado('criarsecao');
         return `
-            <div class="loja-card loja-agente">
-                <h3 class="loja-card-title"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Criar seção com IA</h3>
-                <p class="loja-card-hint">Descreva a seção que você quer — a IA gera o código Liquid completo (schema incluído), salva como snippet novo aqui embaixo, e explica como configurar cada opção. Usa o mesmo provedor/chave de "Pedir à IA" acima.</p>
-                <div class="loja-agente-input-row">
-                    <textarea id="loja-criar-pedido" class="input" rows="2" placeholder="Ex.: transformar meu seletor de variantes em cards visuais com foto, ou criar um carrossel de avaliações segmentado por categoria"></textarea>
-                    <button type="button" class="btn btn-primary" id="loja-criar-enviar">Criar</button>
+            <div class="loja-card loja-agente${min ? ' is-minimizado' : ''}">
+                <div class="loja-agente-head">
+                    <h3 class="loja-card-title"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Criar seção com IA</h3>
+                    <button type="button" class="loja-copy-btn" data-card-minimizar="criarsecao" title="${min ? 'Expandir' : 'Minimizar'}">
+                        <i data-lucide="${min ? 'chevron-down' : 'chevron-up'}" style="width:14px;height:14px"></i>
+                    </button>
                 </div>
-                <div id="loja-criar-resultado"></div>
+                <div class="loja-card-corpo">
+                    <p class="loja-card-hint">Descreva a seção que você quer — a IA gera o código Liquid completo (schema incluído). Quando o pedido resultar num snippet reutilizável, a seção que faz o {% render %} dele vem junto automaticamente. Salva tudo aqui embaixo, vinculado, e explica como configurar cada opção. Usa o mesmo provedor/chave de "Pedir à IA" acima.</p>
+                    <div class="loja-agente-input-row">
+                        <textarea id="loja-criar-pedido" class="input" rows="2" placeholder="Ex.: transformar meu seletor de variantes em cards visuais com foto, ou criar um carrossel de avaliações segmentado por categoria"></textarea>
+                        <button type="button" class="btn btn-primary" id="loja-criar-enviar">Criar</button>
+                    </div>
+                    <div id="loja-criar-resultado"></div>
+                </div>
             </div>
         `;
     }
 
     function _wireCriarSecaoEvents(storeId) {
         document.getElementById('loja-criar-enviar')?.addEventListener('click', () => _processarCriarSecao(storeId));
+        document.querySelector('[data-card-minimizar="criarsecao"]')?.addEventListener('click', () => {
+            _alternarCardMinimizado('criarsecao');
+            renderCodigo();
+        });
     }
 
     async function _processarCriarSecao(storeId) {
@@ -510,25 +556,32 @@ Regras de engenharia (não pule nenhuma):
         try {
             const txt = await _pedirPlanoIA(SISTEMA_CRIAR_SECAO, pedido, 8000);
             const plano = _extrairJson(txt);
-            if (!plano.codigo || !String(plano.codigo).trim()) throw new Error('A IA não devolveu código — tente descrever de novo, com mais detalhe.');
+            const arquivos = Array.isArray(plano.arquivos) ? plano.arquivos : (plano.codigo ? [plano] : []);
+            const validos = arquivos.filter(a => a?.codigo && String(a.codigo).trim());
+            if (!validos.length) throw new Error('A IA não devolveu código — tente descrever de novo, com mais detalhe.');
 
-            const novo = {
-                id: generateId('snip'), storeId,
-                nome: plano.nome || 'Seção gerada por IA',
+            // Mesmo grupoId em todos os arquivos desta geração — é o que
+            // deixa visível, na lista, que um snippet e a seção que o chama
+            // nasceram juntos e precisam ser instalados juntos.
+            const grupoId = validos.length > 1 ? generateId('grupo') : '';
+            const criados = validos.map(a => ({
+                id: generateId('snip'), storeId, grupoId,
+                nome: a.nome || 'Gerado por IA',
                 descricao: plano.explicacao || '',
-                tag: plano.tipo === 'snippet' ? 'snippet' : 'secao',
-                codigo: plano.codigo,
-                caminhoTema: _sanitizarCaminhoTema(plano.caminhoTema || ''),
+                tag: a.tipo === 'snippet' ? 'snippet' : 'secao',
+                codigo: a.codigo,
+                caminhoTema: _sanitizarCaminhoTema(a.caminhoTema || ''),
                 criadoEm: _agora(), atualizadoEm: _agora(),
-            };
-            _snippets.unshift(novo);
-            _expandidos.add(novo.id);
+            }));
+            criados.forEach(novo => { _snippets.unshift(novo); _expandidos.add(novo.id); });
             await KVStore.set(SNIPPETS_KEY, _snippets);
 
             const bullets = (plano.comoConfigurar || []).map(b => `<li>${escapeHtml(b)}</li>`).join('');
+            const listaArquivos = criados.map(novo => `<li><i data-lucide="check" style="width:12px;height:12px;vertical-align:-1px"></i> ${escapeHtml(novo.nome)} <span class="loja-tag-pill" data-tag="${novo.tag}" style="margin-left:0.3rem">${_tagLabel(novo.tag)}</span></li>`).join('');
             resultado.innerHTML = `
                 <div class="loja-plano">
-                    <div class="loja-plano-produto"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Salvo como snippet: "${escapeHtml(novo.nome)}"</div>
+                    <div class="loja-plano-produto"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Salvo${criados.length > 1 ? 's' : ''} ${criados.length > 1 ? `${criados.length} arquivos vinculados` : 'como snippet'}${criados.length === 1 ? `: "${escapeHtml(criados[0].nome)}"` : ''}</div>
+                    ${criados.length > 1 ? `<ul class="loja-instalar-passos">${listaArquivos}</ul>` : ''}
                     <p style="font-size:0.82rem;color:var(--text-secondary);margin:0.4rem 0">${escapeHtml(plano.explicacao || '')}</p>
                     ${bullets ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem">Como configurar:</div><ul class="loja-instalar-passos">${bullets}</ul>` : ''}
                     ${plano.avisoCodigoAntigo ? `<div class="loja-agente-aviso">${escapeHtml(plano.avisoCodigoAntigo)}</div>` : ''}
@@ -595,8 +648,16 @@ Regras de engenharia (não pule nenhuma):
 
     function _renderSnippetsList(lista, todas) {
         if (!lista.length) return '<div class="loja-empty">Nenhum snippet salvo ainda. Clique em "Novo snippet" pra começar.</div>';
-        return lista.map(s => {
+        // Snippets do mesmo grupo (gerados juntos, ex. snippet + a seção que
+        // faz {% render %} dele) ficam adjacentes na lista — senão o vínculo
+        // fica invisível mesmo mostrando o badge.
+        const ordenada = [...lista].sort((a, b) => {
+            if (a.grupoId && a.grupoId === b.grupoId) return 0;
+            return (a.grupoId || '').localeCompare(b.grupoId || '');
+        });
+        return ordenada.map(s => {
             const aberto = _expandidos.has(s.id);
+            const doGrupo = s.grupoId ? lista.filter(x => x.grupoId === s.grupoId && x.id !== s.id) : [];
             return `
             <div class="loja-snippet-item${aberto ? ' is-aberto' : ''}" data-snip="${s.id}">
                 <div class="loja-snippet-header">
@@ -605,6 +666,7 @@ Regras de engenharia (não pule nenhuma):
                         <span class="loja-snippet-nome">${escapeHtml(s.nome) || 'Sem nome'}</span>
                         <span class="loja-tag-pill" data-tag="${s.tag}">${_tagLabel(s.tag)}</span>
                         ${todas ? `<span class="loja-store-badge">${escapeHtml(_nomeDaLoja(s.storeId))}</span>` : ''}
+                        ${doGrupo.length ? `<span class="loja-vinculo-badge" title="Instalar junto com: ${escapeHtml(doGrupo.map(x => x.nome).join(', '))}"><i data-lucide="link-2" style="width:10px;height:10px"></i> vinculado a ${doGrupo.length}</span>` : ''}
                     </button>
                     <button type="button" class="loja-copy-btn" data-snip-copiar="${s.id}" title="Copiar código">
                         <i data-lucide="copy" style="width:13px;height:13px"></i>
@@ -641,8 +703,13 @@ Regras de engenharia (não pule nenhuma):
                     </div>
                     <div class="form-row">
                         <div class="form-group" style="flex:1 1 100%">
-                            <label>Código</label>
-                            <textarea class="input loja-code-area" data-snip-field="codigo" placeholder="{% comment %} ... {% endcomment %}" spellcheck="false">${escapeHtml(s.codigo)}</textarea>
+                            <div class="loja-code-label-row">
+                                <label>Código</label>
+                                <button type="button" class="loja-copy-btn" data-snip-expandir="${s.id}" title="Expandir/recolher código">
+                                    <i data-lucide="maximize-2" style="width:12px;height:12px"></i>
+                                </button>
+                            </div>
+                            <textarea class="input loja-code-area${_codigoExpandido.has(s.id) ? ' is-expandido' : ''}" data-snip-field="codigo" placeholder="{% comment %} ... {% endcomment %}" spellcheck="false">${escapeHtml(s.codigo)}</textarea>
                         </div>
                     </div>
                     <button type="button" class="btn btn-secondary btn-sm" data-snip-instalar="${s.id}">
@@ -776,6 +843,17 @@ Regras de engenharia (não pule nenhuma):
             }
             const instalar = ev.target.closest('[data-snip-instalar]');
             if (instalar) { _abrirPainelInstalar(instalar.dataset.snipInstalar); return; }
+
+            const expandir = ev.target.closest('[data-snip-expandir]');
+            if (expandir) {
+                const id = expandir.dataset.snipExpandir;
+                if (_codigoExpandido.has(id)) _codigoExpandido.delete(id); else _codigoExpandido.add(id);
+                // Só alterna a classe — um renderCodigo() completo perderia a
+                // posição do cursor/scroll de quem está no meio de editar o código.
+                const area = ev.target.closest('.loja-snippet-item')?.querySelector('.loja-code-area');
+                area?.classList.toggle('is-expandido', _codigoExpandido.has(id));
+                return;
+            }
         });
     }
 
