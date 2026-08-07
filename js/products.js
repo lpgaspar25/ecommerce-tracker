@@ -967,46 +967,33 @@ const ProductsModule = {
         }
     },
 
+    // Antes tinha um compressor WebP próprio, duplicado (canvas manual) —
+    // o resto deste MESMO arquivo já usa o motor compartilhado
+    // (comprimirImagemParaDataUrl, em app.js) pras fotos geradas por IA.
+    // Unificado: upload manual passa pelo mesmo motor, e agora registra
+    // dimensão/tamanho final junto (STUDIO-10).
     async _handleImageFiles(files) {
         for (const file of Array.from(files)) {
             if (!file.type.startsWith('image/')) continue;
             if (this._images.length >= 5) break;
-            const dataUrl = await this._compressImageToWebP(file, 800, 0.75);
-            this._images.push({ dataUrl, name: file.name });
+            try {
+                const { blob, width, height } = await comprimirImagem(file, 800, 0.75, { formato: 'image/webp' });
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const fr = new FileReader();
+                    fr.onloadend = () => resolve(fr.result);
+                    fr.onerror = () => reject(new Error('Falha ao ler a imagem comprimida'));
+                    fr.readAsDataURL(blob);
+                });
+                this._images.push({ dataUrl, name: file.name, width, height, size: blob.size });
+            } catch (e) {
+                console.error('[Produtos] falha ao processar imagem:', e);
+                if (typeof showToast === 'function') showToast(`Falha ao processar "${file.name}": ${e.message}`, 'error');
+            }
         }
         this._renderProductImages();
         // reset input so same file can be re-selected
         const inp = document.getElementById('prod-image-input');
         if (inp) inp.value = '';
-    },
-
-    async _compressImageToWebP(file, maxW = 800, quality = 0.75) {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    try {
-                        const scale = Math.min(1, maxW / img.naturalWidth);
-                        const w = Math.round(img.naturalWidth * scale);
-                        const h = Math.round(img.naturalHeight * scale);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                        canvas.toBlob(blob => {
-                            if (!blob) { resolve(ev.target.result); return; }
-                            const fr = new FileReader();
-                            fr.onloadend = () => resolve(fr.result || ev.target.result);
-                            fr.readAsDataURL(blob);
-                        }, 'image/webp', quality);
-                    } catch { resolve(ev.target.result); }
-                };
-                img.onerror = () => resolve(ev.target.result);
-                img.src = ev.target.result;
-            };
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(file);
-        });
     },
 
     _renderProductImages() {
