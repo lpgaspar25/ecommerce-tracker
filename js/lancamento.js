@@ -638,10 +638,25 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         // Marca que o usuário escolheu à mão — a detecção automática não
         // sobrescreve mais a partir daqui.
         document.getElementById('lanc-desc-idioma')?.addEventListener('change', (e) => { e.target.dataset.tocado = '1'; });
+        document.getElementById('lanc-desc-instrucoes-lib')?.addEventListener('click', () => {
+            const campo = document.getElementById('lanc-desc-instrucoes');
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
         document.getElementById('lanc-passo3-avancar')?.addEventListener('click', () => {
             if (!_state.blocos.length) { showToast('Gere ou monte a descrição primeiro', 'error'); return; }
             _irParaPasso(4);
         });
+    }
+
+    // Instruções extras (LAUNCH-03) — texto livre digitado ou aplicado da
+    // Biblioteca de Prompts (categoria Copy), somado ao contexto de QUALQUER
+    // geração por IA na Etapa 3: do zero, a partir do molde, ou reescrita de
+    // um bloco só.
+    function _instrucoesExtras() {
+        return document.getElementById('lanc-desc-instrucoes')?.value.trim() || '';
     }
 
     // "Copiar o molde" só aparece se o usuário veio de um molde no Passo 1.
@@ -738,7 +753,8 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 const base64 = (await _blobParaDataUrl(rec.blob)).split(',')[1];
                 imagens.push({ base64, mediaType: rec.blob.type || 'image/webp' });
             }
-            const contexto = `Produto: ${_state.titulo || 'produto novo'}.\nIdioma: ${_instrucaoIdioma()}\nVocê recebeu ${imagens.length} foto(s) — use todas.`;
+            const extras = _instrucoesExtras();
+            const contexto = `Produto: ${_state.titulo || 'produto novo'}.\nIdioma: ${_instrucaoIdioma()}\nVocê recebeu ${imagens.length} foto(s) — use todas.${extras ? `\nInstruções extras do usuário: ${extras}` : ''}`;
             const txt = await _openaiVisaoMulti(SISTEMA_BLOCOS_ZERO, contexto, imagens);
             const parsed = _extrairJson(txt);
             let proxima = 0; // fallback: distribui em ordem, não empilha na foto 0
@@ -770,7 +786,8 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             if (blocosTexto.length) {
                 _setDescStatus('Reescrevendo o texto pro novo produto…');
                 const lista = blocosTexto.map(b => `{"indice": ${b._i}, "html": ${JSON.stringify(b.html)}}`).join(',\n');
-                const prompt = `Produto-molde: "${_state.moldeDetalhes.title}". Produto novo: "${_state.titulo}".\nIdioma: ${_instrucaoIdioma()}\nBlocos originais:\n[${lista}]`;
+                const extras = _instrucoesExtras();
+                const prompt = `Produto-molde: "${_state.moldeDetalhes.title}". Produto novo: "${_state.titulo}".\nIdioma: ${_instrucaoIdioma()}${extras ? `\nInstruções extras do usuário: ${extras}` : ''}\nBlocos originais:\n[${lista}]`;
                 const txt = await _openaiJson(SISTEMA_BLOCOS_MOLDE, [{ role: 'user', content: prompt }]);
                 const parsed = _extrairJson(txt);
                 (parsed.blocos || []).forEach(b => { reescritos[b.indice] = b.html; });
@@ -1042,7 +1059,75 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 else showToast('Esse bloco ainda não tem foto — escolha uma antes de editar com IA', 'error');
             });
         });
+        lista.querySelectorAll('[data-reescrever-bloco]').forEach(btn => {
+            btn.addEventListener('click', () => _abrirReescritorTexto(parseInt(btn.dataset.reescreverBloco, 10)));
+        });
         _renderTrilho();
+        _icones();
+    }
+
+    // Reescreve UM bloco de texto com IA (LAUNCH-03) — sem instrução, só
+    // melhora a redação; com instrução (digitada ou puxada da Biblioteca de
+    // Prompts), reescreve seguindo o pedido. Sempre passa pelo mesmo filtro
+    // _semImagens do resto da etapa 3 — reescrita não pode voltar com <img>.
+    function _abrirReescritorTexto(i) {
+        const b = _state.blocos[i];
+        if (!b || b.tipo !== 'texto') return;
+        _sincronizarTextos();
+        document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
+
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="wand-2" style="width:16px;height:16px;vertical-align:-3px"></i> Reescrever texto com IA</h3>
+                <p class="lanc-hint">Deixe em branco pra só melhorar a redação, ou descreva o que quer mudar (tom, tamanho, foco) — ou aplique um prompt salvo.</p>
+                <div class="prompt-lib-row">
+                    <input type="text" id="lanc-reescrever-texto" class="input" placeholder="Ex.: deixar mais curto e direto, focar no benefício X">
+                    <button type="button" class="btn btn-secondary btn-sm" id="lanc-reescrever-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                </div>
+                <div id="lanc-reescrever-status" class="lanc-fotos-status"></div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="lanc-reescrever-fechar">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="lanc-reescrever-ok">Reescrever</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.querySelector('#lanc-reescrever-fechar').addEventListener('click', () => ov.remove());
+
+        const campo = ov.querySelector('#lanc-reescrever-texto');
+        ov.querySelector('#lanc-reescrever-lib')?.addEventListener('click', () => {
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
+
+        const executar = async () => {
+            const status = ov.querySelector('#lanc-reescrever-status');
+            status.textContent = 'Reescrevendo…';
+            status.style.color = '';
+            try {
+                const instrucao = campo.value.trim();
+                const sistema = `Você reescreve UM bloco de texto de uma descrição de produto de e-commerce (formato landing page). Devolva APENAS um JSON: {"html": "..."}. Use só as tags <h3>, <p>, <strong>, <ul>, <li> (nada de <img> ou outras tags). ${_instrucaoIdioma()}`;
+                const prompt = `Produto: ${_state.titulo || 'produto novo'}.\nTexto atual: ${JSON.stringify(b.html || '')}\n${instrucao ? `Instrução do usuário: ${instrucao}` : 'Sem instrução específica do usuário — só melhore a redação, mantendo o mesmo sentido e tamanho aproximado.'}`;
+                const txt = await _openaiJson(sistema, [{ role: 'user', content: prompt }], 800);
+                const parsed = _extrairJson(txt);
+                const novoHtml = _semImagens(parsed.html || '');
+                if (!novoHtml.trim()) throw new Error('A IA não devolveu texto');
+                _state.blocos[i].html = novoHtml;
+                _renderBlocos();
+                ov.remove();
+                showToast('Texto reescrito', 'success');
+            } catch (e) {
+                status.textContent = 'Erro: ' + e.message;
+                status.style.color = 'var(--danger, #ef4444)';
+            }
+        };
+        ov.querySelector('#lanc-reescrever-ok').addEventListener('click', executar);
+        campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); executar(); } });
+        campo.focus();
         _icones();
     }
 
@@ -1060,6 +1145,9 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 <button type="button" data-editar-foto="${i}" title="Editar com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>
                 <button type="button" data-trocar-foto="${i}" title="Substituir foto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                 <button type="button" data-add-foto-apos="${i}" title="Adicionar foto aqui"><i data-lucide="image-plus" style="width:13px;height:13px"></i></button>
+            ` : ''}
+            ${b?.tipo === 'texto' ? `
+                <button type="button" data-reescrever-bloco="${i}" title="Reescrever com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>
             ` : ''}
             <button type="button" data-mover="cima" data-idx="${i}" title="Mover pra cima"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></button>
             <button type="button" data-mover="baixo" data-idx="${i}" title="Mover pra baixo"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></button>
