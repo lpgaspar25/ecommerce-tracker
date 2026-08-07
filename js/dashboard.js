@@ -1354,10 +1354,14 @@ const DashboardModule = {
         const container = document.getElementById('dash-top-products');
         if (!container) return;
 
-        const needsReal = this._topMode === 'cpaReal' || this._topMode === 'salesReal';
-        if (needsReal && this._realSalesMap === null) {
+        const needsReal = this._topMode === 'cpaReal' || this._topMode === 'salesReal' || this._topMode === 'conversionReal';
+        const needsViews = this._topMode === 'conversionReal';
+        const pendencias = [];
+        if (needsReal && this._realSalesMap === null) pendencias.push(this._loadRealSalesMaps());
+        if (needsViews && this._viewsMap === null) pendencias.push(this._loadViewsMap());
+        if (pendencias.length) {
             container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
-            this._loadRealSalesMaps().then(() => this._renderTopProducts());
+            Promise.all(pendencias).then(() => this._renderTopProducts());
             return;
         }
 
@@ -1374,6 +1378,15 @@ const DashboardModule = {
             const cpaReal = real.sales > 0 ? agg.budget / real.sales : 0;
             const cpaRealBRL = real.sales > 0 ? agg.budgetBRL / real.sales : 0;
             const cpaRealPrev = realPrev.sales > 0 ? prevAgg.budget / realPrev.sales : 0;
+            // Conversão Real (DASH-03) — mesma fórmula do Calendário de
+            // Métricas: vendas reais da Shopify ÷ visitas reais do produto
+            // na Shopify. Sem filtro de país aqui (Top Produtos não tem
+            // esse seletor) — visitas por país por produto não existem na
+            // Shopify de qualquer forma, então não perde nada.
+            const views = this._sumViews(this._viewsMap, pid, this._startDate, this._endDate);
+            const viewsPrev = this._sumViews(this._viewsMap, pid, this._compareStart, this._compareEnd);
+            const convReal = views > 0 ? (real.sales / views) * 100 : 0;
+            const convRealPrev = viewsPrev > 0 ? (realPrev.sales / viewsPrev) * 100 : 0;
             return {
                 pid, name: getProductName(pid),
                 ...agg,
@@ -1381,6 +1394,7 @@ const DashboardModule = {
                 realSales: real.sales,
                 realSalesPrev: realPrev.sales,
                 cpaReal, cpaRealBRL, cpaRealPrev,
+                convReal, convRealPrev, views,
             };
         });
 
@@ -1391,6 +1405,7 @@ const DashboardModule = {
         else if (mode === 'cpa') ranked = ranked.filter(p => p.cpa > 0).sort((a, b) => a.cpa - b.cpa);
         else if (mode === 'cpaReal') ranked = ranked.filter(p => p.cpaReal > 0).sort((a, b) => a.cpaReal - b.cpaReal);
         else if (mode === 'salesReal') ranked.sort((a, b) => b.realSales - a.realSales);
+        else if (mode === 'conversionReal') ranked = ranked.filter(p => p.convReal > 0).sort((a, b) => b.convReal - a.convReal);
         else if (mode === 'budget') ranked.sort((a, b) => b.budget - a.budget);
         else ranked.sort((a, b) => b.revenue - a.revenue);
 
@@ -1418,6 +1433,9 @@ const DashboardModule = {
             } else if (mode === 'salesReal') {
                 mainVal = p.realSales + (p.realSales === 1 ? ' venda' : ' vendas');
                 delta = this._fmtDelta(p.realSales, p.realSalesPrev, { percent: false });
+            } else if (mode === 'conversionReal') {
+                mainVal = p.convReal.toFixed(2) + '%';
+                delta = this._fmtDelta(p.convReal, p.convRealPrev, { percent: false });
             } else if (mode === 'budget') {
                 mainVal = this._fmtCurrency(p.budget);
                 delta = this._fmtDelta(p.budget, p.prevAgg.budget);
