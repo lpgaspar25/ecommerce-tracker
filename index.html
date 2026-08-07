@@ -4213,7 +4213,10 @@
                             <div id="studio-cenarios-ref" class="studio-cenarios-ref-grid"></div>
                         </div>
 
-                        <input type="text" id="studio-foto-extra" class="input" placeholder="Detalhe extra (opcional): ex. sobre mármore, com plantas ao fundo" style="margin-top:0.6rem">
+                        <div class="prompt-lib-row" style="margin-top:0.6rem">
+                            <input type="text" id="studio-foto-extra" class="input" placeholder="Detalhe extra (opcional): ex. sobre mármore, com plantas ao fundo">
+                            <button type="button" class="btn btn-secondary btn-sm" id="studio-foto-extra-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                        </div>
 
                         <!-- Formatos de saída: gera o mesmo criativo já em cada dimensão marcada -->
                         <div class="studio-dim-row">
@@ -4558,23 +4561,42 @@
             </div>
         </section>
 
-        <!-- ==================== Modal: Browse Templates ==================== -->
+        <!-- ==================== Modal: Biblioteca de Prompts ==================== -->
         <div id="modal-prompt-templates" class="modal hidden">
             <div class="modal-overlay"></div>
             <div class="modal-content" style="max-width:780px">
                 <div class="modal-header">
-                    <h3><i data-lucide="layout-template" style="width:16px;height:16px;vertical-align:-3px"></i> Browse Templates</h3>
+                    <h3><i data-lucide="layout-template" style="width:16px;height:16px;vertical-align:-3px"></i> Biblioteca de Prompts</h3>
                     <button class="btn-close" id="templates-modal-close">&times;</button>
                 </div>
                 <div class="adhub-tabs" style="margin-bottom:0.75rem">
-                    <button class="adhub-tab adhub-tab-active" data-tpl-tab="madgicx">Madgicx Templates</button>
-                    <button class="adhub-tab" data-tpl-tab="mine">My Templates</button>
+                    <button class="adhub-tab adhub-tab-active" data-tpl-tab="madgicx">Prontos</button>
+                    <button class="adhub-tab" data-tpl-tab="mine">Meus prompts</button>
                 </div>
-                <input type="search" id="tpl-search" class="input" placeholder="Search template…" style="margin-bottom:0.75rem">
+                <div id="tpl-mine-toolbar" class="tpl-mine-toolbar" style="display:none">
+                    <select id="tpl-filtro-cat" class="input input-sm" style="width:auto"><option value="">Todas as categorias</option></select>
+                    <button type="button" class="btn btn-primary btn-sm" id="tpl-novo"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Novo prompt</button>
+                </div>
+                <div id="tpl-form" class="tpl-form" style="display:none">
+                    <input type="hidden" id="tpl-form-id">
+                    <input type="text" id="tpl-form-nome" class="input" placeholder="Nome do prompt (ex.: Fundo de mármore)">
+                    <div class="tpl-form-row">
+                        <input type="text" id="tpl-form-categoria" class="input" placeholder="Categoria (ex.: Imagem)" list="tpl-categorias-sugeridas">
+                        <input type="text" id="tpl-form-subcategoria" class="input" placeholder="Subcategoria (ex.: Cenários)" list="tpl-subcategorias-sugeridas">
+                    </div>
+                    <datalist id="tpl-categorias-sugeridas"></datalist>
+                    <datalist id="tpl-subcategorias-sugeridas"></datalist>
+                    <textarea id="tpl-form-prompt" class="input" rows="3" placeholder="Texto do prompt"></textarea>
+                    <div class="tpl-form-acoes">
+                        <button type="button" class="btn btn-secondary btn-sm" id="tpl-form-cancelar">Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="tpl-form-salvar">Salvar</button>
+                    </div>
+                </div>
+                <input type="search" id="tpl-search" class="input" placeholder="Buscar prompt…" style="margin-bottom:0.75rem">
                 <div id="tpl-grid" class="tpl-grid"></div>
                 <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem">
-                    <button id="tpl-cancel" class="btn btn-secondary">Cancel</button>
-                    <button id="tpl-use" class="btn btn-primary" disabled>Use Template</button>
+                    <button id="tpl-cancel" class="btn btn-secondary">Cancelar</button>
+                    <button id="tpl-use" class="btn btn-primary" disabled>Usar prompt</button>
                 </div>
             </div>
         </div>

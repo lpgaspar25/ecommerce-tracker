@@ -977,7 +977,10 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 </div>
                 <div class="lanc-cenario-painel" id="lanc-cenario-painel" style="display:none">
                     <label for="lanc-cenario-texto" style="font-size:0.78rem;color:var(--text-muted)">Onde/como o produto aparece (funciona melhor em inglês)</label>
-                    <input type="text" id="lanc-cenario-texto" class="input" placeholder="ex.: on top of a wooden table" list="lanc-cenario-sugestoes">
+                    <div class="prompt-lib-row">
+                        <input type="text" id="lanc-cenario-texto" class="input" placeholder="ex.: on top of a wooden table" list="lanc-cenario-sugestoes">
+                        <button type="button" class="btn btn-secondary btn-sm" id="lanc-cenario-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                    </div>
                     <datalist id="lanc-cenario-sugestoes">${SUGESTOES_CENARIO.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
                     <div class="lanc-cenario-chips">${SUGESTOES_CENARIO.map(s => `<button type="button" class="lanc-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
                     <button type="button" class="btn btn-primary btn-sm" id="lanc-cenario-aplicar">Gerar cenário</button>
@@ -985,6 +988,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 <label for="lanc-prompt-livre" style="margin-top:0.7rem;display:block;font-size:0.78rem;color:var(--text-muted)">Ou descreva o que quer mudar</label>
                 <div class="lanc-prompt-row">
                     <input type="text" id="lanc-prompt-livre" class="input" placeholder="Ex.: deixar o fundo cinza claro, tirar a mão que segura o produto">
+                    <button type="button" class="btn btn-secondary" id="lanc-prompt-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
                     <button type="button" class="btn btn-primary" id="lanc-prompt-ok">Aplicar</button>
                 </div>
                 <div class="bulk-progress" id="lanc-edit-prog" style="display:none"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="lanc-edit-fill"></div></div></div>
@@ -1049,6 +1053,12 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         };
         ov.querySelector('#lanc-cenario-aplicar').addEventListener('click', aplicarCenario);
         campoCenario.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); aplicarCenario(); } });
+        ov.querySelector('#lanc-cenario-lib')?.addEventListener('click', () => {
+            window.PromptTemplates?.open({
+                prefill: campoCenario.value,
+                onUse: (texto) => { campoCenario.value = texto; campoCenario.focus(); },
+            });
+        });
 
         const aplicarLivre = () => {
             const texto = ov.querySelector('#lanc-prompt-livre').value.trim();
@@ -1065,6 +1075,13 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
         };
         ov.querySelector('#lanc-prompt-ok').addEventListener('click', aplicarLivre);
         ov.querySelector('#lanc-prompt-livre').addEventListener('keydown', (e) => { if (e.key === 'Enter') aplicarLivre(); });
+        ov.querySelector('#lanc-prompt-lib')?.addEventListener('click', () => {
+            const campo = ov.querySelector('#lanc-prompt-livre');
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
         _icones();
     }
 

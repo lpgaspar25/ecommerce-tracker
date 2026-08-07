@@ -1748,6 +1748,14 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             gerarFotos(ids, extra);
         });
 
+        document.getElementById('studio-foto-extra-lib')?.addEventListener('click', () => {
+            const campo = document.getElementById('studio-foto-extra');
+            window.PromptTemplates?.open({
+                prefill: campo?.value || '',
+                onUse: (texto) => { if (campo) { campo.value = texto; campo.focus(); } },
+            });
+        });
+
         // Upload manual da foto base (quando o produto não tem imagem no app)
         document.getElementById('studio-upload-btn')?.addEventListener('click', () => document.getElementById('studio-upload')?.click());
         document.getElementById('studio-upload')?.addEventListener('change', async (e) => {
