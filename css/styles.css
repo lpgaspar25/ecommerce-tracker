@@ -9823,6 +9823,18 @@ thead:hover .diary-check-col input[type="checkbox"],
 .lanc-titulo-sug-item:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .lanc-titulo-sug-erro { font-size: 0.8rem; color: var(--danger, #ef4444); }
 
+/* Lançamento → estado de carregamento/erro por foto (LAUNCH-05) */
+.lanc-foto-carregando-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55); color: #fff; border-radius: 8px; z-index: 3;
+}
+.lanc-foto-erro-badge {
+    position: absolute; top: 4px; left: 4px; z-index: 4;
+    width: 20px; height: 20px; border-radius: 50%; background: var(--danger, #ef4444); color: #fff;
+    display: flex; align-items: center; justify-content: center; cursor: help;
+}
+.lanc-foto-item.is-erro img, .lanc-bl-img.is-erro img { outline: 2px solid var(--danger, #ef4444); outline-offset: -2px; }
+
 /* Rows */
 .dash-row-2, .dash-row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 
@@ -16539,7 +16551,7 @@ body:not([data-theme]) .adh-board-viewport {
 }
 .lanc-bl-texto:hover { border-color: var(--border); }
 .lanc-bl-texto:focus { outline: none; border-color: var(--accent); background: var(--bg-input, var(--bg-card)); }
-.lanc-bl-img { padding: 0.3rem 0.5rem; }
+.lanc-bl-img { padding: 0.3rem 0.5rem; position: relative; }
 .lanc-bl-img img {
     max-width: 320px; width: 100%; border-radius: 8px; display: block;
     border: 2px solid transparent; cursor: pointer;

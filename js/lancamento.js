@@ -281,16 +281,22 @@ const LancamentoModule = (() => {
     function _renderFotosGrid() {
         const grid = document.getElementById('lanc-fotos-grid');
         if (!grid) return;
-        grid.innerHTML = _state.fotos.map(f => `
-            <div class="lanc-foto-item${f.editada ? ' is-editada' : ''}" data-id="${f.id}">
+        grid.innerHTML = _state.fotos.map(f => {
+            const processando = _fotosProcessando.has(f.id);
+            const erro = _fotosComErro.get(f.id);
+            return `
+            <div class="lanc-foto-item${f.editada ? ' is-editada' : ''}${processando ? ' is-processando' : ''}${erro ? ' is-erro' : ''}" data-id="${f.id}">
                 <img src="${f.thumb}" alt="" data-ampliar="${f.id}" title="Ampliar">
+                ${processando ? `<div class="lanc-foto-carregando-overlay"><i data-lucide="loader-2" style="width:16px;height:16px;animation:spin 1s linear infinite"></i></div>` : ''}
+                ${erro ? `<div class="lanc-foto-erro-badge" title="${escapeHtml(erro)}"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i></div>` : ''}
                 <span class="lanc-foto-origem">${escapeHtml(f.origem)}${f.editada ? ' · IA' : ''}</span>
                 <div class="lanc-foto-acoes">
                     <button type="button" data-editar-uma="${f.id}" title="Editar com IA"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                     ${f._original ? `<button type="button" data-desfazer="${f.id}" title="Desfazer edição"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i></button>` : ''}
                 </div>
                 <button type="button" class="lanc-foto-del" data-remover="${f.id}" title="Remover"><i data-lucide="x" style="width:11px;height:11px"></i></button>
-            </div>`).join('');
+            </div>`;
+        }).join('');
         grid.querySelectorAll('[data-remover]').forEach(btn => {
             btn.addEventListener('click', () => _removerFoto(btn.dataset.remover));
         });
@@ -781,11 +787,15 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                 </div>`;
             } else {
                 const foto = _state.fotos.find(f => f.id === b.fotoId);
-                html += `<div class="lanc-bl lanc-bl-img${_trocandoIdx === i ? ' is-trocando' : ''}" data-idx="${i}">
+                const processando = foto && _fotosProcessando.has(foto.id);
+                const erro = foto && _fotosComErro.get(foto.id);
+                html += `<div class="lanc-bl lanc-bl-img${_trocandoIdx === i ? ' is-trocando' : ''}${processando ? ' is-processando' : ''}${erro ? ' is-erro' : ''}" data-idx="${i}">
                     ${_acoesHtml(i)}
                     ${foto
                         ? `<img src="${foto.thumb}" alt="" data-trocar="${i}" title="Clique pra trocar a foto">`
                         : `<div class="lanc-bl-semfoto" data-trocar="${i}">Sem foto — clique e escolha no trilho</div>`}
+                    ${processando ? `<div class="lanc-foto-carregando-overlay"><i data-lucide="loader-2" style="width:18px;height:18px;animation:spin 1s linear infinite"></i></div>` : ''}
+                    ${erro ? `<div class="lanc-foto-erro-badge" title="${escapeHtml(erro)}"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i></div>` : ''}
                 </div>`;
             }
             html += linha(i + 1);
@@ -841,6 +851,7 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             btn.addEventListener('click', () => {
                 const b = _state.blocos[parseInt(btn.dataset.editarFoto, 10)];
                 if (b?.fotoId) _abrirEditorIA([b.fotoId]);
+                else showToast('Esse bloco ainda não tem foto — escolha uma antes de editar com IA', 'error');
             });
         });
         _renderTrilho();
@@ -1017,6 +1028,11 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
     }
 
     let _edicaoCancelada = false;
+    // Estado de carregamento/erro POR FOTO (LAUNCH-05) — a mesma foto pode
+    // aparecer na grade do Passo 2 e em blocos do Passo 3 ao mesmo tempo,
+    // então rastreia por fotoId e os dois lugares refletem juntos.
+    const _fotosProcessando = new Set();
+    const _fotosComErro = new Map();
 
     function _abrirEditorIA(fotoIds) {
         const preSelecionadas = new Set((fotoIds && fotoIds.length) ? fotoIds : _state.fotos.map(f => f.id));
@@ -1271,6 +1287,10 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
             if (!foto) continue;
             status.textContent = `${preset.label} — ${i + 1} de ${fotoIds.length}…`;
             fill.style.width = `${Math.round((i / fotoIds.length) * 100)}%`;
+            _fotosProcessando.add(foto.id);
+            _fotosComErro.delete(foto.id);
+            _renderFotosGrid();
+            if (_state.passoAtual === 3) _renderBlocos();
             try {
                 const rec = await MediaStore.get(foto.mediaId);
                 if (!rec?.blob) throw new Error('foto não encontrada');
@@ -1313,12 +1333,17 @@ Devolva APENAS um JSON: {"blocos": [{"indice": 0, "html": "..."}, {"indice": 2, 
                     });
                 }
                 ok++;
+                _fotosProcessando.delete(foto.id);
                 _renderFotosGrid();
                 if (_state.passoAtual === 3) _renderBlocos();
             } catch (e) {
                 falhas++;
                 console.error('[Lançamento] edição falhou:', e);
                 status.textContent = 'Erro: ' + String(e.message).slice(0, 160);
+                _fotosProcessando.delete(foto.id);
+                _fotosComErro.set(foto.id, String(e.message).slice(0, 160));
+                _renderFotosGrid();
+                if (_state.passoAtual === 3) _renderBlocos();
             }
         }
         fill.style.width = '100%';
