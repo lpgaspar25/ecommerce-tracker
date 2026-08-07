@@ -4596,6 +4596,22 @@
             </div>
         </div>
 
+        <!-- ==================== Mapa de navegação (NAV-02) ==================== -->
+        <button type="button" id="btn-nav-map" class="nav-map-btn" title="Mapa de navegação (todos os módulos)">
+            <i data-lucide="grid-3x3" style="width:18px;height:18px"></i>
+        </button>
+        <div id="nav-map-panel" class="nav-map-panel hidden">
+            <div class="nav-map-overlay"></div>
+            <div class="nav-map-caixa">
+                <div class="nav-map-head">
+                    <h3><i data-lucide="grid-3x3" style="width:16px;height:16px;vertical-align:-3px"></i> Mapa de navegação</h3>
+                    <button class="btn-close" id="nav-map-close">&times;</button>
+                </div>
+                <input type="search" id="nav-map-busca" class="input" placeholder="Buscar módulo ou seção…">
+                <div id="nav-map-lista" class="nav-map-lista"></div>
+            </div>
+        </div>
+
         <!-- ==================== Modal: Biblioteca de Prompts ==================== -->
         <div id="modal-prompt-templates" class="modal hidden">
             <div class="modal-overlay"></div>
@@ -6561,6 +6577,7 @@
     <script src="js/prompt-templates.js"></script>
     <script src="js/recent-edits.js"></script>
     <script src="js/product-picker.js"></script>
+    <script src="js/nav-map.js"></script>
     <script src="js/saved-inspirations.js"></script>
     <script src="js/calculator.js"></script>
     <script src="js/scale-sim.js"></script>
