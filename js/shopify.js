@@ -1574,6 +1574,33 @@ const ShopifyModule = (() => {
         return { start: today, end: today, isToday: true };
     }
 
+    // Cabeçalho reduzido (DASH-01) — loja/timezone/período iam sempre visíveis
+    // numa linha inteira própria; viraram tooltip num ícone só, deixando as
+    // métricas (não o cabeçalho) o que chama mais atenção no bloco.
+    // O nome da loja é dado sensível (já era borrado/ocultado no modo
+    // privacidade) — o tooltip usa um <span class="shopify-widget-shop">
+    // de verdade, não atributo title, senão o modo privacidade (feito pra
+    // gravação de tela) perderia esse dado ao passar o mouse.
+    function _widgetHeaderHtml(rangeLabel, botoesExtrasHtml) {
+        return `
+            <div class="shopify-widget-header">
+                <div class="shopify-widget-titulo-row">
+                    <h4>Vendas Reais</h4>
+                    <span class="shopify-widget-info-wrap" tabindex="0">
+                        <i data-lucide="info" class="shopify-widget-info-icon"></i>
+                        <span class="shopify-widget-shop shopify-widget-info-tooltip">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''} · ${_esc(rangeLabel)}</span>
+                    </span>
+                </div>
+                <div style="display:flex;gap:0.4rem">
+                    <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
+                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+                    </button>
+                    ${botoesExtrasHtml || ''}
+                </div>
+            </div>
+        `;
+    }
+
     async function renderDashboardWidget(explicitStart, explicitEnd) {
         const container = document.getElementById('shopify-widget');
         if (!container) return;
@@ -1682,18 +1709,7 @@ const ShopifyModule = (() => {
                     }).join('');
 
                 container.innerHTML = `
-                    <div class="shopify-widget-header">
-                        <div>
-                            <h4>Shopify — Vendas Reais · ${_esc(rangeLabel)}</h4>
-                            <span class="shopify-widget-shop">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''}</span>
-                        </div>
-                        <div style="display:flex;gap:0.4rem">
-                            <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
-                                <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                            </button>
-                            <button class="btn btn-secondary btn-sm" onclick="ShopifyModule.openLinkModal()">Vincular</button>
-                        </div>
-                    </div>
+                    ${_widgetHeaderHtml(rangeLabel, '<button class="btn btn-secondary btn-sm" onclick="ShopifyModule.openLinkModal()">Vincular</button>')}
 
                     <div class="shopify-widget-summary">
                         <div class="shopify-metric">
@@ -1760,15 +1776,7 @@ const ShopifyModule = (() => {
             const fbCPA = totalFb > 0 ? totalBudget / totalFb : null;
 
             container.innerHTML = `
-                <div class="shopify-widget-header">
-                    <div>
-                        <h4>Shopify — Vendas Reais · ${_esc(rangeLabel)}</h4>
-                        <span class="shopify-widget-shop">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''}</span>
-                    </div>
-                    <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
-                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                    </button>
-                </div>
+                ${_widgetHeaderHtml(rangeLabel)}
 
                 <p class="shopify-widget-escopo">
                     ${totalShopifyOrders} pedido${totalShopifyOrders === 1 ? '' : 's'} Shopify no período · ${totalShopify} venda${totalShopify === 1 ? '' : 's'} já conciliada${totalShopify === 1 ? '' : 's'} com o diário (produto vinculado + Facebook preenchido)

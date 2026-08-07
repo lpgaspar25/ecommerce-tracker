@@ -12312,6 +12312,20 @@ thead:hover .diary-check-col input[type="checkbox"],
     margin: 0.2rem 0 0.6rem;
     line-height: 1.4;
 }
+.shopify-widget-titulo-row { display: flex; align-items: center; gap: 0.35rem; }
+.shopify-widget-info-wrap { position: relative; display: inline-flex; align-items: center; outline: none; }
+.shopify-widget-info-icon { width: 13px; height: 13px; color: var(--text-muted); cursor: help; }
+.shopify-widget-info-tooltip {
+    position: absolute; top: 100%; left: 0; margin-top: 6px; white-space: nowrap;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.3rem 0.55rem; font-size: 0.72rem; color: var(--text-secondary);
+    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.12s; z-index: 20;
+}
+.shopify-widget-info-wrap:hover .shopify-widget-info-tooltip,
+.shopify-widget-info-wrap:focus-visible .shopify-widget-info-tooltip,
+.shopify-widget-info-wrap:focus-within .shopify-widget-info-tooltip {
+    opacity: 1; visibility: visible;
+}
 
 .shopify-metric {
     padding: 0.6rem;
