@@ -113,11 +113,18 @@ const ProductsModule = {
 
         // Rich text toolbar (execCommand — simple, no deps)
         document.querySelectorAll('#product-form .prod-rich-btn').forEach(btn => {
+            if (!btn.dataset.cmd) return; // botões sem data-cmd (ex.: inserir imagem) têm handler próprio
             btn.addEventListener('mousedown', (e) => {
                 e.preventDefault(); // prevent editor blur
                 document.execCommand(btn.dataset.cmd, false, null);
                 document.getElementById('product-description')?.focus();
             });
+        });
+        // Inserir imagem na descrição (toolbar de imagem) — captura a seleção
+        // ANTES do overlay roubar o foco, senão perdemos onde o cursor estava.
+        document.getElementById('prod-rich-img-btn')?.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            this._abrirInserirImagemDescricao();
         });
 
         // AI description button
@@ -1148,6 +1155,148 @@ const ProductsModule = {
                         showToast('Falha ao trocar a imagem: ' + String(e.message).slice(0, 140), 'error');
                     }
                 });
+            });
+        });
+    },
+
+    // ── Toolbar de imagem na descrição do produto ───────────────────────
+    // Diferente de _abrirSeletorImagem (troca uma foto da GALERIA), isto
+    // insere um <img> DENTRO do texto da descrição, na posição do cursor —
+    // reaproveita a mesma agregação de fontes (própria/gerada/outra) e o
+    // mesmo _abrirOverlay, só troca a ação de "substituir" pra "inserir".
+    // Insere via Range.insertNode em vez de execCommand('insertHTML'): o
+    // execCommand depende do editor estar genuinamente focado no momento da
+    // chamada (falha em silêncio, devolvendo false, se não estiver — e abrir
+    // o overlay pra escolher/enviar a imagem sempre tira o foco do editor
+    // antes desta função rodar). Range.insertNode não tem essa dependência.
+    _inserirImagemNaDescricao(src, alt) {
+        const editor = document.getElementById('product-description');
+        if (!editor) return;
+        const img = document.createElement('img');
+        img.src = src;
+        if (alt) img.alt = alt;
+
+        const range = this._descInsertRange;
+        if (range && editor.contains(range.startContainer)) {
+            range.deleteContents();
+            range.insertNode(img);
+            range.setStartAfter(img);
+            range.collapse(true);
+        } else {
+            editor.appendChild(img);
+        }
+        editor.focus();
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        if (range) { try { sel.addRange(range); } catch {} }
+        this._descInsertRange = null;
+    },
+
+    _abrirInserirImagemDescricao() {
+        // Guarda ONDE o cursor estava no editor antes do overlay roubar o
+        // foco — sem isso a imagem sempre cairia no fim do texto, não onde
+        // o usuário realmente clicou.
+        const editor = document.getElementById('product-description');
+        const sel = window.getSelection();
+        // anchorNode === o PRÓPRIO editor (não um nó de texto/elemento
+        // dentro dele) só é uma posição de cursor real quando o editor está
+        // genuinamente vazio — qualquer outra vez é sobra da Selection depois
+        // de um innerHTML= anterior (ex.: recarregar a descrição), que deixa
+        // o anchor "grudado" no container mesmo com foco já em outro campo.
+        // Sem essa distinção, inserir sempre caía no início do texto.
+        const selecaoValida = editor && sel?.rangeCount && editor.contains(sel.anchorNode)
+            && (sel.anchorNode !== editor || editor.childNodes.length === 0);
+        this._descInsertRange = selecaoValida
+            ? sel.getRangeAt(0).cloneRange()
+            : null;
+
+        const pid = document.getElementById('product-id')?.value || '';
+        const geradas = window.StudioModule?._dados?.(pid)?.fotos || [];
+        const outras = window.StudioModule?._fontesDeImagem?.(pid) || [];
+        const proprias = this._images.map((im, i) => ({ im, i }));
+
+        const secao = (titulo, itens, render) => itens.length
+            ? `<div class="psel-secao"><div class="psel-secao-titulo">${this._esc(titulo)}</div><div class="psel-grid">${itens.map(render).join('')}</div></div>`
+            : '';
+
+        const html = `
+            <strong style="font-size:1rem">Inserir imagem na descrição</strong>
+            ${secao('Fotos deste produto', proprias, ({ im, i }) => `
+                <button type="button" class="psel-item" data-fonte="propria" data-idx="${i}">
+                    <img src="${this._esc(im.dataUrl || im.url || '')}" alt="" loading="lazy">
+                </button>`)}
+            ${secao('Geradas por IA (Estúdio)', geradas, (f) => `
+                <button type="button" class="psel-item" data-fonte="gerada" data-media="${this._esc(f.mediaId || '')}" data-thumb="${this._esc(f.thumb || '')}">
+                    <img src="${this._esc(f.thumb || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.presetLabel || 'IA')}</span>
+                </button>`)}
+            ${secao('Outras fontes', outras, (f) => `
+                <button type="button" class="psel-item" data-fonte="outra" data-url="${this._esc(f.url || '')}">
+                    <img src="${this._esc(f.url || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.origem || '')}</span>
+                </button>`)}
+            ${(!proprias.length && !geradas.length && !outras.length) ? '<p style="color:var(--text-muted);font-size:0.85rem">Nenhuma foto encontrada pra este produto ainda — envie uma nova abaixo.</p>' : ''}
+
+            <div class="psel-secao">
+                <div class="psel-secao-titulo">Enviar nova imagem</div>
+                <input type="file" id="pdesc-img-upload" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdesc-img-upload-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Escolher arquivo</button>
+                <label style="display:flex;align-items:center;gap:0.35rem;margin-top:0.5rem;font-size:0.8rem;color:var(--text-muted)">
+                    <input type="checkbox" id="pdesc-img-melhorar"> Melhorar com IA antes de inserir
+                </label>
+                <div id="pdesc-img-status" style="font-size:0.78rem;color:var(--text-muted);min-height:1.1em;margin-top:0.3rem"></div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="pdesc-cancelar">Cancelar</button>
+            </div>
+        `;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#pdesc-cancelar')?.addEventListener('click', () => { this._descInsertRange = null; ov.remove(); });
+
+            ov.querySelectorAll('.psel-item').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const fonte = btn.dataset.fonte;
+                    try {
+                        if (fonte === 'propria') {
+                            const im = this._images[parseInt(btn.dataset.idx, 10)];
+                            if (im) { ov.remove(); this._inserirImagemNaDescricao(im.dataUrl || im.url, ''); }
+                        } else if (fonte === 'gerada') {
+                            const mediaId = btn.dataset.media;
+                            const rec = mediaId && window.MediaStore?.isSupported?.() ? await MediaStore.get(mediaId) : null;
+                            const dataUrl = rec?.blob
+                                ? await comprimirImagemParaDataUrl(rec.blob, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' })
+                                : btn.dataset.thumb;
+                            ov.remove();
+                            this._inserirImagemNaDescricao(dataUrl, '');
+                        } else if (fonte === 'outra') {
+                            ov.remove();
+                            this._inserirImagemNaDescricao(btn.dataset.url, '');
+                        }
+                    } catch (e) {
+                        showToast('Falha ao inserir a imagem: ' + String(e.message).slice(0, 140), 'error');
+                    }
+                });
+            });
+
+            const status = ov.querySelector('#pdesc-img-status');
+            ov.querySelector('#pdesc-img-upload-btn')?.addEventListener('click', () => ov.querySelector('#pdesc-img-upload')?.click());
+            ov.querySelector('#pdesc-img-upload')?.addEventListener('change', async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                try {
+                    status.textContent = 'Processando…';
+                    let dataUrl = await comprimirImagemParaDataUrl(file, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+                    if (ov.querySelector('#pdesc-img-melhorar')?.checked) {
+                        status.textContent = 'Melhorando com IA…';
+                        dataUrl = await this._melhorarBlob(file);
+                    }
+                    ov.remove();
+                    this._inserirImagemNaDescricao(dataUrl, '');
+                } catch (e) {
+                    status.textContent = 'Erro: ' + String(e.message).slice(0, 140);
+                }
             });
         });
     },
