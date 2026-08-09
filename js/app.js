@@ -483,6 +483,24 @@ function initTabs() {
     }
 }
 
+// Sub-abas da tela Metas (Meta da loja / Calculadora de vendas) — reorganização
+// puramente visual pra não empilhar os dois cards inteiros um embaixo do outro.
+// StoreGoalModule e DailyTargetsCalculator continuam com dados e lógica 100%
+// separados; isso só troca qual dos dois containers fica visível.
+function _initMetasSubtabs() {
+    document.querySelectorAll('.metas-subtab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.metas-subtab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.subtab;
+            const loja = document.getElementById('metas-sub-meta-loja');
+            const calc = document.getElementById('metas-sub-calculadora');
+            if (loja) loja.style.display = tab === 'meta-loja' ? '' : 'none';
+            if (calc) calc.style.display = tab === 'calculadora' ? '' : 'none';
+        });
+    });
+}
+
 // ---- Theme ----
 function updateThemeToggleButton(theme) {
     const btn = document.getElementById('btn-theme-toggle');
@@ -1557,6 +1575,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     NotificationsModule.init();
     initTabs();
+    _initMetasSubtabs();
     initModals();
     initConfig();
     initRateModal();

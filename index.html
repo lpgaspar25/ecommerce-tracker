@@ -1023,75 +1023,88 @@
                 <button id="btn-add-goal" class="btn btn-primary">+ Nova Meta</button>
             </div>
 
-            <!-- ── Meta de Lucro da Loja (mensal, multi-produto) ── -->
-            <div class="card" style="margin-bottom:1rem">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
-                    <div>
-                        <h3 style="margin:0"><i data-lucide="target" style="width:16px;height:16px;vertical-align:-3px"></i> Meta de Lucro da Loja</h3>
-                        <p class="section-subtitle" style="margin:0.2rem 0 0">Meta mensal de lucro com todos os produtos. Realizado cruza vendas da Shopify, custo por país e gasto do Diário.</p>
+            <!-- Meta da loja / Calculadora de vendas — mesmas duas ferramentas de
+                 antes, só reorganizadas em sub-abas (LAUNCH-06-batch #22) pra não
+                 empilhar os dois cards inteiros um embaixo do outro. Dado de cada
+                 uma continua 100% separado — isso é só reorganização de tela. -->
+            <div class="metas-subtabs-row">
+                <button type="button" class="metas-subtab active" data-subtab="meta-loja"><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Meta da loja</button>
+                <button type="button" class="metas-subtab" data-subtab="calculadora"><i data-lucide="calculator" style="width:14px;height:14px;vertical-align:-2px"></i> Calculadora de vendas</button>
+            </div>
+
+            <div id="metas-sub-meta-loja">
+                <!-- ── Meta de Lucro da Loja (mensal, multi-produto) ── -->
+                <div class="card" style="margin-bottom:1rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+                        <div>
+                            <h3 style="margin:0"><i data-lucide="target" style="width:16px;height:16px;vertical-align:-3px"></i> Meta de Lucro da Loja</h3>
+                            <p class="section-subtitle" style="margin:0.2rem 0 0">Meta mensal de lucro com todos os produtos. Realizado cruza vendas da Shopify, custo por país e gasto do Diário.</p>
+                        </div>
+                        <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+                            <select id="store-goal-select" class="input input-sm" style="width:auto"></select>
+                            <button id="btn-store-goal-new" class="btn btn-primary btn-sm" type="button"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Nova meta</button>
+                            <button id="btn-store-goal-del" class="btn btn-secondary btn-sm" type="button" title="Excluir a meta selecionada"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+                            <button id="store-goal-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                        </div>
                     </div>
-                    <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
-                        <select id="store-goal-select" class="input input-sm" style="width:auto"></select>
-                        <button id="btn-store-goal-new" class="btn btn-primary btn-sm" type="button"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Nova meta</button>
-                        <button id="btn-store-goal-del" class="btn btn-secondary btn-sm" type="button" title="Excluir a meta selecionada"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
-                        <button id="store-goal-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
+                    <div id="store-goal-card-body" style="margin-top:0.85rem">
+                        <div id="store-goal-body"></div>
                     </div>
-                </div>
-                <div id="store-goal-card-body" style="margin-top:0.85rem">
-                    <div id="store-goal-body"></div>
                 </div>
             </div>
 
-            <!-- ── Calculadora de Vendas Necessárias (live) ── -->
-            <div class="card" style="margin-bottom:1rem">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
-                    <div>
-                        <h3 style="margin:0"><i data-lucide="calculator" style="width:16px;height:16px;vertical-align:-3px"></i> Calculadora de Vendas Necessárias</h3>
-                        <p class="section-subtitle" style="margin:0.2rem 0 0">Quantas vendas/dia preciso fazer para breakeven, lucro alvo e conversão alvo. Recalcula sozinho conforme o orçamento muda.</p>
-                    </div>
-                    <button id="dt-reset" class="btn btn-secondary btn-sm" type="button" title="Restaurar padrões do produto">↺ Reset</button>
-                </div>
-
-                <div class="dt-controls" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.6rem;margin-top:0.75rem">
-                    <div class="form-group" style="margin:0">
-                        <label style="font-size:0.78rem">Produto</label>
-                        <select id="dt-product" class="input"></select>
-                    </div>
-                    <div class="form-group" style="margin:0">
-                        <label style="font-size:0.78rem">Orçamento/dia</label>
-                        <div style="display:flex;gap:0.3rem">
-                            <input type="number" id="dt-budget" class="input" step="0.01" min="0" style="flex:1">
-                            <select id="dt-budget-currency" class="input" style="width:auto">
-                                <option value="USD">USD</option>
-                                <option value="BRL">BRL</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GBP">GBP</option>
-                            </select>
-                            <button id="dt-budget-resync" class="btn btn-secondary btn-sm" type="button" title="Voltar a sincronizar com o Diário" style="white-space:nowrap;display:none">↻</button>
+            <div id="metas-sub-calculadora" style="display:none">
+                <!-- ── Calculadora de Vendas Necessárias (live) ── -->
+                <div class="card" style="margin-bottom:1rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+                        <div>
+                            <h3 style="margin:0"><i data-lucide="calculator" style="width:16px;height:16px;vertical-align:-3px"></i> Calculadora de Vendas Necessárias</h3>
+                            <p class="section-subtitle" style="margin:0.2rem 0 0">Quantas vendas/dia preciso fazer para breakeven, lucro alvo e conversão alvo. Recalcula sozinho conforme o orçamento muda.</p>
                         </div>
-                        <div id="dt-budget-source" style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem"></div>
+                        <button id="dt-reset" class="btn btn-secondary btn-sm" type="button" title="Restaurar padrões do produto">↺ Reset</button>
                     </div>
-                    <div class="form-group" style="margin:0">
-                        <label style="font-size:0.78rem">Visitantes/dia</label>
-                        <div style="display:flex;gap:0.3rem">
-                            <input type="number" id="dt-visitors" class="input" min="0" style="flex:1">
-                            <button id="dt-visitors-recalc" class="btn btn-secondary btn-sm" type="button" title="Estimar via Orçamento ÷ CPC médio" style="white-space:nowrap">↻ Auto</button>
+
+                    <div class="dt-controls" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:0.6rem;margin-top:0.75rem">
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.78rem">Produto</label>
+                            <select id="dt-product" class="input"></select>
                         </div>
-                        <div id="dt-visitors-source" style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem"></div>
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.78rem">Orçamento/dia</label>
+                            <div style="display:flex;gap:0.3rem">
+                                <input type="number" id="dt-budget" class="input" step="0.01" min="0" style="flex:1">
+                                <select id="dt-budget-currency" class="input" style="width:auto">
+                                    <option value="USD">USD</option>
+                                    <option value="BRL">BRL</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                                <button id="dt-budget-resync" class="btn btn-secondary btn-sm" type="button" title="Voltar a sincronizar com o Diário" style="white-space:nowrap;display:none">↻</button>
+                            </div>
+                            <div id="dt-budget-source" style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem"></div>
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.78rem">Visitantes/dia</label>
+                            <div style="display:flex;gap:0.3rem">
+                                <input type="number" id="dt-visitors" class="input" min="0" style="flex:1">
+                                <button id="dt-visitors-recalc" class="btn btn-secondary btn-sm" type="button" title="Estimar via Orçamento ÷ CPC médio" style="white-space:nowrap">↻ Auto</button>
+                            </div>
+                            <div id="dt-visitors-source" style="font-size:0.7rem;color:var(--text-muted);margin-top:0.2rem"></div>
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.78rem">Lucro alvo (% da receita)</label>
+                            <input type="number" id="dt-target-profit" class="input" step="0.5" min="0">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.78rem">Conversão alvo (%)</label>
+                            <input type="number" id="dt-target-conv" class="input" step="0.1" min="0">
+                        </div>
                     </div>
-                    <div class="form-group" style="margin:0">
-                        <label style="font-size:0.78rem">Lucro alvo (% da receita)</label>
-                        <input type="number" id="dt-target-profit" class="input" step="0.5" min="0">
-                    </div>
-                    <div class="form-group" style="margin:0">
-                        <label style="font-size:0.78rem">Conversão alvo (%)</label>
-                        <input type="number" id="dt-target-conv" class="input" step="0.1" min="0">
-                    </div>
+
+                    <div id="dt-summary" style="margin-top:0.75rem"></div>
+
+                    <div id="dt-cards" class="dt-cards-grid"></div>
                 </div>
-
-                <div id="dt-summary" style="margin-top:0.75rem"></div>
-
-                <div id="dt-cards" class="dt-cards-grid"></div>
             </div>
 
             <div id="goals-list" class="cards-grid">
