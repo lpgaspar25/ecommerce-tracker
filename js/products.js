@@ -2632,6 +2632,60 @@ const ProductsModule = {
         if (confirmBtn) confirmBtn.disabled = count === 0;
     },
 
+    // Sincroniza um produto recém-PUBLICADO na Shopify (por Importador ou
+    // Lançamento) pra dentro de AppState.allProducts — sem isso, o produto
+    // existe de verdade na loja mas fica invisível na tela Produtos até
+    // alguém lembrar de rodar um re-import manual pelo Shopify. Mesma forma
+    // de registro que _importSelectedShopifyProducts já usa (linhas acima),
+    // só que a partir do retorno cru de uma mutation productCreate (que só
+    // tem id/handle) em vez do objeto já formatado do ShopifyModule.
+    //
+    // `shopifyProduct` — { id, handle } (o `product` devolvido por
+    // productCreate). `opts` completa o que a mutation não devolve:
+    // { title, price, currency, image, storeId }.
+    upsertFromShopify(shopifyProduct, opts = {}) {
+        if (!shopifyProduct?.id) return null;
+        const shopifyId = String(shopifyProduct.id).split('/').pop(); // gid://shopify/Product/123 → "123"
+        const existente = (AppState.allProducts || []).find(p => String(p.shopifyId || '') === shopifyId);
+        const storeId = opts.storeId || existente?.storeId || (typeof getWritableStoreId === 'function' ? getWritableStoreId() : null);
+
+        const registro = {
+            id: existente?.id || generateId('prod'),
+            name: opts.title || existente?.name || '(sem título)',
+            language: existente?.language || 'Ingles',
+            price: opts.price ?? existente?.price ?? 0,
+            priceCurrency: opts.currency || existente?.priceCurrency || 'USD',
+            cost: existente?.cost || 0,
+            costCurrency: existente?.costCurrency || 'USD',
+            tax: existente?.tax || 0,
+            variableCosts: existente?.variableCosts || 0,
+            cpa: existente?.cpa || 0,
+            cpaCurrency: existente?.cpaCurrency || 'USD',
+            countryPrices: existente?.countryPrices || [],
+            status: existente?.status || 'ativo',
+            storeId,
+            shopifyId,
+            shopifyHandle: shopifyProduct.handle || existente?.shopifyHandle || '',
+            shopifyImage: opts.image || existente?.shopifyImage || '',
+            shopifyImportedAt: new Date().toISOString(),
+        };
+
+        if (existente) {
+            Object.assign(existente, registro);
+        } else {
+            AppState.allProducts.push(registro);
+            if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
+                try { SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(registro)); } catch {}
+            }
+        }
+
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof populateProductDropdowns === 'function') populateProductDropdowns();
+        this.render();
+        if (typeof EventBus !== 'undefined') EventBus.emit('productsChanged');
+        return registro;
+    },
+
     async _importSelectedShopifyProducts() {
         const checked = Array.from(document.querySelectorAll('#shopify-import-list .shopify-import-cb:checked:not(:disabled)'));
         if (checked.length === 0) return;

@@ -2231,6 +2231,17 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
 
             _state.shopifyProductId = criado.id;
             _state.shopifyHandle = criado.handle;
+            // Sem isso o produto existe na Shopify mas fica invisível na
+            // tela Produtos até um re-import manual (mesmo gap corrigido no
+            // Importador — os dois fluxos de publish nunca escreviam em
+            // AppState.allProducts).
+            if (typeof ProductsModule !== 'undefined') {
+                ProductsModule.upsertFromShopify(criado, {
+                    title: _state.titulo,
+                    price: 0,
+                    image: payload.images[0]?.src || '',
+                });
+            }
             showToast('Produto criado na Shopify', 'success');
             // _salvarRascunho() mexe no mesmo texto de status — chama ANTES
             // e sobrescreve por último, senão a confirmação da publicação
