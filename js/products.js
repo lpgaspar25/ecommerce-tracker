@@ -133,6 +133,7 @@ const ProductsModule = {
 
         // IA nas imagens do produto
         document.getElementById('btn-prod-gen-gallery')?.addEventListener('click', () => this.abrirGerarGaleria());
+        document.getElementById('btn-prod-auditar')?.addEventListener('click', () => this.auditarProduto());
 
         // Idiomas mudam quais traduções aparecem (o 1º marcado é a origem).
         document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb =>
@@ -2261,6 +2262,124 @@ const ProductsModule = {
             this._statusImagem('');
             showToast('Falha ao gerar: ' + String(e.message).slice(0, 140), 'error');
         }
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Agente de auditoria do produto (fotos + descrição)
+    //  Só OpenAI (gpt-4o com visão) de propósito — diferente do resto do
+    //  módulo, que faz cascata Gemini→OpenAI pra GERAR imagem, aqui é uma
+    //  ANÁLISE (texto+visão) e o dispatcher de 4 provedores do loja.js é
+    //  privado daquele módulo, então reimplementa a chamada aqui em vez de
+    //  tentar reaproveitar.
+    // ══════════════════════════════════════════════════════════════
+
+    _extrairJsonAuditoria(texto) {
+        let t = String(texto || '').trim();
+        const cerca = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (cerca) t = cerca[1].trim();
+        const ini = t.search(/[{[]/);
+        if (ini > 0) t = t.slice(ini);
+        const fim = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+        if (fim >= 0) t = t.slice(0, fim + 1);
+        return JSON.parse(t);
+    },
+
+    async _openaiVisaoAuditoria(system, texto, imagens) {
+        const key = localStorage.getItem('openai_api_key') || '';
+        if (!key) throw new Error('Configure a chave OpenAI (AI Ad Generator → Configurar IA)');
+        const content = [{ type: 'text', text: texto }];
+        // this._images já guarda dataUrl OU url direto (nunca base64 cru) —
+        // a API da OpenAI aceita os dois formatos como image_url.url, então
+        // não precisa buscar/recodificar nada antes de mandar.
+        imagens.forEach(src => content.push({ type: 'image_url', image_url: { url: src, detail: 'low' } }));
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            body: JSON.stringify({
+                model: 'gpt-4o', max_tokens: 2000, temperature: 0.4,
+                response_format: { type: 'json_object' },
+                messages: [{ role: 'system', content: system }, { role: 'user', content }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async auditarProduto() {
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        const descricao = (document.getElementById('product-description')?.innerText || '').trim();
+        const fotos = this._images.filter(im => im.dataUrl || im.url).map(im => im.dataUrl || im.url);
+        if (!nome && !descricao && !fotos.length) {
+            showToast('Preencha o produto (nome, descrição ou fotos) antes de auditar', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-prod-auditar');
+        if (btn) { btn.disabled = true; btn.dataset.textoOriginal = btn.innerHTML; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Auditando…'; if (window.lucide?.createIcons) lucide.createIcons(); }
+
+        try {
+            const sistema = `Você é um auditor de qualidade de páginas de produto de e-commerce. Analise as fotos e a descrição recebidas e aponte só problemas REAIS e específicos — nada de elogio genérico nem achado forçado quando está tudo bem.
+Pra cada achado, dê uma sugestão prática e, quando fizer sentido, um "promptPronto": em inglês se for sobre foto (prompt pronto pra colar num editor de imagem por IA), ou a instrução de copy pronta em português se for sobre a descrição.
+Devolva APENAS um JSON: {"achados": [{"area":"foto"|"descricao","indiceFoto":0,"severidade":"alta"|"media"|"baixa","problema":"...","sugestao":"...","promptPronto":"..."}]}
+Regras: "area":"foto" sempre vem com "indiceFoto" (índice da foto, começando em 0, na ordem que as fotos foram recebidas); "area":"descricao" não usa indiceFoto. Máximo 8 achados, do mais importante pro menos importante. Se uma área estiver genuinamente sem problema, não invente achado só pra preencher.
+Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estranho, produto pequeno/ilegível na foto, poucas fotos (só 1, ou nenhuma "em uso"/detalhe), inconsistência entre o que a foto mostra e o que a descrição promete, erro de gramática/ortografia, falta de informação essencial (material, tamanho, garantia, cuidados), tom de venda fraco ou genérico demais.`;
+
+            const contexto = `Produto: ${nome || '(sem nome)'}.\nDescrição atual (texto puro, sem HTML):\n${descricao || '(vazia)'}\nVocê recebeu ${fotos.length} foto(s) deste produto, nesta ordem (índice 0, 1, 2...).`;
+
+            const txt = await this._openaiVisaoAuditoria(sistema, contexto, fotos);
+            const parsed = this._extrairJsonAuditoria(txt);
+            const achados = Array.isArray(parsed.achados) ? parsed.achados : [];
+            this._renderAuditoriaResultados(achados, fotos);
+        } catch (e) {
+            showToast('Falha na auditoria: ' + String(e.message).slice(0, 160), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.textoOriginal || btn.innerHTML; delete btn.dataset.textoOriginal; if (window.lucide?.createIcons) lucide.createIcons(); }
+        }
+    },
+
+    _renderAuditoriaResultados(achados, fotos) {
+        const severidadeCor = { alta: 'var(--danger, #ef4444)', media: 'var(--warning, #f59e0b)', baixa: 'var(--text-muted)' };
+        const severidadeLabel = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+        const cartao = (a, i) => `
+            <div class="prod-audit-item">
+                <div class="prod-audit-head">
+                    <span class="prod-audit-sev" style="background:${severidadeCor[a.severidade] || severidadeCor.baixa}">${severidadeLabel[a.severidade] || 'Baixa'}</span>
+                    <span class="prod-audit-area">${a.area === 'foto' ? `Foto ${Number.isFinite(a.indiceFoto) ? a.indiceFoto + 1 : ''}` : 'Descrição'}</span>
+                    ${a.area === 'foto' && fotos[a.indiceFoto] ? `<img src="${this._esc(fotos[a.indiceFoto])}" alt="" class="prod-audit-thumb">` : ''}
+                </div>
+                <p class="prod-audit-problema">${this._esc(a.problema || '')}</p>
+                <p class="prod-audit-sugestao">${this._esc(a.sugestao || '')}</p>
+                ${a.promptPronto ? `
+                    <div class="prod-audit-prompt-row">
+                        <input type="text" class="input input-sm" readonly value="${this._esc(a.promptPronto)}" data-audit-prompt="${i}">
+                        <button type="button" class="btn btn-secondary btn-sm" data-copiar-prompt="${i}" title="Copiar prompt pronto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
+                    </div>` : ''}
+            </div>`;
+
+        const html = `
+            <strong style="font-size:1rem">Auditoria do produto</strong>
+            ${achados.length
+                ? `<p style="margin:0;font-size:0.8rem;color:var(--text-muted)">${achados.length} ponto(s) encontrado(s) — copie o prompt pronto pra aplicar direto onde precisar.</p>
+                   <div class="prod-audit-lista">${achados.map(cartao).join('')}</div>`
+                : `<p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Nenhum problema real encontrado nas fotos e na descrição atuais.</p>`}
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="paudit-fechar">Fechar</button>
+            </div>`;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#paudit-fechar')?.addEventListener('click', () => ov.remove());
+            ov.querySelectorAll('[data-copiar-prompt]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const campo = ov.querySelector(`[data-audit-prompt="${btn.dataset.copiarPrompt}"]`);
+                    try {
+                        await navigator.clipboard.writeText(campo.value);
+                        showToast('Prompt copiado', 'success');
+                    } catch (e) {
+                        showToast('Não consegui copiar: ' + e.message, 'error');
+                    }
+                });
+            });
+        });
     },
 
     // Overlay leve reaproveitado pelos dois seletores acima.
