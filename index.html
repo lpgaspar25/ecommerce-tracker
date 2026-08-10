@@ -502,6 +502,33 @@
                 </div>
             </div>
 
+            <!-- Row 3a2: Funil — checkout/conversão por produto ou país -->
+            <div class="dash-row-2 dash-block">
+                <div class="dash-card">
+                    <div class="dash-funil-head">
+                        <h3 style="margin:0;font-size:0.9rem"><i data-lucide="filter" style="width:14px;height:14px;vertical-align:-2px"></i> Funil por <span id="dash-funil-rotulo">produto</span></h3>
+                        <div class="dash-funil-dims">
+                            <button class="dash-funil-dim active" data-dim="produto">Produto</button>
+                            <button class="dash-funil-dim" data-dim="regiao">País</button>
+                        </div>
+                    </div>
+                    <p class="dash-funil-fonte">Checkout = evento <strong>InitiateCheckout</strong> do pixel do Facebook (Diário). Em "País", agrupa pela tag de região da campanha — tags compostas (ex.: EN = Reino Unido + Irlanda + Austrália) aparecem como uma linha só.</p>
+                    <div class="dash-tabs dash-funil-tabs">
+                        <button class="dash-funil-tab active" data-funil="piorCheckout">Pior checkout</button>
+                        <button class="dash-funil-tab" data-funil="melhorCheckout">Melhor checkout</button>
+                        <button class="dash-funil-tab" data-funil="melhorConv">Melhor conversão</button>
+                        <button class="dash-funil-tab" data-funil="oportunidades">Oportunidades</button>
+                        <button class="dash-funil-tab" data-funil="quedas">Tendências de baixa</button>
+                    </div>
+                    <div id="dash-funil-lista" class="dash-ranking"></div>
+                </div>
+                <div class="dash-card">
+                    <h3 style="margin:0 0 0.2rem;font-size:0.9rem"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas reais por país de entrega</h3>
+                    <p class="dash-funil-fonte">Direto dos pedidos da Shopify — é o país <strong>de destino do pedido</strong>, dimensão diferente da tag de campanha ao lado. A Shopify não expõe checkout nem visitas por país, então aqui só há vendas.</p>
+                    <div id="dash-vendas-pais" class="dash-ranking"></div>
+                </div>
+            </div>
+
             <!-- Row 3b: Sales Ranking (Madgicx-style) -->
             <div class="dash-block" data-block-id="sales-ranking" data-block-name="Ranking de Vendas">
                 <div class="dash-card dash-card-mdgx-ranking">

@@ -878,6 +878,31 @@ const ShopifyModule = (() => {
         return agg;
     }
 
+    // Vendas reais agregadas por PAÍS DE ENTREGA do pedido.
+    // Dimensão diferente da tag de região da campanha (que é segmentação de
+    // anúncio, no Diário): aqui é o país real pra onde o pedido foi. Pedido
+    // sem shipping_address (ex.: produto digital) cai em '??' em vez de
+    // sumir da conta — some do ranking mas o total continua batendo.
+    async function getRealSalesPorPais(dateFrom, dateTo) {
+        const orders = await fetchOrders(dateFrom, dateTo);
+        const agg = {};
+        for (const order of orders) {
+            const cc = order.shipping_address?.country_code || '??';
+            const nome = order.shipping_address?.country || '';
+            if (!agg[cc]) agg[cc] = { countryCode: cc, country: nome, sales: 0, revenue: 0, orderCount: 0, currency: order.currency || 'BRL' };
+            if (nome && !agg[cc].country) agg[cc].country = nome;
+            let itens = 0;
+            for (const item of (order.line_items || [])) {
+                const qty = item.quantity || 0;
+                itens += qty;
+                agg[cc].sales += qty;
+                agg[cc].revenue += parseFloat(item.discounted_price ?? item.price ?? '0') * qty;
+            }
+            if (itens > 0) agg[cc].orderCount += 1;
+        }
+        return agg;
+    }
+
     // Fetch + cache shopify sales map keyed by "date|localProductId" for the given range.
     // Returns: { "YYYY-MM-DD|localProductId": { sales, revenue, currency } }
     // opts.countryCode (opcional, DASH-02): filtra os pedidos pelo país de
@@ -2392,7 +2417,7 @@ const ShopifyModule = (() => {
         linkProduct, getLink, autoLinkByName, syncAllLinkedPrices,
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
-        getRealSalesMapByDate, getSalesMapByDate, fetchProductViews, fetchProductViewsByDate,
+        getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,

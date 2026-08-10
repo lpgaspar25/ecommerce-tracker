@@ -10018,6 +10018,28 @@ thead:hover .diary-check-col input[type="checkbox"],
 .dash-tab:hover { color: var(--text-primary); }
 .dash-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+/* Rankings de funil (checkout/conversão por produto ou país).
+   Classe própria em vez de reaproveitar .dash-tab: o handler de .dash-tab
+   é global por classe e sobrescreveria o modo do Top Produtos. */
+.dash-funil-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.dash-funil-dims { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.dash-funil-dim {
+    padding: 0.25rem 0.7rem; font-size: 0.72rem; font-weight: 600;
+    background: none; border: none; color: var(--text-muted); cursor: pointer; transition: all 0.12s;
+}
+.dash-funil-dim:hover { color: var(--text-primary); background: var(--bg-input); }
+.dash-funil-dim.active { background: var(--accent); color: #fff; }
+.dash-funil-fonte { font-size: 0.68rem; color: var(--text-muted); line-height: 1.45; margin: 0.4rem 0 0.6rem; }
+.dash-funil-tabs { flex-wrap: wrap; }
+.dash-funil-tab {
+    padding: 0.4rem 0.7rem; font-size: 0.73rem; font-weight: 600;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-muted); cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.dash-funil-tab:hover { color: var(--text-primary); }
+.dash-funil-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.dash-funil-sub { font-weight: 600; font-size: 0.68rem; color: var(--text-muted); margin-left: 0.3rem; }
+
 /* Rankings */
 .dash-ranking { display: flex; flex-direction: column; gap: 0.35rem; }
 .dash-rank-item {

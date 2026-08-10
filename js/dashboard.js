@@ -11,6 +11,17 @@ const DashboardModule = {
     _calProduct: 'todos',
     _calRegion: '',
 
+    // Rankings de funil (checkout/conversão) — dimensão e métrica escolhidas
+    _funilDim: 'produto',      // 'produto' | 'regiao'
+    _funilMode: 'piorCheckout',
+    // Volume mínimo pra entrar num ranking de TAXA: sem isso um produto com
+    // 1 ATC e 0 checkout aparece como "0% — pior checkout da loja", que é
+    // ruído, não sinal.
+    _MIN_ATC_FUNIL: 10,
+    _MIN_VIEWS_FUNIL: 50,
+    _vendasPaisMap: null,
+    _vendasPaisKey: '',
+
     // Shopify real-sales cache (keyed by "start|end")
     _realSalesMap: null,
     _realSalesPrevMap: null,
@@ -155,6 +166,26 @@ const DashboardModule = {
                 btn.classList.add('active');
                 this._topMode = btn.dataset.top;
                 this._renderTopProducts();
+            });
+        });
+
+        // Rankings de funil — classes próprias (não .dash-tab): o handler
+        // acima é global por classe e passaria a sobrescrever _topMode se
+        // estes botões compartilhassem a mesma classe.
+        document.querySelectorAll('.dash-funil-dim').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-dim').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilDim = btn.dataset.dim;
+                this._renderFunilRanking();
+            });
+        });
+        document.querySelectorAll('.dash-funil-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilMode = btn.dataset.funil;
+                this._renderFunilRanking();
             });
         });
 
@@ -489,6 +520,8 @@ const DashboardModule = {
         this._renderFunnelDiagnosis();
         this._renderChart();
         this._renderTopProducts();
+        this._renderFunilRanking();
+        this._renderVendasPorPais();
         this._renderMdgxRanking();
         this._renderMetricsCalendar();
         this._renderEcommerceDates();
@@ -1776,6 +1809,222 @@ const DashboardModule = {
     },
 
     // Opportunity map - products with untapped potential
+    // ══════════════════════════════════════════════════════════════
+    //  Rankings de funil — checkout / conversão por produto ou país
+    //
+    //  "Checkout" aqui é o evento InitiateCheckout do pixel do Facebook
+    //  (campo `checkout` do Diário), NÃO o funil de checkout da Shopify —
+    //  a Shopify não expõe isso. Por isso a dimensão "país" é a TAG DE
+    //  REGIÃO DA CAMPANHA (segmentação do anúncio), a única que carrega
+    //  esse evento. O país real de entrega dos pedidos vive noutro card,
+    //  separado de propósito: são dimensões diferentes e misturar as duas
+    //  numa taxa só daria um número com numerador e denominador de escopos
+    //  diferentes (o mesmo erro que já corrigimos na Conversão Real).
+    // ══════════════════════════════════════════════════════════════
+
+    // Entradas de CAMPANHA (as únicas com `region`) no intervalo pedido.
+    // _getPeriodEntries exclui campanha de propósito — daí a versão própria.
+    _entradasCampanha(inicio, fim) {
+        return (AppState.diary || []).filter(e => {
+            if (!e.isCampaign || !e.region) return false;
+            if (!e.date || e.date < inicio || e.date > fim) return false;
+            if (this._productFilter !== 'todos' && e.productId !== this._productFilter) return false;
+            return true;
+        });
+    },
+
+    _agruparPorRegiao(entries) {
+        const map = {};
+        entries.forEach(e => {
+            if (!map[e.region]) map[e.region] = [];
+            map[e.region].push(e);
+        });
+        return map;
+    },
+
+    // Devolve [{ chave, nome, agg }] já agregado, na dimensão pedida.
+    // Reusa _aggregate() nas duas dimensões pra taxa/moeda saírem idênticas.
+    _linhasFunil(dim, anterior = false) {
+        if (dim === 'regiao') {
+            const inicio = anterior ? this._compareStart : this._startDate;
+            const fim = anterior ? this._compareEnd : this._endDate;
+            if (!inicio || !fim) return [];
+            const grupos = this._agruparPorRegiao(this._entradasCampanha(inicio, fim));
+            return Object.entries(grupos).map(([regiao, entries]) => ({
+                chave: regiao,
+                nome: (typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(regiao) : regiao,
+                agg: this._aggregate(entries),
+            }));
+        }
+        const entries = anterior ? this._getPrevPeriodEntries() : this._getPeriodEntries();
+        const grupos = this._groupByProduct(entries);
+        return Object.entries(grupos).map(([pid, pEntries]) => ({
+            chave: pid,
+            nome: getProductName(pid),
+            agg: this._aggregate(pEntries),
+        }));
+    },
+
+    _taxaCheckout(agg) {
+        return agg.addToCart > 0 ? (agg.checkout / agg.addToCart) * 100 : 0;
+    },
+
+    // Delta entre duas TAXAS, em pontos percentuais. Não dá pra usar
+    // _fmtDelta({percent:false}) aqui: aquele ramo formata `${diff}` cru,
+    // pensado pra contagens inteiras (vendas) — com taxa vira "−40.2439...".
+    // E "+10" sem unidade leria como "10 vendas", não "10 pontos".
+    _deltaPP(atual, anterior) {
+        if (this._compareMode === 'none') return '';
+        if (!isFinite(atual) || !isFinite(anterior)) return '';
+        const diff = atual - anterior;
+        if (Math.abs(diff) < 0.05) return '';
+        const sign = diff > 0 ? '+' : '−';
+        const cls = diff > 0 ? 'dash-delta-up' : 'dash-delta-down';
+        return `<span class="dash-delta ${cls}">${sign}${Math.abs(diff).toFixed(1)}pp</span>`;
+    },
+
+    _renderFunilRanking() {
+        const container = document.getElementById('dash-funil-lista');
+        if (!container) return;
+        const dim = this._funilDim;
+        const modo = this._funilMode;
+        const linhas = this._linhasFunil(dim);
+        const rotuloDim = dim === 'regiao' ? 'país' : 'produto';
+        const elRotulo = document.getElementById('dash-funil-rotulo');
+        if (elRotulo) elRotulo.textContent = rotuloDim;
+
+        if (!linhas.length) {
+            container.innerHTML = `<div class="dash-empty">${dim === 'regiao'
+                ? 'Sem campanhas com tag de país no período. As tags saem do nome da campanha no Facebook (ex.: "EUA", "BR", "EN").'
+                : 'Sem entradas no Diário neste período.'}</div>`;
+            return;
+        }
+
+        // Mapa do período anterior pra calcular variação por chave.
+        const antMapa = {};
+        if (this._compareMode !== 'none') {
+            this._linhasFunil(dim, true).forEach(l => { antMapa[l.chave] = l.agg; });
+        }
+
+        let ranked = [];
+        let renderValor = () => '';
+        let vazio = '';
+
+        if (modo === 'piorCheckout' || modo === 'melhorCheckout') {
+            const pior = modo === 'piorCheckout';
+            ranked = linhas
+                .filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL)
+                .map(l => ({ ...l, taxa: this._taxaCheckout(l.agg) }))
+                .sort((a, b) => pior ? a.taxa - b.taxa : b.taxa - a.taxa);
+            renderValor = (l) => {
+                const ant = antMapa[l.chave];
+                const delta = ant ? this._deltaPP(l.taxa, this._taxaCheckout(ant)) : '';
+                return `${l.taxa.toFixed(1)}%${delta}`;
+            };
+            vazio = `Nenhum ${rotuloDim} com pelo menos ${this._MIN_ATC_FUNIL} adições ao carrinho no período — sem volume, a taxa de checkout é ruído.`;
+
+        } else if (modo === 'melhorConv') {
+            ranked = linhas
+                .filter(l => l.agg.pageViews >= this._MIN_VIEWS_FUNIL)
+                .map(l => ({ ...l, taxa: l.agg.convPage }))
+                .sort((a, b) => b.taxa - a.taxa);
+            renderValor = (l) => {
+                const ant = antMapa[l.chave];
+                const delta = ant ? this._deltaPP(l.taxa, ant.convPage) : '';
+                return `${l.taxa.toFixed(2)}%${delta}`;
+            };
+            vazio = `Nenhum ${rotuloDim} com pelo menos ${this._MIN_VIEWS_FUNIL} visitantes no período.`;
+
+        } else if (modo === 'oportunidades') {
+            // Quanto checkout a mais sairia se a taxa subisse até a MEDIANA
+            // do próprio conjunto. Alvo mediana (não o melhor) de propósito:
+            // é uma meta que metade dos itens já bate, não um teto irreal.
+            const comVolume = linhas.filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL);
+            const taxas = comVolume.map(l => this._taxaCheckout(l.agg)).sort((a, b) => a - b);
+            const mediana = taxas.length ? taxas[Math.floor(taxas.length / 2)] : 0;
+            ranked = comVolume
+                .map(l => {
+                    const taxa = this._taxaCheckout(l.agg);
+                    return { ...l, taxa, ganho: Math.round(l.agg.addToCart * Math.max(0, mediana - taxa) / 100) };
+                })
+                .filter(l => l.ganho >= 1)
+                .sort((a, b) => b.ganho - a.ganho);
+            renderValor = (l) => `+${l.ganho} checkout${l.ganho === 1 ? '' : 's'} <span class="dash-funil-sub">${l.taxa.toFixed(1)}% → ${mediana.toFixed(1)}%</span>`;
+            vazio = taxas.length
+                ? `Nenhum ${rotuloDim} abaixo da mediana de checkout (${mediana.toFixed(1)}%) com volume suficiente — o funil está equilibrado.`
+                : `Nenhum ${rotuloDim} com pelo menos ${this._MIN_ATC_FUNIL} adições ao carrinho no período.`;
+
+        } else if (modo === 'quedas') {
+            if (this._compareMode === 'none') {
+                container.innerHTML = `<div class="dash-empty">Escolha um período de comparação acima pra ver tendências — sem período anterior não há do que cair.</div>`;
+                return;
+            }
+            ranked = linhas
+                .filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL && antMapa[l.chave])
+                .map(l => {
+                    const taxa = this._taxaCheckout(l.agg);
+                    const taxaAnt = this._taxaCheckout(antMapa[l.chave]);
+                    return { ...l, taxa, taxaAnt, queda: taxaAnt - taxa };
+                })
+                .filter(l => l.queda > 0.5)   // ignora oscilação irrelevante
+                .sort((a, b) => b.queda - a.queda);
+            renderValor = (l) => `−${l.queda.toFixed(1)}pp <span class="dash-funil-sub">${l.taxaAnt.toFixed(1)}% → ${l.taxa.toFixed(1)}%</span>`;
+            vazio = `Nenhum ${rotuloDim} com queda relevante na taxa de checkout — nada piorou de forma significativa.`;
+        }
+
+        if (!ranked.length) {
+            container.innerHTML = `<div class="dash-empty">${vazio}</div>`;
+            return;
+        }
+
+        container.innerHTML = ranked.slice(0, 6).map((l, i) => `
+            <div class="dash-rank-item">
+                <span class="dash-rank-pos">${i + 1}</span>
+                <span class="dash-rank-name">${escapeHtml(l.nome)}</span>
+                <span class="dash-rank-value">${renderValor(l)}</span>
+            </div>`).join('');
+    },
+
+    // Card separado: país REAL de entrega, direto dos pedidos da Shopify.
+    // Fica fora do card de funil de propósito — é outra dimensão (destino do
+    // pedido, não segmentação do anúncio) e outra fonte (Shopify, não pixel).
+    async _renderVendasPorPais() {
+        const container = document.getElementById('dash-vendas-pais');
+        if (!container) return;
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            container.innerHTML = '<div class="dash-empty">Conecte a Shopify pra ver vendas reais por país de entrega.</div>';
+            return;
+        }
+        const chave = `${this._startDate}|${this._endDate}`;
+        if (this._vendasPaisKey !== chave) {
+            container.innerHTML = '<div class="dash-empty">Carregando vendas por país…</div>';
+            try {
+                this._vendasPaisMap = await ShopifyModule.getRealSalesPorPais(this._startDate, this._endDate);
+                this._vendasPaisKey = chave;
+            } catch (e) {
+                container.innerHTML = `<div class="dash-empty">Erro ao buscar pedidos: ${escapeHtml(String(e.message).slice(0, 120))}</div>`;
+                return;
+            }
+        }
+        const linhas = Object.values(this._vendasPaisMap || {})
+            .filter(p => p.sales > 0)
+            .sort((a, b) => b.sales - a.sales);
+        if (!linhas.length) {
+            container.innerHTML = '<div class="dash-empty">Nenhuma venda na Shopify neste período.</div>';
+            return;
+        }
+        const total = linhas.reduce((s, p) => s + p.sales, 0);
+        container.innerHTML = linhas.slice(0, 6).map((p, i) => {
+            const nome = p.countryCode === '??' ? 'Sem país no pedido' : (p.country || p.countryCode);
+            const pct = total > 0 ? (p.sales / total) * 100 : 0;
+            return `<div class="dash-rank-item">
+                <span class="dash-rank-pos">${i + 1}</span>
+                <span class="dash-rank-name">${escapeHtml(nome)}</span>
+                <span class="dash-rank-value">${p.sales} <span class="dash-funil-sub">${pct.toFixed(0)}%</span></span>
+            </div>`;
+        }).join('');
+    },
+
     _renderOpportunities() {
         const container = document.getElementById('dash-opportunities');
         if (!container) return;
