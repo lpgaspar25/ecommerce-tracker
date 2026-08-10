@@ -121,6 +121,11 @@ const Sidebar = {
     },
 
     _getOrder() {
+        // Cache em memória: se localStorage.setItem falhar (modo privado do
+        // Safari, extensão bloqueando storage etc), _saveOrder ainda guarda
+        // aqui — sem isso, o clique reordenava na hora e "voltava sozinho"
+        // porque _applyOrder/_renderSettingsList reliam do valor antigo salvo.
+        if (Array.isArray(this._orderCache)) return [...this._orderCache];
         try {
             const saved = JSON.parse(localStorage.getItem(this.ORDER_KEY) || 'null');
             if (Array.isArray(saved) && saved.length) {
@@ -133,14 +138,15 @@ const Sidebar = {
     },
 
     _saveOrder(order) {
+        this._orderCache = order;
         try { localStorage.setItem(this.ORDER_KEY, JSON.stringify(order)); } catch {}
     },
 
-    _applyOrder() {
+    _applyOrder(order) {
         const parent = document.querySelector('.app-sidebar');
         if (!parent) return;
         const spacer = parent.querySelector('.sidebar-spacer');
-        this._getOrder().forEach(id => {
+        (order || this._getOrder()).forEach(id => {
             const node = this._topLevelNode(id);
             // insertBefore o spacer — sem isso os itens reordenados
             // acabariam depois dele (o spacer é appendChild'd só uma vez,
@@ -154,9 +160,10 @@ const Sidebar = {
         document.getElementById('sidebar-settings-close')?.addEventListener('click', () => this._closeSettingsModal());
         document.querySelector('#modal-sidebar-settings .modal-overlay')?.addEventListener('click', () => this._closeSettingsModal());
         document.getElementById('sidebar-order-reset')?.addEventListener('click', () => {
-            this._saveOrder([...this._defaultOrder]);
-            this._applyOrder();
-            this._renderSettingsList();
+            const order = [...this._defaultOrder];
+            this._saveOrder(order);
+            this._applyOrder(order);
+            this._renderSettingsList(order);
         });
     },
 
@@ -169,10 +176,10 @@ const Sidebar = {
         document.getElementById('modal-sidebar-settings')?.classList.add('hidden');
     },
 
-    _renderSettingsList() {
+    _renderSettingsList(order) {
         const box = document.getElementById('sidebar-order-list');
         if (!box) return;
-        const order = this._getOrder();
+        order = order || this._getOrder();
         box.innerHTML = order.map((id, i) => `
             <div class="sidebar-order-item">
                 <span>${this._labels[id] || id}</span>
@@ -198,8 +205,8 @@ const Sidebar = {
         if (idx < 0 || novoIdx < 0 || novoIdx >= order.length) return;
         [order[idx], order[novoIdx]] = [order[novoIdx], order[idx]];
         this._saveOrder(order);
-        this._applyOrder();
-        this._renderSettingsList();
+        this._applyOrder(order);
+        this._renderSettingsList(order);
     },
 };
 
