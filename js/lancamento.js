@@ -325,7 +325,7 @@ Responda em JSON: {"nomes": ["nome 1", "nome 2", "nome 3", "nome 4", "nome 5"]}.
             <div class="lanc-foto-item${f.editada ? ' is-editada' : ''}${processando ? ' is-processando' : ''}${erro ? ' is-erro' : ''}" data-id="${f.id}">
                 <img src="${f.thumb}" alt="" data-ampliar="${f.id}" title="Ampliar">
                 ${processando ? `<div class="lanc-foto-carregando-overlay"><i data-lucide="loader-2" style="width:16px;height:16px;animation:spin 1s linear infinite"></i></div>` : ''}
-                ${erro ? `<div class="lanc-foto-erro-badge" title="${escapeHtml(erro)}"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i></div>` : ''}
+                ${erro ? `<button type="button" class="lanc-foto-erro-badge tip tip--dentro" data-tip="${escapeHtml(erro)} — clique pra limpar e tentar de novo" aria-label="Erro na edição, clique pra limpar" data-limpar-erro="${f.id}"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i></button>` : ''}
                 <span class="lanc-foto-origem">${escapeHtml(f.origem)}${f.editada ? ' · IA' : ''}</span>
                 <div class="lanc-foto-acoes">
                     <button type="button" class="tip tip--dentro" data-tip="Editar com IA" aria-label="Editar com IA" data-editar-uma="${f.id}"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
@@ -342,6 +342,15 @@ Responda em JSON: {"nomes": ["nome 1", "nome 2", "nome 3", "nome 4", "nome 5"]}.
         });
         grid.querySelectorAll('[data-desfazer]').forEach(btn => {
             btn.addEventListener('click', () => _desfazerEdicao(btn.dataset.desfazer));
+        });
+        // Clicar no selo de erro limpa o estado — some o triângulo e a foto
+        // volta ao normal, pronta pra tentar editar de novo.
+        grid.querySelectorAll('[data-limpar-erro]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _fotosComErro.delete(btn.dataset.limparErro);
+                _renderFotosGrid();
+            });
         });
         grid.querySelectorAll('[data-ampliar]').forEach(img => {
             img.addEventListener('click', async () => {
@@ -1451,22 +1460,33 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
                 const recortado = await ImageAI.removerFundoLocal(blob);
                 return await ImageAI.achatarSobreCor(recortado, '#FFFFFF');
             },
-            // Só cai aqui se o recorte local falhar (lib não carregou, foto
-            // incomum) — voltamos pro caminho antigo via IA generativa.
-            alternativa: async (blob, ctx) => {
-                const recortado = await ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
-                    provedor: 'openai', background: 'transparent', formato: 'image/png',
-                });
-                return await ImageAI.achatarSobreCor(recortado, '#FFFFFF');
-            },
+            // Só cai aqui se o recorte local falhar (lib não carregou / rede
+            // bloqueou o modelo de 80MB). Antes forçava provedor:'openai' +
+            // background:'transparent' — quem só tem chave Gemini via TUDO dar
+            // erro. Fundo branco não precisa de transparência real: peço o
+            // branco por prompt no MESMO provedor que o usuário já usa (Gemini
+            // ou OpenAI). Sai o "branco de estúdio" da IA em vez do #FFFFFF
+            // exato do recorte local, mas é fallback — melhor que erro.
+            alternativa: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptFundoSolido('pure white (#FFFFFF)', ctx), {
+                formato: 'image/webp', compressao: 92,
+                provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+            }),
         },
         {
             id: 'fundo-transparente', label: 'Fundo transparente', icone: 'layers',
             descricao: 'Recorta local (sem IA) e deixa o fundo vazio (PNG)',
             executar: async (blob) => ImageAI.removerFundoLocal(blob),
-            alternativa: async (blob, ctx) => ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
-                provedor: 'openai', background: 'transparent', formato: 'image/png',
-            }),
+            // Transparência de verdade só existe na API da OpenAI (o Gemini não
+            // tem o parâmetro). Então o fallback aqui SÓ funciona com chave
+            // OpenAI — sem ela, uma mensagem acionável em vez do erro cru.
+            alternativa: async (blob, ctx) => {
+                if (!ImageAI.temChave('openai')) {
+                    throw new Error('Recorte local indisponível e o fundo transparente exige chave OpenAI. Configure a OpenAI em Chaves de API, ou use "Fundo branco".');
+                }
+                return ImageAI.editar(blob, ImageAI.promptRecorte(ctx), {
+                    provedor: 'openai', background: 'transparent', formato: 'image/png',
+                });
+            },
         },
         {
             id: 'melhorar', label: 'Melhorar qualidade', icone: 'sparkles',
@@ -2007,7 +2027,7 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
 
     // ── Passo 5: Revisar ──────────────────────────────────────────────
     function _bindPasso5() {
-        document.getElementById('lanc-salvar-rascunho')?.addEventListener('click', () => _salvarRascunho());
+        document.getElementById('lanc-salvar-rascunho')?.addEventListener('click', () => _salvarRascunho(true));
         document.getElementById('lanc-publicar-shopify')?.addEventListener('click', () => _publicarNaShopify());
     }
 
@@ -2064,7 +2084,10 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
     // Guarda o estado do lançamento inteiro no KVStore (IndexedDB) — nunca no
     // localStorage. O produto "de verdade" só nasce quando publicar (Fase 2);
     // até lá isto é só um rascunho recuperável, upsert pelo mesmo id.
-    async function _salvarRascunho() {
+    // voltarParaLista: só o clique manual do botão "Salvar rascunho" leva pra
+    // tela de Rascunhos; a chamada interna ao publicar (que também salva) NÃO
+    // pode redirecionar no meio do fluxo de publicação.
+    async function _salvarRascunho(voltarParaLista = false) {
         if (!_state.titulo.trim()) { showToast('Dá um nome pro produto antes de salvar', 'error'); return; }
         const btn = document.getElementById('lanc-salvar-rascunho');
         if (btn) btn.disabled = true;
@@ -2100,6 +2123,9 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
             const status = document.getElementById('lanc-revisar-status');
             if (status) status.textContent = `Rascunho salvo às ${new Date().toLocaleTimeString('pt-BR')}.`;
             showToast('Rascunho salvo', 'success');
+            // Leva pra lista de Rascunhos (onde o que acabou de salvar aparece
+            // no topo). Só no clique manual — ver comentário na assinatura.
+            if (voltarParaLista) _alternarModo('rascunhos');
         } catch (e) {
             showToast('Erro ao salvar rascunho: ' + e.message, 'error');
         } finally {

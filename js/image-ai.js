@@ -446,7 +446,12 @@ const ImageAI = (() => {
     function _carregarRemoverFundo() {
         if (!_removerFundoPromise) {
             _removerFundoPromise = import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs')
-                .then(mod => mod.default || mod.removeBackground);
+                .then(mod => mod.default || mod.removeBackground)
+                // NÃO deixar a rejeição memoizada: se o import/download do
+                // modelo falhar uma vez (rede, CDN), limpar a promise pra que
+                // um novo "aplicar" retente — senão a lib fica travada em erro
+                // até recarregar a página inteira.
+                .catch(err => { _removerFundoPromise = null; throw err; });
         }
         return _removerFundoPromise;
     }
@@ -459,7 +464,7 @@ const ImageAI = (() => {
     return {
         editar, provedorPadrao, tamanhoValidoOpenAI, achatarSobreCor, removerFundoLocal,
         promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
-        promptRecorte, promptFundoSolido,
+        promptRecorte, promptFundoSolido, temChave: _temChave,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
         MODELOS_OPENAI, MODELOS_GEMINI, NOMES_MODELO, OA_SEM_TRANSPARENCIA,
     };

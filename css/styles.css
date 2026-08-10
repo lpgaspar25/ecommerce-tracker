@@ -9843,10 +9843,15 @@ thead:hover .diary-check-col input[type="checkbox"],
     background: rgba(0,0,0,0.55); color: #fff; border-radius: 8px; z-index: 3;
 }
 .lanc-foto-erro-badge {
-    position: absolute; top: 4px; left: 4px; z-index: 4;
+    position: absolute; top: 4px; left: 4px; z-index: 5;
     width: 20px; height: 20px; border-radius: 50%; background: var(--danger, #ef4444); color: #fff;
-    display: flex; align-items: center; justify-content: center; cursor: help;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.lanc-foto-erro-badge:hover { background: #dc2626; transform: scale(1.08); }
+/* Sem erro, a origem fica no canto (top-left). COM erro, o badge de erro
+   ocupa esse canto — então a origem desliza pra direita do badge pra não
+   ficar coberta (era o "⚠oo": o círculo vermelho por cima do "yupoo"). */
+.lanc-foto-item.is-erro .lanc-foto-origem { left: 28px; }
 .lanc-foto-item.is-erro img, .lanc-bl-img.is-erro img { outline: 2px solid var(--danger, #ef4444); outline-offset: -2px; }
 
 /* Rows */
