@@ -453,16 +453,31 @@
             </div>
 
             <!-- Row 2c: Sales Today widget -->
-            <div class="dash-card sales-dash-widget dash-block" id="dash-sales-widget" data-block-id="sales-today" data-block-name="Vendas hoje &amp; padrões">
-                <h3 style="display:flex;align-items:center;justify-content:space-between">
-                    <span><i data-lucide="line-chart" style="width:15px;height:15px;vertical-align:-2px"></i> Vendas hoje &amp; padrões</span>
-                    <span style="display:flex;gap:0.4rem;align-items:center">
-                        <button id="btn-dash-sales-refresh" class="btn btn-secondary btn-sm" type="button" title="Atualizar"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i></button>
-                        <button id="btn-dash-sales-open" class="btn btn-secondary btn-sm" type="button">Abrir aba Vendas →</button>
-                    </span>
-                </h3>
-                <div id="dash-sales-body" class="dash-sales-body">
-                    <p class="imp-hint" style="padding:1rem 0">Conecte o Shopify para ver vendas em tempo real.</p>
+            <!-- Vendas hoje & Ranking — um bloco só (pedido do usuário): os dois
+                 falam de vendas reais da Shopify, então ficam juntos. -->
+            <div class="dash-block" id="dash-sales-widget" data-block-id="sales-today" data-block-name="Vendas hoje &amp; Ranking">
+                <div class="dash-card sales-dash-widget" style="margin-bottom:1rem">
+                    <h3 style="display:flex;align-items:center;justify-content:space-between">
+                        <span><i data-lucide="line-chart" style="width:15px;height:15px;vertical-align:-2px"></i> Vendas hoje &amp; padrões</span>
+                        <span style="display:flex;gap:0.4rem;align-items:center">
+                            <button id="btn-dash-sales-refresh" class="btn btn-secondary btn-sm" type="button" title="Atualizar"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i></button>
+                            <button id="btn-dash-sales-open" class="btn btn-secondary btn-sm" type="button">Abrir aba Vendas →</button>
+                        </span>
+                    </h3>
+                    <div id="dash-sales-body" class="dash-sales-body">
+                        <p class="imp-hint" style="padding:1rem 0">Conecte o Shopify para ver vendas em tempo real.</p>
+                    </div>
+                </div>
+                <div class="dash-card dash-card-mdgx-ranking">
+                    <div class="mdgx-ranking-header">
+                        <div class="mdgx-ranking-circle"><i data-lucide="package-search" style="width:22px;height:22px;color:white"></i></div>
+                        <div class="mdgx-ranking-title-wrap">
+                            <div class="mdgx-ranking-label">Ranking</div>
+                            <div class="mdgx-ranking-total" id="dash-mdgx-ranking-total">0</div>
+                        </div>
+                        <button id="btn-mdgx-ranking-all" class="btn btn-secondary btn-sm" type="button">Ver Tudo</button>
+                    </div>
+                    <div id="dash-mdgx-ranking-list" class="mdgx-ranking-list"></div>
                 </div>
             </div>
 
@@ -503,7 +518,7 @@
             </div>
 
             <!-- Row 3a2: Funil — checkout/conversão por produto ou país -->
-            <div class="dash-row-2 dash-block">
+            <div class="dash-row-2 dash-block" data-block-id="funil-checkout" data-block-name="Funil de checkout &amp; conversão">
                 <div class="dash-card">
                     <div class="dash-funil-head">
                         <h3 style="margin:0;font-size:0.9rem"><i data-lucide="filter" style="width:14px;height:14px;vertical-align:-2px"></i> Funil por <span id="dash-funil-rotulo">produto</span></h3>
@@ -532,21 +547,6 @@
                     </div>
                     <p class="dash-funil-fonte">Dado <strong>real da Shopify</strong> (ShopifyQL), não estimativa de pixel: sessões → carrinho → checkout → compra, pelo país da sessão. Conversão = compras ÷ sessões; Checkout = chegaram ao checkout ÷ adicionaram ao carrinho. A Shopify não expõe esse funil por produto, só por país e no total.</p>
                     <div id="dash-vendas-pais" class="dash-ranking"></div>
-                </div>
-            </div>
-
-            <!-- Row 3b: Sales Ranking (Madgicx-style) -->
-            <div class="dash-block" data-block-id="sales-ranking" data-block-name="Ranking de Vendas">
-                <div class="dash-card dash-card-mdgx-ranking">
-                    <div class="mdgx-ranking-header">
-                        <div class="mdgx-ranking-circle"><i data-lucide="package-search" style="width:22px;height:22px;color:white"></i></div>
-                        <div class="mdgx-ranking-title-wrap">
-                            <div class="mdgx-ranking-label">Ranking</div>
-                            <div class="mdgx-ranking-total" id="dash-mdgx-ranking-total">0</div>
-                        </div>
-                        <button id="btn-mdgx-ranking-all" class="btn btn-secondary btn-sm" type="button">Ver Tudo</button>
-                    </div>
-                    <div id="dash-mdgx-ranking-list" class="mdgx-ranking-list"></div>
                 </div>
             </div>
 
