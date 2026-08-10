@@ -40,10 +40,42 @@ const ShopifyModule = (() => {
         };
     }
 
-    function _loadConfig() {
+    // Conexão da Shopify é SEPARADA POR LOJA (cada loja tem seu próprio token,
+    // domínio e vínculos de produto). storeId lido DIRETO do localStorage, não
+    // de AppState — porque ShopifyModule.init() roda antes de ensureStoreSetup
+    // popular AppState. '__ALL__' ou vazio caem na 1ª loja salva (não existe
+    // uma conexão única pra "todas as lojas").
+    function _lojaAtualId() {
+        let sid = '';
+        try { sid = localStorage.getItem('currentStoreId') || ''; } catch {}
+        if (!sid || sid === '__ALL__') {
+            try { sid = (JSON.parse(localStorage.getItem('etracker_stores') || '[]')[0] || {}).id || ''; } catch {}
+        }
+        return sid || '_default';
+    }
+    function _configKey() { return CONFIG_KEY + '__' + _lojaAtualId(); }
+    function _linksKey() { return LINKS_KEY + '__' + _lojaAtualId(); }
+
+    // Migração idempotente: a config GLOBAL antiga (chave sem sufixo de loja,
+    // de antes deste recurso) é adotada pela loja ativa, pra quem já estava
+    // conectado NÃO perder o token de sessão. Copia primeiro, só então apaga
+    // a global — se algo falhar no meio, a global continua lá.
+    function _migrarConfigGlobalLegada() {
         try {
-            _config = JSON.parse(localStorage.getItem(CONFIG_KEY)) || _defaultConfig();
-            _productLinks = JSON.parse(localStorage.getItem(LINKS_KEY)) || {};
+            const cfgLegada = localStorage.getItem(CONFIG_KEY);   // chave exata, sem '__'
+            if (cfgLegada && !localStorage.getItem(_configKey())) localStorage.setItem(_configKey(), cfgLegada);
+            if (cfgLegada && localStorage.getItem(_configKey())) localStorage.removeItem(CONFIG_KEY);
+            const linksLegado = localStorage.getItem(LINKS_KEY);
+            if (linksLegado && !localStorage.getItem(_linksKey())) localStorage.setItem(_linksKey(), linksLegado);
+            if (linksLegado && localStorage.getItem(_linksKey())) localStorage.removeItem(LINKS_KEY);
+        } catch {}
+    }
+
+    function _loadConfig() {
+        _migrarConfigGlobalLegada();
+        try {
+            _config = JSON.parse(localStorage.getItem(_configKey())) || _defaultConfig();
+            _productLinks = JSON.parse(localStorage.getItem(_linksKey())) || {};
         } catch {
             _config = _defaultConfig();
             _productLinks = {};
@@ -52,8 +84,22 @@ const ShopifyModule = (() => {
         if (!_config.proxyUrl) _config.proxyUrl = DEFAULT_PROXY_URL;
     }
 
-    function _saveConfig() { localStorage.setItem(CONFIG_KEY, JSON.stringify(_config)); }
-    function _saveLinks() { localStorage.setItem(LINKS_KEY, JSON.stringify(_productLinks)); }
+    function _saveConfig() { localStorage.setItem(_configKey(), JSON.stringify(_config)); }
+    function _saveLinks() { localStorage.setItem(_linksKey(), JSON.stringify(_productLinks)); }
+
+    // Chamado ao TROCAR de loja: recarrega a conexão da nova loja e joga fora
+    // o estado/caches em memória da anterior (senão _shopifyProducts,
+    // _productLinks e os pedidos em cache ficariam da loja errada).
+    function reloadConfig() {
+        _loadConfig();
+        _shopifyProducts = [];
+        // Caches de pedidos são globais (keyed por período/dia, sem loja);
+        // limpar ao trocar de loja evita servir pedidos da loja anterior. São
+        // regeneráveis, TTL curto — descartar é seguro.
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+        try { if (typeof KVStore !== 'undefined') KVStore.del('etracker_shopify_orders_day_cache'); } catch {}
+        try { renderDashboardWidget(); } catch {}
+    }
 
     function getConfig() { return { ..._config }; }
     function isConfigured() { return !!(_config && _config.session && _config.shop && _config.connected); }
@@ -2084,6 +2130,10 @@ const ShopifyModule = (() => {
                 if (tab === 'dashboard') setTimeout(() => renderDashboardWidget(), 100);
             });
             EventBus.on('dataLoaded', () => renderDashboardWidget());
+            // Trocar de loja recarrega a conexão da nova loja (cada loja tem a
+            // sua). Sem isso, o token/domínio/vínculos ficariam presos na loja
+            // do boot.
+            EventBus.on('storeChanged', () => reloadConfig());
         }
 
         setTimeout(() => renderDashboardWidget(), 500);
@@ -2578,6 +2628,6 @@ const ShopifyModule = (() => {
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
         fetchThemes, fetchThemeFiles, fetchProductTemplates, updateProductFields, updateVariantPrice,
-        hospedarBlobImagem,
+        hospedarBlobImagem, reloadConfig,
     };
 })();

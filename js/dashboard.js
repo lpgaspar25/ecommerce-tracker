@@ -199,7 +199,10 @@ const DashboardModule = {
         });
 
         EventBus.on('dataLoaded', () => this.refresh());
-        EventBus.on('storeChanged', () => this.refresh());
+        // Ao trocar de loja, os mapas da Shopify (vendas reais, visitas, funil)
+        // são de OUTRA loja agora — descarta antes do refresh, senão o mesmo
+        // período mostraria os números da loja anterior sem erro nenhum.
+        EventBus.on('storeChanged', () => { this._descartarCachesShopify(); this.refresh(); });
         EventBus.on('diaryChanged', () => this.refresh());
         EventBus.on('productsChanged', () => this.refresh());
         EventBus.on('goalsChanged', () => this.refresh());
@@ -513,6 +516,18 @@ const DashboardModule = {
             document.getElementById('rp-no-sales').value  = d.noSalesBRL;
             document.getElementById('rp-conv-min').value  = d.convMin;
         });
+    },
+
+    // Zera os mapas que vêm da Shopify (chaveados só por período/país, nunca
+    // por loja) — chamado ao TROCAR de loja, senão sobrevivem com dados da
+    // loja anterior enquanto o período não muda.
+    _descartarCachesShopify() {
+        this._realSalesMap = null; this._realSalesCacheKey = '';
+        this._realSalesPrevMap = null; this._realSalesPrevCacheKey = '';
+        this._viewsMap = null; this._viewsCacheKey = '';
+        this._viewsErro = '';
+        this._realSalesMapPorPais = null; this._realSalesMapPorPaisKey = '';
+        this._funilLojaPais = null; this._funilLojaPaisKey = '';
     },
 
     refresh() {
