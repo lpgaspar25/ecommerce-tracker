@@ -4549,6 +4549,17 @@
                             <input type="text" id="lanc-brinde-titulo" class="input" placeholder="Ex.: Kit de limpeza premium de brinde">
                             <label for="lanc-brinde-texto" style="margin-top:0.6rem;display:block">Texto</label>
                             <div id="lanc-brinde-texto" class="lanc-rich" contenteditable="true"></div>
+
+                            <label style="margin-top:0.8rem;display:block">Imagem do brinde (opcional)</label>
+                            <p class="lanc-hint" style="margin:0.1rem 0 0.4rem">Sobe a foto do kit de brinde, ou gera/adapta por IA a partir de uma referência (ex.: pegar o brinde do molde e trocar a marca pro seu produto).</p>
+                            <input type="file" id="lanc-brinde-foto-file" accept="image/*" hidden>
+                            <div class="lanc-brinde-foto-barra">
+                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-brinde-foto-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Subir foto</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-brinde-ia-btn"><i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar/adaptar com IA</button>
+                                <img id="lanc-brinde-foto-preview" alt="" class="lanc-brinde-foto-preview" style="display:none">
+                                <button type="button" class="btn-icon" id="lanc-brinde-foto-remover" style="display:none" title="Remover foto do brinde"><i data-lucide="x" style="width:13px;height:13px"></i></button>
+                            </div>
+                            <div id="lanc-brinde-foto-status" class="lanc-fotos-status"></div>
                         </div>
                     </div>
                     <div class="lanc-nav">

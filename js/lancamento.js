@@ -30,7 +30,11 @@ const LancamentoModule = (() => {
         titulo: '',
         fotos: [], // { id, mediaId, thumb, origem }
         blocos: [], // { tipo:'texto', html } | { tipo:'imagem', fotoId }
-        brinde: { incluir: false, titulo: '', html: '' },
+        // fotoId/mediaId/thumb: imagem do brinde vive como REFERÊNCIA ao
+        // MediaStore (igual _state.fotos), nunca como <img> dentro de html —
+        // _semImagens apagaria a <img> em toda fronteira. Só vira <img> real
+        // no publish, com URL já hospedada na Shopify.
+        brinde: { incluir: false, titulo: '', html: '', fotoId: '', mediaId: '', thumb: '' },
         _brindeSugerido: false,
         rascunhoId: '',
         rascunhoCriadoEm: '',
@@ -2136,10 +2140,90 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
         });
         document.getElementById('lanc-brinde-titulo')?.addEventListener('input', (e) => { _state.brinde.titulo = e.target.value; });
         document.getElementById('lanc-brinde-texto')?.addEventListener('blur', (e) => { _state.brinde.html = e.target.innerHTML; });
+
+        // Imagem do brinde: upload manual + geração/adaptação por IA.
+        document.getElementById('lanc-brinde-foto-btn')?.addEventListener('click', () => document.getElementById('lanc-brinde-foto-file')?.click());
+        document.getElementById('lanc-brinde-foto-file')?.addEventListener('change', async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) await _guardarFotoBrinde(f);
+        });
+        document.getElementById('lanc-brinde-foto-remover')?.addEventListener('click', () => _removerFotoBrinde());
+        document.getElementById('lanc-brinde-ia-btn')?.addEventListener('click', () => _gerarBrindeIA());
+    }
+
+    // Grava a foto do brinde no MediaStore e guarda só a referência no state.
+    async function _guardarFotoBrinde(blobOuArquivo) {
+        const status = document.getElementById('lanc-brinde-foto-status');
+        if (status) status.textContent = 'Processando…';
+        try {
+            const cheia = await comprimirImagem(blobOuArquivo, 2000, 0.9, { formato: 'image/webp' });
+            const mediaId = 'brinde_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+            await MediaStore.put(mediaId, cheia.blob, { type: cheia.blob.type });
+            const mini = await comprimirImagem(cheia.blob, 200, 0.7, { formato: 'image/webp' });
+            // se já havia uma foto de brinde, some com o blob antigo
+            if (_state.brinde.mediaId && _state.brinde.mediaId !== mediaId) { try { await MediaStore.del(_state.brinde.mediaId); } catch {} }
+            _state.brinde.fotoId = mediaId;
+            _state.brinde.mediaId = mediaId;
+            _state.brinde.thumb = await _blobParaDataUrl(mini.blob);
+            _renderFotoBrinde();
+            if (status) status.textContent = '';
+        } catch (e) {
+            if (status) status.textContent = 'Erro: ' + String(e.message).slice(0, 120);
+        }
+    }
+
+    function _removerFotoBrinde() {
+        if (_state.brinde.mediaId) { try { MediaStore.del(_state.brinde.mediaId); } catch {} }
+        _state.brinde.fotoId = ''; _state.brinde.mediaId = ''; _state.brinde.thumb = '';
+        _renderFotoBrinde();
+    }
+
+    function _renderFotoBrinde() {
+        const preview = document.getElementById('lanc-brinde-foto-preview');
+        const remover = document.getElementById('lanc-brinde-foto-remover');
+        if (!preview) return;
+        if (_state.brinde.thumb) {
+            preview.src = _state.brinde.thumb;
+            preview.style.display = '';
+            if (remover) remover.style.display = '';
+        } else {
+            preview.style.display = 'none';
+            if (remover) remover.style.display = 'none';
+        }
+    }
+
+    // Gera/adapta a imagem do brinde por IA. Fluxo: escolhe uma REFERÊNCIA no
+    // seletor de referências (que já agrega molde, banco e produtos postados —
+    // é onde mora o "brinde do BMW"), pede o que mudar, e ImageAI.editar
+    // devolve a imagem nova, que vira a foto do brinde.
+    function _gerarBrindeIA() {
+        _abrirSeletorReferencia(async (refBlob) => {
+            const pedido = prompt('O que a IA deve mudar no brinde de referência?\n(ex.: trocar a marca BMW por Mercedes-Benz, manter o mesmo estojo, pano e cartão)', '');
+            if (pedido === null) return; // cancelou
+            const status = document.getElementById('lanc-brinde-foto-status');
+            if (status) status.textContent = 'Gerando o brinde com IA…';
+            try {
+                const instrucao = (pedido || '').trim();
+                const promptFinal = instrucao
+                    ? `Using the provided reference image of a product gift/bonus kit (case, cloth, card etc.), recreate it applying this change: ${instrucao}. Keep the same composition, layout, lighting and item arrangement — only change what was asked. Photorealistic, clean e-commerce style.`
+                    : `Recreate the provided gift/bonus kit image in a clean, photorealistic e-commerce style, keeping the same items, composition and layout.`;
+                const gerado = await ImageAI.editar(refBlob, promptFinal, {
+                    formato: 'image/webp', compressao: 92,
+                    provedor: _provedorImagemLanc(), modelo: _modeloImagemLanc() || undefined,
+                });
+                await _guardarFotoBrinde(gerado);
+                showToast('Imagem do brinde gerada', 'success');
+            } catch (e) {
+                if (status) status.textContent = 'Erro: ' + String(e.message).slice(0, 140);
+                showToast('Falha ao gerar o brinde: ' + String(e.message).slice(0, 120), 'error');
+            }
+        });
     }
 
     // Só sugere uma vez por sessão do wizard — não sobrescreve edição do usuário.
     function _prepararPasso4() {
+        _renderFotoBrinde(); // reflete a foto do brinde (ex.: ao retomar rascunho)
         if (_state._brindeSugerido) return;
         _state._brindeSugerido = true;
         if (!_state.moldeDetalhes) return;
@@ -2258,7 +2342,12 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
             // brinde.html normalmente vem de um recorte bruto do HTML do molde
             // (_detectarBrindeNoMolde) — sem isso a prévia dispararia um
             // request de verdade pra imagem do produto errado.
-            partes.push(`<div class="lanc-preview-brinde"><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}</div>`);
+            let imgBrinde = '';
+            if (_state.brinde.mediaId) {
+                const url = await MediaStore.getObjectUrl(_state.brinde.mediaId);
+                if (url) { _previewUrls.push(url); imgBrinde = `<img src="${url}" alt="">`; }
+            }
+            partes.push(`<div class="lanc-preview-brinde"><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}${imgBrinde}</div>`);
         }
         el.innerHTML = partes.join('') || '<p class="lanc-hint">Nada pra mostrar ainda — volte e monte a descrição.</p>';
         _icones();
@@ -2448,6 +2537,12 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
         if (brTitulo) brTitulo.value = _state.brinde.titulo || '';
         const brTexto = document.getElementById('lanc-brinde-texto');
         if (brTexto) brTexto.innerHTML = _state.brinde.html || '';
+        // Garante os campos novos mesmo em rascunho antigo (salvo antes da
+        // foto do brinde existir) e reflete o preview.
+        _state.brinde.fotoId = _state.brinde.fotoId || '';
+        _state.brinde.mediaId = _state.brinde.mediaId || '';
+        _state.brinde.thumb = _state.brinde.thumb || '';
+        _renderFotoBrinde();
 
         _irParaPasso(r.passoAtual || 1);
         showToast(`Retomando "${r.titulo}" — passo ${r.passoAtual || 1} de 5`, 'success');
@@ -2530,7 +2625,20 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
                 return url ? `<img src="${url}" alt="">` : '';
             });
             if (_state.brinde.incluir) {
-                partes.push(`<div><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}</div>`);
+                // Sobe a imagem do brinde (se houver) junto das outras e injeta
+                // a <img> com URL REAL — fora do _semImagens, que só protege
+                // contra <img> herdada do molde no texto, não contra a foto do
+                // brinde que o próprio usuário escolheu/gerou e nós hospedamos.
+                let imgBrinde = '';
+                if (_state.brinde.mediaId) {
+                    const recB = await MediaStore.get(_state.brinde.mediaId);
+                    if (recB?.blob) {
+                        setStatus('Subindo a imagem do brinde…');
+                        const urlB = await ImporterModule.shopifyStagedUploadImage(shop, recB.blob, `${handle}-brinde.webp`);
+                        if (urlB) imgBrinde = `<img src="${urlB}" alt="">`;
+                    }
+                }
+                partes.push(`<div><h3>${escapeHtml(_state.brinde.titulo || 'Brinde')}</h3>${_semImagens(_state.brinde.html || '')}${imgBrinde}</div>`);
             }
 
             // 3) Cria o produto (status default de publishProduct já é ACTIVE
