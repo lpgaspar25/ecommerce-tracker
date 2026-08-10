@@ -104,11 +104,44 @@ const AIAdGenerator = {
             uso: 'Geração de imagem com os modelos Grok Image.',
             link: 'https://console.x.ai',
         },
+        {
+            id: 'anthropic', nome: 'Claude (Anthropic)', storageKey: 'anthropic_api_key', prefixos: ['sk-ant-'],
+            uso: 'Copy e análise com Claude (ex.: biblioteca de copy).',
+            link: 'https://console.anthropic.com/settings/keys',
+        },
     ],
+
+    // Prefixo do override POR LOJA: cada loja pode guardar suas próprias chaves
+    // em etracker_apikeys__<storeId> (JSON { providerId: chave }). Sem override,
+    // a loja herda o POOL GLOBAL (os storageKeys de sempre). É o modelo pedido:
+    // "compartilho as chaves entre lojas, mas quero poder colocar uma específica
+    // numa loja".
+    STORE_KEYS_PREFIX: 'etracker_apikeys__',
+
+    _storeOverrides(storeId) {
+        if (!storeId) return {};
+        try { return JSON.parse(localStorage.getItem(this.STORE_KEYS_PREFIX + storeId) || '{}'); } catch { return {}; }
+    },
+    _setStoreKey(storeId, providerId, key) {
+        if (!storeId) return;
+        const ov = this._storeOverrides(storeId);
+        if (key) ov[providerId] = key; else delete ov[providerId];
+        if (Object.keys(ov).length) localStorage.setItem(this.STORE_KEYS_PREFIX + storeId, JSON.stringify(ov));
+        else localStorage.removeItem(this.STORE_KEYS_PREFIX + storeId);
+    },
 
     _getKey(providerId) {
         const p = this._PROVIDERS.find(x => x.id === providerId);
-        return (p && localStorage.getItem(p.storageKey)) || '';
+        if (!p) return '';
+        // Override da loja atual ganha do global — exceto no modo "Todas as
+        // lojas" (__ALL__), onde não existe uma loja única e o pool global vale.
+        const sid = (typeof getCurrentStoreId === 'function') ? getCurrentStoreId() : '';
+        const todas = (typeof isAllStoresSelected === 'function') ? isAllStoresSelected() : false;
+        if (sid && !todas) {
+            const ov = this._storeOverrides(sid);
+            if (ov[providerId]) return ov[providerId];
+        }
+        return localStorage.getItem(p.storageKey) || '';
     },
     _setKey(providerId, key) {
         const p = this._PROVIDERS.find(x => x.id === providerId);
@@ -125,6 +158,8 @@ const AIAdGenerator = {
     _setGoogleKey(key) { this._setKey('google', key); },
     _getGrokKey() { return this._getKey('grok'); },
     _setGrokKey(key) { this._setKey('grok', key); },
+    _getAnthropicKey() { return this._getKey('anthropic'); },
+    _setAnthropicKey(key) { this._setKey('anthropic', key); },
 
     // Mantido por retrocompatibilidade — quem chamava openConfig() foca no
     // provedor selecionado, mas agora todos aparecem na mesma tela.
@@ -138,58 +173,107 @@ const AIAdGenerator = {
         if (typeof openModal === 'function') openModal('api-keys-modal');
     },
 
+    // Escopo atual do modal de chaves: '' = pool global; <storeId> = override
+    // daquela loja. Guardado só em memória (reseta ao reabrir).
+    _apikeysEscopo: '',
+
     renderApiKeysModal() {
         const lista = document.getElementById('api-keys-list');
         if (!lista) return;
-        lista.innerHTML = this._PROVIDERS.map(p => {
-            const atual = this._getKey(p.id);
+        const escopo = this._apikeysEscopo || '';
+        const daLoja = !!escopo;
+        const stores = (typeof AppState !== 'undefined' && Array.isArray(AppState.stores)) ? AppState.stores : [];
+        const nomeLoja = (id) => (stores.find(s => s.id === id)?.name) || 'esta loja';
+
+        // Seletor de escopo (só aparece se houver mais de uma loja OU já houver
+        // lojas — não polui quem tem loja única).
+        const seletorEscopo = stores.length > 1 ? `
+            <div class="apikeys-escopo">
+                <label style="font-size:0.8rem;color:var(--text-muted)">Aplicar chaves a</label>
+                <select id="apikeys-escopo-sel" class="input input-sm">
+                    <option value="">Global (todas as lojas)</option>
+                    ${stores.map(s => `<option value="${this._esc(s.id)}" ${s.id === escopo ? 'selected' : ''}>Só a loja "${this._esc(s.name)}"</option>`).join('')}
+                </select>
+                ${daLoja ? `<p class="apikeys-usage" style="margin:0.3rem 0 0">Sem chave própria, esta loja usa a chave global. Defina uma abaixo pra sobrescrever só aqui.</p>` : ''}
+            </div>` : '';
+
+        const overrides = daLoja ? this._storeOverrides(escopo) : {};
+
+        lista.innerHTML = seletorEscopo + this._PROVIDERS.map(p => {
+            const proprio = daLoja ? (overrides[p.id] || '') : '';
+            const global = localStorage.getItem(p.storageKey) || '';
+            const atual = daLoja ? (proprio || global) : this._getKey(p.id);
+            const herdando = daLoja && !proprio && !!global;
             const prefixoUsado = (p.prefixos || []).find(pre => atual.startsWith(pre));
-            const status = atual
+            const mascara = atual
                 ? `${this._esc(atual.slice(0, prefixoUsado ? prefixoUsado.length + 4 : 4))}…${this._esc(atual.slice(-4))}`
                 : 'nenhuma chave';
+            const status = herdando ? `herdando a global · ${mascara}` : mascara;
+            // Copiar de outra loja (só no escopo de loja e havendo outra loja)
+            const outras = daLoja ? stores.filter(s => s.id !== escopo) : [];
+            const copiarHtml = outras.length ? `
+                <div class="apikeys-copiar">
+                    <select class="input input-sm" data-copiar-de>
+                        <option value="">Copiar chave de…</option>
+                        ${outras.map(s => `<option value="${this._esc(s.id)}">${this._esc(s.name)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="copiar">Copiar</button>
+                </div>` : '';
             return `
                 <div class="apikeys-row" data-provider="${p.id}">
                     <div class="apikeys-row-head">
                         <strong>${this._esc(p.nome)}</strong>
-                        <span class="apikeys-status ${atual ? 'is-set' : ''}">${atual ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> ' : ''}${status}</span>
+                        <span class="apikeys-status ${(atual && !herdando) ? 'is-set' : ''}">${(atual && !herdando) ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> ' : ''}${status}</span>
                     </div>
                     <p class="apikeys-usage">${this._esc(p.uso)}</p>
                     <div class="apikeys-row-input">
                         <input type="password" class="input input-sm" data-key-input placeholder="${this._esc((p.prefixos || []).join(' ou '))}..." autocomplete="off">
-                        <button type="button" class="btn btn-secondary btn-sm" data-action="save">Salvar</button>
-                        ${atual ? '<button type="button" class="btn btn-secondary btn-sm" data-action="remove">Remover</button>' : ''}
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="save">Salvar${daLoja ? ' nesta loja' : ''}</button>
+                        ${(daLoja ? !!proprio : !!atual) ? `<button type="button" class="btn btn-secondary btn-sm" data-action="remove">${daLoja ? 'Usar global' : 'Remover'}</button>` : ''}
                     </div>
+                    ${copiarHtml}
                     <a href="${p.link}" target="_blank" rel="noopener" class="apikeys-link">Obter chave <i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-1px"></i></a>
                 </div>`;
         }).join('');
+
+        document.getElementById('apikeys-escopo-sel')?.addEventListener('change', (e) => {
+            this._apikeysEscopo = e.target.value;
+            this.renderApiKeysModal();
+        });
 
         lista.querySelectorAll('.apikeys-row').forEach(row => {
             const providerId = row.dataset.provider;
             const p = this._PROVIDERS.find(x => x.id === providerId);
             const input = row.querySelector('[data-key-input]');
+            const gravar = (val) => daLoja ? this._setStoreKey(escopo, providerId, val) : this._setKey(providerId, val);
             row.querySelector('[data-action="save"]')?.addEventListener('click', () => {
                 const val = input.value.trim();
                 if (!val) { if (typeof showToast === 'function') showToast('Cole uma chave antes de salvar', 'error'); return; }
-                // O prefixo é só um alerta de "colou a coisa errada" — nunca um
-                // bloqueio. Provedores mudam o formato da chave sem avisar (a
-                // Google tem dois formatos válidos em paralelo até set/2026), e
-                // travar o salvamento nisso deixa uma chave real sem poder ser
-                // usada só porque não bate com nenhum padrão que eu conhecia.
                 const foraDoPadrao = (p.prefixos || []).length && !p.prefixos.some(pre => val.startsWith(pre));
-                this._setKey(providerId, val);
+                gravar(val);
                 if (typeof showToast === 'function') {
                     showToast(
                         foraDoPadrao
-                            ? `Chave ${p.nome} salva — formato incomum (esperava começar com "${p.prefixos.join('" ou "')}"). Se a geração falhar, confira se colou a chave certa.`
-                            : `Chave ${p.nome} salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`,
+                            ? `Chave ${p.nome} salva${daLoja ? ' nesta loja' : ''} — formato incomum. Se a geração falhar, confira se colou a chave certa.`
+                            : `Chave ${p.nome} salva${daLoja ? ` só na loja "${nomeLoja(escopo)}"` : ''} <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`,
                         foraDoPadrao ? 'warning' : 'success'
                     );
                 }
                 this.renderApiKeysModal();
             });
             row.querySelector('[data-action="remove"]')?.addEventListener('click', () => {
-                this._setKey(providerId, '');
-                if (typeof showToast === 'function') showToast(`Chave ${p.nome} removida`, 'success');
+                gravar('');
+                if (typeof showToast === 'function') showToast(daLoja ? `"${nomeLoja(escopo)}" volta a usar a chave global de ${p.nome}` : `Chave ${p.nome} removida`, 'success');
+                this.renderApiKeysModal();
+            });
+            row.querySelector('[data-action="copiar"]')?.addEventListener('click', () => {
+                const de = row.querySelector('[data-copiar-de]')?.value;
+                if (!de) { if (typeof showToast === 'function') showToast('Escolha de qual loja copiar', 'error'); return; }
+                // chave efetiva da outra loja: override dela, senão a global
+                const chave = this._storeOverrides(de)[providerId] || localStorage.getItem(p.storageKey) || '';
+                if (!chave) { if (typeof showToast === 'function') showToast('Aquela loja não tem chave pra copiar', 'error'); return; }
+                this._setStoreKey(escopo, providerId, chave);
+                if (typeof showToast === 'function') showToast(`Chave ${p.nome} copiada de "${nomeLoja(de)}"`, 'success');
                 this.renderApiKeysModal();
             });
         });

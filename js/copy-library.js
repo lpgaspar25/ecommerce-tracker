@@ -144,7 +144,7 @@
 
         // ===== AI Variations via Claude =====
         async generateVariations(type, current, count = 3) {
-            const key = localStorage.getItem('anthropic_api_key') || '';
+            const key = window.AIAdGenerator?._getKey?.('anthropic') || localStorage.getItem('anthropic_api_key') || '';
             if (!key) throw new Error('Configure a chave Anthropic em localStorage.anthropic_api_key');
             const labelMap = {
                 primary_text: 'primary text (ad body, 1-3 sentences, conversational)',

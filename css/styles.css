@@ -16894,3 +16894,9 @@ body:not([data-theme]) .adh-board-viewport {
 /* Imagem do brinde (Passo 4 do Lançamento) */
 .lanc-brinde-foto-barra { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .lanc-brinde-foto-preview { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+
+/* Escopo de chaves por loja (modal Chaves de API) */
+.apikeys-escopo { margin-bottom: 0.8rem; padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
+.apikeys-escopo select { width: 100%; margin-top: 0.25rem; }
+.apikeys-copiar { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+.apikeys-copiar select { flex: 1; }

@@ -916,8 +916,8 @@ const ProductsModule = {
             'Dinamarques': 'Danish', 'Sueco': 'Swedish', 'Noruegues': 'Norwegian'
         };
         const lang = langMap[language] || 'English';
-        const openAIKey = localStorage.getItem('openai_api_key') || '';
-        const googleKey = localStorage.getItem('google_ai_api_key') || '';
+        const openAIKey = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
+        const googleKey = window.AIAdGenerator?._getKey?.('google') || localStorage.getItem('google_ai_api_key') || '';
 
         const statusEl = document.getElementById('prod-ai-desc-status');
         const btn = document.getElementById('btn-prod-ai-desc');
@@ -1545,8 +1545,8 @@ const ProductsModule = {
     // Chamada de texto pra IA — OpenAI primeiro, Google como reserva. Usada
     // só pra traduzir (a imagem tem seu próprio caminho no ImageAI).
     async _traduzirComIA(system, user, { json = false } = {}) {
-        const openAIKey = localStorage.getItem('openai_api_key') || '';
-        const googleKey = localStorage.getItem('google_ai_api_key') || '';
+        const openAIKey = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
+        const googleKey = window.AIAdGenerator?._getKey?.('google') || localStorage.getItem('google_ai_api_key') || '';
         if (openAIKey) {
             const res = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -2285,7 +2285,7 @@ const ProductsModule = {
     },
 
     async _openaiVisaoAuditoria(system, texto, imagens) {
-        const key = localStorage.getItem('openai_api_key') || '';
+        const key = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
         if (!key) throw new Error('Configure a chave OpenAI (AI Ad Generator → Configurar IA)');
         const content = [{ type: 'text', text: texto }];
         // this._images já guarda dataUrl OU url direto (nunca base64 cru) —
