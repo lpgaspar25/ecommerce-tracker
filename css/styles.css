@@ -16863,3 +16863,30 @@ body:not([data-theme]) .adh-board-viewport {
     margin-top: 0.5rem; padding-top: 0.45rem; border-top: 1px solid var(--border);
     font-size: 0.66rem; color: var(--text-muted); line-height: 1.4;
 }
+
+/* Seletor de foto de referência (banco de refs) */
+.lanc-refsel-barra { margin: 0.4rem 0 0.2rem; }
+.lanc-refsel-produto { margin-top: 0.9rem; border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.lanc-refsel-grid { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.35rem 0 0.6rem; }
+.lanc-refsel-item {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+    width: 76px; padding: 0.3rem; border: 1px solid var(--border); border-radius: 8px;
+    background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.lanc-refsel-item:hover { border-color: var(--accent); color: var(--text-primary); }
+.lanc-refsel-item img { width: 62px; height: 62px; object-fit: cover; border-radius: 6px; }
+.lanc-refsel-item span { font-size: 0.62rem; line-height: 1.15; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 68px; }
+.lanc-refsel-item-banco { padding: 0; border: none; width: auto; }
+.lanc-refsel-pick {
+    display: flex; flex-direction: column; align-items: center; gap: 0.2rem; width: 76px;
+    padding: 0.3rem; border: 1px solid var(--border); border-radius: 8px; background: transparent;
+    color: var(--text-muted); cursor: pointer;
+}
+.lanc-refsel-pick:hover { border-color: var(--accent); color: var(--text-primary); }
+.lanc-refsel-pick img { width: 62px; height: 62px; object-fit: cover; border-radius: 6px; }
+.lanc-refsel-pick span { font-size: 0.62rem; max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lanc-refsel-del {
+    position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+    border: none; background: var(--danger, #ef4444); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; z-index: 2;
+}

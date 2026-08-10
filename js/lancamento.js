@@ -1638,6 +1638,7 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
                             <input type="file" id="lanc-ref-file" accept="image/*" hidden>
                             <button type="button" class="btn btn-secondary btn-sm" id="lanc-ref-btn"><i data-lucide="image-plus" style="width:13px;height:13px"></i> Foto de referência</button>
                             <img id="lanc-ref-preview" alt="" class="lanc-ref-preview" style="display:none">
+                            <button type="button" class="btn-icon tip" data-tip="Salvar no banco de referências" id="lanc-ref-salvar" style="display:none"><i data-lucide="save" style="width:13px;height:13px"></i></button>
                             <button type="button" class="btn-icon" id="lanc-ref-remover" style="display:none" title="Remover referência"><i data-lucide="x" style="width:13px;height:13px"></i></button>
                         </div>
                         <select id="lanc-editor-angulo" class="input input-sm" title="Ângulo de câmera (opcional)">
@@ -1702,24 +1703,50 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
         // não geração/recomposição — anexar referência ou trocar ângulo ali
         // não faz sentido e reabriria a brecha de alterar o produto à toa.
         let _refBlobEditor = null;
+        let _refJaNoBanco = false; // evita re-salvar a mesma ref no banco
         const refBtn = ov.querySelector('#lanc-ref-btn');
         const refFile = ov.querySelector('#lanc-ref-file');
         const refPreview = ov.querySelector('#lanc-ref-preview');
         const refRemover = ov.querySelector('#lanc-ref-remover');
-        refBtn?.addEventListener('click', () => refFile.click());
-        refFile?.addEventListener('change', () => {
-            const f = refFile.files?.[0];
-            if (!f) return;
-            _refBlobEditor = f;
-            refPreview.src = URL.createObjectURL(f);
+        const refSalvar = ov.querySelector('#lanc-ref-salvar');
+
+        // Define a referência (de qualquer fonte) e atualiza o preview.
+        const _definirRef = (blob, { jaNoBanco = false } = {}) => {
+            _refBlobEditor = blob;
+            _refJaNoBanco = jaNoBanco;
+            refPreview.src = URL.createObjectURL(blob);
             refPreview.style.display = '';
             refRemover.style.display = '';
+            if (refSalvar) refSalvar.style.display = jaNoBanco ? 'none' : '';
+        };
+
+        // Botão "Foto de referência" agora abre o seletor agregador (upload +
+        // fotos deste lançamento + molde + produtos da loja + banco salvo),
+        // em vez de só o upload. O consumo da ref não muda — segue sendo um
+        // Blob em _refBlobEditor.
+        refBtn?.addEventListener('click', () => _abrirSeletorReferencia((blob, meta) => _definirRef(blob, meta)));
+        // Mantém o input de arquivo funcionando (o seletor usa ele pra upload).
+        refFile?.addEventListener('change', () => {
+            const f = refFile.files?.[0];
+            if (f) _definirRef(f);
         });
         refRemover?.addEventListener('click', () => {
             _refBlobEditor = null;
             refFile.value = '';
             refPreview.style.display = 'none';
             refRemover.style.display = 'none';
+            if (refSalvar) refSalvar.style.display = 'none';
+        });
+        refSalvar?.addEventListener('click', async () => {
+            if (!_refBlobEditor || _refJaNoBanco) return;
+            try {
+                await RefBank.add(_refBlobEditor, { rotulo: _state.titulo || 'Referência', origem: 'Editor de fotos' });
+                _refJaNoBanco = true;
+                refSalvar.style.display = 'none';
+                showToast('Referência salva no banco', 'success');
+            } catch (e) {
+                showToast('Não consegui salvar: ' + e.message, 'error');
+            }
         });
 
         // Monta prompt final + opções do ImageAI.editar a partir do prompt
@@ -1827,6 +1854,167 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
     function _fecharEditorIA(ov) {
         _edicaoCancelada = true;
         ov.remove();
+    }
+
+    // ── Seletor de foto de referência (banco de refs) ────────────────────
+    // Overlay que agrega TODAS as fontes de referência possíveis e devolve um
+    // Blob via aoEscolher(blob, meta). Fontes: enviar arquivo, fotos deste
+    // lançamento, imagens do molde, banco salvo (RefBank) e — o pedido central
+    // — fotos e imagens da DESCRIÇÃO de qualquer produto já postado na loja.
+    // Cada item resolve pra Blob só no clique (lazy), pra não baixar tudo à toa.
+    async function _abrirSeletorReferencia(aoEscolher) {
+        document.querySelectorAll('.lanc-refsel-ov').forEach(el => el.remove());
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov lanc-refsel-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="image-plus" style="width:16px;height:16px;vertical-align:-3px"></i> Foto de referência</h3>
+                <p class="lanc-hint">A referência guia estilo, composição e dimensão — o produto que está sendo editado continua o mesmo. Escolha de onde vem:</p>
+                <input type="file" id="lanc-refsel-upload" accept="image/*" hidden>
+                <div class="lanc-refsel-barra">
+                    <button type="button" class="btn btn-secondary btn-sm" id="lanc-refsel-upload-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Enviar arquivo</button>
+                </div>
+                <div id="lanc-refsel-secoes"></div>
+                <div class="lanc-refsel-produto">
+                    <div class="psel-secao-titulo">De um produto da loja (fotos + imagens da descrição)</div>
+                    <div id="lanc-refsel-produto-picker"></div>
+                    <div id="lanc-refsel-produto-status" class="lanc-fotos-status"></div>
+                    <div id="lanc-refsel-produto-fotos" class="lanc-refsel-grid"></div>
+                </div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="lanc-refsel-fechar">Fechar</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.querySelector('#lanc-refsel-fechar').addEventListener('click', () => ov.remove());
+
+        const escolher = async (resolverBlob, meta) => {
+            try {
+                const blob = await resolverBlob();
+                if (!blob) throw new Error('não consegui carregar essa imagem');
+                aoEscolher(blob, meta || {});
+                ov.remove();
+            } catch (e) {
+                showToast('Referência indisponível: ' + String(e.message).slice(0, 120) + '. Tente enviar o arquivo.', 'error');
+            }
+        };
+
+        // Upload
+        ov.querySelector('#lanc-refsel-upload-btn').addEventListener('click', () => ov.querySelector('#lanc-refsel-upload').click());
+        ov.querySelector('#lanc-refsel-upload').addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            if (f) escolher(async () => f, { origem: 'upload' });
+        });
+
+        // Seções locais: fotos deste lançamento + molde + banco salvo
+        const grid = (itens) => `<div class="lanc-refsel-grid">${itens.join('')}</div>`;
+        const tile = (src, rotulo, attrs) => `
+            <button type="button" class="lanc-refsel-item" ${attrs}>
+                <img src="${escapeHtml(src)}" alt="" loading="lazy">
+                <span>${escapeHtml(rotulo)}</span>
+            </button>`;
+        const secoes = ov.querySelector('#lanc-refsel-secoes');
+        let html = '';
+
+        if (_state.fotos.length) {
+            html += `<div class="psel-secao-titulo">Fotos deste lançamento</div>` +
+                grid(_state.fotos.map(f => tile(f.thumb, f.origem || 'Foto', `data-src="lanc" data-id="${f.id}"`)));
+        }
+        if (_state.base === 'molde' && _state.moldeDetalhes?.images?.length) {
+            html += `<div class="psel-secao-titulo">Fotos do molde</div>` +
+                grid(_state.moldeDetalhes.images.slice(0, 12).map((im, i) => tile(im.url, 'Molde', `data-src="molde" data-url="${escapeHtml(im.url)}"`)));
+        }
+        const doBanco = (typeof RefBank !== 'undefined') ? RefBank.list() : [];
+        if (doBanco.length) {
+            html += `<div class="psel-secao-titulo">Banco de referências</div>` +
+                grid(doBanco.map(r => `
+                    <div class="lanc-refsel-item lanc-refsel-item-banco">
+                        <button type="button" class="lanc-refsel-pick" data-src="banco" data-id="${r.id}"><img src="${escapeHtml(r.thumb)}" alt=""><span>${escapeHtml(r.rotulo || 'Ref')}</span></button>
+                        <button type="button" class="lanc-refsel-del" data-del-banco="${r.id}" title="Remover do banco"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                    </div>`));
+        }
+        secoes.innerHTML = html || '';
+
+        secoes.querySelectorAll('[data-src="lanc"]').forEach(b => b.addEventListener('click', () => {
+            const f = _state.fotos.find(x => x.id === b.dataset.id);
+            escolher(async () => (await MediaStore.get(f.mediaId))?.blob, { origem: 'foto do lançamento' });
+        }));
+        secoes.querySelectorAll('[data-src="molde"]').forEach(b => b.addEventListener('click', () => {
+            escolher(() => bytesDaImagem(b.dataset.url), { origem: 'molde' });
+        }));
+        secoes.querySelectorAll('.lanc-refsel-pick[data-src="banco"]').forEach(b => b.addEventListener('click', () => {
+            escolher(() => RefBank.getBlob(b.dataset.id), { origem: 'banco', jaNoBanco: true });
+        }));
+        secoes.querySelectorAll('[data-del-banco]').forEach(b => b.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await RefBank.remove(b.dataset.delBanco);
+            _abrirSeletorReferencia(aoEscolher); // re-render simples
+        }));
+
+        // Produto da loja: picker → ao escolher, lista fotos + imagens da descrição
+        const pickerBox = ov.querySelector('#lanc-refsel-produto-picker');
+        const prodStatus = ov.querySelector('#lanc-refsel-produto-status');
+        const prodFotos = ov.querySelector('#lanc-refsel-produto-fotos');
+        if (typeof ProductPicker !== 'undefined') {
+            const temShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured();
+            ProductPicker.render(pickerBox, {
+                source: temShopify ? 'shopify' : 'local',
+                instancia: 'refsel',
+                placeholder: 'Buscar produto por nome ou SKU…',
+                onSelect: (item) => _carregarRefsDoProduto(item, temShopify, prodFotos, prodStatus, escolher),
+            }).catch(() => {});
+        }
+
+        _icones();
+    }
+
+    // Carrega fotos + imagens da descrição de um produto escolhido, como
+    // candidatas a referência. Produto local usa o que já está em memória;
+    // produto da loja busca detalhes (imagens + descriptionHtml) sob demanda.
+    async function _carregarRefsDoProduto(item, viaShopify, container, status, escolher) {
+        container.innerHTML = '';
+        status.textContent = 'Lendo o produto…';
+        try {
+            const urls = [];
+            if (viaShopify && typeof ShopifyModule !== 'undefined') {
+                const det = (await ShopifyModule.fetchProductDetails([item.id]))[item.id];
+                if (det) {
+                    (det.images || []).forEach(im => urls.push({ url: im.url, rotulo: 'Foto' }));
+                    _imagensDaDescricao(det.descriptionHtml).forEach(u => urls.push({ url: u, rotulo: 'Descrição' }));
+                }
+            } else {
+                const prod = (AppState.allProducts || []).find(p => String(p.id) === String(item.id));
+                if (prod) {
+                    // fontes agregadas do Estúdio (fotos/variantes/geradas)
+                    (window.StudioModule?._fontesDeImagem?.(prod.id) || []).forEach(f => { if (f.url) urls.push({ url: f.url, rotulo: f.origem || 'Foto' }); });
+                    _imagensDaDescricao(prod.description).forEach(u => urls.push({ url: u, rotulo: 'Descrição' }));
+                }
+            }
+            // dedup por url
+            const vistos = new Set();
+            const finais = urls.filter(u => u.url && !vistos.has(u.url) && vistos.add(u.url));
+            if (!finais.length) { status.textContent = 'Esse produto não tem fotos acessíveis pra referência.'; return; }
+            status.textContent = `${finais.length} imagem(ns) — clique numa pra usar como referência.`;
+            container.innerHTML = finais.slice(0, 24).map(u => `
+                <button type="button" class="lanc-refsel-item" data-prod-url="${escapeHtml(u.url)}">
+                    <img src="${escapeHtml(u.url)}" alt="" loading="lazy">
+                    <span>${escapeHtml(u.rotulo)}</span>
+                </button>`).join('');
+            container.querySelectorAll('[data-prod-url]').forEach(b => b.addEventListener('click', () => {
+                escolher(() => bytesDaImagem(b.dataset.prodUrl), { origem: 'produto da loja' });
+            }));
+        } catch (e) {
+            status.textContent = 'Erro ao ler o produto: ' + String(e.message).slice(0, 120);
+        }
+    }
+
+    // Extrai as URLs das <img> de um HTML de descrição.
+    function _imagensDaDescricao(html) {
+        if (!html) return [];
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(html);
+        return [...tmp.querySelectorAll('img')].map(im => im.getAttribute('src')).filter(s => s && !s.startsWith('data:'));
     }
 
     // Pedido livre do usuário + as travas de preservação do produto, que ele
