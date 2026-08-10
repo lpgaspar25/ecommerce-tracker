@@ -671,35 +671,20 @@ const ShopifyModule = (() => {
 
         // ShopifyQL: sessões/visualizações agrupadas por produto.
         // Datasets variam por versão da API; tentamos algumas formas em ordem.
+        // Mesma correção de sintaxe de fetchProductViewsByDate: dataset é
+        // `sessions` (não existe `FROM products`) e as colunas de produto
+        // podem simplesmente não existir nesta loja.
         const queries = [
-            `FROM products SHOW view_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY view_sessions DESC LIMIT 250`,
-            `FROM sessions SHOW total_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY total_sessions DESC LIMIT 250`,
-            `FROM products SHOW online_store_product_views GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY online_store_product_views DESC LIMIT 250`,
+            `FROM sessions SHOW product_views GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY product_views DESC LIMIT 250`,
+            `FROM sessions SHOW product_views GROUP BY product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY product_views DESC LIMIT 250`,
+            `FROM sessions SHOW sessions GROUP BY product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY sessions DESC LIMIT 250`,
         ];
-
-        const gql = `query SQL($q: String!) {
-            shopifyqlQuery(query: $q) {
-                tableData {
-                    columns { name }
-                    rowData
-                }
-                parseErrors
-            }
-        }`;
 
         let lastErr = null;
         for (const q of queries) {
             try {
-                const data = await _graphql(gql, { q });
-                const resp = data?.shopifyqlQuery;
-                if (!resp) continue;
-                // parseErrors is a String in this API version
-                if (resp.parseErrors && String(resp.parseErrors).trim()) {
-                    lastErr = new Error(String(resp.parseErrors));
-                    continue;
-                }
-                const table = resp.tableData;
-                if (!table || !Array.isArray(table.rowData)) continue;
+                const table = await _shopifyql(q);
+                if (!table) continue;
 
                 // Identify column indices
                 const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
@@ -711,7 +696,7 @@ const ShopifyModule = (() => {
                 const byShopifyProductId = {};
                 const byTitle = {};
                 let total = 0;
-                for (const row of table.rowData) {
+                for (const row of table.rows) {
                     const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
                     const title = titleIdx >= 0 ? String(row[titleIdx] || '') : '';
                     const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
@@ -758,52 +743,116 @@ const ShopifyModule = (() => {
         const cacheKey = `${dateFrom}|${dateTo}`;
         if (_viewsByDateCache[cacheKey]) return _viewsByDateCache[cacheKey];
 
+        // Sintaxe conforme a doc atual: dimensão de tempo é TIMESERIES, não
+        // GROUP BY day; e o dataset é `sessions` (não existe `FROM products`).
+        // Testado ao vivo: nesta loja NENHUMA dimensão de produto existe em
+        // `sessions` — as colunas product_views/product_title/product_id são
+        // rejeitadas. As tentativas ficam aqui porque a disponibilidade varia
+        // por plano/loja; quando nenhuma passa, o erro sobe explicando.
         const queries = [
-            `FROM products SHOW view_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
-            `FROM sessions SHOW total_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
-            `FROM products SHOW online_store_product_views GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
+            `FROM sessions SHOW product_views GROUP BY product_id, product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
+            `FROM sessions SHOW product_views GROUP BY product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
+            `FROM sessions SHOW sessions GROUP BY product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
         ];
-        const gql = `query SQL($q: String!) {
-            shopifyqlQuery(query: $q) {
-                tableData { columns { name } rowData }
-                parseErrors
-            }
-        }`;
 
         let lastErr = null;
         for (const q of queries) {
             try {
-                const data = await _graphql(gql, { q });
-                const resp = data?.shopifyqlQuery;
-                if (!resp) continue;
-                if (resp.parseErrors && String(resp.parseErrors).trim()) { lastErr = new Error(String(resp.parseErrors)); continue; }
-                const table = resp.tableData;
-                if (!table || !Array.isArray(table.rowData)) continue;
+                const table = await _shopifyql(q);
+                if (!table) continue;
                 const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
                 const dayIdx = cols.findIndex(c => c === 'day' || c.includes('date') || c.includes('dia'));
                 const pidIdx = cols.findIndex(c => c.includes('product_id'));
                 const titleIdx = cols.findIndex(c => c.includes('product_title') || c.includes('title'));
                 const viewIdx = cols.findIndex((c, i) => i !== dayIdx && i !== pidIdx && i !== titleIdx);
+                if (dayIdx < 0 || viewIdx < 0 || (pidIdx < 0 && titleIdx < 0)) continue;
+
+                // Sem product_id, casa por TÍTULO — resolve pro id numérico da
+                // Shopify usando o catálogo já em cache, pra a chave sair no
+                // mesmo formato "dia|idShopify" que o resto do app espera.
+                const idPorTitulo = {};
+                if (pidIdx < 0 && titleIdx >= 0) {
+                    (getShopifyProducts() || []).forEach(p => {
+                        if (p.title) idPorTitulo[String(p.title).trim().toLowerCase()] = String(p.id);
+                    });
+                }
                 const out = {};
-                for (const row of table.rowData) {
-                    const day = dayIdx >= 0 ? String(row[dayIdx] || '').slice(0, 10) : '';
-                    const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
+                for (const row of table.rows) {
+                    const day = String(row[dayIdx] || '').slice(0, 10);
+                    const pid = pidIdx >= 0
+                        ? String(row[pidIdx] || '').replace(/\D/g, '')
+                        : (idPorTitulo[String(row[titleIdx] || '').trim().toLowerCase()] || '');
                     const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
                     if (day && pid) out[`${day}|${pid}`] = (out[`${day}|${pid}`] || 0) + views;
                 }
+                if (!Object.keys(out).length) continue;   // veio tabela, mas nada casou
                 _viewsByDateCache[cacheKey] = out;
                 return out;
             } catch (e) {
                 lastErr = e;
                 const msg = (e.message || '').toLowerCase();
                 if (msg.includes('access denied') || msg.includes('read_reports') || msg.includes('not approved')) {
-                    throw new Error('Visitas indisponíveis: falta read_reports OU a loja precisa reconectar após adicionar o escopo.');
+                    throw new Error('Visitas indisponíveis: falta o escopo read_reports — reconecte a loja em Configurações → Integrações depois de atualizar os escopos.');
                 }
-                // otherwise keep trying next query form
+                // senão, tenta a próxima forma de query
             }
         }
-        // Surface the RAW error (e.g. "Cannot query field X on type Y") for debugging
-        throw lastErr || new Error('ShopifyQL não retornou visitas por dia.');
+        throw new Error('Esta loja não expõe visitas POR PRODUTO no ShopifyQL'
+            + (lastErr ? ` (${String(lastErr.message).slice(0, 120)})` : '')
+            + '. As visitas totais da loja continuam disponíveis.');
+    }
+
+    // Executa uma query ShopifyQL e devolve { columns, rows } já validado.
+    // Centraliza o contrato do campo porque ele estava ERRADO em dois lugares:
+    // pedia `tableData { ... rowData }`, e `rowData` não existe no schema (é
+    // `rows`). Campo inexistente = erro de VALIDAÇÃO do documento, que o
+    // servidor rejeita antes até de checar escopo — por isso toda chamada
+    // ShopifyQL do app falhava, e o Dashboard só mostrava "Sem dados".
+    // `parseErrors` também é [String!]!, não String.
+    async function _shopifyql(q) {
+        const gql = `query SQL($q: String!) {
+            shopifyqlQuery(query: $q) {
+                tableData { columns { name dataType } rows }
+                parseErrors
+            }
+        }`;
+        const data = await _graphql(gql, { q });
+        const resp = data?.shopifyqlQuery;
+        if (!resp) return null;
+        const erros = Array.isArray(resp.parseErrors) ? resp.parseErrors.filter(Boolean) : [];
+        if (erros.length) throw new Error(erros.join('; '));
+        const table = resp.tableData;
+        if (!table || !Array.isArray(table.rows)) return null;
+        return table;
+    }
+
+    // Funil REAL da loja, direto do ShopifyQL (não é pixel do Facebook):
+    // sessões → carrinho → checkout → compra. Opcionalmente quebrado por país
+    // de sessão. Confirmado funcionando nesta loja.
+    async function fetchFunilLoja(dateFrom, dateTo, { porPais = false } = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo) return [];
+        const metricas = 'sessions, sessions_with_cart_additions, sessions_that_reached_checkout, sessions_that_completed_checkout';
+        const q = porPais
+            ? `FROM sessions SHOW ${metricas} GROUP BY session_country SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY sessions DESC LIMIT 30`
+            : `FROM sessions SHOW ${metricas} TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo}`;
+        const table = await _shopifyql(q);
+        if (!table) return [];
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const idx = (nome) => cols.indexOf(nome);
+        const iChave = porPais ? idx('session_country') : idx('day');
+        const iSess = idx('sessions');
+        const iCart = idx('sessions_with_cart_additions');
+        const iCheck = idx('sessions_that_reached_checkout');
+        const iComp = idx('sessions_that_completed_checkout');
+        const num = (v) => parseInt(String(v ?? '0').replace(/\D/g, ''), 10) || 0;
+        return table.rows.map(r => ({
+            chave: iChave >= 0 ? String(r[iChave] || '') : '',
+            sessoes: num(r[iSess]),
+            carrinho: num(r[iCart]),
+            checkout: num(r[iCheck]),
+            compras: num(r[iComp]),
+        })).filter(l => l.chave);
     }
 
     // ── Aggregation ──
@@ -2418,6 +2467,7 @@ const ShopifyModule = (() => {
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
+        fetchFunilLoja,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,

@@ -132,14 +132,50 @@ const LancamentoModule = (() => {
         try {
             const tema = (_state.titulo || document.getElementById('lanc-titulo')?.value || '').trim();
             const molde = _state.base === 'molde' ? _state.moldeDetalhes : null;
+
+            // O nome é lido pelo CLIENTE da loja, não pela UI do app — mesma
+            // regra que já vale pra descrição (ver comentário do Passo 3).
+            // Antes o prompt forçava "responda em português do Brasil", o que
+            // produzia nome híbrido tipo "Aviador Sunglasses" numa loja inglesa.
+            const idiomaId = document.getElementById('lanc-titulo-idioma')?.value || 'en';
+            const idioma = IDIOMAS_COPY.find(i => i.id === idiomaId) || IDIOMAS_COPY[0];
+
+            // Lê o molde DE VERDADE: além de título/categoria/marca, manda a
+            // descrição real e as fotos (visão). Só título dava nome genérico
+            // — com a descrição e a foto a IA acerta material, formato e uso.
+            const descricaoMolde = molde?.descriptionHtml
+                ? String(molde.descriptionHtml).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1200)
+                : '';
             const contexto = [
-                tema ? `Ideia/tema atual digitado pelo usuário: "${tema}" — gere variações e refinamentos DESSE tema, não troque de produto.` : 'Nada foi digitado ainda — sugira nomes genéricos vendáveis pra um produto novo de dropshipping.',
+                tema ? `Ideia/tema atual digitado pelo usuário: "${tema}" — gere variações e refinamentos DESSE tema, não troque de produto.` : 'Nada foi digitado ainda — sugira nomes vendáveis a partir do que você observa no produto.',
                 molde ? `Produto usado como molde/inspiração: "${molde.title}"${molde.productType ? ` (categoria: ${molde.productType})` : ''}${molde.vendor ? ` (marca: ${molde.vendor})` : ''}.` : '',
+                descricaoMolde ? `Descrição do produto-molde: ${descricaoMolde}` : '',
+                molde?.images?.length ? `Você também recebeu ${Math.min(molde.images.length, 4)} foto(s) do produto — use o que VÊ (formato, material, cor, uso) pra deixar o nome específico.` : '',
+                `IDIOMA DO NOME: ${idioma.instrucao}.`,
             ].filter(Boolean).join('\n');
 
-            const sistema = `Você sugere nomes de produtos pra uma loja de dropshipping, focados em conversão — chamativos, específicos e vendáveis, nunca genéricos ("Produto Incrível", "Item Especial" são ruins) nem clickbait enganoso. Responda em português do Brasil, em JSON: {"nomes": ["nome 1", "nome 2", "nome 3", "nome 4", "nome 5"]}. Cada nome até 70 caracteres.`;
+            const sistema = `Você sugere nomes de produtos pra uma loja de dropshipping, focados em conversão — chamativos, específicos e vendáveis, nunca genéricos ("Produto Incrível", "Item Especial" são ruins) nem clickbait enganoso.
+IDIOMA — REGRA CRÍTICA: escreva os nomes INTEIRAMENTE no idioma pedido pelo usuário, sem misturar idiomas na mesma frase. Este nome é lido pelo CLIENTE FINAL da loja. Nunca deixe uma palavra em português num nome em inglês (ex.: "Aviador Sunglasses" está ERRADO; o certo seria "Aviator Sunglasses").
+Responda em JSON: {"nomes": ["nome 1", "nome 2", "nome 3", "nome 4", "nome 5"]}. Cada nome até 70 caracteres.`;
 
-            const txt = await _openaiJson(sistema, [{ role: 'user', content: contexto }], 500);
+            // Com fotos do molde usa visão; sem fotos, chamada de texto normal.
+            let txt;
+            const urlsFotos = (molde?.images || []).slice(0, 4).map(im => im.url).filter(Boolean);
+            if (urlsFotos.length) {
+                const imagens = [];
+                for (const url of urlsFotos) {
+                    try {
+                        const blob = await bytesDaImagem(url);
+                        const base64 = (await _blobParaDataUrl(blob)).split(',')[1];
+                        imagens.push({ base64, mediaType: blob.type || 'image/jpeg' });
+                    } catch (e) { console.warn('[Lançamento] foto do molde não pôde ser lida:', e.message); }
+                }
+                txt = imagens.length
+                    ? await _openaiVisaoMulti(sistema, contexto, imagens)
+                    : await _openaiJson(sistema, [{ role: 'user', content: contexto }], 500);
+            } else {
+                txt = await _openaiJson(sistema, [{ role: 'user', content: contexto }], 500);
+            }
             const plano = _extrairJson(txt);
             const nomes = Array.isArray(plano.nomes) ? plano.nomes.filter(Boolean) : [];
             if (!nomes.length) throw new Error('A IA não devolveu sugestões — tente de novo.');
@@ -292,10 +328,10 @@ const LancamentoModule = (() => {
                 ${erro ? `<div class="lanc-foto-erro-badge" title="${escapeHtml(erro)}"><i data-lucide="alert-triangle" style="width:11px;height:11px"></i></div>` : ''}
                 <span class="lanc-foto-origem">${escapeHtml(f.origem)}${f.editada ? ' · IA' : ''}</span>
                 <div class="lanc-foto-acoes">
-                    <button type="button" data-editar-uma="${f.id}" title="Editar com IA"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
-                    ${f._original ? `<button type="button" data-desfazer="${f.id}" title="Desfazer edição"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i></button>` : ''}
+                    <button type="button" class="tip tip--dentro" data-tip="Editar com IA" aria-label="Editar com IA" data-editar-uma="${f.id}"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
+                    ${f._original ? `<button type="button" class="tip tip--dentro" data-tip="Desfazer edição" aria-label="Desfazer edição" data-desfazer="${f.id}"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i></button>` : ''}
                 </div>
-                <button type="button" class="lanc-foto-del" data-remover="${f.id}" title="Remover"><i data-lucide="x" style="width:11px;height:11px"></i></button>
+                <button type="button" class="lanc-foto-del tip tip--dentro" data-tip="Remover foto" aria-label="Remover foto" data-remover="${f.id}"><i data-lucide="x" style="width:11px;height:11px"></i></button>
             </div>`;
         }).join('');
         grid.querySelectorAll('[data-remover]').forEach(btn => {
@@ -805,8 +841,9 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
                 const parsed = _extrairJson(txt);
                 (parsed.blocos || []).forEach(b => { reescritos[b.indice] = b.html; });
             }
-            // Ordem igual à do molde; texto reescrito, imagem atribuída por
-            // ordem às fotos que o usuário trouxe (dá pra trocar no editor).
+            // Ordem igual à do molde; texto reescrito. A foto de cada slot
+            // começa pela ordem de upload e logo abaixo é REATRIBUÍDA por
+            // visão, casando com o texto vizinho.
             let idxFoto = 0;
             const finais = esqueleto.map((b, i) => {
                 if (b.tipo === 'imagem') {
@@ -818,6 +855,10 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
                 // html pode carregar <img> do produto-molde junto.
                 return { tipo: 'texto', html: _semImagens(reescritos[i] || b.html) };
             });
+
+            _setDescStatus('Casando as fotos com o texto…');
+            await _casarFotosComTexto(finais);
+
             _state.blocos = finais;
             _renderBlocos();
             _setDescStatus(`${finais.length} blocos montados a partir do molde — edite à vontade.`);
@@ -966,6 +1007,64 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
             });
         });
         _icones();
+    }
+
+    // Reatribui, POR VISÃO, qual foto entra em cada slot de imagem — casando
+    // com o texto vizinho. Sem isso o caminho do molde preenchia os slots na
+    // ORDEM DE UPLOAD, então a foto ao lado de "Explore a Range of Colours"
+    // podia ser um close da haste: nada errado tecnicamente, só sem relação
+    // nenhuma com a copy. (O caminho "do zero" não tinha esse problema porque
+    // lá a própria IA já escolhe indiceFoto olhando as fotos.)
+    //
+    // Muta `blocos` no lugar. Falhou? Mantém a ordem sequencial — a descrição
+    // sai com foto fora de contexto, que é ruim, mas melhor que sair sem foto.
+    async function _casarFotosComTexto(blocos) {
+        const slots = [];
+        blocos.forEach((b, i) => {
+            if (b.tipo !== 'imagem') return;
+            // Texto imediatamente ANTES é o que a foto ilustra; se o bloco de
+            // imagem abre a descrição, usa o texto logo depois.
+            let ctx = '';
+            for (let j = i - 1; j >= 0; j--) if (blocos[j].tipo === 'texto') { ctx = blocos[j].html; break; }
+            if (!ctx) for (let j = i + 1; j < blocos.length; j++) if (blocos[j].tipo === 'texto') { ctx = blocos[j].html; break; }
+            slots.push({ pos: i, texto: String(ctx || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) });
+        });
+        if (!slots.length) return;
+
+        const usadas = _state.fotos.slice(0, MAX_FOTOS_VISAO);
+        if (usadas.length < 2) return;   // com 0 ou 1 foto não há o que casar
+
+        try {
+            const imagens = [];
+            for (const f of usadas) {
+                const rec = await MediaStore.get(f.mediaId);
+                if (!rec?.blob) continue;
+                const base64 = (await _blobParaDataUrl(rec.blob)).split(',')[1];
+                imagens.push({ base64, mediaType: rec.blob.type || 'image/webp' });
+            }
+            if (imagens.length < 2) return;
+
+            const sistema = `Você casa FOTOS de um produto com os trechos de texto que elas devem ilustrar numa página de produto.
+Você recebe as fotos na ordem (índice 0, 1, 2...) e uma lista de espaços de imagem, cada um com o texto vizinho.
+Para CADA espaço, escolha a foto que melhor ilustra aquele texto especificamente — se o texto fala de cores, escolha a foto que mostra variação de cor; se fala de material ou acabamento, escolha o close; se fala de uso, escolha a foto do produto sendo usado.
+Não repita a mesma foto em dois espaços, a menos que haja menos fotos que espaços.
+Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, "indiceFoto": 0}]} — um item por espaço, na ordem em que os espaços foram dados.`;
+
+            const contexto = `Produto: ${_state.titulo || 'produto novo'}.\nVocê recebeu ${imagens.length} foto(s), índices 0 a ${imagens.length - 1}.\nEspaços de imagem a preencher:\n${slots.map((s, n) => `{"slot": ${n}, "textoVizinho": ${JSON.stringify(s.texto || '(sem texto vizinho)')}}`).join('\n')}`;
+
+            const txt = await _openaiVisaoMulti(sistema, contexto, imagens);
+            const parsed = _extrairJson(txt);
+            const escolhas = Array.isArray(parsed.escolhas) ? parsed.escolhas : [];
+            if (!escolhas.length) return;
+
+            escolhas.forEach(e => {
+                const slot = slots[parseInt(e.slot, 10)];
+                const foto = usadas[_indiceFotoDe(e, usadas.length)];
+                if (slot && foto && blocos[slot.pos]?.tipo === 'imagem') blocos[slot.pos].fotoId = foto.id;
+            });
+        } catch (e) {
+            console.warn('[Lançamento] casamento foto↔texto falhou, mantendo a ordem original:', e.message);
+        }
     }
 
     // Divide um HTML de descrição em blocos texto/imagem — usado pra copiar a
@@ -1295,18 +1394,25 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
 
     function _acoesHtml(i) {
         const b = _state.blocos[i];
+        // data-tip (tooltip CSS) em vez de title: a barra só aparece no hover
+        // do bloco e o title nativo exige ~1s de ponteiro parado — na prática
+        // o usuário nunca via. aria-label é obrigatório junto porque, sem o
+        // title, o <i data-lucide> vira <svg> sem texto e o botão fica sem
+        // nome acessível.
+        const btn = (attrs, rotulo, icone) =>
+            `<button type="button" class="tip" data-tip="${rotulo}" aria-label="${rotulo}" ${attrs}><i data-lucide="${icone}" style="width:13px;height:13px"></i></button>`;
         return `<div class="lanc-bl-acoes">
             ${b?.tipo === 'imagem' ? `
-                <button type="button" data-editar-foto="${i}" title="Editar com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>
-                <button type="button" data-trocar-foto="${i}" title="Substituir foto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
-                <button type="button" data-add-foto-apos="${i}" title="Adicionar foto aqui"><i data-lucide="image-plus" style="width:13px;height:13px"></i></button>
+                ${btn(`data-editar-foto="${i}"`, 'Editar esta foto com IA', 'wand-2')}
+                ${btn(`data-trocar-foto="${i}"`, 'Trocar por outra foto', 'image')}
+                ${btn(`data-add-foto-apos="${i}"`, 'Inserir outra foto abaixo', 'image-plus')}
             ` : ''}
             ${b?.tipo === 'texto' ? `
-                <button type="button" data-reescrever-bloco="${i}" title="Reescrever com IA"><i data-lucide="wand-2" style="width:13px;height:13px"></i></button>
+                ${btn(`data-reescrever-bloco="${i}"`, 'Reescrever este texto com IA', 'wand-2')}
             ` : ''}
-            <button type="button" data-mover="cima" data-idx="${i}" title="Mover pra cima"><i data-lucide="chevron-up" style="width:13px;height:13px"></i></button>
-            <button type="button" data-mover="baixo" data-idx="${i}" title="Mover pra baixo"><i data-lucide="chevron-down" style="width:13px;height:13px"></i></button>
-            <button type="button" data-remover-bloco="${i}" title="Remover"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
+            ${btn(`data-mover="cima" data-idx="${i}"`, 'Mover bloco pra cima', 'chevron-up')}
+            ${btn(`data-mover="baixo" data-idx="${i}"`, 'Mover bloco pra baixo', 'chevron-down')}
+            ${btn(`data-remover-bloco="${i}"`, 'Remover este bloco', 'trash-2')}
         </div>`;
     }
 

@@ -9825,6 +9825,9 @@ thead:hover .diary-check-col input[type="checkbox"],
 /* Lançamento → sugestão de nome com IA (LAUNCH-01) */
 #lanc-titulo-sugestoes.hidden { display: none; }
 .lanc-titulo-sugestoes { margin-top: 0.5rem; padding: 0.6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input, rgba(0,0,0,0.02)); }
+.lanc-titulo-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
+.lanc-titulo-idioma { display: flex; align-items: center; gap: 0.4rem; }
+.lanc-titulo-idioma select { width: auto; }
 .lanc-titulo-sug-status { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
 .lanc-titulo-sug-lista { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.5rem; }
 .lanc-titulo-sug-item {
@@ -10023,12 +10026,12 @@ thead:hover .diary-check-col input[type="checkbox"],
    é global por classe e sobrescreveria o modo do Top Produtos. */
 .dash-funil-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
 .dash-funil-dims { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-.dash-funil-dim {
+.dash-funil-dim, .dash-funil-pais {
     padding: 0.25rem 0.7rem; font-size: 0.72rem; font-weight: 600;
     background: none; border: none; color: var(--text-muted); cursor: pointer; transition: all 0.12s;
 }
-.dash-funil-dim:hover { color: var(--text-primary); background: var(--bg-input); }
-.dash-funil-dim.active { background: var(--accent); color: #fff; }
+.dash-funil-dim:hover, .dash-funil-pais:hover { color: var(--text-primary); background: var(--bg-input); }
+.dash-funil-dim.active, .dash-funil-pais.active { background: var(--accent); color: #fff; }
 .dash-funil-fonte { font-size: 0.68rem; color: var(--text-muted); line-height: 1.45; margin: 0.4rem 0 0.6rem; }
 .dash-funil-tabs { flex-wrap: wrap; }
 .dash-funil-tab {
@@ -12456,6 +12459,30 @@ thead:hover .diary-check-col input[type="checkbox"],
 .shopify-widget-info-wrap:focus-visible .shopify-widget-info-tooltip,
 .shopify-widget-info-wrap:focus-within .shopify-widget-info-tooltip {
     opacity: 1; visibility: visible;
+}
+
+/* Tooltip por atributo (.tip + data-tip) — mesmos tokens visuais do
+   .shopify-widget-info-tooltip acima, mas sem exigir um <span> wrapper e um
+   <span> de balão por botão (numa barra de 6 ícones × N blocos isso seria
+   muito nó extra). Usado nas barras de ícone-só, onde o title= nativo não
+   resolve: a barra só existe durante o hover e o title exige ~1s de ponteiro
+   PARADO — o usuário nunca chega a ver.
+   pointer-events:none no balão é obrigatório: a barra fica por cima de texto
+   contenteditable e um balão clicável roubaria a seleção. */
+.tip { position: relative; }
+.tip::after {
+    content: attr(data-tip);
+    position: absolute; top: 100%; right: 0; margin-top: 6px; white-space: nowrap;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px;
+    padding: 0.3rem 0.55rem; font-size: 0.72rem; font-weight: 500; color: var(--text-secondary);
+    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.12s; z-index: 25;
+}
+.tip:hover::after, .tip:focus-visible::after { opacity: 1; visibility: visible; }
+/* Dentro de tiles com overflow:hidden (fotos), o balão sobe POR CIMA da
+   própria foto — continua dentro da caixa, então não é cortado. */
+.tip--dentro::after {
+    top: auto; bottom: calc(100% + 5px); right: auto; left: 50%; transform: translateX(-50%);
+    margin-top: 0; white-space: normal; max-width: 104px; text-align: center; line-height: 1.25;
 }
 
 .shopify-metric {

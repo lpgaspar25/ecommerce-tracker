@@ -523,8 +523,14 @@
                     <div id="dash-funil-lista" class="dash-ranking"></div>
                 </div>
                 <div class="dash-card">
-                    <h3 style="margin:0 0 0.2rem;font-size:0.9rem"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas reais por país de entrega</h3>
-                    <p class="dash-funil-fonte">Direto dos pedidos da Shopify — é o país <strong>de destino do pedido</strong>, dimensão diferente da tag de campanha ao lado. A Shopify não expõe checkout nem visitas por país, então aqui só há vendas.</p>
+                    <div class="dash-funil-head">
+                        <h3 style="margin:0;font-size:0.9rem"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Funil real da loja por país</h3>
+                        <div class="dash-funil-dims">
+                            <button class="dash-funil-pais active" data-pmodo="conversao">Conversão</button>
+                            <button class="dash-funil-pais" data-pmodo="checkout">Checkout</button>
+                        </div>
+                    </div>
+                    <p class="dash-funil-fonte">Dado <strong>real da Shopify</strong> (ShopifyQL), não estimativa de pixel: sessões → carrinho → checkout → compra, pelo país da sessão. Conversão = compras ÷ sessões; Checkout = chegaram ao checkout ÷ adicionaram ao carrinho. A Shopify não expõe esse funil por produto, só por país e no total.</p>
                     <div id="dash-vendas-pais" class="dash-ranking"></div>
                 </div>
             </div>
@@ -4399,10 +4405,24 @@
                             <div id="lanc-molde-status" class="lanc-molde-status"></div>
                         </div>
                         <div style="margin-top:0.8rem">
-                            <label for="lanc-titulo">Nome do novo produto</label>
+                            <div class="lanc-titulo-head">
+                                <label for="lanc-titulo">Nome do novo produto</label>
+                                <span class="lanc-titulo-idioma">
+                                    <label for="lanc-titulo-idioma" style="font-size:0.72rem;color:var(--text-muted)">Idioma do nome</label>
+                                    <select id="lanc-titulo-idioma" class="input input-sm" title="Idioma do nome do produto — é a língua da SUA LOJA (o cliente lê isso), não a do app">
+                                        <option value="en" selected>Inglês</option>
+                                        <option value="pt">Português</option>
+                                        <option value="es">Espanhol</option>
+                                        <option value="fr">Francês</option>
+                                        <option value="de">Alemão</option>
+                                        <option value="it">Italiano</option>
+                                        <option value="nl">Holandês</option>
+                                    </select>
+                                </span>
+                            </div>
                             <div class="prompt-lib-row">
-                                <input type="text" id="lanc-titulo" class="input" placeholder="Ex.: Óculos de Sol Ferrari Portofino">
-                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-titulo-ia" title="Sugerir nomes com IA"><i data-lucide="sparkles" style="width:14px;height:14px"></i></button>
+                                <input type="text" id="lanc-titulo" class="input" placeholder="Ex.: Ferrari Portofino Sunglasses">
+                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-titulo-ia" title="Sugerir nomes com IA — lê o produto-molde (descrição + fotos) quando houver"><i data-lucide="sparkles" style="width:14px;height:14px"></i></button>
                             </div>
                             <div id="lanc-titulo-sugestoes" class="lanc-titulo-sugestoes hidden"></div>
                         </div>

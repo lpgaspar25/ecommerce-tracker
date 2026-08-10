@@ -19,8 +19,9 @@ const DashboardModule = {
     // ruído, não sinal.
     _MIN_ATC_FUNIL: 10,
     _MIN_VIEWS_FUNIL: 50,
-    _vendasPaisMap: null,
-    _vendasPaisKey: '',
+    _viewsErro: '',
+    _funilLojaPais: null,
+    _funilLojaPaisKey: '',
 
     // Shopify real-sales cache (keyed by "start|end")
     _realSalesMap: null,
@@ -186,6 +187,14 @@ const DashboardModule = {
                 btn.classList.add('active');
                 this._funilMode = btn.dataset.funil;
                 this._renderFunilRanking();
+            });
+        });
+        document.querySelectorAll('.dash-funil-pais').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-pais').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilPaisModo = btn.dataset.pmodo;
+                this._renderVendasPorPais();
             });
         });
 
@@ -1030,8 +1039,43 @@ const DashboardModule = {
             } catch (e) {
                 console.warn('[Dashboard] Shopify views fetch failed:', e);
                 this._viewsMap = {};
+                // Guarda o motivo: sem isso o ranking caía num "Sem dados"
+                // mudo e não havia como o usuário saber que o problema é a
+                // fonte de visitas, não a ausência de vendas.
+                this._viewsErro = String(e.message || e).slice(0, 220);
             }
+            if (this._viewsMap && Object.keys(this._viewsMap).length) this._viewsErro = '';
         }
+    },
+
+    // "Sem dados" não diz NADA — os modos que dependem da Shopify podem
+    // esvaziar por 4 motivos bem diferentes, e o usuário não tem como
+    // distinguir. Cada um tem uma ação concreta associada.
+    _porqueRankingVazio(mode) {
+        const entradas = this._getPeriodEntries();
+        if (!entradas.length) {
+            return this._productFilter !== 'todos'
+                ? 'Sem entradas no Diário pra este produto no período — troque o filtro de produto ou o período.'
+                : 'Sem entradas no Diário neste período.';
+        }
+        const precisaShopify = ['salesReal', 'cpaReal', 'conversionReal'].includes(mode);
+        if (precisaShopify) {
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+                return 'Conecte a Shopify (Configurações → Integrações) — este modo usa dados reais da loja.';
+            }
+            const semVinculo = !(AppState.allProducts || []).some(p => ShopifyModule.getLink && ShopifyModule.getLink(p.id));
+            if (semVinculo) {
+                return 'Nenhum produto está vinculado a um produto da Shopify. Vincule em Produtos → Shopify pra cruzar vendas reais com os lançamentos do Diário.';
+            }
+            if (mode === 'conversionReal' && this._viewsErro) {
+                return `Visitas por produto indisponíveis: ${escapeHtml(this._viewsErro)}`;
+            }
+            if (mode === 'conversionReal') {
+                return 'Sem visitas por produto no período — a Conversão Real precisa do número de visitantes que a Shopify reporta por produto.';
+            }
+            return 'Sem vendas reais da Shopify no período pros produtos vinculados.';
+        }
+        return 'Sem dados neste período.';
     },
 
     // Sum Shopify product views from a viewsMap ("date|shopifyProductId": views)
@@ -1445,7 +1489,7 @@ const DashboardModule = {
         ranked = ranked.slice(0, 5);
 
         if (ranked.length === 0) {
-            container.innerHTML = '<div class="dash-empty">Sem dados</div>';
+            container.innerHTML = `<div class="dash-empty">${this._porqueRankingVazio(mode)}</div>`;
             return;
         }
 
@@ -1985,44 +2029,57 @@ const DashboardModule = {
             </div>`).join('');
     },
 
-    // Card separado: país REAL de entrega, direto dos pedidos da Shopify.
-    // Fica fora do card de funil de propósito — é outra dimensão (destino do
-    // pedido, não segmentação do anúncio) e outra fonte (Shopify, não pixel).
+    // Funil REAL da Shopify por país — sessões → carrinho → checkout → compra,
+    // direto do ShopifyQL. É a conversão REAL de verdade (visitante da loja
+    // que comprou), não a estimativa do pixel do Facebook do card ao lado.
+    // A Shopify NÃO expõe esse funil por produto (as colunas de produto não
+    // existem no dataset `sessions`), só por país e no total — por isso este
+    // card é por país e o Top Produtos explica a limitação em vez de fingir.
     async _renderVendasPorPais() {
         const container = document.getElementById('dash-vendas-pais');
         if (!container) return;
         if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
-            container.innerHTML = '<div class="dash-empty">Conecte a Shopify pra ver vendas reais por país de entrega.</div>';
+            container.innerHTML = '<div class="dash-empty">Conecte a Shopify pra ver o funil real por país.</div>';
             return;
         }
         const chave = `${this._startDate}|${this._endDate}`;
-        if (this._vendasPaisKey !== chave) {
-            container.innerHTML = '<div class="dash-empty">Carregando vendas por país…</div>';
+        if (this._funilLojaPaisKey !== chave) {
+            container.innerHTML = '<div class="dash-empty">Carregando funil por país…</div>';
             try {
-                this._vendasPaisMap = await ShopifyModule.getRealSalesPorPais(this._startDate, this._endDate);
-                this._vendasPaisKey = chave;
+                this._funilLojaPais = await ShopifyModule.fetchFunilLoja(this._startDate, this._endDate, { porPais: true });
+                this._funilLojaPaisKey = chave;
             } catch (e) {
-                container.innerHTML = `<div class="dash-empty">Erro ao buscar pedidos: ${escapeHtml(String(e.message).slice(0, 120))}</div>`;
+                container.innerHTML = `<div class="dash-empty">Funil indisponível: ${escapeHtml(String(e.message).slice(0, 160))}</div>`;
                 return;
             }
         }
-        const linhas = Object.values(this._vendasPaisMap || {})
-            .filter(p => p.sales > 0)
-            .sort((a, b) => b.sales - a.sales);
+        const linhas = (this._funilLojaPais || []).filter(l => l.sessoes > 0);
         if (!linhas.length) {
-            container.innerHTML = '<div class="dash-empty">Nenhuma venda na Shopify neste período.</div>';
+            container.innerHTML = '<div class="dash-empty">Sem sessões na Shopify neste período.</div>';
             return;
         }
-        const total = linhas.reduce((s, p) => s + p.sales, 0);
-        container.innerHTML = linhas.slice(0, 6).map((p, i) => {
-            const nome = p.countryCode === '??' ? 'Sem país no pedido' : (p.country || p.countryCode);
-            const pct = total > 0 ? (p.sales / total) * 100 : 0;
-            return `<div class="dash-rank-item">
+        const modo = this._funilPaisModo || 'conversao';
+        const taxa = (l) => modo === 'checkout'
+            ? (l.carrinho > 0 ? (l.checkout / l.carrinho) * 100 : 0)
+            : (l.sessoes > 0 ? (l.compras / l.sessoes) * 100 : 0);
+        // Piso de volume pelo mesmo motivo do card ao lado: sem volume a taxa
+        // é ruído. Pisos diferentes por métrica de propósito — o denominador
+        // da conversão (sessões) é uma ordem de grandeza maior que o do
+        // checkout (carrinhos), então um piso único deixaria passar país com
+        // 40 sessões e 0 compra ocupando o ranking com "0,00%".
+        const piso = modo === 'checkout' ? 30 : 200;
+        const comVolume = linhas.filter(l => (modo === 'checkout' ? l.carrinho : l.sessoes) >= piso);
+        if (!comVolume.length) {
+            container.innerHTML = '<div class="dash-empty">Nenhum país com volume suficiente no período.</div>';
+            return;
+        }
+        const ordenadas = [...comVolume].sort((a, b) => taxa(b) - taxa(a));
+        container.innerHTML = ordenadas.slice(0, 6).map((l, i) => `
+            <div class="dash-rank-item">
                 <span class="dash-rank-pos">${i + 1}</span>
-                <span class="dash-rank-name">${escapeHtml(nome)}</span>
-                <span class="dash-rank-value">${p.sales} <span class="dash-funil-sub">${pct.toFixed(0)}%</span></span>
-            </div>`;
-        }).join('');
+                <span class="dash-rank-name">${escapeHtml(l.chave)}</span>
+                <span class="dash-rank-value">${taxa(l).toFixed(2)}% <span class="dash-funil-sub">${modo === 'checkout' ? `${l.checkout}/${l.carrinho} carrinhos` : `${l.compras}/${l.sessoes} sessões`}</span></span>
+            </div>`).join('');
     },
 
     _renderOpportunities() {
