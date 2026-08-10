@@ -18,7 +18,16 @@ const ShopifyModule = (() => {
     //  reads: pedidos/produtos/idiomas/traduções/temas (só leitura, pro
     //  seletor de tema/template do Agente de Loja) · writes: produtos
     //  (imagem), arquivos, traduções, idiomas.
-    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes';
+    //  read_reports: exigido pelo campo shopifyqlQuery da Admin API — é o que
+    //  alimenta VISITAS (denominador da Conversão Real) e o funil da loja.
+    //  Sem ele a query é recusada na autorização. Ficou anos despercebido
+    //  porque o app pedia um campo inexistente (`rowData`) e a query morria
+    //  na VALIDAÇÃO do documento, antes de o escopo chegar a ser testado.
+    //  ATENÇÃO: esta é a lista que vale de verdade — beginInstall manda
+    //  ?scopes= na URL e tanto a Pages Function quanto o Worker fazem
+    //  `searchParams.get('scopes') || env.SCOPES`, ou seja o query param
+    //  SEMPRE ganha de wrangler.toml/env. Mexer só no worker não muda nada.
+    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes,read_reports';
 
     let _config = null;
     let _productLinks = {};
@@ -884,6 +893,20 @@ const ShopifyModule = (() => {
 
     let _coberturaViews = null;
     function getCoberturaViews() { return _coberturaViews; }
+
+    // O token guardado na sessão carrega os escopos que existiam NA HORA da
+    // conexão. Adicionar read_reports ao OAUTH_SCOPES não muda um token já
+    // emitido — só uma reconexão emite outro. Sem checar isso, o usuário fica
+    // vendo "visitas indisponíveis" sem saber que a ação é reconectar.
+    // null = não deu pra saber (offline/sessão inválida) — não afirma nada.
+    async function tokenTemEscopoDeVisitas() {
+        try {
+            const info = await _fetchShopInfo();
+            const scope = info?.scope || info?.info?.scope || '';
+            if (!scope) return null;
+            return String(scope).split(',').map(s => s.trim()).includes('read_reports');
+        } catch { return null; }
+    }
 
     // Executa uma query ShopifyQL e devolve { columns, rows } já validado.
     // Centraliza o contrato do campo porque ele estava ERRADO em dois lugares:
@@ -2550,7 +2573,7 @@ const ShopifyModule = (() => {
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
-        fetchFunilLoja, getCoberturaViews,
+        fetchFunilLoja, getCoberturaViews, tokenTemEscopoDeVisitas,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,

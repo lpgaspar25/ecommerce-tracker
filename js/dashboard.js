@@ -1050,6 +1050,14 @@ const DashboardModule = {
                 // mudo e não havia como o usuário saber que o problema é a
                 // fonte de visitas, não a ausência de vendas.
                 this._viewsErro = String(e.message || e).slice(0, 220);
+                // Causa mais provável e de longe a mais acionável: o token da
+                // sessão foi emitido antes de read_reports entrar na lista de
+                // escopos, então a query de visitas é recusada. Confirma no
+                // próprio token em vez de adivinhar pela mensagem de erro.
+                this._viewsPrecisaReconectar = false;
+                try {
+                    if (await ShopifyModule.tokenTemEscopoDeVisitas() === false) this._viewsPrecisaReconectar = true;
+                } catch {}
             }
             if (this._viewsMap && Object.keys(this._viewsMap).length) this._viewsErro = '';
         }
@@ -1073,6 +1081,9 @@ const DashboardModule = {
             const semVinculo = !(AppState.allProducts || []).some(p => ShopifyModule.getLink && ShopifyModule.getLink(p.id));
             if (semVinculo) {
                 return 'Nenhum produto está vinculado a um produto da Shopify. Vincule em Produtos → Shopify pra cruzar vendas reais com os lançamentos do Diário.';
+            }
+            if (mode === 'conversionReal' && this._viewsPrecisaReconectar) {
+                return 'A Conversão Real precisa das visitas da Shopify, e a permissão de relatórios (<code>read_reports</code>) não estava na conexão atual — ela foi adicionada agora, mas só vale num token novo. <button type="button" class="btn btn-primary btn-sm" id="dash-reconectar-shopify" style="margin-top:0.5rem">Reconectar Shopify</button>';
             }
             if (mode === 'conversionReal' && this._viewsErro) {
                 return `Visitas por produto indisponíveis: ${escapeHtml(this._viewsErro)}`;
@@ -1193,6 +1204,17 @@ const DashboardModule = {
             this._mdgxDaily[id][date].sales += sales;
             this._mdgxDaily[id][date].revenue += revenue;
         };
+        // Mesmo loop de pedidos, agora acumulando também por PAÍS DE ENTREGA —
+        // o pedido já traz shipping_address, então isto não custa request novo.
+        this._mdgxPorPais = {};     // { productId: { 'País': { sales, revenue } } }
+        const _addPais = (id, pais, sales, revenue) => {
+            if (!id) return;
+            const chave = pais || 'Sem país no pedido';
+            if (!this._mdgxPorPais[id]) this._mdgxPorPais[id] = {};
+            if (!this._mdgxPorPais[id][chave]) this._mdgxPorPais[id][chave] = { sales: 0, revenue: 0 };
+            this._mdgxPorPais[id][chave].sales += sales;
+            this._mdgxPorPais[id][chave].revenue += revenue;
+        };
         if (hasShopify && this._startDate && this._endDate) {
             container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
             try {
@@ -1200,6 +1222,7 @@ const DashboardModule = {
                 for (const o of (orders || [])) {
                     const cur = o.currency || ShopifyModule.getConfig?.()?.shopCurrency || 'BRL';
                     const oDate = _orderDate(o.created_at);
+                    const oPais = o.shipping_address?.country || o.shipping_address?.country_code || '';
                     for (const li of (o.line_items || [])) {
                         const pid = String(li.product_id || '');
                         if (!pid) continue;
@@ -1209,6 +1232,7 @@ const DashboardModule = {
                         salesByShopifyPid[pid].sales += qty;
                         salesByShopifyPid[pid].revenue += unitPrice * qty;
                         _addDaily(pid, oDate, qty, unitPrice * qty);
+                        _addPais(pid, oPais, qty, unitPrice * qty);
                     }
                 }
             } catch (e) {
@@ -1384,6 +1408,7 @@ const DashboardModule = {
                 <div class="mdgx-daily-tabs">
                     <button class="mdgx-daily-tab active" data-view="lista"><i data-lucide="list" style="width:14px;height:14px;vertical-align:-2px"></i> Lista</button>
                     <button class="mdgx-daily-tab" data-view="cal"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                    <button class="mdgx-daily-tab" data-view="pais"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Países</button>
                 </div>
                 <div id="mdgx-daily-body"></div>
             </div>`;
@@ -1422,10 +1447,31 @@ const DashboardModule = {
                 </div>`;
             }).join('');
         };
+        // Vendas por PAÍS DE ENTREGA deste produto — vem do mesmo lote de
+        // pedidos do ranking (nenhum request extra), então respeita o período
+        // selecionado igual às outras duas abas.
+        const renderPais = () => {
+            const porPais = (this._mdgxPorPais && this._mdgxPorPais[id]) || {};
+            const linhas = Object.entries(porPais)
+                .map(([pais, v]) => ({ pais, ...v }))
+                .sort((a, b) => b.sales - a.sales);
+            if (!linhas.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            const total = linhas.reduce((s, l) => s + l.sales, 0);
+            body.innerHTML = `<table class="mdgx-daily-table">
+                <thead><tr><th>País</th><th class="num">Vendas</th><th class="num">%</th><th class="num">Receita</th></tr></thead>
+                <tbody>${linhas.map(l => `<tr>
+                    <td>${escapeHtml(l.pais)}</td>
+                    <td class="num"><strong>${l.sales}</strong></td>
+                    <td class="num">${total > 0 ? ((l.sales / total) * 100).toFixed(0) : 0}%</td>
+                    <td class="num">${money(l.revenue)}</td>
+                </tr>`).join('')}</tbody></table>`;
+        };
+
         renderList();
         modal.querySelectorAll('.mdgx-daily-tab').forEach(t => t.addEventListener('click', () => {
             modal.querySelectorAll('.mdgx-daily-tab').forEach(x => x.classList.toggle('active', x === t));
-            if (t.dataset.view === 'cal') renderCal(); else renderList();
+            const v = t.dataset.view;
+            if (v === 'cal') renderCal(); else if (v === 'pais') renderPais(); else renderList();
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
         }));
         const close = () => modal.remove();
@@ -1497,6 +1543,11 @@ const DashboardModule = {
 
         if (ranked.length === 0) {
             container.innerHTML = `<div class="dash-empty">${this._porqueRankingVazio(mode)}</div>`;
+            container.querySelector('#dash-reconectar-shopify')?.addEventListener('click', () => {
+                // Reabre o modal de configuração da Shopify, onde o usuário
+                // confirma o domínio e dispara o OAuth com os escopos novos.
+                if (ShopifyModule.openConfigModal) ShopifyModule.openConfigModal();
+            });
             return;
         }
 
