@@ -205,6 +205,13 @@ const DashboardModule = {
         EventBus.on('goalsChanged', () => this.refresh());
         EventBus.on('tabChanged', (tab) => { if (tab === 'dashboard') this.refresh(); });
 
+        // Primeira pintura dos cards de funil. O Dashboard já é a aba ativa no
+        // load, então 'tabChanged' não dispara pra ele, e sem nenhum evento de
+        // dados esses dois containers ficariam literalmente vazios — sem nem a
+        // mensagem explicando o porquê, que é pior que qualquer estado vazio.
+        this._renderFunilRanking();
+        this._renderVendasPorPais();
+
         // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
         document.getElementById('btn-mdgx-ranking-all')?.addEventListener('click', () => {
             this._mdgxShowAll = !this._mdgxShowAll;
@@ -1526,7 +1533,24 @@ const DashboardModule = {
                 <span class="dash-rank-name">${escapeHtml(p.name)}</span>
                 <span class="dash-rank-value" style="color:${mode === 'profit' ? profitColor : ''}">${mainVal}${delta}</span>
             </div>`;
-        }).join('');
+        }).join('') + (mode === 'conversionReal' ? this._rodapeConversaoReal() : '');
+    },
+
+    // A Conversão Real usa como denominador as sessões que ENTRARAM pela
+    // página do produto (landing page) — a Shopify não expõe visualização de
+    // produto nesta loja. Duas ressalvas que mudam a leitura do número e por
+    // isso não podem ficar só no código:
+    //  • quem entra pela home e navega até o produto não é contado;
+    //  • em loja multi-idioma, sessão que entra pelo handle traduzido não casa
+    //    com o produto e sai do denominador — o que INFLA a conversão.
+    _rodapeConversaoReal() {
+        const cob = typeof ShopifyModule !== 'undefined' && ShopifyModule.getCoberturaViews
+            ? ShopifyModule.getCoberturaViews() : null;
+        let aviso = 'Base: sessões que entraram pela página do produto.';
+        if (cob && cob.orfas > 0 && cob.pct < 95) {
+            aviso += ` ${cob.pct.toFixed(0)}% das sessões de produto casaram com um produto do catálogo — ${cob.orfas.toLocaleString('pt-BR')} ficaram de fora (handle traduzido), então a taxa real é um pouco menor.`;
+        }
+        return `<div class="dash-conv-rodape">${escapeHtml(aviso)}</div>`;
     },
 
     // Row 4 Left: Pipeline summary

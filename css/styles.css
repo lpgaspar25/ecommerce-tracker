@@ -16850,3 +16850,11 @@ body:not([data-theme]) .adh-board-viewport {
 .ppick-item-info strong { font-size: 0.82rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ppick-item-info small { font-size: 0.7rem; color: var(--text-muted); }
 .ppick-vazio { padding: 0.7rem 0.5rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
+
+/* Rodapé de ressalva da Conversão Real — a base é "sessões que entraram pela
+   página do produto", não visualizações; sem isso o número lê como se fosse
+   a conversão completa do produto. */
+.dash-conv-rodape {
+    margin-top: 0.5rem; padding-top: 0.45rem; border-top: 1px solid var(--border);
+    font-size: 0.66rem; color: var(--text-muted); line-height: 1.4;
+}

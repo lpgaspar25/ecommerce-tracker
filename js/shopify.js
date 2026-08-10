@@ -743,12 +743,28 @@ const ShopifyModule = (() => {
         const cacheKey = `${dateFrom}|${dateTo}`;
         if (_viewsByDateCache[cacheKey]) return _viewsByDateCache[cacheKey];
 
-        // Sintaxe conforme a doc atual: dimensão de tempo é TIMESERIES, não
-        // GROUP BY day; e o dataset é `sessions` (não existe `FROM products`).
-        // Testado ao vivo: nesta loja NENHUMA dimensão de produto existe em
-        // `sessions` — as colunas product_views/product_title/product_id são
-        // rejeitadas. As tentativas ficam aqui porque a disponibilidade varia
-        // por plano/loja; quando nenhuma passa, o erro sobe explicando.
+        // CAMINHO PRINCIPAL: sessões por página de ENTRADA (landing_page_path).
+        // As colunas de produto (product_views/product_title/product_id) não
+        // existem no dataset `sessions` desta loja — nem a query de exemplo da
+        // doc oficial passa. Já landing_page_path existe e traz /products/
+        // <handle>, que casa com o handle do produto.
+        //
+        // Semântica honesta: isto é "sessões que ENTRARAM pela página do
+        // produto", não "todas as visualizações do produto" — quem entra pela
+        // home e navega até o produto não é contado. Pra tráfego pago (o caso
+        // deste app) a landing page É o anúncio, então cobre bem; mas o número
+        // é um piso, não o total.
+        try {
+            const porEntrada = await _viewsPorLandingPage(dateFrom, dateTo);
+            if (porEntrada && Object.keys(porEntrada).length) {
+                _viewsByDateCache[cacheKey] = porEntrada;
+                return porEntrada;
+            }
+        } catch (e) {
+            console.warn('[Shopify] visitas por landing page falharam:', e.message);
+        }
+
+        // Fallback: lojas/planos onde as colunas de produto existem de fato.
         const queries = [
             `FROM sessions SHOW product_views GROUP BY product_id, product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
             `FROM sessions SHOW product_views GROUP BY product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
@@ -801,6 +817,73 @@ const ShopifyModule = (() => {
             + (lastErr ? ` (${String(lastErr.message).slice(0, 120)})` : '')
             + '. As visitas totais da loja continuam disponíveis.');
     }
+
+    // Normaliza uma landing page pro handle do produto.
+    // Trata os 4 formatos reais que aparecem nos dados desta loja:
+    //   /products/gt-line-sunglasses          → gt-line-sunglasses
+    //   /products/gt-line-sunglasses/         → (barra final)
+    //   /de/products/mb-amg-line-brille-3     → (prefixo de idioma)
+    //   /products/ry-bn%C2%AE-ferrari-...     → (percent-encoding)
+    function _handleDaLandingPage(path) {
+        let p = String(path || '').split('?')[0].trim();
+        try { p = decodeURIComponent(p); } catch {}
+        p = p.replace(/^\/[a-z]{2}(-[a-z]{2})?\//i, '/');   // /de/... , /pt-br/...
+        const m = p.match(/^\/products\/([^/]+)\/?$/i);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    async function _viewsPorLandingPage(dateFrom, dateTo) {
+        const q = `FROM sessions SHOW sessions GROUP BY landing_page_path TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 5000`;
+        const table = await _shopifyql(q);
+        if (!table) return null;
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const iDia = cols.indexOf('day');
+        const iPath = cols.indexOf('landing_page_path');
+        const iSess = cols.indexOf('sessions');
+        if (iDia < 0 || iPath < 0 || iSess < 0) return null;
+
+        // handle → id numérico da Shopify (a chave que o resto do app usa).
+        // O catálogo pode ainda não ter sido buscado nesta sessão — sem ele
+        // NADA casaria e a conversão real cairia em "sem dados" por um motivo
+        // que não tem nada a ver com a API.
+        let catalogo = getShopifyProducts() || [];
+        if (!catalogo.length) {
+            try { catalogo = await fetchShopifyProducts(); } catch (e) { console.warn('[Shopify] catálogo indisponível pro casamento por handle:', e.message); }
+        }
+        const idPorHandle = {};
+        (catalogo || []).forEach(p => {
+            if (p.handle) idPorHandle[String(p.handle).toLowerCase()] = String(p.id);
+        });
+        if (!Object.keys(idPorHandle).length) return null;
+
+        const out = {};
+        let casadas = 0, orfas = 0;
+        const handlesOrfaos = new Set();
+        for (const row of table.rows) {
+            const handle = _handleDaLandingPage(row[iPath]);
+            if (!handle) continue;   // não é página de produto
+            const sess = parseInt(String(row[iSess] ?? '0').replace(/\D/g, ''), 10) || 0;
+            const pid = idPorHandle[handle];
+            // Handle traduzido (ex.: /de/products/...-sonnenbrille) não casa com
+            // o handle do idioma primário — essas sessões ficam de fora em vez
+            // de serem chutadas pro produto errado.
+            if (!pid) { orfas += sess; if (handlesOrfaos.size < 8) handlesOrfaos.add(handle); continue; }
+            const dia = String(row[iDia] || '').slice(0, 10);
+            if (dia && sess) { out[`${dia}|${pid}`] = (out[`${dia}|${pid}`] || 0) + sess; casadas += sess; }
+        }
+        // Descartar sessão órfã evita atribuir ao produto errado, mas encolhe o
+        // DENOMINADOR — ou seja, infla a conversão. Guarda a cobertura pra UI
+        // poder avisar em vez de mostrar um número otimista em silêncio.
+        _coberturaViews = {
+            casadas, orfas,
+            pct: (casadas + orfas) > 0 ? (casadas / (casadas + orfas)) * 100 : 100,
+            exemplos: [...handlesOrfaos],
+        };
+        return out;
+    }
+
+    let _coberturaViews = null;
+    function getCoberturaViews() { return _coberturaViews; }
 
     // Executa uma query ShopifyQL e devolve { columns, rows } já validado.
     // Centraliza o contrato do campo porque ele estava ERRADO em dois lugares:
@@ -2467,7 +2550,7 @@ const ShopifyModule = (() => {
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
-        fetchFunilLoja,
+        fetchFunilLoja, getCoberturaViews,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
