@@ -1727,7 +1727,7 @@ const ShopifyModule = (() => {
                     <button class="btn-close" id="shopify-link-close">&times;</button>
                 </div>
                 <div style="padding:1rem" id="shopify-link-body">
-                    <p style="color:var(--text-muted)">Carregando produtos Shopify...</p>
+                    <p style="color:var(--text-muted)">${window.loadingHTML('Carregando produtos Shopify...')}</p>
                 </div>
             </div>
         `;
@@ -1941,7 +1941,7 @@ const ShopifyModule = (() => {
             ? (isTodayLabel ? `Hoje (${period.start})` : period.start)
             : `${period.start} → ${period.end}`;
 
-        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Carregando dados Shopify...</p>';
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">' + window.loadingHTML('Carregando dados Shopify...') + '</p>';
 
         // Follow the dashboard currency selector when available; fall back to shop currency.
         const displayCurrency = (typeof DashboardModule !== 'undefined' && DashboardModule._currency)

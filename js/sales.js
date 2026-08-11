@@ -319,11 +319,11 @@ const SalesModule = (() => {
 
         // Conversão FB — placeholder (preenchido async por _renderFbConversion)
         const fbConvLine = `<div class="sales-calc-meta-row sales-calc-conv-row sales-calc-fbconv-row" id="sales-calc-fbconv">
-            <span class="sales-calc-conv-hint"><i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Carregando conversão do Facebook…</span>
+            <span class="sales-calc-conv-hint"><span class="app-spinner"></span>Carregando conversão do Facebook…</span>
         </div>`;
         // Conversão Shopify — placeholder (sessões reais da loja via ShopifyQL)
         const shopConvLine = `<div class="sales-calc-meta-row sales-calc-conv-row sales-calc-shopconv-row" id="sales-calc-shopconv">
-            <span class="sales-calc-conv-hint"><i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Carregando visualizações da Shopify…</span>
+            <span class="sales-calc-conv-hint"><span class="app-spinner"></span>Carregando visualizações da Shopify…</span>
         </div>`;
 
         meta.innerHTML = `
@@ -2023,7 +2023,7 @@ const SalesModule = (() => {
         const refreshBtn = document.getElementById('btn-sales-refresh');
         if (refreshBtn) {
             refreshBtn.dataset.origHtml = refreshBtn.dataset.origHtml || refreshBtn.innerHTML;
-            refreshBtn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Carregando…';
+            refreshBtn.innerHTML = '<span class="app-spinner"></span>Carregando…';
             refreshBtn.disabled = true;
             if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         }
@@ -2133,7 +2133,7 @@ const SalesModule = (() => {
         if (!force && now - _dashState.lastFetched < DASH_CACHE_MS && wrap.dataset.rendered === '1') return;
 
         _dashState.loading = true;
-        wrap.innerHTML = '<p class="imp-hint" style="padding:1rem 0">Carregando vendas…</p>';
+        wrap.innerHTML = '<p class="imp-hint" style="padding:1rem 0">' + window.loadingHTML('Carregando vendas…') + '</p>';
 
         try {
             const cfg = ShopifyModule.getConfig?.() || {};

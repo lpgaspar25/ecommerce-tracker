@@ -65,6 +65,13 @@ const StorageManager = {
 };
 window.StorageManager = StorageManager;
 
+// Markup de carregamento padrão (spinner girando + texto). Todos os estados de
+// "Carregando…" do app devem usar isto pra ficarem consistentes.
+window.loadingHTML = function (msg) {
+    const txt = (msg == null || msg === '') ? 'Carregando…' : msg;
+    return '<span class="app-loading"><span class="app-spinner"></span>' + txt + '</span>';
+};
+
 // ---- Event Bus ----
 const EventBus = {
     _listeners: {},

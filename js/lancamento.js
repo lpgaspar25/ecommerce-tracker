@@ -2341,7 +2341,7 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
         const el = document.getElementById('lanc-revisar-preview');
         if (!el) return;
         _revogarPreviewUrls();
-        el.innerHTML = '<p class="lanc-hint">Carregando prévia…</p>';
+        el.innerHTML = '<p class="lanc-hint">' + window.loadingHTML('Carregando prévia…') + '</p>';
         const partes = [];
         for (const b of _state.blocos) {
             // _semImagens aqui também: um bloco de texto editado à mão pode ter

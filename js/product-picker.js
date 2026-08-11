@@ -64,7 +64,7 @@ const ProductPicker = (() => {
         const elBusca = container.querySelector('.ppick-busca');
         const elLista = container.querySelector('.ppick-lista');
 
-        elLista.innerHTML = '<div class="ppick-vazio">Carregando produtos…</div>';
+        elLista.innerHTML = '<div class="ppick-vazio">' + window.loadingHTML('Carregando produtos…') + '</div>';
         elLista.hidden = false;
 
         const itens = await _itensDe(opts.source);

@@ -1929,7 +1929,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         const cap = document.getElementById('studio-lightbox-caption');
         if (!box || !body) return;
         if (cap) cap.textContent = f.presetLabel || f.preset || '';
-        body.innerHTML = '<div class="creative-lightbox-loading">Carregando…</div>';
+        body.innerHTML = '<div class="creative-lightbox-loading">' + window.loadingHTML('Carregando…') + '</div>';
         box.style.display = 'flex';
 
         if (_lightboxUrl) { try { URL.revokeObjectURL(_lightboxUrl); } catch {} _lightboxUrl = null; }

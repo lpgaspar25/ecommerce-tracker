@@ -1003,7 +1003,7 @@
             if (title) title.textContent = `${lvlLabel}: ${row.name}`;
             if (fbLink) fbLink.href = this._adsManagerUrl(row);
 
-            body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)"><i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite"></i> Carregando configurações…</div>';
+            body.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)">' + window.loadingHTML('Carregando configurações…') + '</div>';
             modal.style.display = 'flex';
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 

@@ -413,7 +413,7 @@ const CreativesModule = {
         const cap = document.getElementById('creative-lightbox-caption');
         if (!box || !body) return;
         cap && (cap.textContent = c.name || '');
-        body.innerHTML = '<div class="creative-lightbox-loading">Carregando…</div>';
+        body.innerHTML = '<div class="creative-lightbox-loading">' + window.loadingHTML('Carregando…') + '</div>';
         box.style.display = 'flex';
         // Revoke any previous object URL
         if (this._lightboxUrl) { try { URL.revokeObjectURL(this._lightboxUrl); } catch {} this._lightboxUrl = null; }

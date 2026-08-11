@@ -2665,7 +2665,7 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
         const controls = document.getElementById('shopify-import-controls');
         const list = document.getElementById('shopify-import-list');
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
-        status.textContent = 'Carregando produtos da Shopify...';
+        status.innerHTML = window.loadingHTML('Carregando produtos da Shopify...');
         controls.style.display = 'none';
         list.innerHTML = '';
         confirmBtn.disabled = true;

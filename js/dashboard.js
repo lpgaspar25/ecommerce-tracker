@@ -1286,7 +1286,7 @@ const DashboardModule = {
             this._mdgxPorPais[id][chave].revenue += revenue;
         };
         if (hasShopify && this._startDate && this._endDate) {
-            container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
+            container.innerHTML = container.innerHTML || ('<div class="mdgx-ranking-empty">' + window.loadingHTML('Carregando vendas...') + '</div>');
             try {
                 const orders = await ShopifyModule.fetchOrders(this._startDate, this._endDate, { silent: true });
                 for (const o of (orders || [])) {
@@ -1560,7 +1560,7 @@ const DashboardModule = {
         if (needsReal && this._realSalesMap === null) pendencias.push(this._loadRealSalesMaps());
         if (needsViews && this._viewsMap === null) pendencias.push(this._loadViewsMap());
         if (pendencias.length) {
-            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando vendas Shopify...') + '</div>';
             Promise.all(pendencias).then(() => this._renderTopProducts());
             return;
         }
@@ -2189,7 +2189,7 @@ const DashboardModule = {
         }
         const chave = `${this._startDate}|${this._endDate}`;
         if (this._funilLojaPaisKey !== chave) {
-            container.innerHTML = '<div class="dash-empty">Carregando funil por país…</div>';
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando funil por país…') + '</div>';
             try {
                 this._funilLojaPais = await ShopifyModule.fetchFunilLoja(this._startDate, this._endDate, { porPais: true });
                 this._funilLojaPaisKey = chave;
@@ -2672,7 +2672,7 @@ const DashboardModule = {
         if (!countryCodeReal && this._viewsMapPorPais !== null) { this._viewsMapPorPais = null; this._viewsMapPorPaisKey = ''; }
 
         if (pendencias.length) {
-            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando vendas Shopify...') + '</div>';
             Promise.all(pendencias).then(() => this._renderMetricsCalendar());
             return;
         }
@@ -2720,6 +2720,23 @@ const DashboardModule = {
             `<option value="${r}"${this._calRegion === r ? ' selected' : ''}>${regionLabel(r)}</option>`
         ).join('');
 
+        // Aviso quando as visitas da Shopify (denominador da Conversão Real)
+        // estão indisponíveis — quase sempre a permissão read_reports faltando
+        // no token atual. Antes o usuário só via "Sem visitas Shopify" em todo
+        // dia, sem saber o que fazer. Agora mostra o motivo + botão de reconectar.
+        let avisoViews = '';
+        if (this._calMetric === 'conversionCombined') {
+            const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+            const mapaViews = this._calRegion ? this._viewsMapPorPais : this._viewsMap;
+            const semViews = !mapaViews || Object.keys(mapaViews).length === 0;
+            if (hasShopify && semViews) {
+                const btnRec = '<button type="button" class="btn btn-primary btn-sm" id="mcal-reconectar-shopify" style="margin-left:0.5rem">Reconectar Shopify</button>';
+                avisoViews = (this._viewsErro && !this._viewsPrecisaReconectar)
+                    ? `<div class="mcal-views-aviso">Visitas da Shopify indisponíveis: ${escapeHtml(this._viewsErro)}${btnRec}</div>`
+                    : `<div class="mcal-views-aviso"><strong>Visitas da Shopify indisponíveis.</strong> A Conversão Real precisa das visitas (Shopify Analytics), que exigem a permissão <code>read_reports</code> — ela não está na conexão atual. Reconecte a Shopify pra concedê-la (os pedidos/vendas já funcionam; só as visitas dependem dessa permissão).${btnRec}</div>`;
+            }
+        }
+
         const headerHtml = `
         <div class="mcal-header-bar">
             <div class="mcal-tabs">${this._METRIC_BASES.map(b =>
@@ -2745,7 +2762,8 @@ const DashboardModule = {
                 ${regionOptions}
             </select>
         </div>
-        ${this._calMetric === 'conversionCombined' ? `<p class="mcal-conv-fonte">Real = vendas reais da Shopify ÷ visitas do produto na Shopify (Shopify Analytics). Com um país selecionado, usa as visitas E as vendas <strong>daquele país</strong>. Tags combinadas (ex. "EN" = vários países) não filtram os dados reais.</p>` : ''}`;
+        ${this._calMetric === 'conversionCombined' ? `<p class="mcal-conv-fonte">Real = vendas reais da Shopify ÷ visitas do produto na Shopify (Shopify Analytics). Com um país selecionado, usa as visitas E as vendas <strong>daquele país</strong>. Tags combinadas (ex. "EN" = vários países) não filtram os dados reais.</p>` : ''}
+        ${avisoViews}`;
 
         // Month navigation header
         const names = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -2764,6 +2782,11 @@ const DashboardModule = {
         const summaryHtml = this._renderCalSummary();
 
         container.innerHTML = headerHtml + navHtml + '<div class="mcal-months-wrapper">' + monthHtml + '</div>' + summaryHtml;
+
+        // Reconectar Shopify (quando as visitas estão indisponíveis por falta de escopo)
+        container.querySelector('#mcal-reconectar-shopify')?.addEventListener('click', () => {
+            if (ShopifyModule.openConfigModal) ShopifyModule.openConfigModal();
+        });
 
         // Abas de métrica-base — mantém o modo Real se a nova métrica também tiver
         container.querySelectorAll('.mcal-tab').forEach(btn => {

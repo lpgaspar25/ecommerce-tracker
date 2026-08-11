@@ -9774,8 +9774,28 @@ thead:hover .diary-check-col input[type="checkbox"],
 .mcal-summary-value { font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; }
 .mcal-summary-compare { color: var(--text-muted); font-size: 0.7rem; }
 .mcal-conv-fonte { font-size: 0.7rem; color: var(--text-muted); margin: 0.3rem 0 0; line-height: 1.4; }
+.mcal-views-aviso {
+    margin: 0.5rem 0 0; padding: 0.6rem 0.8rem; border-radius: 8px;
+    background: rgba(245, 158, 11, 0.10); border: 1px solid rgba(245, 158, 11, 0.35);
+    color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5;
+}
+.mcal-views-aviso code { background: rgba(0,0,0,0.2); padding: 0 4px; border-radius: 4px; }
 
 /* Configurações do menu — reordenar sidebar (NAV-01) */
+/* Spinner de carregamento reutilizável (usado por window.loadingHTML).
+   Anima via transform → roda na thread de composição, então continua girando
+   mesmo com a main thread ocupada carregando dados. */
+@keyframes app-spin { to { transform: rotate(360deg); } }
+.app-spinner {
+    display: inline-block; width: 15px; height: 15px; box-sizing: border-box;
+    border: 2px solid var(--border, rgba(139,92,246,0.25));
+    border-top-color: var(--accent, #8b5cf6);
+    border-radius: 50%;
+    animation: app-spin 0.7s linear infinite;
+    vertical-align: -3px; margin-right: 8px; flex-shrink: 0;
+}
+.app-loading { display: inline-flex; align-items: center; color: var(--text-muted); }
+
 .sidebar-order-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 400px; overflow-y: auto; }
 .sidebar-order-item {
     display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;

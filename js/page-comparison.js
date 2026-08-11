@@ -218,7 +218,7 @@ const PageComparisonModule = (() => {
                     <button class="btn-close" id="page-compare-close">&times;</button>
                 </div>
                 <div style="padding:1rem" id="page-compare-body">
-                    <p style="color:var(--text-muted)">Carregando...</p>
+                    <p style="color:var(--text-muted)">${window.loadingHTML('Carregando...')}</p>
                 </div>
             </div>
         `;
