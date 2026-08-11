@@ -264,6 +264,10 @@
             <button class="sidebar-utility-btn" id="sidebar-ai-key-btn" title="Configurar chave OpenAI/Claude para AI Ad Generator">
                 <i data-lucide="key-round" style="width:16px;height:16px"></i>
             </button>
+            <button class="sidebar-utility-btn hidden" id="btn-onboarding" title="Primeiros passos — conexões da conta">
+                <i data-lucide="rocket" style="width:16px;height:16px"></i>
+                <span id="onboarding-badge" class="onboarding-badge">0/0</span>
+            </button>
         </div>
 
         <!-- Profile -->
@@ -4771,6 +4775,23 @@
             </div>
         </div>
 
+        <!-- ==================== Modal: Primeiros passos (onboarding) ==================== -->
+        <div id="modal-onboarding" class="modal hidden">
+            <div class="modal-overlay"></div>
+            <div class="modal-content onboarding-panel">
+                <div class="modal-header">
+                    <h3><i data-lucide="rocket" style="width:16px;height:16px;vertical-align:-3px"></i> Primeiros passos</h3>
+                    <button class="btn-close" id="onboarding-close">&times;</button>
+                </div>
+                <p class="loja-card-hint">Conecte suas fontes de dados pra ver tudo funcionando. Cada passo marca sozinho quando fica pronto.</p>
+                <div id="onboarding-progress"></div>
+                <div id="onboarding-steps"></div>
+                <div class="onboarding-foot">
+                    <button type="button" id="onboarding-dismiss">Não mostrar mais</button>
+                </div>
+            </div>
+        </div>
+
         <!-- ==================== Mapa de navegação (NAV-02) ==================== -->
         <button type="button" id="btn-nav-map" class="nav-map-btn" title="Mapa de navegação (todos os módulos)">
             <i data-lucide="grid-3x3" style="width:18px;height:18px"></i>
@@ -6785,6 +6806,7 @@
     <script src="js/lab-test-ai.js"></script>
     <script src="js/usage-panel.js"></script>
     <script src="js/team.js"></script>
+    <script src="js/onboarding.js"></script>
     <script src="js/shopify.js"></script>
     <script src="js/page-comparison.js"></script>
     <script src="js/projects.js"></script>

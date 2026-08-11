@@ -1112,12 +1112,16 @@ body {
 
 /* Sidebar Utility Row */
 .sidebar-utility-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
     gap: 0.3rem;
     padding: 0.25rem 0;
     margin-bottom: 0.4rem;
 }
+/* flex (em vez de grid fixo) pra que, quando o botão de onboarding some ao
+   concluir, os demais preencham a linha sem deixar buraco. */
+.sidebar-utility-row > * { flex: 1 1 0; min-width: 0; }
+.sidebar-utility-row .notifications-wrap > .sidebar-utility-btn { width: 100%; }
+.sidebar-utility-row #btn-onboarding.hidden { display: none; }
 .sidebar-utility-btn {
     height: 34px;
     border-radius: 8px;
@@ -1149,9 +1153,39 @@ body {
     color: #a78bfa !important;
 }
 .app-body.sidebar-collapsed .sidebar-utility-row {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     gap: 0.25rem;
 }
+
+/* ===== Onboarding — badge de progresso + painel de primeiros passos ===== */
+#btn-onboarding { color: #a78bfa; }
+.onboarding-badge {
+    position: absolute; top: -6px; right: -6px;
+    min-width: 22px; height: 18px; padding: 0 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: var(--accent, #8b5cf6); color: #fff;
+    font-size: 0.62rem; font-weight: 700; line-height: 1; letter-spacing: 0.2px;
+    box-shadow: 0 0 0 2px var(--bg-primary, #0e0e16); pointer-events: none;
+}
+#onboarding-progress { margin: 0 0 1rem; }
+.onb-progress-top { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+.onb-progress-bar { height: 6px; border-radius: 999px; background: var(--border, rgba(255,255,255,0.08)); overflow: hidden; }
+.onb-progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent,#8b5cf6), #ec4899); border-radius: 999px; transition: width 0.3s; }
+#onboarding-steps { display: flex; flex-direction: column; gap: 0.5rem; max-height: 58vh; overflow-y: auto; }
+.onb-step { display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+.onb-step-done { opacity: 0.72; }
+.onb-step-ico { flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(139,92,246,0.12); color: var(--accent,#8b5cf6); }
+.onb-step-done .onb-step-ico { background: rgba(34,197,94,0.12); color: #22c55e; }
+.onb-step-txt { flex: 1; min-width: 0; }
+.onb-step-titulo { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.onb-step-desc { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin-top: 2px; }
+.onb-step-tag { font-size: 0.6rem; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); border-radius: 6px; padding: 0 4px; vertical-align: 1px; }
+.onb-step-acao { flex-shrink: 0; display: flex; align-items: center; gap: 0.4rem; }
+.onb-step-ok { color: #22c55e; display: inline-flex; }
+.onb-step-skip { background: none; border: none; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; text-decoration: underline; }
+.onboarding-foot { display: flex; justify-content: flex-end; margin-top: 1rem; }
+#onboarding-dismiss { background: none; border: none; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
+#onboarding-dismiss:hover { color: var(--text-secondary); }
 
 /* Sidebar Profile Trigger */
 .sidebar-profile-trigger {
