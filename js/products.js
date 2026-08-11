@@ -34,6 +34,7 @@ const ProductsModule = {
         // Shopify import
         const importBtn = document.getElementById('btn-import-shopify');
         if (importBtn) importBtn.addEventListener('click', () => this.openShopifyImport());
+        document.getElementById('btn-import-shopify-details-bulk')?.addEventListener('click', () => this.importarDetalhesEmMassa());
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
         if (confirmBtn) confirmBtn.addEventListener('click', () => this._importSelectedShopifyProducts());
         const selectAll = document.getElementById('shopify-import-select-all');
@@ -61,6 +62,34 @@ const ProductsModule = {
         EventBus.on('dataLoaded', () => this.render());
         EventBus.on('rateUpdated', () => this.render());
 
+        // Search + filter
+        document.getElementById('products-search')?.addEventListener('input', () => this.render());
+        document.getElementById('products-status-filter')?.addEventListener('change', () => this.render());
+
+        // Bulk select
+        this._selectedIds = new Set();
+        document.getElementById('products-select-all')?.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            document.querySelectorAll('.products-row-cb').forEach(cb => {
+                cb.checked = checked;
+                const id = cb.dataset.id;
+                if (checked) this._selectedIds.add(id);
+                else this._selectedIds.delete(id);
+                cb.closest('tr')?.classList.toggle('row-selected', checked);
+            });
+            this._renderBulkBar();
+        });
+        document.getElementById('products-bulk-clear')?.addEventListener('click', () => {
+            this._selectedIds.clear();
+            document.querySelectorAll('.products-row-cb').forEach(cb => { cb.checked = false; cb.closest('tr')?.classList.remove('row-selected'); });
+            const selectAll = document.getElementById('products-select-all');
+            if (selectAll) selectAll.checked = false;
+            this._renderBulkBar();
+        });
+        document.getElementById('products-bulk-delete')?.addEventListener('click', () => {
+            this.deleteProductsBulk(Array.from(this._selectedIds));
+        });
+
         // Rich text toolbar (execCommand — simple, no deps)
         document.querySelectorAll('#product-form .prod-rich-btn').forEach(btn => {
             btn.addEventListener('mousedown', (e) => {
@@ -72,6 +101,9 @@ const ProductsModule = {
 
         // AI description button
         document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
+
+        // Importar preços/custos por país de outro produto
+        document.getElementById('btn-import-country-costs')?.addEventListener('click', () => this.openImportCountryCosts());
 
         // Image upload
         const imgInput = document.getElementById('prod-image-input');
@@ -98,11 +130,37 @@ const ProductsModule = {
         // Clear country prices
         document.getElementById('country-prices-list').innerHTML = '';
 
+        // Always populate FB accounts (depends on FacebookAds state)
+        this._renderFbAccountPicker(product);
+        // Inject brand SVG icons into platform chips
+        this._injectBrandIconsIntoPlatformChips();
+
         if (product) {
             title.textContent = 'Editar Produto';
             document.getElementById('product-id').value = product.id;
             document.getElementById('product-name').value = product.name;
-            document.getElementById('product-language').value = product.language || product.country || 'Ingles';
+            // Languages: support both legacy single (language/country) and new array (languages)
+            const langs = Array.isArray(product.languages)
+                ? product.languages
+                : [(product.language || product.country || 'Ingles')];
+            document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb => {
+                cb.checked = langs.includes(cb.value);
+            });
+            const hiddenLang = document.getElementById('product-language');
+            if (hiddenLang) hiddenLang.value = langs[0] || 'Ingles';
+            // Platforms
+            const platforms = Array.isArray(product.platforms) ? product.platforms : [];
+            document.querySelectorAll('#product-platforms input[type="checkbox"]').forEach(cb => {
+                cb.checked = platforms.includes(cb.value);
+            });
+            // Google Ads account IDs + labels (formatted as "Name=ID")
+            const googleIds = Array.isArray(product.googleAdAccountIds) ? product.googleAdAccountIds : [];
+            const googleLabels = (product.googleAdAccountLabels && typeof product.googleAdAccountLabels === 'object') ? product.googleAdAccountLabels : {};
+            const gIn = document.getElementById('product-google-accounts');
+            if (gIn) gIn.value = googleIds.map(id => googleLabels[id] ? `${googleLabels[id]}=${id}` : id).join(', ');
+            const cuIn = document.getElementById('product-campaign-url');
+            if (cuIn) cuIn.value = product.campaignGroupUrl || '';
+            const pgIn = document.getElementById('product-page-url'); if (pgIn) pgIn.value = product.pageUrl || '';
             document.getElementById('product-price').value = product.price;
             document.getElementById('product-price-currency').value = product.priceCurrency;
             document.getElementById('product-cost').value = product.cost;
@@ -128,6 +186,7 @@ const ProductsModule = {
             const tagsEl = document.getElementById('product-tags');
             if (tagsEl) tagsEl.value = (product.tags || []).join(', ');
             this._images = (product.images || []).slice();
+            this._renderShopifyVariants(product);
         } else {
             title.textContent = 'Adicionar Produto';
             document.getElementById('product-id').value = '';
@@ -141,6 +200,19 @@ const ProductsModule = {
             if (skuEl) skuEl.value = '';
             const tagsEl = document.getElementById('product-tags');
             if (tagsEl) tagsEl.value = '';
+            // Reset checkboxes for new product
+            document.querySelectorAll('#product-platforms input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb => cb.checked = false);
+            const hiddenLang = document.getElementById('product-language');
+            if (hiddenLang) hiddenLang.value = 'Ingles';
+            const gIn = document.getElementById('product-google-accounts');
+            if (gIn) gIn.value = '';
+            const fbManual = document.getElementById('product-fb-accounts-manual');
+            if (fbManual) fbManual.value = '';
+            const cuIn = document.getElementById('product-campaign-url');
+            if (cuIn) cuIn.value = '';
+            // FB accounts: render picker fresh with nothing checked
+            this._renderFbAccountPicker(null);
             this._images = [];
         }
 
@@ -150,21 +222,132 @@ const ProductsModule = {
 
         this._renderProductImages();
         this.updateProfitPreview();
+        this._renderShopifySection(product);
         openModal('product-modal');
+    },
+
+    async _renderShopifySection(product) {
+        const card = document.getElementById('prod-shopify-card');
+        const notConnected = document.getElementById('prod-shopify-not-connected');
+        const connected = document.getElementById('prod-shopify-connected');
+        const sel = document.getElementById('prod-shopify-link');
+        const info = document.getElementById('prod-shopify-info');
+        if (!card || !sel) return;
+
+        const isConfigured = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+
+        if (!isConfigured) {
+            notConnected.style.display = '';
+            connected.style.display = 'none';
+            return;
+        }
+        notConnected.style.display = 'none';
+        connected.style.display = '';
+
+        // Carrega lista de produtos da Shopify (cache OK)
+        let shopifyProducts = [];
+        try {
+            shopifyProducts = (ShopifyModule.getShopifyProducts() || []);
+            if (shopifyProducts.length === 0) {
+                sel.innerHTML = '<option value="">Carregando produtos…</option>';
+                shopifyProducts = await ShopifyModule.fetchShopifyProducts();
+            }
+        } catch (e) {
+            sel.innerHTML = `<option value="">Erro: ${e.message}</option>`;
+            return;
+        }
+
+        const currentLink = product?.id ? (ShopifyModule.getLink ? ShopifyModule.getLink(product.id) : null) : null;
+        sel.innerHTML = '<option value="">— Não vinculado —</option>' +
+            shopifyProducts
+                .slice()
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+                .map(p => `<option value="${p.id}">${this._esc(p.title || '(sem título)')}</option>`)
+                .join('');
+        if (currentLink) sel.value = currentLink;
+
+        // Mostra info do produto vinculado
+        this._updateShopifyInfo(sel.value, shopifyProducts);
+        sel.onchange = () => this._updateShopifyInfo(sel.value, shopifyProducts);
+
+        // Refresh
+        const refreshBtn = document.getElementById('btn-prod-shopify-refresh');
+        if (refreshBtn && !refreshBtn._bound) {
+            refreshBtn._bound = true;
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.disabled = true;
+                try {
+                    await ShopifyModule.fetchShopifyProducts();
+                    await this._renderShopifySection(product);
+                } finally { refreshBtn.disabled = false; }
+            });
+        }
+        // Connect button
+        const connBtn = document.getElementById('btn-prod-connect-shopify');
+        if (connBtn && !connBtn._bound) {
+            connBtn._bound = true;
+            connBtn.addEventListener('click', () => {
+                if (ShopifyModule.openConfigModal) ShopifyModule.openConfigModal();
+                else if (typeof showToast === 'function') showToast('Conecte em Configurações → Shopify', 'info');
+            });
+        }
+    },
+
+    _updateShopifyInfo(shopifyId, shopifyProducts) {
+        const info = document.getElementById('prod-shopify-info');
+        if (!info) return;
+        if (!shopifyId) { info.style.display = 'none'; return; }
+        const sp = shopifyProducts.find(p => String(p.id) === String(shopifyId));
+        if (!sp) { info.style.display = 'none'; return; }
+        const variant = sp.variants?.[0];
+        const price = variant?.price ? `${variant.price} ${sp.currency || 'USD'}` : '—';
+        const stock = variant?.inventory_quantity != null ? variant.inventory_quantity : '?';
+        const config = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getConfig) ? ShopifyModule.getConfig() : {};
+        const shop = config.shop || '';
+        const adminUrl = shop ? `https://${shop}/admin/products/${shopifyId}` : '';
+        const publicUrl = (shop && sp.handle) ? `https://${shop}/products/${sp.handle}` : '';
+
+        info.style.display = '';
+        info.innerHTML = `
+            <strong style="color:#95bf47"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> ${this._esc(sp.title)}</strong><br>
+            Preço Shopify: <strong>${this._esc(price)}</strong> · Estoque: <strong>${stock}</strong><br>
+            <span style="opacity:0.7">Ao salvar, o preço será sincronizado automaticamente.</span>
+            <div class="prod-shopify-links">
+                <button type="button" class="prod-shopify-link prod-shopify-import" id="btn-import-shopify-details"
+                        title="Trazer descrição, fotos e variantes da Shopify para cá">
+                    <i data-lucide="download" style="width:12px;height:12px"></i> Importar descrição, fotos e variantes
+                </button>
+                ${adminUrl ? `<a href="${this._esc(adminUrl)}" target="_blank" class="prod-shopify-link">
+                    <i data-lucide="settings" style="width:12px;height:12px"></i> Editar na Shopify
+                </a>` : ''}
+                ${publicUrl ? `<a href="${this._esc(publicUrl)}" target="_blank" class="prod-shopify-link">
+                    <i data-lucide="external-link" style="width:12px;height:12px"></i> Ver na loja
+                </a>` : ''}
+            </div>
+        `;
+        info.querySelector('#btn-import-shopify-details')
+            ?.addEventListener('click', () => this.importarDetalhesDoProdutoAberto());
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _esc(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     },
 
     // Normalize country-price shape to tiered format.
     // Back-compat: old shape { country, currency, price } becomes { country, currency, tiers: [{qty:1, price}] }
     _normalizeCountryPrice(cp) {
         if (!cp) return null;
+        // cost === null significa "sem custo próprio, use o padrão do produto".
+        const cost = (cp.cost === null || cp.cost === undefined || cp.cost === '') ? null : Number(cp.cost);
         if (Array.isArray(cp.tiers) && cp.tiers.length > 0) {
-            return { country: cp.country, currency: cp.currency, tiers: cp.tiers.map(t => ({ qty: Number(t.qty) || 1, price: Number(t.price) || 0 })) };
+            return { country: cp.country, currency: cp.currency, cost, tiers: cp.tiers.map(t => ({ qty: Number(t.qty) || 1, price: Number(t.price) || 0 })) };
         }
         if (typeof cp.price === 'number' || typeof cp.price === 'string') {
             const p = Number(cp.price) || 0;
-            return { country: cp.country, currency: cp.currency, tiers: p > 0 ? [{ qty: 1, price: p }] : [] };
+            return { country: cp.country, currency: cp.currency, cost, tiers: p > 0 ? [{ qty: 1, price: p }] : [] };
         }
-        return { country: cp.country, currency: cp.currency, tiers: [] };
+        return { country: cp.country, currency: cp.currency, cost, tiers: [] };
     },
 
     addCountryPriceRow(data = null) {
@@ -191,6 +374,12 @@ const ProductsModule = {
                 <select class="input input-sm cp-currency" style="width:80px">
                     ${currencyOptions}
                 </select>
+                <label class="cp-cost-wrap" title="Custo do produto neste país (produto + frete até lá). Deixe vazio para usar o custo padrão do produto.">
+                    <span>Custo</span>
+                    <input type="number" min="0" step="0.01" class="input input-sm cp-cost"
+                           value="${normalized.cost != null && normalized.cost !== '' ? normalized.cost : ''}"
+                           placeholder="padrão" style="width:84px">
+                </label>
                 <button type="button" class="btn btn-secondary btn-sm cp-add-tier-btn" title="Adicionar quantidade">+ Qty</button>
                 <button type="button" class="btn btn-danger btn-sm cp-remove-btn" title="Remover país">&times;</button>
             </div>
@@ -234,6 +423,128 @@ const ProductsModule = {
         container.appendChild(row);
     },
 
+    // ══════════════════════════════════════════════════════════════
+    //  Importar preços/custos por país de outro produto
+    //  Cadastrar 18 países à mão em cada produto novo é o gargalo real;
+    //  quase sempre a tabela de frete é a mesma entre produtos parecidos.
+    // ══════════════════════════════════════════════════════════════
+    openImportCountryCosts() {
+        const atualId = document.getElementById('product-id')?.value || '';
+        const candidatos = (AppState.allProducts || [])
+            .filter(p => p.id !== atualId && Array.isArray(p.countryPrices) && p.countryPrices.length > 0);
+
+        if (!candidatos.length) {
+            showToast('Nenhum outro produto tem países cadastrados para copiar.', 'warning');
+            return;
+        }
+
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        const opcoes = candidatos.map(p => {
+            const nPaises = p.countryPrices.length;
+            const nComCusto = p.countryPrices.filter(cp => cp.cost != null && cp.cost !== '').length;
+            return `<option value="${esc(p.id)}">${esc(p.name)} — ${nPaises} país(es)${nComCusto ? `, ${nComCusto} com custo` : ''}</option>`;
+        }).join('');
+
+        const html = `
+            <div id="modal-import-cc-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:min(480px,92vw);display:flex;flex-direction:column;gap:1rem">
+                    <div>
+                        <strong style="font-size:1rem">Importar países de outro produto</strong>
+                        <p style="margin:0.25rem 0 0;font-size:0.8rem;color:var(--text-muted)">Copia a lista de países com preços, moeda e custo.</p>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.4rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">Produto de origem</label>
+                        <select id="icc-source" class="input" style="width:100%">${opcoes}</select>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.45rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">O que copiar</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="checkbox" id="icc-costs" checked> Custos por país</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="checkbox" id="icc-prices"> Preços e faixas de quantidade</label>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.45rem">
+                        <label style="font-size:0.78rem;font-weight:600;color:var(--text-secondary)">Se o país já existir aqui</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="radio" name="icc-mode" value="fill" checked> Preencher só o que está vazio</label>
+                        <label style="font-size:0.82rem;display:flex;gap:0.4rem;align-items:center"><input type="radio" name="icc-mode" value="overwrite"> Sobrescrever</label>
+                    </div>
+                    <div style="display:flex;gap:0.6rem;justify-content:flex-end">
+                        <button id="icc-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="icc-apply" class="btn btn-primary btn-sm">Importar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+
+        const overlay = document.getElementById('modal-import-cc-overlay');
+        const fechar = () => overlay?.remove();
+        document.getElementById('icc-cancel')?.addEventListener('click', fechar);
+        overlay?.addEventListener('click', (e) => { if (e.target === overlay) fechar(); });
+
+        document.getElementById('icc-apply')?.addEventListener('click', () => {
+            const origem = (AppState.allProducts || []).find(p => p.id === document.getElementById('icc-source').value);
+            if (!origem) { fechar(); return; }
+            const copiarCustos = document.getElementById('icc-costs').checked;
+            const copiarPrecos = document.getElementById('icc-prices').checked;
+            const modo = document.querySelector('input[name="icc-mode"]:checked')?.value || 'fill';
+            if (!copiarCustos && !copiarPrecos) { showToast('Escolha ao menos uma coisa para copiar.', 'error'); return; }
+
+            const n = this._aplicarImportacaoPaises(origem, { copiarCustos, copiarPrecos, modo });
+            fechar();
+            showToast(`${n} país(es) importado(s) de "${origem.name}". Revise e salve o produto.`, 'success');
+        });
+
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    _aplicarImportacaoPaises(origem, { copiarCustos, copiarPrecos, modo }) {
+        // Lê o que já está na tela para não perder edições não salvas
+        const atuais = this._getCountryPrices();
+        const porPais = new Map(atuais.map(cp => [cp.country, cp]));
+        let tocados = 0;
+
+        (origem.countryPrices || []).forEach(raw => {
+            const src = this._normalizeCountryPrice(raw);
+            if (!src?.country) return;
+            const existente = porPais.get(src.country);
+
+            if (!existente) {
+                porPais.set(src.country, {
+                    country: src.country,
+                    currency: src.currency || 'USD',
+                    tiers: copiarPrecos ? (src.tiers || []) : [],
+                    price: copiarPrecos ? (src.tiers?.[0]?.price || 0) : 0,
+                    cost: copiarCustos ? src.cost : null,
+                });
+                tocados++;
+                return;
+            }
+
+            let mudou = false;
+            if (copiarCustos && src.cost != null) {
+                // "Preencher" só age quando o campo está realmente vazio.
+                if (modo === 'overwrite' || existente.cost == null) { existente.cost = src.cost; mudou = true; }
+            }
+            if (copiarPrecos && src.tiers?.length) {
+                if (modo === 'overwrite' || !existente.tiers?.length) {
+                    existente.tiers = src.tiers;
+                    existente.price = src.tiers[0]?.price || 0;
+                    existente.currency = src.currency || existente.currency;
+                    mudou = true;
+                }
+            }
+            if (mudou) tocados++;
+        });
+
+        // Redesenha a lista inteira com o resultado
+        const lista = document.getElementById('country-prices-list');
+        if (lista) {
+            lista.innerHTML = '';
+            [...porPais.values()]
+                .sort((a, b) => String(a.country).localeCompare(String(b.country)))
+                .forEach(cp => this.addCountryPriceRow(cp));
+        }
+        return tocados;
+    },
+
     _getCountryPrices() {
         const rows = document.querySelectorAll('#country-prices-list .country-price-row');
         const result = [];
@@ -247,10 +558,18 @@ const ProductsModule = {
                 const price = parseFloat(tr.querySelector('.cp-tier-price').value) || 0;
                 if (qty > 0 && price > 0) tiers.push({ qty, price });
             });
+            // Custo específico deste país (produto + frete até o destino).
+            // Vazio significa "usar o custo padrão do produto" — não zero.
+            const costRaw = row.querySelector('.cp-cost')?.value ?? '';
+            const cost = String(costRaw).trim() === '' ? null : (parseFloat(costRaw) || 0);
+
             if (tiers.length > 0) {
                 // Primary price = lowest-qty tier (usually qty=1) for legacy consumers
                 tiers.sort((a, b) => a.qty - b.qty);
-                result.push({ country, currency, tiers, price: tiers[0].price });
+                result.push({ country, currency, tiers, price: tiers[0].price, cost });
+            } else if (cost != null) {
+                // País cadastrado só para registrar o custo, sem tabela de preço
+                result.push({ country, currency, tiers: [], price: 0, cost });
             }
         });
         return result;
@@ -267,11 +586,104 @@ const ProductsModule = {
             rate ? formatCurrency(profitUSD * rate, 'BRL') : '--';
     },
 
+    _injectBrandIconsIntoPlatformChips() {
+        if (typeof BRAND_ICONS === 'undefined') return;
+        document.querySelectorAll('#product-platforms .prod-multi-chip[data-brand]').forEach(el => {
+            if (el.dataset.iconInjected) return;
+            const brand = el.dataset.brand;
+            const span = el.querySelector('span');
+            if (!span || !BRAND_ICONS[brand]) return;
+            span.insertAdjacentHTML('afterbegin', BRAND_ICONS[brand] + ' ');
+            el.dataset.iconInjected = '1';
+        });
+    },
+
+    _renderFbAccountPicker(product) {
+        const container = document.getElementById('product-fb-accounts');
+        const emptyMsg = document.getElementById('product-fb-accounts-empty');
+        const manualInput = document.getElementById('product-fb-accounts-manual');
+        if (!container) return;
+        const accounts = (typeof FacebookAds !== 'undefined' && FacebookAds.config?.adAccounts) || [];
+        const selected = new Set(Array.isArray(product?.fbAdAccountIds) ? product.fbAdAccountIds.map(String) : []);
+        const labels = (product?.fbAdAccountLabels && typeof product.fbAdAccountLabels === 'object') ? product.fbAdAccountLabels : {};
+        // Picker IDs
+        const knownIds = new Set(accounts.map(a => String(a.id)));
+        // Manual = saved IDs that aren't in the connected accounts list
+        const manualIds = Array.from(selected).filter(id => !knownIds.has(id));
+        if (manualInput) {
+            manualInput.value = manualIds.map(id => labels[id] ? `${labels[id]}=${id}` : id).join(', ');
+        }
+
+        if (!accounts.length) {
+            container.innerHTML = '';
+            if (emptyMsg) emptyMsg.style.display = '';
+            return;
+        }
+        if (emptyMsg) emptyMsg.style.display = 'none';
+        container.innerHTML = accounts.map(a => {
+            const id = String(a.id);
+            const isSel = selected.has(id);
+            const label = a.name ? `${a.name} <small style="opacity:.65">(${id})</small>` : id;
+            return `<label class="prod-multi-chip">
+                <input type="checkbox" class="prod-fb-acc-cb" value="${id}" ${isSel ? 'checked' : ''}>
+                <span><i data-lucide="facebook" style="width:13px;height:13px;color:#1877f2"></i> ${label}</span>
+            </label>`;
+        }).join('');
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    // Parse "Name=ID, OtherName=ID2, RawID" → { ids: [...], labels: { id: name } }
+    _parseAccountEntries(raw) {
+        const ids = [];
+        const labels = {};
+        if (!raw) return { ids, labels };
+        const parts = String(raw).split(',').map(s => s.trim()).filter(Boolean);
+        for (const p of parts) {
+            const eqIdx = p.indexOf('=');
+            if (eqIdx > 0) {
+                const name = p.slice(0, eqIdx).trim();
+                const id = p.slice(eqIdx + 1).trim();
+                if (!id) continue;
+                ids.push(id);
+                if (name) labels[id] = name;
+            } else {
+                ids.push(p);
+            }
+        }
+        return { ids, labels };
+    },
+
     _getFormData() {
+        // Collect multi-select platforms & languages
+        const platforms = Array.from(document.querySelectorAll('#product-platforms input[type="checkbox"]:checked')).map(cb => cb.value);
+        const languages = Array.from(document.querySelectorAll('#product-languages input[type="checkbox"]:checked')).map(cb => cb.value);
+        // Keep legacy single-language field synced (uses first selected)
+        const primaryLang = languages[0] || document.getElementById('product-language')?.value || 'Ingles';
+        const hiddenLang = document.getElementById('product-language');
+        if (hiddenLang) hiddenLang.value = primaryLang;
+
+        // Ad accounts (parse "Name=ID" syntax for manual entries)
+        const fbFromPicker = Array.from(document.querySelectorAll('.prod-fb-acc-cb:checked')).map(cb => cb.value);
+        const fbManualRaw = (document.getElementById('product-fb-accounts-manual')?.value || '').trim();
+        const fbManualParsed = this._parseAccountEntries(fbManualRaw);
+        const fbAdAccountIds = Array.from(new Set([...fbFromPicker, ...fbManualParsed.ids]));
+
+        const googleRaw = (document.getElementById('product-google-accounts')?.value || '').trim();
+        const googleParsed = this._parseAccountEntries(googleRaw);
+        const googleAdAccountIds = googleParsed.ids;
+
         return {
             id: document.getElementById('product-id').value || generateId('prod'),
             name: document.getElementById('product-name').value.trim(),
-            language: document.getElementById('product-language').value || 'Ingles',
+            language: primaryLang,
+            languages,
+            platforms,
+            fbAdAccountIds,
+            googleAdAccountIds,
+            fbAdAccountLabels: fbManualParsed.labels,
+            googleAdAccountLabels: googleParsed.labels,
+            campaignGroupUrl: (document.getElementById('product-campaign-url')?.value || '').trim(),
+            pageUrl: (document.getElementById('product-page-url')?.value || '').trim(),
             price: parseFloat(document.getElementById('product-price').value) || 0,
             priceCurrency: document.getElementById('product-price-currency').value,
             cost: parseFloat(document.getElementById('product-cost').value) || 0,
@@ -302,7 +714,10 @@ const ProductsModule = {
         }
 
         if (existingIdx >= 0) {
-            data.storeId = AppState.allProducts[existingIdx].storeId || data.storeId || getWritableStoreId();
+            const prev = AppState.allProducts[existingIdx];
+            data.storeId = prev.storeId || data.storeId || getWritableStoreId();
+            // Preserve fields not present in the form so they aren't wiped on edit
+            if (prev.campaignUrlsByCountry && !data.campaignUrlsByCountry) data.campaignUrlsByCountry = prev.campaignUrlsByCountry;
             AppState.allProducts[existingIdx] = data;
             if (AppState.sheetsConnected) {
                 await SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, data.id, SheetsAPI.productToRow(data));
@@ -316,6 +731,20 @@ const ProductsModule = {
             showToast('Produto adicionado!', 'success');
         }
 
+        // Save Shopify link if present
+        try {
+            const shopifySel = document.getElementById('prod-shopify-link');
+            if (shopifySel && typeof ShopifyModule !== 'undefined' && ShopifyModule.linkProduct) {
+                const shopifyId = shopifySel.value || null;
+                const result = ShopifyModule.linkProduct(data.id, shopifyId);
+                if (result?.linked && result?.priceSynced) {
+                    showToast('Vinculado e preço sincronizado com Shopify', 'success');
+                } else if (result?.linked) {
+                    showToast('Produto vinculado à Shopify', 'success');
+                }
+            }
+        } catch (e) { console.warn('Shopify link save failed:', e); }
+
         filterDataByStore();
         closeModal('product-modal');
         populateProductDropdowns();
@@ -323,14 +752,46 @@ const ProductsModule = {
         EventBus.emit('productsChanged');
     },
 
+    // ── Tombstones (impede reimportação de produtos deletados) ──
+    _TOMBSTONE_KEY: 'etracker_deleted_product_ids',
+    _getTombstones() {
+        try { return new Set(JSON.parse(localStorage.getItem(this._TOMBSTONE_KEY) || '[]')); }
+        catch { return new Set(); }
+    },
+    _addTombstones(entries) {
+        const set = this._getTombstones();
+        entries.forEach(e => {
+            if (e.localId) set.add(`local:${e.localId}`);
+            if (e.shopifyId) set.add(`shopify:${e.shopifyId}`);
+        });
+        localStorage.setItem(this._TOMBSTONE_KEY, JSON.stringify(Array.from(set)));
+    },
+    isTombstoned(product) {
+        if (!product) return false;
+        const set = this._getTombstones();
+        return set.has(`local:${product.id}`) ||
+               (product.shopifyId && set.has(`shopify:${product.shopifyId}`));
+    },
+    // Limpa todas as tombstones (caso usuário queira recuperar)
+    clearTombstones() {
+        localStorage.removeItem(this._TOMBSTONE_KEY);
+        if (typeof showToast === 'function') showToast('Tombstones limpas — produtos deletados podem voltar', 'info');
+    },
+
     async deleteProduct(id) {
         if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
+        const product = AppState.allProducts.find(p => p.id === id);
         const idx = AppState.allProducts.findIndex(p => p.id === id);
         if (idx >= 0) {
             AppState.allProducts.splice(idx, 1);
+            // Tombstone para impedir reimportação
+            this._addTombstones([{ localId: id, shopifyId: product?.shopifyId }]);
             if (AppState.sheetsConnected) {
                 await SheetsAPI.deleteRowById(SheetsAPI.TABS.PRODUCTS, id);
+            }
+            if (typeof SupabaseSync !== 'undefined') {
+                SupabaseSync.deleteProductById(id);
             }
             filterDataByStore();
             populateProductDropdowns();
@@ -338,6 +799,33 @@ const ProductsModule = {
             EventBus.emit('productsChanged');
             showToast('Produto excluído', 'info');
         }
+    },
+
+    async deleteProductsBulk(ids) {
+        if (!ids || ids.length === 0) return;
+        if (!confirm(`Excluir ${ids.length} produto(s)? Esta ação não pode ser desfeita.`)) return;
+        const tombstones = [];
+        for (const id of ids) {
+            const product = AppState.allProducts.find(p => p.id === id);
+            const idx = AppState.allProducts.findIndex(p => p.id === id);
+            if (idx >= 0) {
+                AppState.allProducts.splice(idx, 1);
+                tombstones.push({ localId: id, shopifyId: product?.shopifyId });
+                if (AppState.sheetsConnected) {
+                    try { await SheetsAPI.deleteRowById(SheetsAPI.TABS.PRODUCTS, id); } catch {}
+                }
+                if (typeof SupabaseSync !== 'undefined') {
+                    try { SupabaseSync.deleteProductById(id); } catch {}
+                }
+            }
+        }
+        this._addTombstones(tombstones);
+        this._selectedIds = new Set();
+        filterDataByStore();
+        populateProductDropdowns();
+        this.render();
+        EventBus.emit('productsChanged');
+        showToast(`${ids.length} produto(s) excluído(s)`, 'success');
     },
 
     async generateDescription() {
@@ -403,11 +891,11 @@ const ProductsModule = {
             if (!html) throw new Error('Resposta vazia da IA');
             const descEl = document.getElementById('product-description');
             if (descEl) descEl.innerHTML = html;
-            if (statusEl) { statusEl.textContent = '✓ Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
+            if (statusEl) { statusEl.textContent = 'Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
             setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
         } catch (err) {
             console.error('[generateDescription]', err);
-            if (statusEl) { statusEl.textContent = '✗ ' + err.message; statusEl.style.color = '#dc2626'; }
+            if (statusEl) { statusEl.textContent = '' + err.message; statusEl.style.color = '#dc2626'; }
             if (typeof showToast === 'function') showToast('Erro ao gerar: ' + err.message, 'error');
         } finally {
             if (btn) btn.disabled = false;
@@ -467,11 +955,14 @@ const ProductsModule = {
             return;
         }
         thumbs.style.display = '';
+        // Imagem pode vir de upload (dataUrl base64) ou da Shopify (url do CDN).
+        // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
             <div class="prod-image-thumb">
-                <img src="${img.dataUrl}" alt="${img.name || ''}">
+                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy">
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
+                ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
             </div>
         `).join('');
         thumbs.querySelectorAll('.prod-image-remove').forEach(btn => {
@@ -480,17 +971,203 @@ const ProductsModule = {
                 this._renderProductImages();
             });
         });
-        if (zone) zone.style.display = this._images.length >= 5 ? 'none' : '';
+        // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
+        // Imagens da Shopify são URLs e não contam para esse limite.
+        const enviadas = this._images.filter(im => im.dataUrl).length;
+        if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+    },
+
+    // Mostra as variantes trazidas da Shopify (leitura). Elas existem para
+    // alimentar geração de criativo por variante — não são editáveis aqui,
+    // já que a fonte da verdade continua sendo a Shopify.
+    _renderShopifyVariants(product) {
+        const box = document.getElementById('prod-shopify-variants');
+        if (!box) return;
+        const vars = product?.shopifyVariants || [];
+        if (!vars.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        box.style.display = '';
+        const opts = (product.shopifyOptions || []).map(o => `${o.name}: ${o.values.join(', ')}`).join(' · ');
+        box.innerHTML = `
+            <div class="prod-section-title" style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.4rem">
+                <i data-lucide="layers" style="width:14px;height:14px"></i> Variantes da Shopify
+                <small style="font-weight:400;color:var(--text-muted)">${vars.length} · somente leitura</small>
+            </div>
+            ${opts ? `<p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 0.5rem">${this._esc(opts)}</p>` : ''}
+            <div class="prod-variants-grid">
+                ${vars.map(v => `
+                    <div class="prod-variant-chip" title="${this._esc(v.sku || '')}">
+                        ${v.image ? `<img src="${this._esc(v.image)}" alt="" loading="lazy">` : '<span class="prod-variant-noimg"><i data-lucide="image-off" style="width:14px;height:14px"></i></span>'}
+                        <span class="prod-variant-name">${this._esc(v.title)}</span>
+                        <span class="prod-variant-price">${v.price}</span>
+                        ${v.availableForSale ? '' : '<span class="prod-variant-off">esgotado</span>'}
+                    </div>`).join('')}
+            </div>`;
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Importar descrição, fotos e variantes da Shopify
+    // ══════════════════════════════════════════════════════════════
+
+    // Aplica os detalhes num produto local. Não sobrescreve o que o usuário
+    // escreveu: por padrão só preenche o que está vazio.
+    _aplicarDetalhesShopify(produto, det, { sobrescrever = false } = {}) {
+        if (!produto || !det) return { descricao: false, fotos: 0, variantes: 0 };
+        const res = { descricao: false, fotos: 0, variantes: 0 };
+
+        const descAtual = String(produto.description || '').replace(/<[^>]*>/g, '').trim();
+        if (det.descriptionHtml && (sobrescrever || !descAtual)) {
+            produto.description = det.descriptionHtml;
+            res.descricao = true;
+        }
+
+        if (det.images?.length) {
+            const atuais = produto.images || [];
+            const jaTem = new Set(atuais.map(im => im.url).filter(Boolean));
+            const novas = det.images
+                .filter(im => sobrescrever || !jaTem.has(im.url))
+                .map(im => ({ url: im.url, alt: im.alt || '', name: im.alt || '', width: im.width, height: im.height }));
+            // Uploads locais (base64) são preservados mesmo ao sobrescrever —
+            // eles não vieram da Shopify e seriam perdidos sem volta.
+            const uploads = atuais.filter(im => im.dataUrl);
+            produto.images = sobrescrever ? [...uploads, ...novas] : [...atuais, ...novas];
+            res.fotos = novas.length;
+        }
+
+        if (det.variants?.length) {
+            produto.shopifyVariants = det.variants;
+            produto.shopifyOptions = det.options || [];
+            res.variantes = det.variants.length;
+        }
+        if (det.vendor && (sobrescrever || !produto.vendor)) produto.vendor = det.vendor;
+        if (det.tags?.length && (sobrescrever || !(produto.tags || []).length)) produto.tags = det.tags;
+        if (det.handle) produto.shopifyHandle = det.handle;
+        produto.shopifyDetailsAt = new Date().toISOString();
+        return res;
+    },
+
+    // Descobre o id Shopify de um produto local (vínculo, campo ou nome)
+    _shopifyIdDe(produto) {
+        if (!produto) return null;
+        if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+            const l = ShopifyModule.getLink(produto.id);
+            if (l) return String(l);
+        }
+        if (produto.shopifyId) return String(produto.shopifyId);
+        const cat = (typeof ShopifyModule !== 'undefined' && ShopifyModule.getShopifyProducts)
+            ? ShopifyModule.getShopifyProducts() : [];
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').trim();
+        const achado = cat.find(sp => norm(sp.title) === norm(produto.name));
+        return achado ? String(achado.id) : null;
+    },
+
+    // Importa para UM produto (usado dentro do formulário aberto)
+    async importarDetalhesDoProdutoAberto() {
+        const id = document.getElementById('product-id')?.value;
+        const produto = (AppState.allProducts || []).find(p => p.id === id);
+        if (!produto) { showToast('Salve o produto antes de importar da Shopify.', 'warning'); return; }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) { showToast('Vincule o produto à Shopify primeiro (Conexão Shopify).', 'error'); return; }
+
+        const btn = document.getElementById('btn-import-shopify-details');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Importando…'; }
+        try {
+            const mapa = await ShopifyModule.fetchProductDetails([sid]);
+            const det = mapa[sid];
+            if (!det) throw new Error('Produto não encontrado na Shopify');
+
+            const temDesc = String(produto.description || '').replace(/<[^>]*>/g, '').trim();
+            const sobrescrever = temDesc
+                ? confirm('Este produto já tem descrição.\n\nOK = substituir pela da Shopify\nCancelar = manter a atual e só trazer fotos/variantes')
+                : false;
+
+            const r = this._aplicarDetalhesShopify(produto, det, { sobrescrever });
+            LocalStore.save('products', AppState.allProducts);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            EventBus.emit('productsChanged');
+
+            // Reabre o formulário para refletir os dados novos
+            this.openForm(produto);
+            showToast(`Importado: ${r.descricao ? 'descrição, ' : ''}${r.fotos} foto(s), ${r.variantes} variante(s).`, 'success');
+        } catch (err) {
+            showToast('Falha ao importar: ' + (err.message || err), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+        }
+    },
+
+    // Importa em MASSA para todos os produtos vinculados
+    async importarDetalhesEmMassa() {
+        const produtos = (AppState.allProducts || []).filter(p => this._shopifyIdDe(p));
+        if (!produtos.length) { showToast('Nenhum produto vinculado à Shopify.', 'warning'); return; }
+        if (!confirm(`Importar descrição, fotos e variantes da Shopify para ${produtos.length} produto(s)?\n\nDescrições já preenchidas na ferramenta são preservadas.`)) return;
+
+        const btn = document.getElementById('btn-import-shopify-details-bulk');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Importando…'; }
+        try {
+            const ids = produtos.map(p => this._shopifyIdDe(p));
+            const mapa = await ShopifyModule.fetchProductDetails(ids);
+            let comDesc = 0, fotos = 0, vars = 0, semDados = 0;
+            produtos.forEach(p => {
+                const det = mapa[this._shopifyIdDe(p)];
+                if (!det) { semDados++; return; }
+                const r = this._aplicarDetalhesShopify(p, det, { sobrescrever: false });
+                if (r.descricao) comDesc++;
+                fotos += r.fotos; vars += r.variantes;
+            });
+            LocalStore.save('products', AppState.allProducts);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            EventBus.emit('productsChanged');
+            this.render();
+            showToast(`${comDesc} descrição(ões), ${fotos} foto(s) e ${vars} variante(s) importadas.${semDados ? ` ${semDados} sem dados na Shopify.` : ''}`, 'success');
+        } catch (err) {
+            showToast('Falha na importação: ' + (err.message || err), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+        }
     },
 
     render() {
         const tbody = document.getElementById('products-tbody');
-        const products = AppState.products.filter(p => !p.status || p.status !== 'arquivado');
+        let products = AppState.products.filter(p => !p.status || p.status !== 'arquivado');
+
+        // Filter por status
+        const statusFilter = (document.getElementById('products-status-filter')?.value || '').trim();
+        if (statusFilter) {
+            products = AppState.products.filter(p => (p.status || 'ativo') === statusFilter);
+        }
+
+        // Filter por search query
+        const q = (document.getElementById('products-search')?.value || '').toLowerCase().trim();
+        if (q) {
+            products = products.filter(p => {
+                const haystack = [
+                    p.name, p.sku, p.vendor, p.description, p.language,
+                    ...(p.tags || []),
+                ].filter(Boolean).join(' ').toLowerCase();
+                return haystack.includes(q);
+            });
+        }
+
+        // Update count
+        const countEl = document.getElementById('products-search-count');
+        if (countEl) {
+            const total = AppState.products.filter(p => !p.status || p.status !== 'arquivado').length;
+            countEl.textContent = (q || statusFilter)
+                ? `${products.length} de ${total}`
+                : '';
+        }
 
         if (products.length === 0) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="10">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td></tr>';
+            tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${q || statusFilter ? 'Nenhum produto encontrado para os filtros aplicados.' : 'Nenhum produto cadastrado. Clique em "+ Adicionar Produto".'}</td></tr>`;
+            this._renderBulkBar();
             return;
         }
+
+        if (!this._selectedIds) this._selectedIds = new Set();
 
         const pipelineCards = typeof PipelineModule !== 'undefined' ? (PipelineModule.cards || []) : [];
         const pipelineCols = typeof PipelineModule !== 'undefined' ? (PipelineModule.FLOW_LABELS || {}) : {};
@@ -532,10 +1209,12 @@ const ProductsModule = {
                 }
             }
 
-            return `<tr>
-                <td><strong>${this._escapeHtml(p.name)}</strong><br>${stageBadge}${countryBadges}</td>
+            const isSelected = this._selectedIds.has(p.id);
+            return `<tr class="${isSelected ? 'row-selected' : ''}" data-product-id="${p.id}">
+                <td><input type="checkbox" class="products-row-cb" data-id="${p.id}" ${isSelected ? 'checked' : ''}></td>
+                <td><strong>${this._escapeHtml(p.name)}</strong>${typeof renderProductMetaBadges === 'function' ? renderProductMetaBadges(p) : ''}${p.pageUrl ? ` <a class="prod-page-link" href="${this._escapeHtml(p.pageUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a página que roda este produto"><i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-2px"></i> Página</a>` : ''}<br>${stageBadge}${countryBadges}</td>
                 <td>${statusBadge}</td>
-                <td>${this._escapeHtml(p.language || p.country || 'Ingles')}</td>
+                <td>${typeof renderProductMetaBadges === 'function' && (Array.isArray(p.languages) || Array.isArray(p.platforms)) ? renderProductMetaBadges(p) : this._escapeHtml(p.language || p.country || 'Ingles')}</td>
                 <td>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</td>
                 <td>${formatDualCurrencyHTML(p.cost, p.costCurrency)}</td>
                 <td>${p.tax}%</td>
@@ -552,7 +1231,29 @@ const ProductsModule = {
             </tr>`;
         }).join('');
 
+        // Bind row checkboxes
+        tbody.querySelectorAll('.products-row-cb').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const id = e.target.dataset.id;
+                if (e.target.checked) this._selectedIds.add(id);
+                else this._selectedIds.delete(id);
+                e.target.closest('tr').classList.toggle('row-selected', e.target.checked);
+                this._renderBulkBar();
+            });
+        });
+
+        this._renderBulkBar();
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _renderBulkBar() {
+        const bar = document.getElementById('products-bulk-bar');
+        const count = document.getElementById('products-bulk-count');
+        if (!bar) return;
+        const n = (this._selectedIds || new Set()).size;
+        if (n === 0) { bar.style.display = 'none'; return; }
+        bar.style.display = '';
+        if (count) count.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
     },
 
     // ── Shopify Import ────────────────────────────────────────────
@@ -581,18 +1282,21 @@ const ProductsModule = {
             }
 
             const existingShopifyIds = new Set((AppState.allProducts || []).map(p => String(p.shopifyId || '')).filter(Boolean));
+            const tombstones = this._getTombstones();
 
             status.style.display = 'none';
             controls.style.display = 'flex';
 
             list.innerHTML = shopifyProducts.map(sp => {
                 const already = existingShopifyIds.has(String(sp.id));
+                const deleted = tombstones.has(`shopify:${sp.id}`);
                 const imgHtml = sp.image
                     ? `<img src="${sp.image}" alt="" class="shopify-import-thumb">`
                     : `<div class="shopify-import-thumb shopify-import-thumb-empty"><i data-lucide="image" style="width:14px;height:14px"></i></div>`;
+                const disabled = already || deleted;
                 return `
-                    <label class="shopify-import-item ${already ? 'shopify-import-item-disabled' : ''}" data-name="${this._escapeHtml(sp.title || '')}">
-                        <input type="checkbox" class="shopify-import-cb" value="${sp.id}" ${already ? 'disabled checked' : ''}>
+                    <label class="shopify-import-item ${disabled ? 'shopify-import-item-disabled' : ''}" data-name="${this._escapeHtml(sp.title || '')}">
+                        <input type="checkbox" class="shopify-import-cb" value="${sp.id}" ${disabled ? 'disabled' : ''} ${already ? 'checked' : ''}>
                         ${imgHtml}
                         <div class="shopify-import-info">
                             <div class="shopify-import-title">${this._escapeHtml(sp.title || '(sem título)')}</div>
@@ -600,6 +1304,7 @@ const ProductsModule = {
                                 <span class="shopify-import-price">${sp.currency || ''} ${Number(sp.priceMin || 0).toFixed(2)}${sp.priceMax && sp.priceMax !== sp.priceMin ? ' — ' + Number(sp.priceMax).toFixed(2) : ''}</span>
                                 ${sp.status ? `<span class="shopify-import-status-badge">${sp.status}</span>` : ''}
                                 ${already ? '<span class="shopify-import-already">já importado</span>' : ''}
+                                ${deleted ? '<span class="shopify-import-already" style="background:rgba(239,68,68,0.12);color:var(--danger);border-color:rgba(239,68,68,0.3)">excluído</span>' : ''}
                             </div>
                         </div>
                     </label>

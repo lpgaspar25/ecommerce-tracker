@@ -161,6 +161,75 @@
 
         _bindSend() {
             document.getElementById('adhub-prompt-send')?.addEventListener('click', () => this._handleSend());
+            document.getElementById('adhub-prompt-enhance')?.addEventListener('click', () => this._handleEnhance());
+        },
+
+        async _handleEnhance() {
+            if (this._enhancing) return;
+            const ta = document.getElementById('adhub-prompt-text');
+            const original = (ta?.value || '').trim();
+            if (!original) {
+                if (typeof showToast === 'function') showToast('Escreva algo antes de refinar', 'error');
+                ta?.focus();
+                return;
+            }
+            const key = window.AIAdGenerator?._getAnthropicKey?.() || localStorage.getItem('anthropic_api_key') || '';
+            if (!key) {
+                if (typeof showToast === 'function') showToast('Configure a chave da Anthropic em Config (botão de engrenagem) para usar Enhance', 'error');
+                return;
+            }
+            this._enhancing = true;
+            const btn = document.getElementById('adhub-prompt-enhance');
+            const origHtml = btn?.innerHTML;
+            if (btn) {
+                btn.innerHTML = '<i data-lucide="loader-2" style="width:14px;height:14px;animation:spin 1s linear infinite"></i> <span>Refinando…</span>';
+                btn.disabled = true;
+                if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+            }
+            try {
+                const refined = await this._enhancePromptViaClaude(original, key);
+                if (refined && refined.length > 10) {
+                    ta.value = refined;
+                    ta.dispatchEvent(new Event('input'));
+                    if (typeof showToast === 'function') showToast('Prompt refinado!', 'success');
+                } else {
+                    throw new Error('Resposta vazia do Claude');
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Erro: ' + e.message, 'error');
+            } finally {
+                this._enhancing = false;
+                if (btn) {
+                    btn.innerHTML = origHtml;
+                    btn.disabled = false;
+                    if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+                }
+            }
+        },
+
+        async _enhancePromptViaClaude(userPrompt, apiKey) {
+            const systemPrompt = `You are an expert prompt engineer for image generation models (Flux, DALL-E, GPT Image). Take the user's casual description of an ad creative and rewrite it into a detailed, photorealistic prompt that includes: subject, composition, lighting, color palette, lens/camera angle, mood, and any brand-relevant details. Keep it under 200 words. Output ONLY the rewritten prompt, no preamble, no quotes, no markdown.`;
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-5',
+                    max_tokens: 600,
+                    system: systemPrompt,
+                    messages: [{ role: 'user', content: userPrompt }],
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error?.message || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            return (data.content?.[0]?.text || '').trim();
         },
 
         _bindHeaderActions() {
@@ -216,22 +285,71 @@
             }
 
             try {
-                await AIAdGenerator.generateImages({
-                    prompt,
-                    size: this._aspect,
-                    count: this._outputs,
-                });
-                if (ta) {
-                    ta.value = '';
-                    ta.dispatchEvent(new Event('input'));
+                // If a reference image is attached, analyze it with GPT-4o vision
+                // and replace [REFERENCE] in the prompt (or append as context)
+                let finalPrompt = prompt;
+                if (this._refImage) {
+                    const loadingCard = document.getElementById('aigen-loading-card');
+                    if (loadingCard) {
+                        const promptEl = loadingCard.querySelector('.aigen-card-prompt');
+                        if (promptEl) promptEl.textContent = 'Analisando imagem de referência…';
+                    }
+                    try {
+                        finalPrompt = await this._enhancePromptWithReference(prompt, this._refImage.dataUrl);
+                    } catch (e) {
+                        console.warn('[AiGenerations] reference analysis failed:', e);
+                        // fallback: strip placeholder and proceed
+                        finalPrompt = prompt.replace('[REFERENCE]', '').trim();
+                    }
+                    if (loadingCard) {
+                        const promptEl = loadingCard.querySelector('.aigen-card-prompt');
+                        if (promptEl) promptEl.textContent = `Gerando ${this._outputs} imagem(ns)…`;
+                    }
                 }
-                // Save to recent edits log
-                this._logRecentEdit({
-                    prompt,
-                    aspect: this._aspectLabel,
-                    outputs: this._outputs,
-                    refImage: this._refImage?.name || null,
-                });
+
+                try {
+                    await AIAdGenerator.generateImages({
+                        prompt: finalPrompt,
+                        size: this._aspect,
+                        count: this._outputs,
+                    });
+                    if (ta) {
+                        ta.value = '';
+                        ta.dispatchEvent(new Event('input'));
+                    }
+                    // Save to recent edits log
+                    this._logRecentEdit({
+                        prompt: finalPrompt,
+                        aspect: this._aspectLabel,
+                        outputs: this._outputs,
+                        refImage: this._refImage?.name || null,
+                    });
+                } catch (genErr) {
+                    // Mostra erro persistente no grid em vez de só toast (que some)
+                    const grid = document.getElementById('aigen-grid');
+                    if (grid) {
+                        const errCard = document.createElement('div');
+                        errCard.className = 'aigen-card aigen-card-error';
+                        errCard.style.cssText = 'border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.06);padding:1rem;border-radius:8px;grid-column:1/-1';
+                        errCard.innerHTML = `
+                            <div style="display:flex;align-items:flex-start;gap:0.75rem">
+                                <i data-lucide="alert-circle" style="width:24px;height:24px;color:var(--danger);flex-shrink:0"></i>
+                                <div style="flex:1">
+                                    <strong style="color:var(--danger);display:block;margin-bottom:0.25rem">Falha na geração</strong>
+                                    <div style="font-size:0.85rem;color:var(--text-primary);line-height:1.4">${this._esc(genErr.message || 'Erro desconhecido')}</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem">
+                                        Possíveis causas: chave API ausente/inválida, créditos da OpenAI/Google esgotados, ou localStorage cheio.
+                                        Verifique em <strong>API Keys</strong> (topo da página).
+                                    </div>
+                                    <button class="btn btn-sm btn-secondary" onclick="this.closest('.aigen-card-error').remove()" style="margin-top:0.6rem">Dispensar</button>
+                                </div>
+                            </div>
+                        `;
+                        grid.prepend(errCard);
+                        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+                    }
+                    if (typeof showToast === 'function') showToast('Falha: ' + (genErr.message || 'erro desconhecido'), 'error');
+                }
             } finally {
                 this._busy = false;
                 if (sendBtn) {
@@ -258,6 +376,41 @@
             } catch (e) {
                 console.warn('[AiGenerations] _logRecentEdit failed', e);
             }
+        },
+
+        // Uses GPT-4o vision to describe the reference image and inject it into the prompt
+        async _enhancePromptWithReference(prompt, imageDataUrl) {
+            const key = window.AIAdGenerator?._getOpenAIKey?.() || '';
+            if (!key) return prompt.replace('[REFERENCE]', '').trim();
+
+            const base64 = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl;
+            const mimeType = imageDataUrl.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: 'Describe this image in detail for use as a reference in an AI image generation prompt. Focus on: composition, colors, lighting, style, mood, product placement, background. Be concise but specific (2-3 sentences max).' },
+                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }
+                        ]
+                    }],
+                    max_tokens: 250
+                })
+            });
+
+            if (!res.ok) throw new Error(`Vision API error ${res.status}`);
+            const data = await res.json();
+            const description = data.choices?.[0]?.message?.content?.trim() || '';
+            if (!description) return prompt.replace('[REFERENCE]', '').trim();
+
+            if (prompt.includes('[REFERENCE]')) {
+                return prompt.replace('[REFERENCE]', description);
+            }
+            return `${prompt}. Reference image: ${description}`;
         },
 
         _esc(s) {

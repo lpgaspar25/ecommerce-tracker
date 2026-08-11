@@ -1,0 +1,12 @@
+# Cloudflare Pages headers
+# HTML + JS/CSS: always revalidate so new deploys show up immediately (no stale cache)
+/index.html
+  Cache-Control: no-cache, must-revalidate
+/
+  Cache-Control: no-cache, must-revalidate
+/*.html
+  Cache-Control: no-cache, must-revalidate
+/js/*
+  Cache-Control: no-cache, must-revalidate
+/css/*
+  Cache-Control: no-cache, must-revalidate

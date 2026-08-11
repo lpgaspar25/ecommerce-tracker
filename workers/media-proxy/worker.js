@@ -39,20 +39,30 @@ export default {
     // ── GraphQL pagination proxy — accepts POST with JSON body ──
     if (action === 'graphql') {
       try {
-        let docId, variables;
+        let docId, variables, fbDtsg = '';
         if (request.method === 'POST') {
           const body = await request.json();
           docId = body.doc_id || '25788260324159216';
           variables = typeof body.variables === 'string' ? body.variables : JSON.stringify(body.variables || {});
+          fbDtsg = body.fb_dtsg || '';
         } else {
           docId = url.searchParams.get('doc_id') || '25788260324159216';
           variables = url.searchParams.get('variables') || '{}';
+          fbDtsg = url.searchParams.get('fb_dtsg') || '';
         }
+
+        // Sem fb_dtsg o GraphQL responde vazio; ele vem do HTML da primeira busca.
+        const form = { doc_id: docId, variables };
+        if (fbDtsg) form.fb_dtsg = fbDtsg;
 
         const gqlResp = await fetch('https://www.facebook.com/api/graphql/', {
           method: 'POST',
-          headers: { 'User-Agent': 'facebookexternalhit/1.1', 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ doc_id: docId, variables }).toString(),
+          headers: {
+            'User-Agent': 'facebookexternalhit/1.1',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-FB-LSD': fbDtsg || '',
+          },
+          body: new URLSearchParams(form).toString(),
         });
         const gqlText = await gqlResp.text();
 
@@ -460,11 +470,17 @@ function parseAdsFromHtml(html, seen) {
   const hasNextMatch = html.includes('"has_next_page":true');
   const queryIDMatch = html.match(/"queryID"\s*:\s*"(\d+)"/);
 
+  // Token CSRF que o endpoint GraphQL exige para continuar a paginação.
+  const dtsgMatch = html.match(/"DTSGInitialData"\s*,\s*\[\]\s*,\s*\{\s*"token"\s*:\s*"([^"]+)"/)
+    || html.match(/"dtsg"\s*:\s*\{\s*"token"\s*:\s*"([^"]+)"/)
+    || html.match(/name="fb_dtsg"\s+value="([^"]+)"/);
+
   return {
     ads,
     totalAvailable,
     endCursor: (endCursorMatch && hasNextMatch) ? endCursorMatch[1] : '',
     queryID: queryIDMatch ? queryIDMatch[1] : '',
+    fbDtsg: dtsgMatch ? dtsgMatch[1] : '',
   };
 }
 
@@ -519,7 +535,9 @@ async function searchFacebookAds(params) {
   ];
 
   const queries = [];
-  const perBatch = 6;
+  // 12 subrequests por invocação: dobra a vazão e continua bem abaixo do
+  // teto de subrequests do Worker, sem virar rajada contra o Facebook.
+  const perBatch = 24;
   const startIdx = batchIdx * perBatch;
 
   for (let i = startIdx; i < Math.min(startIdx + perBatch, suffixes.length); i++) {
@@ -546,9 +564,15 @@ async function searchFacebookAds(params) {
   );
 
   const results = await Promise.all(fetches);
+  // Guarda o cursor da PRIMEIRA consulta que tiver um: é a busca sem sufixo,
+  // a única cuja paginação continua no mesmo resultado que o usuário pediu.
+  let firstCursor = '', firstQueryID = '', firstDtsg = '';
   for (const r of results) {
     allAds.push(...r.ads);
     if (r.totalAvailable > totalAvailable) totalAvailable = r.totalAvailable;
+    if (!firstCursor && r.endCursor) firstCursor = r.endCursor;
+    if (!firstQueryID && r.queryID) firstQueryID = r.queryID;
+    if (!firstDtsg && r.fbDtsg) firstDtsg = r.fbDtsg;
   }
 
   // ── Phase 3: Count ads per page ──
@@ -576,6 +600,11 @@ async function searchFacebookAds(params) {
     hasMore: allAds.length > 0,
     batchIdx,
     pageIds,
+    // A chave da página seguinte. Sem devolver isto, o cliente só enxerga a
+    // primeira leva (~30) e é obrigado a forçar sufixos de palavra-chave.
+    nextCursor: firstCursor,
+    queryID: firstQueryID,
+    fbDtsg: firstDtsg,
   };
 }
 

@@ -118,7 +118,7 @@ const LabTestAI = {
         rec.onstart = () => {
             this._recording = true;
             micBtn.style.background = '#dc2626';
-            status.textContent = '🔴 Gravando... clique no microfone para parar.';
+            status.textContent = 'Gravando... clique no microfone para parar.';
         };
         rec.onresult = (e) => {
             let interim = '';
@@ -298,8 +298,8 @@ Se não houver dados suficientes (sem produto, sem datas), retorne:
         (AppState.allProducts || AppState.products || []).forEach(p => productNameById[p.id] = p.name);
 
         container.innerHTML = this._drafts.map((t, i) => {
-            const productLabel = productNameById[t.productId] || `<span style="color:var(--red)">⚠ Produto não encontrado (${this._esc(t.productId)})</span>`;
-            const dateRange = t.dateStart && t.dateEnd ? `${t.dateStart} → ${t.dateEnd}` : '<span style="color:var(--red)">⚠ Datas faltando</span>';
+            const productLabel = productNameById[t.productId] || `<span style="color:var(--red)"><i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:-2px"></i> Produto não encontrado (${this._esc(t.productId)})</span>`;
+            const dateRange = t.dateStart && t.dateEnd ? `${t.dateStart} → ${t.dateEnd}` : '<span style="color:var(--red)"><i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:-2px"></i> Datas faltando</span>';
             const budget = t.budget ? `${t.budget} ${t.budgetCurrency || 'USD'}/dia` : '—';
             return `<div class="lab-ai-draft" style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;background:var(--bg-card)">
                 <div style="display:flex;justify-content:space-between;gap:0.5rem;align-items:flex-start">
@@ -308,11 +308,11 @@ Se não houver dados suficientes (sem produto, sem datas), retorne:
                 </div>
                 <div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.3rem">${this._esc(t.hypothesis || '')}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;font-size:0.75rem">
-                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px">📦 ${productLabel}</span>
-                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px">📅 ${dateRange}</span>
-                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px">🏷 ${this._esc(t.category || 'outro')}</span>
-                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px">🎯 ${this._esc(t.expectedMetric || '')}${t.baselineValue ? ': ' + this._esc(t.baselineValue) : ''}</span>
-                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px">💰 ${budget}</span>
+                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px"><i data-lucide="package" style="width:12px;height:12px;vertical-align:-2px"></i> ${productLabel}</span>
+                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px"><i data-lucide="calendar" style="width:12px;height:12px;vertical-align:-2px"></i> ${dateRange}</span>
+                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px"><i data-lucide="tag" style="width:12px;height:12px;vertical-align:-2px"></i> ${this._esc(t.category || 'outro')}</span>
+                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px"><i data-lucide="target" style="width:12px;height:12px;vertical-align:-2px"></i> ${this._esc(t.expectedMetric || '')}${t.baselineValue ? ': ' + this._esc(t.baselineValue) : ''}</span>
+                    <span style="background:var(--bg-input);padding:0.15rem 0.4rem;border-radius:4px"><i data-lucide="dollar-sign" style="width:12px;height:12px;vertical-align:-2px"></i> ${budget}</span>
                 </div>
             </div>`;
         }).join('');
@@ -332,6 +332,7 @@ Se não houver dados suficientes (sem produto, sem datas), retorne:
         document.getElementById('lab-ai-preview').style.display = '';
         document.getElementById('lab-ai-confirm').style.display = '';
         document.getElementById('lab-ai-submit').style.display = 'none';
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     },
 
     _createAll() {

@@ -7,7 +7,7 @@ compatibility_date = "2024-10-01"
 pages_build_output_dir = "."
 
 [vars]
-SCOPES = "read_orders,read_products,read_all_orders"
+SCOPES = "read_orders,read_products,read_all_orders,read_reports"
 
 [[kv_namespaces]]
 binding = "SHOPIFY_TOKENS"

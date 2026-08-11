@@ -314,6 +314,15 @@ const SupabaseSync = (() => {
         } catch (err) { console.error('[Sync] products:', err); }
     }
 
+    async function deleteProductById(id) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            const { error } = await client.from('products').delete().eq('id', id).eq('user_id', _user.id);
+            if (error) throw error;
+        } catch (err) { console.error('[Sync] deleteProduct:', err); }
+    }
+
     async function syncGoals() {
         const client = _getClient();
         if (!client || !_user) return;
@@ -417,7 +426,12 @@ const SupabaseSync = (() => {
                     if (typeof LocalStore !== 'undefined') LocalStore.save('stores', AppState.stores);
                 }
                 if (remoteProducts.length > 0) {
-                    AppState.allProducts = remoteProducts.map(_rowToProduct);
+                    AppState.allProducts = remoteProducts.map(_rowToProduct).filter(p => {
+                        if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
+                            return !ProductsModule.isTombstoned(p);
+                        }
+                        return true;
+                    });
                     if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
                 }
                 if (remoteGoals.length > 0) {
@@ -442,9 +456,227 @@ const SupabaseSync = (() => {
         }
     }
 
+    // ── Designer Access (owner manages) ────────────────────────────────
+    async function fetchDesigners() {
+        const client = _getClient();
+        if (!client || !_user) return [];
+        try {
+            const { data, error } = await client.from('designer_access')
+                .select('*')
+                .eq('owner_id', _user.id)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.warn('[Sync] fetchDesigners:', err);
+            return [];
+        }
+    }
+
+    async function inviteDesigner({ email, name, allowedProductIds }) {
+        const client = _getClient();
+        if (!client || !_user) throw new Error('Não autenticado');
+        const row = {
+            owner_id: _user.id,
+            designer_email: email.toLowerCase().trim(),
+            designer_name: name || null,
+            allowed_product_ids: allowedProductIds || [],
+            status: 'ativo',
+        };
+        const { data, error } = await client.from('designer_access')
+            .upsert(row, { onConflict: 'owner_id,designer_email' })
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    }
+
+    async function updateDesignerAccess(id, fields) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        const { error } = await client.from('designer_access')
+            .update(fields)
+            .eq('id', id)
+            .eq('owner_id', _user.id);
+        if (error) throw error;
+    }
+
+    async function revokeDesigner(id) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        const { error } = await client.from('designer_access')
+            .delete()
+            .eq('id', id)
+            .eq('owner_id', _user.id);
+        if (error) throw error;
+    }
+
+    // Para o designer: pega seu próprio access (saber owner + produtos permitidos)
+    async function fetchMyDesignerAccess() {
+        const client = _getClient();
+        if (!client || !_user) return [];
+        try {
+            const { data, error } = await client.from('designer_access')
+                .select('*')
+                .or(`designer_id.eq.${_user.id},designer_email.eq.${_user.email}`)
+                .eq('status', 'ativo');
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.warn('[Sync] fetchMyDesignerAccess:', err);
+            return [];
+        }
+    }
+
+    // Designer: ao logar pela 1a vez, vincula seu user_id ao access
+    async function claimDesignerAccess() {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            await client.from('designer_access')
+                .update({ designer_id: _user.id, designer_name: _user.user_metadata?.full_name || null })
+                .eq('designer_email', _user.email)
+                .is('designer_id', null);
+        } catch (err) {
+            console.warn('[Sync] claimDesignerAccess:', err);
+        }
+    }
+
+    // Designer: lista produtos permitidos (cross-owner: junta de todos os owners)
+    async function fetchAllowedProducts() {
+        const client = _getClient();
+        if (!client || !_user) return [];
+        const accesses = await fetchMyDesignerAccess();
+        if (accesses.length === 0) return [];
+        const productIds = new Set();
+        const ownerIds = new Set();
+        accesses.forEach(a => {
+            (a.allowed_product_ids || []).forEach(pid => productIds.add(pid));
+            ownerIds.add(a.owner_id);
+        });
+        if (productIds.size === 0) return [];
+        try {
+            const { data, error } = await client.from('products')
+                .select('id,name,user_id')
+                .in('id', Array.from(productIds))
+                .in('user_id', Array.from(ownerIds));
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.warn('[Sync] fetchAllowedProducts:', err);
+            return [];
+        }
+    }
+
+    // Designer: lista suas próprias submissões
+    async function fetchMySubmissions() {
+        const client = _getClient();
+        if (!client || !_user) return [];
+        try {
+            const { data, error } = await client.from('designer_submissions')
+                .select('*')
+                .eq('designer_id', _user.id)
+                .order('submitted_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.warn('[Sync] fetchMySubmissions:', err);
+            return [];
+        }
+    }
+
+    // ── Designer Submissions ────────────────────────────────────────────
+    let _designerTableMissing = false; // circuit breaker: stop hammering a missing table
+    async function fetchDesignerSubmissions() {
+        const client = _getClient();
+        if (!client || !_user) return [];
+        if (_designerTableMissing) return []; // table doesn't exist — don't spam
+        try {
+            const { data, error } = await client.from('designer_submissions')
+                .select('*')
+                .eq('owner_id', _user.id)
+                .order('submitted_at', { ascending: false })
+                .limit(200);
+            if (error) throw error;
+            return (data || []).map(r => ({
+                id: r.id,
+                designer: r.designer,
+                name: r.name,
+                angle: r.angle,
+                notes: r.notes,
+                images: r.images || [],
+                videos: r.videos || [],
+                productId: r.product_id || '',
+                designerId: r.designer_id || null,
+                status: r.status,
+                submittedAt: r.submitted_at,
+                reviewedAt: r.reviewed_at,
+            }));
+        } catch (err) {
+            // Table not found (PGRST205) → stop retrying to avoid console spam
+            if (err && (err.code === 'PGRST205' || /could not find the table/i.test(err.message || ''))) {
+                _designerTableMissing = true;
+                console.warn('[Sync] designer_submissions ausente — polling desativado.');
+            } else {
+                console.warn('[Sync] fetchDesignerSubmissions:', err);
+            }
+            return [];
+        }
+    }
+
+    async function insertDesignerSubmission(submission) {
+        const client = _getClient();
+        if (!client || !_user) throw new Error('Não autenticado');
+        const { error } = await client.from('designer_submissions').insert({
+            id: submission.id,
+            owner_id: submission.ownerId,
+            designer_id: _user.id,
+            designer: submission.designer,
+            name: submission.name,
+            angle: submission.angle || null,
+            notes: submission.notes || null,
+            product_id: submission.productId || null,
+            images: submission.images || [],
+            videos: submission.videos || [],
+            status: 'pendente',
+            submitted_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+    }
+
+    async function updateDesignerSubmission(id, fields) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            const { error } = await client.from('designer_submissions')
+                .update(fields)
+                .eq('id', id)
+                .eq('owner_id', _user.id);
+            if (error) throw error;
+        } catch (err) {
+            console.warn('[Sync] updateDesignerSubmission:', err);
+        }
+    }
+
+    async function deleteDesignerSubmission(id) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            const { error } = await client.from('designer_submissions')
+                .delete()
+                .eq('id', id)
+                .eq('owner_id', _user.id);
+            if (error) throw error;
+        } catch (err) {
+            console.warn('[Sync] deleteDesignerSubmission:', err);
+        }
+    }
+
     // ── Public API ──────────────────────────────────────────────────────
     const module = {
         get isLoggedIn() { return !!_user; },
+        get user() { return _user; },
         get client() { return _getClient(); },
 
         async init() {
@@ -541,6 +773,21 @@ const SupabaseSync = (() => {
         syncProducts: () => _debounce('products', syncProducts, 1500),
         syncGoals: () => _debounce('goals', syncGoals, 1500),
         syncStores: () => _debounce('stores', syncStores, 1500),
+        deleteProductById,
+        fetchDesignerSubmissions,
+        insertDesignerSubmission,
+        updateDesignerSubmission,
+        deleteDesignerSubmission,
+        // Designer access management (owner side)
+        fetchDesigners,
+        inviteDesigner,
+        updateDesignerAccess,
+        revokeDesigner,
+        // Designer side
+        fetchMyDesignerAccess,
+        claimDesignerAccess,
+        fetchAllowedProducts,
+        fetchMySubmissions,
     };
 
     return module;

@@ -39,6 +39,149 @@ const MiningModule = {
         const savedCookie = localStorage.getItem('mining_fb_cookie') || '';
         const cookieInput = document.getElementById('mining-fb-cookie');
         if (cookieInput && savedCookie) cookieInput.value = savedCookie;
+
+        // ── Varredura profunda por data ──
+        const alvo = document.getElementById('mining-sweep-on');
+        const campos = document.getElementById('mining-sweep-fields');
+        alvo?.addEventListener('change', () => {
+            if (campos) campos.style.display = alvo.checked ? '' : 'none';
+            const ini = document.getElementById('mining-sweep-start');
+            if (alvo.checked && ini && !ini.value) ini.value = new Date().toISOString().slice(0, 10);
+            this._estimarVarredura();
+        });
+        ['mining-sweep-days', 'mining-sweep-step', 'mining-sweep-pace'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', () => this._estimarVarredura());
+            document.getElementById(id)?.addEventListener('input', () => this._estimarVarredura());
+        });
+    },
+
+    // O usuário precisa saber o preço em tempo ANTES de disparar 90 buscas.
+    _estimarVarredura() {
+        const el = document.getElementById('mining-sweep-estimate');
+        if (!el) return;
+        const dias = parseInt(document.getElementById('mining-sweep-days')?.value) || 90;
+        const passo = parseInt(document.getElementById('mining-sweep-step')?.value) || 7;
+        const ritmo = parseInt(document.getElementById('mining-sweep-pace')?.value) || 2500;
+        const buscas = Math.floor(dias / passo) + 1;
+        // ~2,5s de resposta do worker + o ritmo escolhido entre buscas
+        const seg = Math.round(buscas * (2.5 + ritmo / 1000));
+        const tempo = seg < 90 ? `${seg}s` : `${Math.round(seg / 60)} min`;
+        el.innerHTML = `<i data-lucide="clock" style="width:13px;height:13px;vertical-align:-2px"></i> ${buscas} buscas · aproximadamente ${tempo}`;
+        if (window.lucide?.createIcons) { try { lucide.createIcons(); } catch {} }
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    //  VARREDURA PROFUNDA POR DATA
+    //  A Biblioteca prioriza um subconjunto dos resultados quando a busca
+    //  tem muitos anúncios. Empurrando só a data máxima para trás, outros
+    //  anúncios ativos (mais antigos) sobem para a superfície.
+    //  Não é janela móvel: a data inicial da busca nunca muda, só o teto.
+    // ══════════════════════════════════════════════════════════════════
+
+    // Gera os cortes de data, do mais recente para o mais antigo.
+    _cortesDeData(dataInicial, dias, passo) {
+        const cortes = [];
+        const base = new Date(dataInicial + 'T12:00:00');
+        if (isNaN(base)) return cortes;
+        for (let d = 0; d <= dias; d += passo) {
+            const c = new Date(base);
+            c.setDate(c.getDate() - d);
+            cortes.push(c.toISOString().slice(0, 10));
+        }
+        return cortes;
+    },
+
+    // Registra a aparição de um anúncio num corte. A identidade é o adId
+    // (a "Identificação da Biblioteca"): mesmo id = mesmo anúncio.
+    _registrarAparicao(ad, corte, seenIds) {
+        const existente = this._porId.get(ad.adId);
+        if (!existente) {
+            ad._aparicoes = 1;
+            ad._cortes = [corte];
+            ad._primeiroCorte = corte;
+            ad._ultimoCorte = corte;
+            this._porId.set(ad.adId, ad);
+            seenIds.add(ad.adId);
+            this._allFetched.push(ad);
+            return true;   // é novo
+        }
+        // Já conhecido: só enriquece o histórico, não duplica na lista.
+        existente._aparicoes = (existente._aparicoes || 1) + 1;
+        if (!existente._cortes.includes(corte)) existente._cortes.push(corte);
+        // Cortes vêm do mais recente ao mais antigo, então o último visto é o mais antigo.
+        if (corte < existente._ultimoCorte) existente._ultimoCorte = corte;
+        if (corte > existente._primeiroCorte) existente._primeiroCorte = corte;
+        return false;
+    },
+
+    async _varreduraProfunda(cfg) {
+        const { keyword, country, language, mediaType, activeStatus, minSets,
+                dateFrom, cortes, ritmo, seenIds } = cfg;
+
+        let vaziosSeguidos = 0;
+        let ritmoAtual = ritmo;
+
+        for (let i = 0; i < cortes.length; i++) {
+            if (this._stopRequested) break;
+            const corte = cortes[i];
+
+            const params = new URLSearchParams({
+                action: 'search', q: keyword, country, media_type: mediaType,
+                active_status: activeStatus, batch: '0', date_to: corte,
+            });
+            if (language) params.set('language', language);
+            if (dateFrom) params.set('date_from', dateFrom);
+
+            let novos = 0;
+            try {
+                const resp = await fetch(`${this._PROXY_URL}/?${params}`, { signal: AbortSignal.timeout(45000) });
+                const data = await resp.json();
+                const lista = data.ads || [];
+
+                for (const ad of lista) {
+                    if (this._registrarAparicao(ad, corte, seenIds)) novos++;
+                }
+
+                // Detecção de limitação. O Facebook tem duas formas de negar:
+                // devolve a contagem sem os anúncios ("despida"), ou zera tudo.
+                // Por isso contamos cortes vazios CONSECUTIVOS, sem depender da
+                // contagem — um corte legítimo vazio é raro em sequência.
+                if (lista.length === 0) {
+                    vaziosSeguidos++;
+                    if (vaziosSeguidos >= 2) {
+                        ritmoAtual = Math.min(ritmoAtual * 2, 20000);
+                        this._showStatus(`<i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px"></i> Sem retorno em ${vaziosSeguidos} cortes seguidos — o Facebook pode estar limitando. Desacelerando para ${(ritmoAtual / 1000).toFixed(1)}s.`, 'warn');
+                    }
+                    if (vaziosSeguidos >= 6) {
+                        showToast('Varredura interrompida: o Facebook parou de responder com anúncios. Espere alguns minutos e tente com ritmo mais lento.', 'warning');
+                        break;
+                    }
+                } else {
+                    vaziosSeguidos = 0;
+                    ritmoAtual = ritmo;
+                }
+            } catch (err) {
+                console.warn('[Varredura] corte', corte, err.message);
+            }
+
+            this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+            try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
+
+            if (!this._stopRequested && vaziosSeguidos < 2) {
+                this._showStatus(`<i data-lucide="calendar-search" style="width:14px;height:14px;vertical-align:-2px"></i> Varredura ${i + 1}/${cortes.length} — anúncios até ${this._dataBr(corte)} · +${novos} novos · ${this._allFetched.length} únicos acumulados`, 'loading');
+            }
+
+            // Jitter: buscas em intervalo perfeitamente regular são o padrão
+            // que mais rápido dispara o limitador do outro lado.
+            if (i < cortes.length - 1) {
+                await new Promise(r => setTimeout(r, ritmoAtual + Math.random() * 600));
+            }
+        }
+    },
+
+    _dataBr(iso) {
+        const p = String(iso || '').split('-');
+        return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
     },
 
     async _startMining() {
@@ -60,6 +203,7 @@ const MiningModule = {
         this._isMining = true;
         this._results = [];
         this._allFetched = [];
+        this._porId = new Map();      // adId -> anúncio acumulado (identidade da varredura)
         this._selected = new Set();
         this._stopRequested = false;
         this._renderGrid();
@@ -72,6 +216,36 @@ const MiningModule = {
         let totalBatches = 0;
         let emptyBatches = 0;
         const maxBatches = 100;
+
+        // ── Varredura profunda por data (roda antes dos modos normais) ──
+        if (document.getElementById('mining-sweep-on')?.checked) {
+            const inicio = document.getElementById('mining-sweep-start')?.value
+                || new Date().toISOString().slice(0, 10);
+            const dias = parseInt(document.getElementById('mining-sweep-days')?.value) || 90;
+            const passo = parseInt(document.getElementById('mining-sweep-step')?.value) || 7;
+            const ritmo = parseInt(document.getElementById('mining-sweep-pace')?.value) || 2500;
+            const cortes = this._cortesDeData(inicio, dias, passo);
+
+            if (!cortes.length) {
+                showToast('Data inicial da varredura inválida.', 'error');
+            } else {
+                await this._varreduraProfunda({
+                    keyword, country, language, mediaType, activeStatus, minSets,
+                    dateFrom, cortes, ritmo, seenIds,
+                });
+                this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+                this._renderGrid();
+                this._updateBulkBar();
+
+                const comRepeticao = this._allFetched.filter(a => (a._aparicoes || 1) > 1).length;
+                this._showStatus(`<i data-lucide="check-circle-2" style="width:14px;height:14px;vertical-align:-2px"></i> Varredura concluída: ${this._allFetched.length} anúncios únicos em ${cortes.length} cortes de data (${comRepeticao} apareceram em mais de um corte).`, 'ok');
+                this._isMining = false;
+                this._stopRequested = false;
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="search" style="width:14px;height:14px;vertical-align:-2px"></i> Minerar'; btn.onclick = () => this._startMining(); }
+                this._updatePostFilters();
+                return;
+            }
+        }
 
         // ── SCROLL MODE: Direct GraphQL from user's browser (uses FB session) ──
         if (mode === 'scroll') {
@@ -109,16 +283,79 @@ const MiningModule = {
             // Step 2: Paginate using cursor via Worker (sends GraphQL from Worker IP)
             // The Worker uses facebookexternalhit UA which doesn't need cookies for page 1
             // but needs cursor for subsequent pages
+            // ── Paginação por cursor: continua a MESMA busca, página após página.
+            // É o caminho que passa dos ~30 do HTML inicial. Só depois de
+            // esgotá-lo caímos no plano B de variar a palavra-chave, que traz
+            // resultados sobrepostos e fora do tema.
+            // MEDIDO EM 29/07/2026: o endpoint GraphQL responde 269 KB com 30
+            // anúncios para um IP residencial e apenas 7 KB vazios para o IP do
+            // Cloudflare Worker — o Facebook filtra por origem. Por isso o
+            // caminho por cursor fica desligado aqui; ele só vale quando a
+            // chamada sair do navegador do usuário (extensão, com a sessão dele).
+            const CURSOR_PELO_WORKER_FUNCIONA = false;
+            let cursorPaginas = 0;
+            while (CURSOR_PELO_WORKER_FUNCIONA && !this._stopRequested && nextCursor && cursorPaginas < 200) {
+                const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+                if (filtered.length >= minResults) break;
+
+                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Paginando resultado real — página ${cursorPaginas + 1} (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+
+                let novosNoCursor = 0;
+                try {
+                    const variables = {
+                        activeStatus: activeStatus.toUpperCase(),
+                        adType: 'ALL',
+                        countries: [country],
+                        cursor: nextCursor,
+                        first: 100,               // pedimos mais que os 30 do HTML
+                        mediaType: (mediaType === 'all' ? 'ALL' : mediaType.toUpperCase()),
+                        queryString: keyword,
+                        searchType: 'KEYWORD_UNORDERED',
+                        viewAllPageID: '0',
+                        contentLanguages: language ? [language] : [],
+                        bylines: [], excludedIDs: [], pageIDs: [],
+                        potentialReachInput: [], publisherPlatforms: [], regions: [],
+                        collationToken: null, location: null, sortData: null, source: null,
+                        startDate: null,
+                    };
+                    const resp = await fetch(`${this._PROXY_URL}/?action=graphql`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ variables, fb_dtsg: fbDtsg }),
+                        signal: AbortSignal.timeout(30000),
+                    });
+                    const data = await resp.json();
+                    for (const ad of (data.ads || [])) {
+                        if (!seenIds.has(ad.adId)) { seenIds.add(ad.adId); this._allFetched.push(ad); novosNoCursor++; }
+                    }
+                    nextCursor = data.hasMore ? (data.nextCursor || '') : '';
+                } catch (err) {
+                    console.warn('[Mining] cursor falhou:', err.message);
+                    nextCursor = '';
+                }
+
+                cursorPaginas++;
+                totalBatches++;
+                this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
+                try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
+
+                // Cursor que não traz nada novo está morto — não insiste.
+                if (novosNoCursor === 0) { nextCursor = ''; }
+                await new Promise(r => setTimeout(r, 120));
+            }
+
+            let loteSufixo = 1;   // 0 já foi consumido pela busca inicial
             while (!this._stopRequested) {
                 const filtered = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                 if (filtered.length >= minResults && totalBatches > 0) break;
                 if (emptyBatches >= 5) break;
 
-                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Scroll página ${totalBatches + 1}... (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
+                this._showStatus(`<i data-lucide="refresh-cw" style="width:14px;height:14px;vertical-align:-2px"></i> Variando palavra-chave — lote ${loteSufixo} (${this._allFetched.length} analisados, ${filtered.length} encontrados)`, 'loading');
 
                 try {
-                    // Use different batch suffixes to get different results
-                    const batchIdx = totalBatches;
+                    // Índice próprio: totalBatches agora inclui as páginas de
+                    // cursor, e usá-lo aqui pularia os primeiros sufixos.
+                    const batchIdx = loteSufixo++;
                     const params = new URLSearchParams({
                         action: 'search', q: keyword, country, media_type: mediaType,
                         active_status: activeStatus, batch: batchIdx,
@@ -154,7 +391,7 @@ const MiningModule = {
                 }
 
                 this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
-                try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                 await new Promise(r => setTimeout(r, 100));
             }
 
@@ -188,7 +425,7 @@ const MiningModule = {
 
                         this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
                         if (this._results.length >= minResults) break;
-                        try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                        try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                         await new Promise(r => setTimeout(r, 50));
                     }
                 }
@@ -263,7 +500,7 @@ const MiningModule = {
                     } catch (e) { console.warn('[Mining] Paginate batch error:', e.message); }
 
                     this._results = this._allFetched.filter(ad => minSets <= 1 || ad.collationCount >= minSets);
-                    try { this._renderGrid(); this._updateBulkBar(); } catch {}
+                    try { this._renderGridThrottled(); this._updateBulkBar(); } catch {}
                     await new Promise(r => setTimeout(r, 50));
                 }
             } catch (e) {
@@ -430,20 +667,36 @@ const MiningModule = {
 
         grid.innerHTML = this._results.map((ad, i) => this._renderCard(ad, i)).join('');
 
-        // Bind card events
-        grid.querySelectorAll('.mining-card-check').forEach(cb => {
-            cb.addEventListener('change', () => this._onCardCheckChange(cb.dataset.idx, cb.checked));
-        });
-        grid.querySelectorAll('.mining-save-one').forEach(btn => {
-            btn.addEventListener('click', (e) => { e.stopPropagation(); this._saveOneToSwipe(parseInt(btn.dataset.idx)); });
-        });
-        grid.querySelectorAll('.mining-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.mining-card-check-wrap') || e.target.closest('.mining-save-one')) return;
-                const idx = parseInt(card.dataset.idx);
-                this._openPreview(idx);
+        // Delegação: os ouvintes ficam no container e são ligados UMA vez.
+        // Antes eram religados por card a cada lote — com milhares de anúncios
+        // isso criava dezenas de milhares de ouvintes e travava a aba.
+        if (!grid.dataset.ouvintesLigados) {
+            grid.addEventListener('change', (e) => {
+                const cb = e.target.closest('.mining-card-check');
+                if (cb) this._onCardCheckChange(cb.dataset.idx, cb.checked);
             });
-        });
+            grid.addEventListener('click', (e) => {
+                const btn = e.target.closest('.mining-save-one');
+                if (btn) { e.stopPropagation(); this._saveOneToSwipe(parseInt(btn.dataset.idx)); return; }
+                if (e.target.closest('.mining-card-check-wrap')) return;
+                const card = e.target.closest('.mining-card');
+                if (card) this._openPreview(parseInt(card.dataset.idx));
+            });
+            grid.dataset.ouvintesLigados = '1';
+        }
+    },
+
+    // Durante a mineração o grid é redesenhado a cada página. Com muitos
+    // resultados isso domina o tempo de CPU, então limitamos a frequência.
+    _renderGridThrottled() {
+        const agora = Date.now();
+        if (this._ultimoRender && agora - this._ultimoRender < 700) {
+            clearTimeout(this._renderPendente);
+            this._renderPendente = setTimeout(() => this._renderGridThrottled(), 700);
+            return;
+        }
+        this._ultimoRender = agora;
+        this._renderGrid();
     },
 
     _calcDaysRunning(startDate) {
@@ -487,6 +740,20 @@ const MiningModule = {
         // Adsets info
         const adsetText = adSets > 1 ? `${adSets} Adset${adSets > 1 ? 's' : ''} usam esse criativo` : '';
 
+        // Histórico da varredura por data. Aparecer em muitos cortes é sinal
+        // de anúncio que resistiu no tempo — o que a varredura existe pra achar.
+        let varreduraHtml = '';
+        if (ad._cortes && ad._cortes.length) {
+            const n = ad._cortes.length;
+            const cor = n >= 8 ? '#059669' : n >= 4 ? '#2563eb' : '#6b7280';
+            const ordenados = [...ad._cortes].sort();
+            const detalhe = `Encontrado em ${n} corte(s) de data: ${ordenados.map(c => this._dataBr(c)).join(', ')}`;
+            varreduraHtml = `<div class="mining-sweep-badge" title="${this._esc ? this._esc(detalhe) : detalhe}">
+                <span style="background:${cor}"><i data-lucide="calendar-check" style="width:10px;height:10px;vertical-align:-1px"></i> ${n} corte${n > 1 ? 's' : ''}</span>
+                <small>${ad._aparicoes || 1}x visto · ${this._dataBr(ad._ultimoCorte)} a ${this._dataBr(ad._primeiroCorte)}</small>
+            </div>`;
+        }
+
         // Page stats line
         let pageStatsHtml = '';
         if (pageStats && pageStats.totalAds > 1) {
@@ -514,6 +781,7 @@ const MiningModule = {
                 ${linkTitle ? `<p class="mining-card-title">${this._esc(linkTitle)}</p>` : ''}
                 ${bodySnippet ? `<p class="swipe-card-hook">${this._esc(bodySnippet)}</p>` : ''}
                 ${pageStatsHtml}
+                ${varreduraHtml}
                 <div class="swipe-card-footer">
                     <span class="swipe-card-date">${date || 'Sem data'}</span>
                     <div class="swipe-card-actions">

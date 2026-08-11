@@ -6,6 +6,7 @@ const DashboardModule = {
     _chartInstance: null,
     _topMode: 'profit',
     _calMetric: 'cpa',
+    _calSource: 'facebook',
     _calYear: new Date().getFullYear(),
     _calMonth: new Date().getMonth(), // 0-based
     _calProduct: 'todos',
@@ -154,6 +155,12 @@ const DashboardModule = {
         EventBus.on('productsChanged', () => this.refresh());
         EventBus.on('goalsChanged', () => this.refresh());
         EventBus.on('tabChanged', (tab) => { if (tab === 'dashboard') this.refresh(); });
+
+        // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
+        document.getElementById('btn-mdgx-ranking-all')?.addEventListener('click', () => {
+            this._mdgxShowAll = !this._mdgxShowAll;
+            this._renderMdgxRanking();
+        });
         EventBus.on('labTestsChanged', () => { this._renderDeadlines(); });
         EventBus.on('projectsChanged', () => { this._renderDeadlines(); });
 
@@ -473,6 +480,7 @@ const DashboardModule = {
         this._renderFunnelDiagnosis();
         this._renderChart();
         this._renderTopProducts();
+        this._renderMdgxRanking();
         this._renderMetricsCalendar();
         this._renderEcommerceDates();
         this._renderOpportunities();
@@ -631,11 +639,18 @@ const DashboardModule = {
         const actions = [];
         const today = todayISO();
 
-        // Tests to validate
+        // Tests to validate — agrupa por produto (evita repetir o mesmo)
+        const pendingTests = new Map();
         (AppState.diary || []).forEach(e => {
             if (e.isTest && e.testEndDate && e.testEndDate <= today && (!e.testValidation || e.testValidation === 'pendente')) {
-                actions.push({ icon: 'flask-conical', text: `Validar teste: ${getProductName(e.productId)}`, type: 'warning' });
+                const cur = pendingTests.get(e.productId) || { count: 0 };
+                cur.count++;
+                pendingTests.set(e.productId, cur);
             }
+        });
+        pendingTests.forEach((info, productId) => {
+            const suffix = info.count > 1 ? ` (${info.count})` : '';
+            actions.push({ icon: 'flask-conical', text: `Validar teste: ${getProductName(productId)}${suffix}`, type: 'warning' });
         });
 
         // ROAS dropping products (current period ROAS < 1.5)
@@ -739,7 +754,20 @@ const DashboardModule = {
         });
 
         if (alerts.length === 0) {
-            container.innerHTML = '<div class="dash-empty">Nenhum produto em risco</div>';
+            const totalEntries = entries.length;
+            const totalBudget = entries.reduce((s, e) => s + (parseFloat(e.budget) || 0), 0);
+            let why;
+            if (totalEntries === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalBudget === 0) {
+                why = 'Entradas sem budget — preencha o gasto em ads no Diário para detectar produtos em risco.';
+            } else {
+                why = '<i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Nenhum produto em risco — tudo dentro dos limites configurados.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
             return;
         }
         container.innerHTML = alerts.slice(0, 8).map(a =>
@@ -974,6 +1002,280 @@ const DashboardModule = {
     },
 
     // Row 3 Right: Top 5 products
+    async _renderMdgxRanking() {
+        const container = document.getElementById('dash-mdgx-ranking-list');
+        const totalEl = document.getElementById('dash-mdgx-ranking-total');
+        if (!container) return;
+
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured?.();
+        const products = (AppState.allProducts || AppState.products || []);
+        const shopifyProds = (hasShopify && ShopifyModule.getShopifyProducts) ? ShopifyModule.getShopifyProducts() : [];
+
+        // Pre-fetch Shopify products list (needed for thumbnails — even when ranking uses orders directly)
+        if (hasShopify && !shopifyProds.length && !this._mdgxFetchingShopify) {
+            this._mdgxFetchingShopify = true;
+            ShopifyModule.fetchShopifyProducts?.().then(() => {
+                this._mdgxFetchingShopify = false;
+                this._renderMdgxRanking();
+            }).catch(() => { this._mdgxFetchingShopify = false; });
+        }
+
+        // ── Primary source: Shopify orders (works even if local products aren't linked) ──
+        let salesByShopifyPid = {}; // { shopify_pid: { sales, revenue, title, currency } }
+        this._mdgxDaily = {};       // { productId: { 'YYYY-MM-DD': { sales, revenue } } } — pro modal de detalhe
+        const _shopTz = ShopifyModule?.getConfig?.()?.shopTimezone;
+        const _orderDate = (createdAt) => {
+            if (_shopTz) { try { return new Intl.DateTimeFormat('en-CA', { timeZone: _shopTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(createdAt)); } catch {} }
+            return String(createdAt || '').slice(0, 10);
+        };
+        const _addDaily = (id, date, sales, revenue) => {
+            if (!id || !date) return;
+            if (!this._mdgxDaily[id]) this._mdgxDaily[id] = {};
+            if (!this._mdgxDaily[id][date]) this._mdgxDaily[id][date] = { sales: 0, revenue: 0 };
+            this._mdgxDaily[id][date].sales += sales;
+            this._mdgxDaily[id][date].revenue += revenue;
+        };
+        if (hasShopify && this._startDate && this._endDate) {
+            container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
+            try {
+                const orders = await ShopifyModule.fetchOrders(this._startDate, this._endDate, { silent: true });
+                for (const o of (orders || [])) {
+                    const cur = o.currency || ShopifyModule.getConfig?.()?.shopCurrency || 'BRL';
+                    const oDate = _orderDate(o.created_at);
+                    for (const li of (o.line_items || [])) {
+                        const pid = String(li.product_id || '');
+                        if (!pid) continue;
+                        const qty = li.quantity || 0;
+                        const unitPrice = parseFloat(li.price) || 0;
+                        if (!salesByShopifyPid[pid]) salesByShopifyPid[pid] = { sales: 0, revenue: 0, title: li.title || pid, currency: cur };
+                        salesByShopifyPid[pid].sales += qty;
+                        salesByShopifyPid[pid].revenue += unitPrice * qty;
+                        _addDaily(pid, oDate, qty, unitPrice * qty);
+                    }
+                }
+            } catch (e) {
+                console.warn('[Dashboard mdgx ranking] fetchOrders failed:', e);
+            }
+        }
+
+        // ── Fallback: Diary entries grouped by local product ──
+        const entries = this._getPeriodEntries();
+        const byLocalProduct = this._groupByProduct(entries);
+
+        // Map Shopify pid → local product (when linked)
+        const localFromShopify = (shopifyPid) => {
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.getLink) return null;
+            for (const p of products) {
+                if (String(ShopifyModule.getLink(p.id)) === String(shopifyPid)) return p;
+            }
+            return null;
+        };
+
+        // Build ranked items
+        const items = [];
+        const seenShopify = new Set();
+
+        // 1) From Shopify orders (preferred — has thumbs + real prices)
+        for (const [pid, info] of Object.entries(salesByShopifyPid)) {
+            if (info.sales <= 0) continue;
+            seenShopify.add(pid);
+            const localProd = localFromShopify(pid);
+            const sp = shopifyProds.find(p => String(p.id) === String(pid));
+            items.push({
+                id: pid,
+                name: localProd?.name || sp?.title || info.title,
+                sales: info.sales,
+                price: info.sales > 0 ? info.revenue / info.sales : 0,
+                currency: info.currency,
+                thumb: sp?.image || (localProd && Array.isArray(localProd.images) && localProd.images[0]?.src) || '',
+            });
+        }
+
+        // 2) From diary (for products without Shopify orders, OR if Shopify not connected)
+        for (const p of products) {
+            const linkedShopifyPid = ShopifyModule?.getLink?.(p.id);
+            if (linkedShopifyPid && seenShopify.has(String(linkedShopifyPid))) continue;
+            const dEntries = byLocalProduct[p.id] || [];
+            const diarySales = dEntries.reduce((s, e) => s + (parseFloat(e.sales) || 0), 0);
+            if (diarySales <= 0) continue;
+            dEntries.forEach(e => { if (e.date) _addDaily(p.id, e.date, parseFloat(e.sales) || 0, parseFloat(e.revenue) || 0); });
+            const sp = linkedShopifyPid ? shopifyProds.find(x => String(x.id) === String(linkedShopifyPid)) : null;
+            items.push({
+                id: p.id,
+                name: p.name || p.id,
+                sales: diarySales,
+                price: parseFloat(p.price || 0),
+                currency: p.priceCurrency || 'BRL',
+                thumb: sp?.image || (Array.isArray(p.images) && p.images[0]?.src) || '',
+            });
+        }
+
+        const ranked = items.sort((a, b) => b.sales - a.sales);
+
+        // Total sales sum (the big number)
+        const totalSales = ranked.reduce((s, p) => s + p.sales, 0);
+        if (totalEl) totalEl.textContent = totalSales.toLocaleString('pt-BR');
+
+        const total = ranked.length;
+        if (total === 0) {
+            container.innerHTML = '<div class="mdgx-ranking-empty">Sem vendas no período. Conecte o Shopify ou registre vendas no Diário.</div>';
+            return;
+        }
+        const visibleCount = this._mdgxShowAll ? total : Math.min(4, total);
+        const top4 = ranked.slice(0, visibleCount);
+
+        const fmtMoney = (v, cur) => {
+            const sym = { BRL:'R$', USD:'$', EUR:'€', GBP:'£' }[cur] || (cur + ' ');
+            return `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+
+        // Helper: find local product for badge lookup
+        const localProductFor = (id) => {
+            // Try local product by id, then via Shopify link
+            let lp = products.find(x => x.id === id);
+            if (lp) return lp;
+            if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
+                lp = products.find(x => String(ShopifyModule.getLink(x.id)) === String(id));
+                if (lp) return lp;
+            }
+            return null;
+        };
+
+        container.innerHTML = top4.map(p => {
+            const lp = localProductFor(p.id);
+            const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
+            return `
+            <div class="mdgx-ranking-item" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-currency="${escapeHtml(p.currency || 'BRL')}" title="Ver vendas por dia">
+                ${p.thumb
+                    ? `<img class="mdgx-ranking-thumb" src="${escapeHtml(p.thumb)}" alt="">`
+                    : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
+                }
+                <div class="mdgx-ranking-info">
+                    <div class="mdgx-ranking-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}${badges}</div>
+                    <div class="mdgx-ranking-meta">
+                        <span class="mdgx-ranking-price">${fmtMoney(p.price, p.currency)}</span>
+                        <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
+                    </div>
+                </div>
+                <span class="mdgx-ranking-daybtn" title="Ver vendas por dia"><i data-lucide="calendar-days" style="width:16px;height:16px"></i></span>
+            </div>`;
+        }).join('');
+
+        // Inline expand/collapse footer (no page leave)
+        if (total > 4) {
+            const expandBtn = document.createElement('button');
+            expandBtn.type = 'button';
+            expandBtn.className = 'mdgx-ranking-expand';
+            if (this._mdgxShowAll) {
+                expandBtn.innerHTML = '<i data-lucide="chevron-up" style="width:13px;height:13px"></i> Mostrar menos';
+                expandBtn.addEventListener('click', () => {
+                    this._mdgxShowAll = false;
+                    this._renderMdgxRanking();
+                    container.scrollIntoView({ behavior:'smooth', block:'center' });
+                });
+            } else {
+                const hidden = total - visibleCount;
+                expandBtn.innerHTML = `<i data-lucide="chevron-down" style="width:13px;height:13px"></i> Ver mais ${hidden} produto${hidden !== 1 ? 's' : ''}`;
+                expandBtn.addEventListener('click', () => {
+                    this._mdgxShowAll = true;
+                    this._renderMdgxRanking();
+                });
+            }
+            container.appendChild(expandBtn);
+        }
+
+        // Click item → abre modal de vendas por dia (Lista / Calendário)
+        container.querySelectorAll('.mdgx-ranking-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.closest('a, button')) return; // não intercepta badges/links do produto
+                this._openProductDailyModal(el.dataset.id, el.dataset.name, el.dataset.currency);
+            });
+        });
+
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    // Modal: vendas por dia de um produto — visão Lista + Calendário
+    _openProductDailyModal(id, name, currency) {
+        const daily = (this._mdgxDaily && this._mdgxDaily[id]) || {};
+        const dates = Object.keys(daily).sort();
+        const sym = { BRL:'R$', USD:'$', EUR:'€', GBP:'£' }[currency] || ((currency || '') + ' ');
+        const money = (v) => `${sym} ${(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const totalSales = dates.reduce((s, d) => s + daily[d].sales, 0);
+        const totalRev = dates.reduce((s, d) => s + daily[d].revenue, 0);
+        const fmtDate = (ds) => { const [y, m, dd] = ds.split('-'); return `${dd}/${m}/${y}`; };
+        const WEEK = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+        const MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+        document.getElementById('mdgx-daily-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'mdgx-daily-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content mdgx-daily-content">
+                <div class="modal-header">
+                    <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+                    <button class="btn-close" id="mdgx-daily-close">&times;</button>
+                </div>
+                <div class="mdgx-daily-summary">
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${totalSales}</span><span class="mdgx-daily-stat-lbl">vendas</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${money(totalRev)}</span><span class="mdgx-daily-stat-lbl">receita</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${dates.length}</span><span class="mdgx-daily-stat-lbl">dia(s) com venda</span></div>
+                </div>
+                <div class="mdgx-daily-tabs">
+                    <button class="mdgx-daily-tab active" data-view="lista"><i data-lucide="list" style="width:14px;height:14px;vertical-align:-2px"></i> Lista</button>
+                    <button class="mdgx-daily-tab" data-view="cal"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                </div>
+                <div id="mdgx-daily-body"></div>
+            </div>`;
+        document.body.appendChild(modal);
+        const body = modal.querySelector('#mdgx-daily-body');
+
+        const renderList = () => {
+            if (!dates.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            body.innerHTML = `<table class="mdgx-daily-table">
+                <thead><tr><th>Dia</th><th class="num">Vendas</th><th class="num">Receita</th></tr></thead>
+                <tbody>${dates.slice().reverse().map(d =>
+                    `<tr><td>${fmtDate(d)}</td><td class="num"><strong>${daily[d].sales}</strong></td><td class="num">${money(daily[d].revenue)}</td></tr>`
+                ).join('')}</tbody></table>`;
+        };
+        const renderCal = () => {
+            const months = [...new Set(dates.map(d => d.slice(0, 7)))].sort();
+            if (!months.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            const maxDay = Math.max(1, ...dates.map(d => daily[d].sales));
+            body.innerHTML = months.map(ym => {
+                const [y, m] = ym.split('-').map(Number);
+                const startWd = new Date(y, m - 1, 1).getDay();
+                const days = new Date(y, m, 0).getDate();
+                let cells = '';
+                for (let i = 0; i < startWd; i++) cells += '<div class="mdgx-cal-cell mdgx-cal-empty"></div>';
+                for (let d = 1; d <= days; d++) {
+                    const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const info = daily[ds];
+                    const intensity = info ? (0.15 + 0.85 * (info.sales / maxDay)) : 0;
+                    const bg = info ? `style="background:rgba(139,92,246,${intensity.toFixed(2)})"` : '';
+                    cells += `<div class="mdgx-cal-cell${info ? ' mdgx-cal-has' : ''}" ${bg} ${info ? `title="${fmtDate(ds)}: ${info.sales} venda(s) · ${money(info.revenue)}"` : ''}>
+                        <span class="mdgx-cal-num">${d}</span>${info ? `<span class="mdgx-cal-sales">${info.sales}</span>` : ''}</div>`;
+                }
+                return `<div class="mdgx-cal-month">
+                    <div class="mdgx-cal-title">${MES[m - 1]} ${y}</div>
+                    <div class="mdgx-cal-grid">${WEEK.map(w => `<div class="mdgx-cal-wd">${w}</div>`).join('')}${cells}</div>
+                </div>`;
+            }).join('');
+        };
+        renderList();
+        modal.querySelectorAll('.mdgx-daily-tab').forEach(t => t.addEventListener('click', () => {
+            modal.querySelectorAll('.mdgx-daily-tab').forEach(x => x.classList.toggle('active', x === t));
+            if (t.dataset.view === 'cal') renderCal(); else renderList();
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }));
+        const close = () => modal.remove();
+        modal.querySelector('#mdgx-daily-close').addEventListener('click', close);
+        modal.querySelector('.modal-overlay').addEventListener('click', close);
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
     _renderTopProducts() {
         const container = document.getElementById('dash-top-products');
         if (!container) return;
@@ -1403,10 +1705,28 @@ const DashboardModule = {
             }
         });
 
-        container.innerHTML = opps.length > 0
-            ? opps.slice(0, 6).map(o => `<div class="dash-opp-item"><i data-lucide="lightbulb" style="width:13px;height:13px;color:var(--yellow)"></i> ${o.text}</div>`).join('')
-            : '<div class="dash-empty">Nenhuma oportunidade identificada</div>';
+        if (opps.length > 0) {
+            container.innerHTML = opps.slice(0, 6).map(o => `<div class="dash-opp-item"><i data-lucide="lightbulb" style="width:13px;height:13px;color:var(--yellow)"></i> ${o.text}</div>`).join('');
+        } else {
+            // Detect why it's empty
+            const totalEntries = entries.length;
+            const totalImpressions = entries.reduce((s, e) => s + (parseFloat(e.impressions) || 0), 0);
+            const totalPageViews = entries.reduce((s, e) => s + (parseFloat(e.pageViews) || 0), 0);
+            let why = '';
+            if (totalEntries === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalImpressions === 0 && totalPageViews === 0) {
+                why = 'Entradas do Diário sem impressões/pageviews — importe do Facebook ou preencha manualmente para detectar gargalos.';
+            } else {
+                why = 'Tudo dentro do esperado — nenhum gargalo detectado.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        // Wire links
+        container.querySelectorAll('[data-tab]').forEach(a => {
+            a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+        });
     },
 
     // Portfolio health by pipeline stage
@@ -1673,9 +1993,22 @@ const DashboardModule = {
 
         events.sort((a, b) => a.date.localeCompare(b.date));
 
-        container.innerHTML = events.length > 0
-            ? events.map(e => `<div class="dash-cal-item"><span class="dash-cal-date">${formatDate(e.date)}</span><i data-lucide="${e.icon}" style="width:12px;height:12px;color:${e.color}"></i><span>${e.text}</span></div>`).join('')
-            : '<div class="dash-empty">Nenhum prazo esta semana</div>';
+        if (events.length > 0) {
+            container.innerHTML = events.map(e => `<div class="dash-cal-item"><span class="dash-cal-date">${formatDate(e.date)}</span><i data-lucide="${e.icon}" style="width:12px;height:12px;color:${e.color}"></i><span>${e.text}</span></div>`).join('');
+        } else {
+            const hasTests = (typeof LabTestsModule !== 'undefined' && LabTestsModule._tests?.length > 0);
+            const hasProjects = (typeof PipelineModule !== 'undefined' && (PipelineModule.cards || []).length > 0);
+            let why;
+            if (!hasTests && !hasProjects) {
+                why = 'Nenhum teste ou projeto cadastrado. <a href="#" data-tab="laboratorio" style="color:#8b5cf6">Criar teste →</a>';
+            } else {
+                why = 'Nenhum prazo esta semana. <a href="#" data-tab="laboratorio" style="color:#8b5cf6">Ver Laboratório →</a>';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
 
@@ -1691,9 +2024,23 @@ const DashboardModule = {
             return { name: getProductName(pid), budget: agg.budget };
         }).sort((a, b) => b.budget - a.budget).slice(0, 5);
 
-        container.innerHTML = ranked.length > 0
-            ? ranked.map((p, i) => `<div class="dash-rank-item"><span class="dash-rank-pos">${i+1}</span><span class="dash-rank-name">${p.name}</span><span class="dash-rank-value">${this._fmtCurrency(p.budget)}</span></div>`).join('')
-            : '<div class="dash-empty">Sem dados</div>';
+        if (ranked.length > 0) {
+            container.innerHTML = ranked.map((p, i) => `<div class="dash-rank-item"><span class="dash-rank-pos">${i+1}</span><span class="dash-rank-name">${p.name}</span><span class="dash-rank-value">${this._fmtCurrency(p.budget)}</span></div>`).join('');
+        } else {
+            const totalBudget = entries.reduce((s, e) => s + (parseFloat(e.budget) || 0), 0);
+            let why;
+            if (entries.length === 0) {
+                why = 'Sem entradas no Diário neste período. <a href="#" data-tab="diary" style="color:#8b5cf6">Adicionar entradas →</a>';
+            } else if (totalBudget === 0) {
+                why = 'Entradas do Diário sem campo "Budget" preenchido. <a href="#" data-tab="diary" style="color:#8b5cf6">Preencher gastos →</a>';
+            } else {
+                why = 'Sem dados.';
+            }
+            container.innerHTML = `<div class="dash-empty">${why}</div>`;
+            container.querySelectorAll('[data-tab]').forEach(a => {
+                a.addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('[data-tab="' + a.dataset.tab + '"]').forEach(b => b.click()); });
+            });
+        }
     },
 
     // Helper: group entries by productId
@@ -1768,7 +2115,7 @@ const DashboardModule = {
         if (!container) return;
 
         // Trigger async Shopify fetch for real-metric tabs
-        const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal';
+        const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal' || this._calMetric === 'conversionCombined';
         if (needsReal && this._realSalesMap === null) {
             container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
             this._loadRealSalesMaps().then(() => this._renderMetricsCalendar());
@@ -1795,26 +2142,35 @@ const DashboardModule = {
             }
         }
 
+        // Keep the data source explicit: operators must always know whether
+        // attribution comes from Meta or from the Shopify source of truth.
+        const sourceMetric = (facebookKey, shopifyKey) =>
+            this._calSource === 'shopify' ? shopifyKey : facebookKey;
+
         // Metric tabs + product selector on same row
         const tabs = [
-            { key: 'cpa',                label: 'CPA'              },
-            { key: 'cpaReal',            label: 'CPA + Real'       },
-            { key: 'conversion',         label: 'Conversão'        },
-            { key: 'conversionCombined', label: 'Conversão + Real' },
+            { key: sourceMetric('cpa', 'cpaReal'), label: 'CPA' },
+            { key: sourceMetric('conversion', 'conversionCombined'), label: 'Conversão' },
             { key: 'profit',             label: 'Lucro'            },
             { key: 'revenue',            label: 'Receita'          },
-            { key: 'sales',              label: 'Vendas'           },
-            { key: 'salesReal',          label: 'Vendas + Real'    },
+            { key: sourceMetric('sales', 'salesReal'), label: 'Vendas' },
             { key: 'budget',             label: 'Gastos'           },
             { key: 'cpm',                label: 'CPM'              },
             { key: 'cpc',                label: 'CPC Médio'        },
         ];
 
-        // Build product options
+        // Build product options — dropdown customizado (mostra plataforma FB/Google + conta de anúncio, igual ao ranking)
         const products = (AppState.products || []);
-        const prodOptions = products.map(p =>
-            `<option value="${p.id}"${calFilter === p.id ? ' selected' : ''}>${p.name}</option>`
-        ).join('');
+        const _badges = (p) => (typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(p) : '';
+        const curProd = calFilter === 'todos' ? null : products.find(p => p.id === calFilter);
+        const curLabelHtml = curProd
+            ? `<span class="mcal-prod-dd-name">${escapeHtml(curProd.name)}</span>${_badges(curProd)}`
+            : '<span class="mcal-prod-dd-name">Todos os Produtos</span>';
+        const prodDdOptions =
+            `<div class="mcal-prod-dd-opt${calFilter === 'todos' ? ' active' : ''}" data-value="todos"><span class="mcal-prod-dd-name">Todos os Produtos</span></div>` +
+            products.map(p =>
+                `<div class="mcal-prod-dd-opt${calFilter === p.id ? ' active' : ''}" data-value="${escapeHtml(p.id)}"><span class="mcal-prod-dd-name">${escapeHtml(p.name)}</span>${_badges(p)}</div>`
+            ).join('');
 
         // Build region options from sub-entries that have region tags
         const regions = this._getCalendarRegionOptions();
@@ -1828,10 +2184,20 @@ const DashboardModule = {
             <div class="mcal-tabs">${tabs.map(t =>
                 `<button class="mcal-tab${this._calMetric === t.key ? ' active' : ''}" data-metric="${t.key}">${t.label}</button>`
             ).join('')}</div>
-            <select class="mcal-product-select" id="mcal-product">
-                <option value="todos"${calFilter === 'todos' ? ' selected' : ''}>Todos os Produtos</option>
-                ${prodOptions}
-            </select>
+            <div class="mcal-source-toggle" role="group" aria-label="Fonte dos dados">
+                <button type="button" class="mcal-source-btn${this._calSource === 'facebook' ? ' active' : ''}" data-source="facebook" aria-pressed="${this._calSource === 'facebook'}">Facebook</button>
+                <button type="button" class="mcal-source-btn${this._calSource === 'shopify' ? ' active' : ''}" data-source="shopify" aria-pressed="${this._calSource === 'shopify'}">Real (Shopify)</button>
+            </div>
+            <div class="mcal-prod-dd" id="mcal-product-dd">
+                <button type="button" class="mcal-product-select mcal-prod-dd-btn" id="mcal-prod-dd-btn">
+                    <span class="mcal-prod-dd-cur">${curLabelHtml}</span>
+                    <i data-lucide="chevron-down" style="width:14px;height:14px;flex-shrink:0;opacity:.6"></i>
+                </button>
+                <div class="mcal-prod-dd-panel hidden" id="mcal-prod-dd-panel">
+                    <input type="text" class="mcal-prod-dd-search" id="mcal-prod-dd-search" placeholder="Buscar produto...">
+                    <div class="mcal-prod-dd-list">${prodDdOptions}</div>
+                </div>
+            </div>
             <select class="mcal-product-select" id="mcal-region"${regions.length === 0 ? ' disabled title="Sem campanhas com tag de país"' : ''}>
                 <option value=""${this._calRegion === '' ? ' selected' : ''}>Todos os países</option>
                 ${regionOptions}
@@ -1865,11 +2231,60 @@ const DashboardModule = {
             });
         });
 
-        // Product select handler
-        container.querySelector('#mcal-product')?.addEventListener('change', (e) => {
-            this._calProduct = e.target.value;
-            this._renderMetricsCalendar();
+        // Data-source toggle. Preserve the selected business metric while
+        // swapping only its attribution model.
+        container.querySelectorAll('.mcal-source-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const nextSource = btn.dataset.source;
+                if (!nextSource || nextSource === this._calSource) return;
+                const baseMetric = {
+                    cpaReal: 'cpa', conversionCombined: 'conversion', salesReal: 'sales',
+                    cpa: 'cpa', conversion: 'conversion', sales: 'sales',
+                }[this._calMetric];
+                this._calSource = nextSource;
+                if (baseMetric) {
+                    this._calMetric = nextSource === 'shopify'
+                        ? ({ cpa: 'cpaReal', conversion: 'conversionCombined', sales: 'salesReal' }[baseMetric])
+                        : baseMetric;
+                }
+                this._renderMetricsCalendar();
+            });
         });
+
+        // Product dropdown customizado (mostra badges de plataforma + conta de anúncio)
+        const ddBtn = container.querySelector('#mcal-prod-dd-btn');
+        const ddPanel = container.querySelector('#mcal-prod-dd-panel');
+        const ddSearch = container.querySelector('#mcal-prod-dd-search');
+        ddBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = ddPanel.classList.contains('hidden');
+            ddPanel.classList.toggle('hidden');
+            if (willOpen) setTimeout(() => ddSearch?.focus(), 0);
+        });
+        container.querySelectorAll('.mcal-prod-dd-opt').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._calProduct = opt.dataset.value;
+                this._renderMetricsCalendar();
+            });
+        });
+        ddSearch?.addEventListener('click', (e) => e.stopPropagation());
+        ddSearch?.addEventListener('input', (e) => {
+            const q = (e.target.value || '').toLowerCase();
+            container.querySelectorAll('.mcal-prod-dd-opt').forEach(opt => {
+                if (opt.dataset.value === 'todos') { opt.style.display = q ? 'none' : ''; return; }
+                opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+        // Fecha ao clicar fora (um único listener, substituído a cada render)
+        if (this._calDdCloser) document.removeEventListener('click', this._calDdCloser);
+        this._calDdCloser = (ev) => {
+            if (!ev.target.closest('#mcal-product-dd')) {
+                document.getElementById('mcal-prod-dd-panel')?.classList.add('hidden');
+            }
+        };
+        document.addEventListener('click', this._calDdCloser);
 
         // Region select handler
         container.querySelector('#mcal-region')?.addEventListener('change', (e) => {
@@ -2096,12 +2511,20 @@ const DashboardModule = {
         days.forEach(d => { html += `<div class="mcal-header">${d}</div>`; });
         for (let i = 0; i < firstDow; i++) html += '<div class="mcal-day mcal-day-empty"></div>';
 
+        const isRealMetric = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal' || this._calMetric === 'conversionCombined';
         for (let day = 1; day <= totalDays; day++) {
             const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const isToday    = ds === todayStr;
             const isFuture   = ds > todayStr;
             const dayEntries = byDate[ds] || [];
-            const hasData    = dayEntries.length > 0 && !isFuture;
+            // Dias com venda REAL (Shopify) contam como "tem dado" mesmo sem entrada no Diário (FB/Meta).
+            // Sem isto, dias só-Shopify (ex.: FB parou de sincronizar) apareciam em branco no calendário.
+            let hasReal = false;
+            if (isRealMetric && !isFuture) {
+                const r = this._sumRealSales(this._realSalesMap, this._calProduct || 'todos', ds, ds);
+                hasReal = (r.sales > 0 || r.revenue > 0);
+            }
+            const hasData    = !isFuture && (dayEntries.length > 0 || hasReal);
 
             let numCls  = isFuture ? 'mcal-dim' : '';
             let todayCls = isToday ? ' mcal-today' : '';
@@ -2128,7 +2551,22 @@ const DashboardModule = {
         // a "R --" placeholder).
         if (metric === 'cpaReal' || metric === 'salesReal' || metric === 'conversionCombined') {
             const pid = this._calProduct || 'todos';
-            const real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            let real = this._sumRealSales(this._realSalesMap, pid, dayStr, dayStr);
+            // Fallback: if live Shopify map has nothing (products not linked, or not fetched yet),
+            // use sales synced into the Diary (salesSource:'shopify' or shopifySales field).
+            if (!real || real.sales === 0) {
+                const shopEntries = dayEntries.filter(e =>
+                    e.salesSource === 'shopify' || (Number(e.shopifySales) || 0) > 0
+                );
+                if (shopEntries.length) {
+                    const s = shopEntries.reduce((a, e) => a + (Number(e.shopifySales ?? e.sales) || 0), 0);
+                    const r = shopEntries.reduce((a, e) => {
+                        const rev = Number(e.shopifyRevenue ?? e.revenue) || 0;
+                        return a + (typeof convertToUSD === 'function' ? convertToUSD(rev, e.shopifyRevenueCurrency || e.revenueCurrency || 'BRL') : rev);
+                    }, 0);
+                    real = { sales: s, revenue: r };
+                }
+            }
             const prefix = this._currency === 'BRL' ? 'R$' : '$';
 
             const renderCombined = (metaVal, realVal, fmt, lowerIsBetter) => {
@@ -2168,7 +2606,10 @@ const DashboardModule = {
 
             if (metric === 'conversionCombined') {
                 const pv = agg.pageViews;
-                const metaConv = pv > 0 ? (agg.sales / pv) * 100 : 0;
+                // Meta (Conversão) = vendas reportadas pelo FB ÷ visitantes (usa fbSales se houver)
+                const fbSalesSum = dayEntries.reduce((a, e) => a + (Number(e.fbSales ?? (e.salesSource === 'shopify' ? 0 : e.sales)) || 0), 0);
+                const metaConv = pv > 0 ? (fbSalesSum / pv) * 100 : 0;
+                // Real = vendas reais Shopify ÷ visitantes
                 const realConv = pv > 0 ? (real.sales / pv) * 100 : 0;
                 return renderCombined(metaConv, realConv, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
             }

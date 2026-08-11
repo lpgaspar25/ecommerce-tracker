@@ -369,7 +369,12 @@ const FunnelModule = {
     },
 
     _hydrateFromDiaryEntry(entry) {
-        const clicks = entry.cpc > 0 ? (entry.budget / entry.cpc) : 0;
+        // Prefere os cliques salvos (exatos). Só reconstrói de gasto/CPC em
+        // entradas antigas, que não guardavam o campo — aí o CPC arredondado
+        // a 2 casas introduz ~1% de erro.
+        const clicks = Number(entry.clicks) > 0
+            ? Number(entry.clicks)
+            : (entry.cpc > 0 ? (entry.budget / entry.cpc) : 0);
         const ctr = entry.impressions > 0 && clicks > 0 ? (clicks / entry.impressions) * 100 : 0;
         const viewPageRate = clicks > 0 && entry.pageViews > 0 ? (entry.pageViews / clicks) * 100 : 0;
         const atcRate = entry.pageViews > 0 ? (entry.addToCart / entry.pageViews) * 100 : 0;
@@ -430,7 +435,10 @@ const FunnelModule = {
             const revenueCurr = entry.revenueCurrency || this.state.actual.ticketCurrency;
             totalRevenueInSelected += convertCurrency(revenue, revenueCurr, this.state.actual.ticketCurrency);
 
-            if (entry.cpc > 0) {
+            // Cliques salvos são exatos; gasto/CPC é fallback pra entradas antigas
+            if (Number(entry.clicks) > 0) {
+                clicks += Number(entry.clicks);
+            } else if (entry.cpc > 0) {
                 clicks += budget / entry.cpc;
             }
         });
@@ -1026,18 +1034,233 @@ const FunnelModule = {
 
         try {
             showToast('Importando dados do Facebook...', 'info');
+            // Garante que temos a moeda da conta ativa (legacy accounts pode estar sem)
+            if (FacebookAds.ensureAccountCurrencies) {
+                await FacebookAds.ensureAccountCurrencies();
+            }
             const dateRange = this._getSelectedDateRange();
-            const [data, daily] = await Promise.all([
+            const mappedCampaignIds = FacebookAds._accountMap()[this.state.productId] || [];
+            const [periodAgg, daily] = await Promise.all([
                 FacebookAds.fetchProductInsights(this.state.productId, dateRange),
                 FacebookAds.fetchDailyInsights(this.state.productId, dateRange),
             ]);
+
+            // Single-day: usa o periodAgg (level=campaign) — é o que o user confia.
+            // Multi-day: a query level=campaign agrega para o range inteiro, e a paginação
+            // só foi corrigida em fetchDailyInsights. Para consistência cross-day, sobrescreve
+            // com a soma dos dias quando há mais de 1 dia.
+            let data = periodAgg;
+            const isSingleDay = dateRange.since === dateRange.until;
+            if (!isSingleDay && Array.isArray(daily) && daily.length > 0) {
+                const t = { impressions:0, clicks:0, allClicks:0, linkClicks:0, spend:0,
+                           viewContent:0, addToCart:0, checkout:0, purchase:0, purchaseValue:0 };
+                daily.forEach(r => {
+                    t.impressions += r.impressions || 0;
+                    t.clicks += r.clicks || 0;
+                    t.allClicks += r.allClicks || 0;
+                    t.linkClicks += r.linkClicks || 0;
+                    t.spend += r.spend || 0;
+                    t.viewContent += r.viewContent || 0;
+                    t.addToCart += r.addToCart || 0;
+                    t.checkout += r.checkout || 0;
+                    t.purchase += r.purchase || 0;
+                    t.purchaseValue += r.purchaseValue || 0;
+                });
+                const ctr = t.impressions > 0 ? (t.clicks / t.impressions) * 100 : 0;
+                const viewPageRate = t.clicks > 0 ? (t.viewContent / t.clicks) * 100 : 0;
+                const atcRate = t.viewContent > 0 ? (t.addToCart / t.viewContent) * 100 : 0;
+                const checkoutRate = t.addToCart > 0 ? (t.checkout / t.addToCart) * 100 : 0;
+                const saleRate = t.checkout > 0 ? (t.purchase / t.checkout) * 100 : 0;
+                data = { ...t, ctr, viewPageRate, atcRate, checkoutRate, saleRate,
+                         valueCurrency: periodAgg?.valueCurrency, coverage: periodAgg?.coverage };
+                if (periodAgg && (periodAgg.impressions !== t.impressions || periodAgg.clicks !== t.clicks)) {
+                    console.warn('[FB Import] period agg ≠ daily sum — usando daily sum:', {
+                        periodAgg: { impressions: periodAgg.impressions, clicks: periodAgg.clicks, spend: periodAgg.spend },
+                        dailySum: { impressions: t.impressions, clicks: t.clicks, spend: t.spend },
+                    });
+                }
+            }
+
             this._applyImportedFunnelData(data);
             this._lastDailyData = daily.length > 1 ? daily : null;
             this._renderDailyPanel(daily, dateRange);
-            showToast(`Dados importados: ${data.impressions.toLocaleString('pt-BR')} impressões, ${data.purchase} vendas`, 'success');
+
+            // DEBUG: mostra escopo da importação pra o usuário verificar
+            const totalLinkClicks = (daily || []).reduce((s, r) => s + (r.linkClicks || 0), 0);
+            const totalAllClicks = (daily || []).reduce((s, r) => s + (r.allClicks || 0), 0);
+            const totalSpend = (daily || []).reduce((s, r) => s + (r.spend || 0), 0);
+            const ccy = (FacebookAds.activeAccountCurrency && FacebookAds.activeAccountCurrency()) || 'USD';
+            const symbols = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£' };
+            const sym = symbols[ccy] || ccy + ' ';
+            console.log('[FB Import] Escopo:', {
+                produto: this.state.productId,
+                campanhasMapeadas: mappedCampaignIds.length,
+                campanhaIds: mappedCampaignIds,
+                periodo: dateRange,
+                totalLinkClicks,
+                totalAllClicks,
+                totalSpend: `${sym} ${totalSpend.toFixed(2)}`,
+                cpcLinkClicks: totalLinkClicks > 0 ? (totalSpend / totalLinkClicks).toFixed(2) : 0,
+                cpcAllClicks: totalAllClicks > 0 ? (totalSpend / totalAllClicks).toFixed(2) : 0,
+            });
+
+            showToast(
+                `Importado: ${mappedCampaignIds.length} camp · ${data.impressions.toLocaleString('pt-BR')} imp · ${totalLinkClicks} link clicks · ${sym} ${totalSpend.toFixed(2)} · CPC ${sym} ${(totalLinkClicks > 0 ? totalSpend/totalLinkClicks : 0).toFixed(2)}`,
+                'success'
+            );
         } catch (err) {
             showToast('Erro ao importar: ' + err.message, 'error');
             console.error('FB Import Error:', err);
+        }
+    },
+
+    // Importa do FB para TODOS os produtos com campanhas mapeadas na conta ativa.
+    // Para cada produto, faz fetch dos insights diários do período e salva no diário (uma entrada por dia).
+    async loadAllProductsFromFacebook() {
+        if (!FacebookAds.isConnected()) {
+            showToast('Configure o Facebook Ads primeiro', 'error');
+            return;
+        }
+        const map = FacebookAds._accountMap() || {};
+        const productIds = Object.keys(map).filter(pid => Array.isArray(map[pid]) && map[pid].length > 0);
+        if (productIds.length === 0) {
+            showToast('Nenhum produto com campanhas mapeadas nesta conta', 'warning');
+            return;
+        }
+
+        const dateRange = this._getSelectedDateRange();
+        if (FacebookAds.ensureAccountCurrencies) {
+            try { await FacebookAds.ensureAccountCurrencies(); } catch {}
+        }
+
+        // Resolve product names for the progress toasts
+        const productName = (pid) => {
+            const p = (AppState.allProducts || AppState.products || []).find(x => x.id === pid);
+            return p?.name || pid;
+        };
+
+        let okCount = 0, failCount = 0, skipCount = 0;
+        const summary = [];
+
+        showToast(`Importando ${productIds.length} produto(s) do Facebook...`, 'info');
+
+        for (let i = 0; i < productIds.length; i++) {
+            const pid = productIds[i];
+            const name = productName(pid);
+            try {
+                // Skip products without writable store (can't save to diary)
+                const storeId = typeof getWritableStoreId === 'function' ? getWritableStoreId(pid) : null;
+                if (!storeId) {
+                    skipCount++;
+                    summary.push(`⊘ ${name}: sem loja associada (pulado)`);
+                    continue;
+                }
+
+                showToast(`(${i+1}/${productIds.length}) ${name}...`, 'info');
+
+                const daily = await FacebookAds.fetchDailyInsights(pid, dateRange);
+                if (!Array.isArray(daily) || daily.length === 0) {
+                    skipCount++;
+                    summary.push(`⊘ ${name}: sem dados no período`);
+                    continue;
+                }
+
+                // Save each day to diary for this product
+                await this._saveDailyToDiaryForProduct(pid, daily, storeId);
+                const totalSpend = daily.reduce((s, r) => s + (r.spend || 0), 0);
+                const totalClicks = daily.reduce((s, r) => s + (r.clicks || 0), 0);
+                okCount++;
+                summary.push(`${name}: ${daily.length}d · ${totalClicks} clicks · ${totalSpend.toFixed(2)}`);
+            } catch (err) {
+                failCount++;
+                summary.push(`${name}: ${err.message}`);
+                console.error('[BulkImport]', name, err);
+            }
+        }
+
+        // Refresh UI for currently selected product (if any)
+        if (this.state.productId && map[this.state.productId]) {
+            try { await this.loadFromFacebook(); } catch {}
+        }
+
+        console.log('[BulkImport] Resumo:\n' + summary.join('\n'));
+        showToast(
+            `Concluído: ${okCount} OK · ${failCount} erro · ${skipCount} pulado. Veja console (F12) para detalhes.`,
+            okCount > 0 ? 'success' : 'warning'
+        );
+    },
+
+    // Saves daily FB data to diary for a SPECIFIC product/store (without depending on the selected product).
+    async _saveDailyToDiaryForProduct(productId, dailyRows, storeId) {
+        if (!storeId || !Array.isArray(dailyRows) || dailyRows.length === 0) return;
+        const currency = (typeof FacebookAds !== 'undefined' && FacebookAds.activeAccountCurrency)
+            ? FacebookAds.activeAccountCurrency() : 'BRL';
+
+        for (const row of dailyRows) {
+            const date = row.date;
+            const matches = AppState.allDiary.filter(d => {
+                if (d.productId !== productId) return false;
+                if (d.isCampaign || d.parentId) return false;
+                if (d.date === date) return true;
+                const period = this._getDiaryEntryPeriod(d);
+                return period.startDate === date && period.endDate === date;
+            });
+            const existing = matches[0];
+            if (matches.length > 1) {
+                const duplicateIds = matches.slice(1).map(m => m.id);
+                AppState.allDiary = AppState.allDiary.filter(d => !duplicateIds.includes(d.id));
+                AppState.allDiary = AppState.allDiary.filter(d => !duplicateIds.includes(d.parentId));
+            }
+            // Preserve real Shopify sales/revenue when present
+            const keepShopify = existing && (existing.salesSource === 'shopify' || (Number(existing.shopifySales) || 0) > 0);
+            const fbSales = row.purchase || 0;
+            const fbRev = parseFloat((row.purchaseValue || 0).toFixed(2));
+            const finalSales = keepShopify ? existing.sales : fbSales;
+            const finalRev = keepShopify ? existing.revenue : fbRev;
+            const finalRevCur = keepShopify ? (existing.revenueCurrency || currency) : currency;
+            const data = {
+                id: existing ? existing.id : generateId('dia'),
+                date, periodStart: date, periodEnd: date,
+                productId, storeId,
+                budget: parseFloat((row.spend || 0).toFixed(2)),
+                budgetCurrency: currency,
+                sales: finalSales,
+                revenue: finalRev,
+                revenueCurrency: finalRevCur,
+                fbSales, fbRevenue: fbRev,
+                salesSource: keepShopify ? 'shopify' : (existing?.salesSource || 'facebook'),
+                shopifySales: existing?.shopifySales,
+                shopifyRevenue: existing?.shopifyRevenue,
+                shopifyRevenueCurrency: existing?.shopifyRevenueCurrency,
+                cpa: finalSales > 0 ? parseFloat((row.spend / finalSales).toFixed(2)) : 0,
+                clicks: Math.round(row.clicks || 0),
+                cpc: (row.clicks || 0) > 0 ? parseFloat((row.spend / row.clicks).toFixed(2)) : 0,
+                platform: 'Meta Ads',
+                notes: 'Via Facebook Ads · import em lote',
+                productHistory: existing ? (existing.productHistory || '') : '',
+                impressions: row.impressions || 0,
+                clicks: row.clicks || 0,
+                pageViews: row.viewContent || row.clicks || 0,
+                addToCart: row.addToCart || 0,
+                checkout: row.checkout || 0,
+            };
+            if (existing) {
+                Object.assign(existing, data);
+                if (AppState.sheetsConnected) {
+                    try { await SheetsAPI.updateRowById(SheetsAPI.TABS.DIARY, data.id, SheetsAPI.diaryToRow(data)); } catch {}
+                }
+            } else {
+                AppState.allDiary.push(data);
+                if (AppState.sheetsConnected) {
+                    try { await SheetsAPI.appendRow(SheetsAPI.TABS.DIARY, SheetsAPI.diaryToRow(data)); } catch {}
+                }
+            }
+        }
+
+        filterDataByStore();
+        EventBus.emit('diaryChanged');
+        if (typeof LocalStore !== 'undefined') {
+            try { LocalStore.save('diary', AppState.allDiary); } catch {}
         }
     },
 
@@ -1050,7 +1273,11 @@ const FunnelModule = {
             return;
         }
         const fmt = (n) => n.toLocaleString('pt-BR');
-        const fmtCur = (n) => 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const accCurrency = (typeof FacebookAds !== 'undefined' && FacebookAds.activeAccountCurrency)
+            ? FacebookAds.activeAccountCurrency() : 'USD';
+        const currencySymbols = { BRL: 'R$', USD: '$', EUR: '€', GBP: '£', CAD: 'C$', AUD: 'A$', MXN: 'MX$', INR: '₹', JPY: '¥' };
+        const sym = currencySymbols[accCurrency] || accCurrency + ' ';
+        const fmtCur = (n) => `${sym} ${(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const fmtDate = (iso) => {
             const [y, m, d] = iso.split('-');
             return `${d}/${m}`;
@@ -1171,6 +1398,7 @@ const FunnelModule = {
         if (dataRows.length === 0) {
             throw new Error('Relatório sem linhas de dados');
         }
+
 
         const dailyGroups = this._groupDailyRows(dataRows, headerMap);
         let imported = null;
@@ -1396,6 +1624,40 @@ const FunnelModule = {
             throw new Error('Relatório sem linhas de dados');
         }
 
+
+        // Um upload só alimenta os dois lugares: além do Diário, monta a hierarquia
+        // Produto → Campanha → Conjunto → Criativo no Mapa de Ads.
+        try {
+            if (typeof AdHierarchyModule !== 'undefined' && AdHierarchyModule.importRowsForProduct && this.state.productId) {
+                const mapRes = AdHierarchyModule.importRowsForProduct(rows, this.state.productId);
+                if (mapRes && (mapRes.campaigns || mapRes.adsets || mapRes.ads)) {
+                    showToast(
+                        `Mapa de Ads atualizado: ${mapRes.campaigns} camp · ${mapRes.adsets} conj · ${mapRes.ads} criativos`,
+                        'success'
+                    );
+                }
+            }
+        } catch (e) { console.warn('[Funnel] alimentar Mapa de Ads falhou:', e); }
+
+        // Avisa (ou bloqueia) quando faltam colunas necessárias no relatório
+        const check = this._validateReportColumns(headerMap);
+        if (check.blocking.length) {
+            throw new Error(
+                'Faltam colunas obrigatórias no relatório: ' + check.blocking.join(', ') +
+                '. Adicione essas colunas no Ads Manager e exporte de novo.'
+            );
+        }
+        if (check.missing.length && typeof showToast === 'function') {
+            showToast(
+                'Importado, mas faltam colunas: ' + check.missing.join(' · ') +
+                '. Métricas afetadas ficam vazias ou estimadas.',
+                'warning'
+            );
+        }
+        if (check.notes.length && typeof showToast === 'function') {
+            check.notes.forEach(n => showToast(n, 'info'));
+        }
+
         const budgetConfig = this._extractCampaignBudgetConfig(dataRows, headerMap);
 
         const dailyGroups = this._groupDailyRows(dataRows, headerMap);
@@ -1601,6 +1863,7 @@ const FunnelModule = {
                         pageViews:   Math.round(agg.viewContent / days),
                         addToCart:   Math.round(agg.addToCart   / days),
                         checkout:    Math.round(agg.checkout    / days),
+                        clicks: Math.round(clicksPerDay || 0),
                         cpc: clicksPerDay > 0 ? parseFloat((spendPerDay / clicksPerDay).toFixed(2)) : 0,
                         cpa: salesPerDay  > 0 ? parseFloat((spendPerDay / salesPerDay).toFixed(2))  : 0,
                         platform: 'Meta Ads',
@@ -2023,6 +2286,7 @@ const FunnelModule = {
 
         const actual = {
             impressions: Math.round(metrics.impressions || 0),
+            clicks: Math.round(metrics.clicks || 0),
             cpc: parseFloat((cpc || 0).toFixed(2)),
             cpcCurrency: ticketCurrency,
             ctr: parseFloat((metrics.ctr || 0).toFixed(2)),
@@ -2107,6 +2371,15 @@ const FunnelModule = {
             checkoutCount = Math.round(addToCartCount * importedMetrics.checkoutRate / 100);
         }
 
+        const fbRevenue = parseFloat(Number(importedMetrics.purchaseValue || 0).toFixed(2));
+        // If existing entry has REAL Shopify sales, keep them — FB numbers are stored separately.
+        const keepShopify = existing && (existing.salesSource === 'shopify' || (Number(existing.shopifySales) || 0) > 0);
+        const finalSales = keepShopify ? existing.sales : sales;
+        const finalRevenue = keepShopify ? existing.revenue : fbRevenue;
+        const finalRevenueCurrency = keepShopify ? (existing.revenueCurrency || spendCurrency) : spendCurrency;
+        // CPA based on the final (real) sales when available
+        const finalCpa = finalSales > 0 ? (spend / finalSales) : 0;
+
         const payload = {
             id: existing ? existing.id : generateId('dia'),
             date,
@@ -2117,10 +2390,19 @@ const FunnelModule = {
             budget: parseFloat(spend.toFixed(2)),
             budgetCurrency: spendCurrency,
             budgetConfigured: parseFloat((Number(importedMetrics.budgetConfigured || 0)).toFixed(2)),
-            sales,
-            revenue: parseFloat(Number(importedMetrics.purchaseValue || 0).toFixed(2)),
-            revenueCurrency: spendCurrency,
-            cpa: parseFloat(cpa.toFixed(2)),
+            sales: finalSales,
+            revenue: finalRevenue,
+            revenueCurrency: finalRevenueCurrency,
+            // FB's own reported numbers (pixel) — always stored, never overwrite Shopify
+            fbSales: sales,
+            fbRevenue: fbRevenue,
+            // Preserve Shopify markers if present
+            salesSource: keepShopify ? 'shopify' : (existing?.salesSource || 'facebook'),
+            shopifySales: existing?.shopifySales,
+            shopifyRevenue: existing?.shopifyRevenue,
+            shopifyRevenueCurrency: existing?.shopifyRevenueCurrency,
+            cpa: parseFloat(finalCpa.toFixed(2)),
+            clicks: Math.round(clicks || 0),
             cpc: parseFloat(cpc.toFixed(2)),
             platform: 'Meta Ads',
             notes: `Importado automaticamente via ${sourceLabel} (diagnóstico por período)`,
@@ -2318,6 +2600,7 @@ const FunnelModule = {
                     pageViews: Math.round(agg.viewContent),
                     addToCart: Math.round(agg.addToCart),
                     checkout: Math.round(agg.checkout),
+                    clicks: Math.round(agg.clicks || 0),
                     cpc: agg.clicks > 0 ? parseFloat((agg.spend / agg.clicks).toFixed(2)) : 0,
                     cpa: agg.purchase > 0 ? parseFloat((agg.spend / agg.purchase).toFixed(2)) : 0,
                     platform: 'Meta Ads',
@@ -2651,10 +2934,28 @@ const FunnelModule = {
                 if (startsWithCandidate) return headerMap[startsWithCandidate];
                 continue;
             }
-            const fuzzy = keys.find(k => k.includes(candidate) || candidate.includes(k));
+            // Um candidato de CONTAGEM nunca pode casar com coluna de TAXA/CUSTO.
+            // Sem isto, "cliques no link" casava por substring com
+            // "Taxa de visualizações da página de destino por cliques no link"
+            // (uma %), e o total de cliques virava a soma das porcentagens.
+            const candidateIsRate = this._looksLikeRateOrCostKey(candidate);
+            const fuzzy = keys.find(k => {
+                if (!(k.includes(candidate) || candidate.includes(k))) return false;
+                if (!candidateIsRate && this._looksLikeRateOrCostKey(k)) return false;
+                return true;
+            });
             if (fuzzy) return headerMap[fuzzy];
         }
         return -1;
+    },
+
+    // Chave normalizada que representa uma taxa (%) ou um custo — não uma contagem.
+    _looksLikeRateOrCostKey(key) {
+        const k = ` ${String(key || '')} `;
+        return [
+            ' taxa ', ' custo por ', ' cost per ', ' ctr ', ' cpm ', ' cpc ',
+            ' percentual ', ' percent ', ' roas ', ' rate '
+        ].some(t => k.includes(t));
     },
 
     _pickCsvValue(row, headerMap, candidates, options = {}) {
@@ -2699,6 +3000,59 @@ const FunnelModule = {
         if (n <= 0) return 0;
         // Facebook CSV sometimes exports rates as ratio (0.77) and sometimes as percent (77.0).
         return n <= 1.5 ? (n * 100) : n;
+    },
+
+    /**
+     * Confere se o relatório tem as colunas necessárias.
+     *  - blocking: sem elas não dá pra importar (erro)
+     *  - missing : dá pra importar, mas alguma métrica fica vazia (aviso)
+     *  - notes   : dá pra suprir de outro jeito (informativo)
+     */
+    _validateReportColumns(headerMap) {
+        const has = (cands, opts) => this._findHeaderIndex(headerMap, cands, opts || {}) >= 0;
+
+        const blocking = [];
+        if (!has(['valor usado usd', 'valor usado brl', 'valor usado', 'amount spent'])) blocking.push('Valor usado (gasto)');
+        if (!has(['impressoes', 'impressions'])) blocking.push('Impressões');
+
+        const missing = [];
+        const notes = [];
+
+        // Cliques: coluna própria é o ideal; CPC serve de fallback
+        const temCliques = has(['cliques todos', 'cliques no link', 'link clicks', 'outbound clicks', 'cliques']);
+        const temCpc = has(['cpc custo por clique no link', 'cpc custo por clique', 'custo por clique no link', 'custo por clique de saida', 'cpc']);
+        if (!temCliques && temCpc) {
+            notes.push('Sem a coluna "Cliques no link" — cliques calculados a partir do CPC. Para números exatos, adicione essa coluna.');
+        } else if (!temCliques && !temCpc) {
+            missing.push('Cliques no link (e CPC)');
+        }
+
+        // Etapas do funil
+        if (!has(['visualizacoes da pagina de destino do site', 'visualizacoes da pagina de destino', 'landing page views'])) {
+            missing.push('Visualizações da página de destino');
+        }
+        if (!has(['adicoes ao carrinho', 'adicao ao carrinho', 'adds to cart', 'add to cart'], { strict: true })) {
+            missing.push('Adições ao carrinho');
+        }
+        if (!has(['finalizacoes de compra iniciadas', 'checkouts iniciados', 'initiated checkout'])) {
+            missing.push('Finalizações de compra iniciadas');
+        }
+        if (!has(['compras no site', 'compras', 'purchases', 'resultados'])) {
+            missing.push('Compras');
+        }
+
+        // Quebra por dia / por anúncio
+        if (!has(['dia', 'day', 'data', 'date'])) {
+            notes.push('Sem a coluna "Dia" — o relatório será tratado como um período único, não dia a dia.');
+        }
+        if (!has(['nome do anuncio', 'ad name'])) {
+            notes.push('Sem "Nome do anúncio" — não dá pra separar por criativo.');
+        }
+        if (!has(['nome da campanha', 'campaign name'])) {
+            notes.push('Sem "Nome da campanha" — não dá pra separar por campanha.');
+        }
+
+        return { blocking, missing, notes };
     },
 
     _extractCsvMetricsFromRow(row, headerMap) {
@@ -2754,8 +3108,17 @@ const FunnelModule = {
         ];
 
         const impressions = this._toNumber(this._pickCsvValue(row, headerMap, impressionsCandidates));
-        const clicks = this._toNumber(this._pickCsvValue(row, headerMap, clicksCandidates));
+        let clicks = this._toNumber(this._pickCsvValue(row, headerMap, clicksCandidates));
         const spend = this._toNumber(this._pickCsvValue(row, headerMap, spendCandidates));
+        // Relatórios do Ads Manager frequentemente trazem só o CPC (sem coluna de cliques).
+        // Deriva cliques = gasto / CPC por linha — mesma convenção já usada no resto do módulo.
+        if (!(clicks > 0) && spend > 0) {
+            const cpcCol = this._toNumber(this._pickCsvValue(row, headerMap, [
+                'cpc custo por clique no link', 'cpc custo por clique',
+                'custo por clique no link', 'custo por clique de saida', 'cpc'
+            ]));
+            if (cpcCol > 0) clicks = spend / cpcCol;
+        }
         const viewContent = this._toNumber(this._pickCsvValue(row, headerMap, viewContentCandidates));
         // Count columns are parsed in strict mode to avoid matching custom ratio metrics
         // such as "Visu. Página > Add To Cart".
@@ -2772,7 +3135,8 @@ const FunnelModule = {
         const saleRateRaw = this._normalizeRatePercent(this._pickCsvValue(row, headerMap, saleRateCandidates));
 
         const hasImpressions = this._hasCsvData(row, headerMap, impressionsCandidates);
-        const hasClicks = this._hasCsvData(row, headerMap, clicksCandidates);
+        // Conta como "tem cliques" também quando foi derivado de gasto/CPC
+        const hasClicks = this._hasCsvData(row, headerMap, clicksCandidates) || clicks > 0;
         const hasSpend = this._hasCsvData(row, headerMap, spendCandidates);
         const hasViewContent = this._hasCsvData(row, headerMap, viewContentCandidates);
         const hasAddToCart = this._hasCsvData(row, headerMap, addToCartCandidates, { strict: true });
@@ -3095,6 +3459,11 @@ const FunnelModule = {
             sales: Math.round(real.sales),
             revenue: parseFloat(real.faturamento.toFixed(2)),
             revenueCurrency: this.state.actual.ticketCurrency,
+            // Mark as Shopify-sourced so a later FB CSV import won't overwrite real sales
+            salesSource: 'shopify',
+            shopifySales: Math.round(real.sales),
+            shopifyRevenue: parseFloat(real.faturamento.toFixed(2)),
+            shopifyRevenueCurrency: this.state.actual.ticketCurrency,
             cpa: fb && real.sales > 0
                 ? parseFloat((fb.spend / real.sales).toFixed(2))
                 : (existing ? existing.cpa : 0),
@@ -3137,6 +3506,52 @@ const FunnelModule = {
         EventBus.emit('diaryChanged');
     },
 
+    // Limpa duplicatas do diário sem precisar re-importar.
+    // Mantém a entrada com mais "dados" (maior visitantes/spend) e remove as outras.
+    cleanupDuplicateDiaryEntries(productId = null) {
+        const byKey = {};
+        (AppState.allDiary || []).forEach(d => {
+            if (d.isCampaign || d.parentId) return; // só parents
+            if (productId && d.productId !== productId) return;
+            const period = this._getDiaryEntryPeriod(d);
+            const isDaily = period.startDate === period.endDate;
+            if (!isDaily) return; // só duplicatas de dias
+            const key = `${d.productId}|${period.startDate}`;
+            if (!byKey[key]) byKey[key] = [];
+            byKey[key].push(d);
+        });
+
+        let removed = 0;
+        const toRemoveIds = new Set();
+        Object.values(byKey).forEach(group => {
+            if (group.length <= 1) return;
+            // Mantém o com maior soma (clicks + spend + sales)
+            group.sort((a, b) => {
+                const sa = (a.clicks || 0) + (a.budget || 0) + (a.sales || 0);
+                const sb = (b.clicks || 0) + (b.budget || 0) + (b.sales || 0);
+                return sb - sa;
+            });
+            group.slice(1).forEach(d => {
+                toRemoveIds.add(d.id);
+                removed++;
+            });
+        });
+
+        if (removed > 0) {
+            AppState.allDiary = AppState.allDiary.filter(d =>
+                !toRemoveIds.has(d.id) && !toRemoveIds.has(d.parentId)
+            );
+            if (typeof LocalStore !== 'undefined') {
+                try { LocalStore.save('diary', AppState.allDiary); } catch {}
+            }
+            if (typeof EventBus !== 'undefined') EventBus.emit('diaryChanged');
+            if (typeof showToast === 'function') showToast(`${removed} duplicata(s) removida(s)`, 'success');
+        } else {
+            if (typeof showToast === 'function') showToast('Nenhuma duplicata encontrada', 'info');
+        }
+        return removed;
+    },
+
     async _saveDailyToDiary(productId, dailyRows) {
         const storeId = getWritableStoreId(productId);
         if (!storeId) {
@@ -3144,13 +3559,29 @@ const FunnelModule = {
             return;
         }
         const currency = this.state.actual.ticketCurrency || 'BRL';
-        let created = 0, updated = 0;
+        let created = 0, updated = 0, deduped = 0;
 
         for (const row of dailyRows) {
             const date = row.date; // 'YYYY-MM-DD'
-            const existing = AppState.allDiary.find(d =>
-                d.productId === productId && this._getDiaryEntryPeriod(d).startDate === date && this._getDiaryEntryPeriod(d).endDate === date
-            );
+            // Match agressivo: TODAS as entradas (productId, date)
+            // — ignora isCampaign/parentId pra pegar legacy parent entries também
+            // — match por DATA (string) ou por período exato
+            const matches = AppState.allDiary.filter(d => {
+                if (d.productId !== productId) return false;
+                if (d.isCampaign || d.parentId) return false; // só parents
+                if (d.date === date) return true;
+                const period = this._getDiaryEntryPeriod(d);
+                return period.startDate === date && period.endDate === date;
+            });
+            const existing = matches[0];
+            // Remove duplicatas (mantém só a primeira para update)
+            if (matches.length > 1) {
+                const duplicateIds = matches.slice(1).map(m => m.id);
+                AppState.allDiary = AppState.allDiary.filter(d => !duplicateIds.includes(d.id));
+                // Remove sub-entradas (isCampaign) das duplicatas também
+                AppState.allDiary = AppState.allDiary.filter(d => !duplicateIds.includes(d.parentId));
+                deduped += duplicateIds.length;
+            }
             const data = {
                 id: existing ? existing.id : generateId('dia'),
                 date,
@@ -3192,7 +3623,15 @@ const FunnelModule = {
         filterDataByStore();
         this.saveDiagnosisSnapshot(false);
         EventBus.emit('diaryChanged');
-        const msg = [created && `${created} dia(s) criado(s)`, updated && `${updated} atualizado(s)`].filter(Boolean).join(', ');
+        // Salva no localStorage também (LocalStore listens 'diaryChanged' via EventBus mas garantia)
+        if (typeof LocalStore !== 'undefined') {
+            try { LocalStore.save('diary', AppState.allDiary); } catch {}
+        }
+        const msg = [
+            created && `${created} criado(s)`,
+            updated && `${updated} atualizado(s)`,
+            deduped && `${deduped} duplicata(s) removida(s)`
+        ].filter(Boolean).join(', ');
         showToast(`Diário salvo por dia — ${msg}`, 'success');
     },
 
