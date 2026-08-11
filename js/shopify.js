@@ -84,8 +84,20 @@ const ShopifyModule = (() => {
         if (!_config.proxyUrl) _config.proxyUrl = DEFAULT_PROXY_URL;
     }
 
-    function _saveConfig() { localStorage.setItem(_configKey(), JSON.stringify(_config)); }
-    function _saveLinks() { localStorage.setItem(_linksKey(), JSON.stringify(_productLinks)); }
+    function _saveConfig() {
+        const write = () => localStorage.setItem(_configKey(), JSON.stringify(_config));
+        if (typeof StorageManager !== 'undefined' && StorageManager.withReclaim) {
+            if (!StorageManager.withReclaim(write, 'shopify_config')) {
+                throw new Error('Armazenamento cheio — libere espaço (Diário/testes antigos) e tente de novo.');
+            }
+        } else { write(); }
+    }
+    function _saveLinks() {
+        const write = () => localStorage.setItem(_linksKey(), JSON.stringify(_productLinks));
+        if (typeof StorageManager !== 'undefined' && StorageManager.withReclaim) {
+            StorageManager.withReclaim(write, 'shopify_links');
+        } else { write(); }
+    }
 
     // Chamado ao TROCAR de loja: recarrega a conexão da nova loja e joga fora
     // o estado/caches em memória da anterior (senão _shopifyProducts,
