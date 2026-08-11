@@ -61,6 +61,11 @@ const DashboardModule = {
     // Shopify product-views cache (DASH-02 — denominador da Conversão Real)
     _viewsMap: null,
     _viewsCacheKey: '',
+    // Visitas por PAÍS (denominador da Conversão Real quando um país está
+    // selecionado) — cache separado do _viewsMap sem filtro, keyed por
+    // "start|end|countryCode".
+    _viewsMapPorPais: null,
+    _viewsMapPorPaisKey: '',
     // Vendas reais filtradas por país (DASH-02) — cache SEPARADO do
     // _realSalesMap principal, só usado quando um país válido está
     // selecionado, pra nunca contaminar o cache que CPA Real/Vendas
@@ -554,6 +559,7 @@ const DashboardModule = {
         this._realSalesMap = null; this._realSalesCacheKey = '';
         this._realSalesPrevMap = null; this._realSalesPrevCacheKey = '';
         this._viewsMap = null; this._viewsCacheKey = '';
+        this._viewsMapPorPais = null; this._viewsMapPorPaisKey = '';
         this._viewsErro = '';
         this._realSalesMapPorPais = null; this._realSalesMapPorPaisKey = '';
         this._funilLojaPais = null; this._funilLojaPaisKey = '';
@@ -1162,9 +1168,10 @@ const DashboardModule = {
     // um país válido (código ISO de 2 letras) está selecionado.
     async _loadRealSalesMapPorPais(countryCode) {
         if (!countryCode) { this._realSalesMapPorPais = null; return; }
-        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
-        if (!hasShopify) { this._realSalesMapPorPais = {}; return; }
         const key = `${this._startDate}|${this._endDate}|${countryCode}`;
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        // grava a chave mesmo sem Shopify, senão o render re-dispara sempre (loop de "Carregando")
+        if (!hasShopify) { this._realSalesMapPorPais = {}; this._realSalesMapPorPaisKey = key; return; }
         if (this._realSalesMapPorPaisKey !== key) {
             try {
                 this._realSalesMapPorPais = await ShopifyModule.getRealSalesMapByDate(this._startDate, this._endDate, { countryCode });
@@ -1172,6 +1179,25 @@ const DashboardModule = {
             } catch (e) {
                 console.warn('[Dashboard] Shopify sales by country fetch failed:', e);
                 this._realSalesMapPorPais = {};
+            }
+        }
+    },
+
+    // Visitas por país (denominador da Conversão Real por país). Cache próprio
+    // keyed por período + país, pra não misturar com o _viewsMap sem filtro.
+    async _loadViewsMapPorPais(countryCode) {
+        if (!countryCode) { this._viewsMapPorPais = null; this._viewsMapPorPaisKey = ''; return; }
+        const key = `${this._startDate}|${this._endDate}|${countryCode}`;
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        // grava a chave mesmo sem Shopify, senão o render re-dispara sempre (loop de "Carregando")
+        if (!hasShopify) { this._viewsMapPorPais = {}; this._viewsMapPorPaisKey = key; return; }
+        if (this._viewsMapPorPaisKey !== key) {
+            try {
+                this._viewsMapPorPais = await ShopifyModule.getViewsMapPorPais(this._startDate, this._endDate, countryCode);
+                this._viewsMapPorPaisKey = key;
+            } catch (e) {
+                console.warn('[Dashboard] Shopify views by country failed:', e);
+                this._viewsMapPorPais = {};
             }
         }
     },
@@ -2642,6 +2668,8 @@ const DashboardModule = {
         if (needsViews && this._viewsMap === null) pendencias.push(this._loadViewsMap());
         if (countryCodeReal && this._realSalesMapPorPaisKey !== countryKeyAtual) pendencias.push(this._loadRealSalesMapPorPais(countryCodeReal));
         if (!countryCodeReal && this._realSalesMapPorPais !== null) { this._realSalesMapPorPais = null; this._realSalesMapPorPaisKey = ''; }
+        if (countryCodeReal && this._viewsMapPorPaisKey !== countryKeyAtual) pendencias.push(this._loadViewsMapPorPais(countryCodeReal));
+        if (!countryCodeReal && this._viewsMapPorPais !== null) { this._viewsMapPorPais = null; this._viewsMapPorPaisKey = ''; }
 
         if (pendencias.length) {
             container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
@@ -2717,7 +2745,7 @@ const DashboardModule = {
                 ${regionOptions}
             </select>
         </div>
-        ${this._calMetric === 'conversionCombined' ? `<p class="mcal-conv-fonte">Real = vendas reais da Shopify ÷ visitas do produto na Shopify (Shopify Analytics), no período e produto selecionados. Filtro de país só vale pra tags de 2 letras (BR, US...) — tags combinadas (ex. "EN") não filtram os dados reais.</p>` : ''}`;
+        ${this._calMetric === 'conversionCombined' ? `<p class="mcal-conv-fonte">Real = vendas reais da Shopify ÷ visitas do produto na Shopify (Shopify Analytics). Com um país selecionado, usa as visitas E as vendas <strong>daquele país</strong>. Tags combinadas (ex. "EN" = vários países) não filtram os dados reais.</p>` : ''}`;
 
         // Month navigation header
         const names = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -2908,15 +2936,21 @@ const DashboardModule = {
 
                 let realTxt;
                 if (this._calRegion) {
-                    // Qualquer país selecionado torna a Conversão Real
-                    // indisponível — a Shopify não expõe visitas por país por
-                    // produto, então não dá pra montar a razão certa (mesmo
-                    // quando a tag bate exato com um country_code real).
+                    // Com país: Real = vendas do país ÷ visitas do país (ambos
+                    // da Shopify). Tag composta não vira country_code único.
                     const countryCode = this._regionParaCountryCode(this._calRegion);
-                    const vendasPais = countryCode ? this._sumRealSales(this._realSalesMapPorPais, pid, this._startDate, this._endDate).sales : null;
-                    realTxt = vendasPais != null
-                        ? `indisponível (${vendasPais} venda(s) em ${this._calRegion}, sem visitas por país)`
-                        : `indisponível (país "${this._calRegion}" é tag composta)`;
+                    if (!countryCode) {
+                        realTxt = `indisponível (país "${this._calRegion}" é tag composta)`;
+                    } else {
+                        const vendasPais = this._sumRealSales(this._realSalesMapPorPais, pid, this._startDate, this._endDate).sales;
+                        const viewsPais = this._sumViews(this._viewsMapPorPais, pid, this._startDate, this._endDate);
+                        if (viewsPais === 0) {
+                            realTxt = vendasPais > 0 ? `${vendasPais} venda(s) em ${this._calRegion}, sem visitas Shopify` : '--';
+                        } else {
+                            realConvNumForDelta = (vendasPais / viewsPais) * 100;
+                            realTxt = realConvNumForDelta.toFixed(2) + '%';
+                        }
+                    }
                 } else {
                     const viewsCur = this._sumViews(this._viewsMap, pid, this._startDate, this._endDate);
                     if (viewsCur === 0) {
@@ -3149,19 +3183,23 @@ const DashboardModule = {
                 const fbSalesSum = dayEntries.reduce((a, e) => a + (Number(e.fbSales ?? (e.salesSource === 'shopify' ? 0 : e.sales)) || 0), 0);
                 const metaConv = pv > 0 ? (fbSalesSum / pv) * 100 : 0;
 
-                // Com QUALQUER país selecionado, a Conversão Real fica
-                // indisponível — a Shopify não expõe visitas por país por
-                // produto, então mesmo com uma tag que bate exato com um
-                // country_code, dividir vendas DAQUELE país pelas visitas de
-                // TODOS os países faria a mesma conta errada que motivou essa
-                // correção (numerador e denominador de escopos diferentes).
+                // Com país selecionado: usa vendas E visitas DAQUELE país
+                // (mesma fonte real da Shopify nos dois lados). Tag composta
+                // (ex.: "EN" = vários países) não vira country_code único,
+                // então aí sim não dá pra filtrar os dados reais.
                 if (this._calRegion) {
                     const countryCode = this._regionParaCountryCode(this._calRegion);
-                    const vendasPais = countryCode ? this._sumRealSales(this._realSalesMapPorPais, pid, dayStr, dayStr).sales : null;
-                    const detalhe = vendasPais != null
-                        ? `${vendasPais} venda(s) em ${escapeHtml(this._calRegion)} — visitas por país indisponíveis`
-                        : `País "${escapeHtml(this._calRegion)}" não filtra dados reais (tag composta)`;
-                    return { text: `${metaConv > 0 ? metaConv.toFixed(2) + '%' : '--'}<span class="mcal-meta-sub">${detalhe}</span>`, cls: 'mcal-val-neutral' };
+                    if (!countryCode) {
+                        return { text: `${metaConv > 0 ? metaConv.toFixed(2) + '%' : '--'}<span class="mcal-meta-sub">"${escapeHtml(this._calRegion)}" é tag composta — não filtra dados reais</span>`, cls: 'mcal-val-neutral' };
+                    }
+                    const vendasPais = this._sumRealSales(this._realSalesMapPorPais, pid, dayStr, dayStr).sales;
+                    const viewsPais = this._sumViews(this._viewsMapPorPais, pid, dayStr, dayStr);
+                    if (viewsPais === 0) {
+                        if (vendasPais > 0) return { text: `${vendasPais}<span class="mcal-meta-sub">Sem visitas Shopify em ${escapeHtml(this._calRegion)}</span>`, cls: 'mcal-val-neutral' };
+                        return renderCombined(metaConv, 0, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
+                    }
+                    const realConvPais = (vendasPais / viewsPais) * 100;
+                    return renderCombined(metaConv, realConvPais, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
                 }
 
                 // Real = vendas reais da Shopify ÷ VISITAS REAIS do produto na

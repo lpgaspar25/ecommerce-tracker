@@ -952,6 +952,64 @@ const ShopifyModule = (() => {
     let _coberturaViews = null;
     function getCoberturaViews() { return _coberturaViews; }
 
+    // Código ISO ('DE') → nomes que o ShopifyQL usa em session_country
+    // ('Germany'). session_country vem por NOME, não código, então convertemos
+    // o alvo via Intl.DisplayNames (nomes em inglês = os que a Shopify usa) +
+    // alguns overrides pra tags que não são ISO exato (UK→GB).
+    function _paisCodigoParaNomes(code) {
+        const c = String(code || '').toUpperCase();
+        const nomes = new Set();
+        const overrides = { UK: 'United Kingdom', GB: 'United Kingdom', US: 'United States', UAE: 'United Arab Emirates' };
+        if (overrides[c]) nomes.add(overrides[c]);
+        try {
+            const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+            const n = dn.of(c);
+            if (n && n.toUpperCase() !== c) nomes.add(n);
+        } catch {}
+        return [...nomes].map(n => n.toLowerCase());
+    }
+
+    // Visitas por PAÍS por produto por dia — o denominador que faltava pra
+    // Conversão Real por país. Mesmo casamento landing_page → handle → id da
+    // _viewsPorLandingPage, mas quebrado por session_country. Confirmado que o
+    // ShopifyQL desta loja aceita cruzar session_country + landing_page_path +
+    // TIMESERIES day. Retorna { "YYYY-MM-DD|shopifyProductId": sessions }.
+    async function getViewsMapPorPais(dateFrom, dateTo, countryCode) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo || !countryCode) return {};
+        const nomesAlvo = _paisCodigoParaNomes(countryCode);
+        if (!nomesAlvo.length) return {};
+        const q = `FROM sessions SHOW sessions GROUP BY session_country, landing_page_path TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 5000`;
+        const table = await _shopifyql(q);
+        if (!table) return {};
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const iDia = cols.indexOf('day');
+        const iPais = cols.indexOf('session_country');
+        const iPath = cols.indexOf('landing_page_path');
+        const iSess = cols.indexOf('sessions');
+        if (iDia < 0 || iPais < 0 || iPath < 0 || iSess < 0) return {};
+
+        let catalogo = getShopifyProducts() || [];
+        if (!catalogo.length) { try { catalogo = await fetchShopifyProducts(); } catch (e) { console.warn('[Shopify] catálogo indisponível (views por país):', e.message); } }
+        const idPorHandle = {};
+        (catalogo || []).forEach(p => { if (p.handle) idPorHandle[String(p.handle).toLowerCase()] = String(p.id); });
+        if (!Object.keys(idPorHandle).length) return {};
+
+        const out = {};
+        for (const row of table.rows) {
+            const pais = String(row[iPais] || '').toLowerCase();
+            if (!nomesAlvo.includes(pais)) continue;
+            const handle = _handleDaLandingPage(row[iPath]);
+            if (!handle) continue;
+            const pid = idPorHandle[handle];
+            if (!pid) continue;   // handle traduzido não casa — fica de fora
+            const sess = parseInt(String(row[iSess] ?? '0').replace(/\D/g, ''), 10) || 0;
+            const dia = String(row[iDia] || '').slice(0, 10);
+            if (dia && sess) out[`${dia}|${pid}`] = (out[`${dia}|${pid}`] || 0) + sess;
+        }
+        return out;
+    }
+
     // O token guardado na sessão carrega os escopos que existiam NA HORA da
     // conexão. Adicionar read_reports ao OAUTH_SCOPES não muda um token já
     // emitido — só uma reconexão emite outro. Sem checar isso, o usuário fica
@@ -2640,7 +2698,7 @@ const ShopifyModule = (() => {
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
-        fetchFunilLoja, getCoberturaViews, tokenTemEscopoDeVisitas,
+        fetchFunilLoja, getCoberturaViews, getViewsMapPorPais, tokenTemEscopoDeVisitas,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
