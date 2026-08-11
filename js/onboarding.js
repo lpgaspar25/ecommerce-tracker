@@ -85,63 +85,77 @@ const OnboardingModule = (() => {
     function _passos() { return _isDono() ? _passosDono() : _passosFuncionario(); }
 
     function _progresso() {
-        const passos = _passos().map(p => ({ ...p, feito: (() => { try { return !!p.done(); } catch { return false; } })() }));
-        const feitos = passos.filter(p => p.feito).length;
-        return { feitos, total: passos.length, passos };
+        const passos = _passos().map((p, i) => ({ ...p, _i: i, feito: (() => { try { return !!p.done(); } catch { return false; } })() }));
+        const ess = passos.filter(p => !p.opcional);
+        const opt = passos.filter(p => p.opcional);
+        return {
+            passos, ess, opt,
+            essFeitos: ess.filter(p => p.feito).length, essTotal: ess.length,
+            optFeitos: opt.filter(p => p.feito).length, optTotal: opt.length,
+            feitos: passos.filter(p => p.feito).length, total: passos.length,
+        };
     }
 
-    // ── badge no botão de acesso rápido ──
+    // ── badge no botão de acesso rápido (conta os ESSENCIAIS) ──
     function _renderBadge() {
         const btn = document.getElementById('btn-onboarding');
         if (!btn) return;
         if (localStorage.getItem(DISMISS_KEY)) { btn.classList.add('hidden'); return; }
         const badge = document.getElementById('onboarding-badge');
-        const { feitos, total } = _progresso();
-        if (feitos >= total) {
-            // tudo pronto → some (e não volta a incomodar)
+        const { essFeitos, essTotal } = _progresso();
+        if (essTotal > 0 && essFeitos >= essTotal) {
+            // configuração essencial concluída → some (não incomoda mais)
             btn.classList.add('hidden');
             try { localStorage.setItem(DISMISS_KEY, '1'); } catch {}
             return;
         }
         btn.classList.remove('hidden');
-        if (badge) { badge.textContent = feitos + '/' + total; badge.style.display = ''; }
+        if (badge) { badge.textContent = essFeitos + '/' + essTotal; badge.style.display = ''; }
     }
 
-    // ── painel (modal) ──
+    // ── painel (modal) — agrupa Essencial/Opcional e destaca o PRÓXIMO passo ──
     function _renderPanel() {
         const box = document.getElementById('onboarding-steps');
         if (!box) return;
-        const { feitos, total, passos } = _progresso();
-        const pct = total ? Math.round((feitos / total) * 100) : 0;
-        const cab = document.getElementById('onboarding-progress');
-        if (cab) {
-            cab.innerHTML =
-                '<div class="onb-progress-top"><span>' + feitos + ' de ' + total + ' concluídos</span><span>' + pct + '%</span></div>' +
-                '<div class="onb-progress-bar"><div class="onb-progress-fill" style="width:' + pct + '%"></div></div>';
+        const P = _progresso();
+        const pct = P.essTotal ? Math.round((P.essFeitos / P.essTotal) * 100) : 100;
+        const prog = document.getElementById('onboarding-progress');
+        if (prog) {
+            prog.innerHTML =
+                '<div class="onb2-prog-row"><span class="onb2-prog-lab">Configuração essencial</span>' +
+                '<span class="onb2-prog-cnt">' + P.essFeitos + ' de ' + P.essTotal + '</span></div>' +
+                '<div class="onb2-track"><div class="onb2-fill" style="width:' + pct + '%"></div></div>';
         }
-        box.innerHTML = passos.map((p, i) => {
-            const acao = p.feito
-                ? '<span class="onb-step-ok"><i data-lucide="check" style="width:15px;height:15px"></i></span>'
-                : '<button type="button" class="btn btn-primary btn-sm onb-step-btn" data-onb-acao="' + i + '">' + p.botao + '</button>' +
-                  (p.pularKey ? '<button type="button" class="onb-step-skip" data-onb-pular="' + i + '" title="Marcar como resolvido">pular</button>' : '');
-            return '<div class="onb-step' + (p.feito ? ' onb-step-done' : '') + (p.opcional ? ' onb-step-opt' : '') + '">' +
-                '<div class="onb-step-ico"><i data-lucide="' + p.icon + '" style="width:18px;height:18px"></i></div>' +
-                '<div class="onb-step-txt"><div class="onb-step-titulo">' + p.titulo + (p.opcional ? ' <span class="onb-step-tag">opcional</span>' : '') + '</div>' +
-                '<div class="onb-step-desc">' + p.desc + '</div></div>' +
-                '<div class="onb-step-acao">' + acao + '</div></div>';
-        }).join('');
+        // o "próximo": primeiro essencial não feito, senão primeiro opcional não feito
+        const ativoId = (P.ess.find(p => !p.feito) || P.opt.find(p => !p.feito) || {}).id;
+
+        const passoHTML = (p) => {
+            const active = !p.feito && p.id === ativoId;
+            const cls = 'onb2-step' + (p.feito ? ' is-done' : (active ? ' is-active' : ''));
+            const dot = p.feito
+                ? '<span class="onb2-check"><i data-lucide="check" style="width:12px;height:12px"></i></span>'
+                : '<i data-lucide="' + p.icon + '" style="width:11px;height:11px"></i>';
+            let acao;
+            if (p.feito) acao = '<span class="onb2-done-lbl">Pronto</span>';
+            else if (active) acao = '<button type="button" class="onb2-btn onb2-btn-primary" data-onb-acao="' + p._i + '">' + p.botao + ' <i data-lucide="arrow-right" style="width:12px;height:12px"></i></button>';
+            else acao = '<button type="button" class="onb2-btn onb2-btn-ghost" data-onb-acao="' + p._i + '">' + p.botao + '</button>';
+            const pular = (!p.feito && p.pularKey) ? '<button type="button" class="onb2-skip" data-onb-pular="' + p._i + '">pular</button>' : '';
+            return '<div class="' + cls + '">' +
+                '<div class="onb2-dot">' + dot + '</div>' +
+                '<div class="onb2-main"><div class="onb2-st-title">' + p.titulo + '</div><div class="onb2-st-desc">' + p.desc + '</div></div>' +
+                '<div class="onb2-act">' + acao + pular + '</div></div>';
+        };
+
+        let html = '';
+        if (P.ess.length) html += '<div class="onb2-group-lab first">Essencial</div>' + P.ess.map(passoHTML).join('');
+        if (P.opt.length) html += '<div class="onb2-group-lab">Opcional</div>' + P.opt.map(passoHTML).join('');
+        box.innerHTML = html;
 
         box.querySelectorAll('[data-onb-acao]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const p = passos[parseInt(btn.dataset.onbAcao, 10)];
-                if (p && typeof p.acao === 'function') p.acao();
-            });
+            btn.addEventListener('click', () => { const p = P.passos[parseInt(btn.dataset.onbAcao, 10)]; if (p && typeof p.acao === 'function') p.acao(); });
         });
         box.querySelectorAll('[data-onb-pular]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const p = passos[parseInt(btn.dataset.onbPular, 10)];
-                if (p && p.pularKey) { try { localStorage.setItem(p.pularKey, '1'); } catch {} _recalcular(); _renderPanel(); }
-            });
+            btn.addEventListener('click', () => { const p = P.passos[parseInt(btn.dataset.onbPular, 10)]; if (p && p.pularKey) { try { localStorage.setItem(p.pularKey, '1'); } catch {} _recalcular(); _renderPanel(); } });
         });
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
     }
