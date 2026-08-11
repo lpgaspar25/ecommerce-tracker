@@ -1471,10 +1471,9 @@ const ShopifyModule = (() => {
                 if (status) status.innerHTML = '<span style="color:var(--red)">Client ID inválido (esperado 32 caracteres hex).</span>';
                 return;
             }
-            if (!clientSecret.startsWith('shpss_')) {
-                if (status) status.innerHTML = '<span style="color:var(--red)">Client Secret deve começar com <code>shpss_</code>.</span>';
-                return;
-            }
+            // Nota: NÃO exigimos mais o prefixo `shpss_`. A Shopify mudou o
+            // formato do Client Secret (apps novos não usam mais esse prefixo),
+            // e a exigência antiga bloqueava o install em silêncio.
 
             const normalized = shop.replace(/^https?:\/\//, '').replace(/\/$/, '');
             if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(normalized)) {
@@ -1482,13 +1481,19 @@ const ShopifyModule = (() => {
                 return;
             }
 
-            _config.clientId = clientId;
-            _config.clientSecret = clientSecret;
-            _config.proxyUrl = proxyUrl;
-            _saveConfig();
-
-            if (status) status.innerHTML = '<span style="color:var(--text-muted)">Redirecionando para Shopify...</span>';
-            setTimeout(() => beginInstall(normalized), 300);
+            // try/catch: se _saveConfig ou beginInstall falharem, o usuário VÊ o
+            // erro em vez do botão parecer "morto" (antes um throw aqui deixava a
+            // tela sem reação nenhuma).
+            try {
+                _config.clientId = clientId;
+                _config.clientSecret = clientSecret;
+                _config.proxyUrl = proxyUrl;
+                _saveConfig();
+                if (status) status.innerHTML = '<span style="color:var(--text-muted)">Redirecionando para Shopify...</span>';
+                setTimeout(() => beginInstall(normalized), 300);
+            } catch (e) {
+                if (status) status.innerHTML = '<span style="color:var(--red)">Erro ao iniciar a instalação: ' + ((e && e.message) || e) + '</span>';
+            }
         });
 
         document.getElementById('btn-shopify-disconnect')?.addEventListener('click', async () => {
