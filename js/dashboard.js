@@ -5,11 +5,40 @@
 const DashboardModule = {
     _chartInstance: null,
     _topMode: 'profit',
-    _calMetric: 'cpa',
+    // Métrica do Calendário — persiste entre reloads (antes resetava pra 'cpa'
+    // toda vez, o que confundia). A chave interna continua a mesma (cpa,
+    // cpaReal, conversion, conversionCombined, ...) pra não mexer no cálculo.
+    _calMetric: (() => { try { return localStorage.getItem('etracker_cal_metric') || 'cpa'; } catch { return 'cpa'; } })(),
     _calYear: new Date().getFullYear(),
     _calMonth: new Date().getMonth(), // 0-based
     _calProduct: 'todos',
     _calRegion: '',
+
+    // Métricas-base do Calendário. As 3 primeiras têm versão "Real" (Shopify);
+    // o resto só tem a estimativa do Facebook. O menu mostra a métrica-base +
+    // um toggle Facebook/Real, em vez de 11 abas planas (3 delas duplicadas).
+    _METRIC_BASES: [
+        { base: 'cpa',        label: 'CPA',       real: 'cpaReal' },
+        { base: 'conversion', label: 'Conversão', real: 'conversionCombined' },
+        { base: 'sales',      label: 'Vendas',    real: 'salesReal' },
+        { base: 'profit',     label: 'Lucro',     real: null },
+        { base: 'revenue',    label: 'Receita',   real: null },
+        { base: 'budget',     label: 'Gastos',    real: null },
+        { base: 'cpm',        label: 'CPM',       real: null },
+        { base: 'cpc',        label: 'CPC Médio', real: null },
+    ],
+    // De uma chave interna (ex.: 'cpaReal') → { baseDef, isReal }.
+    _metricBaseReal(key) {
+        for (const b of this._METRIC_BASES) {
+            if (b.base === key) return { baseDef: b, isReal: false };
+            if (b.real === key) return { baseDef: b, isReal: true };
+        }
+        return { baseDef: this._METRIC_BASES[0], isReal: false };
+    },
+    _setCalMetric(key) {
+        this._calMetric = key;
+        try { localStorage.setItem('etracker_cal_metric', key); } catch {}
+    },
 
     // Rankings de funil (checkout/conversão) — dimensão e métrica escolhidas
     _funilDim: 'produto',      // 'produto' | 'regiao'
@@ -2640,20 +2669,8 @@ const DashboardModule = {
             }
         }
 
-        // Metric tabs + product selector on same row
-        const tabs = [
-            { key: 'cpa',                label: 'CPA'              },
-            { key: 'cpaReal',            label: 'CPA + Real'       },
-            { key: 'conversion',         label: 'Conversão'        },
-            { key: 'conversionCombined', label: 'Conversão + Real' },
-            { key: 'profit',             label: 'Lucro'            },
-            { key: 'revenue',            label: 'Receita'          },
-            { key: 'sales',              label: 'Vendas'           },
-            { key: 'salesReal',          label: 'Vendas + Real'    },
-            { key: 'budget',             label: 'Gastos'           },
-            { key: 'cpm',                label: 'CPM'              },
-            { key: 'cpc',                label: 'CPC Médio'        },
-        ];
+        // Métrica-base ativa + se está no modo Real (Shopify)
+        const { baseDef: metricAtual, isReal } = this._metricBaseReal(this._calMetric);
 
         // Build product options — dropdown customizado (mostra plataforma FB/Google + conta de anúncio, igual ao ranking)
         const products = (AppState.products || []);
@@ -2677,9 +2694,14 @@ const DashboardModule = {
 
         const headerHtml = `
         <div class="mcal-header-bar">
-            <div class="mcal-tabs">${tabs.map(t =>
-                `<button class="mcal-tab${this._calMetric === t.key ? ' active' : ''}" data-metric="${t.key}">${t.label}</button>`
+            <div class="mcal-tabs">${this._METRIC_BASES.map(b =>
+                `<button class="mcal-tab${metricAtual.base === b.base ? ' active' : ''}" data-base="${b.base}">${b.label}</button>`
             ).join('')}</div>
+            ${metricAtual.real ? `
+            <div class="mcal-src-toggle" role="group" aria-label="Fonte dos dados">
+                <button class="mcal-src-btn${!isReal ? ' active' : ''}" data-real="0" title="Vendas estimadas pelo pixel do Facebook">Facebook</button>
+                <button class="mcal-src-btn${isReal ? ' active' : ''}" data-real="1" title="Vendas reais da sua loja Shopify">Real (Shopify)</button>
+            </div>` : ''}
             <div class="mcal-prod-dd" id="mcal-product-dd">
                 <button type="button" class="mcal-product-select mcal-prod-dd-btn" id="mcal-prod-dd-btn">
                     <span class="mcal-prod-dd-cur">${curLabelHtml}</span>
@@ -2715,11 +2737,24 @@ const DashboardModule = {
 
         container.innerHTML = headerHtml + navHtml + '<div class="mcal-months-wrapper">' + monthHtml + '</div>' + summaryHtml;
 
-        // Tab click handlers
+        // Abas de métrica-base — mantém o modo Real se a nova métrica também tiver
         container.querySelectorAll('.mcal-tab').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this._calMetric = btn.dataset.metric;
+                const def = this._METRIC_BASES.find(b => b.base === btn.dataset.base);
+                if (!def) return;
+                const { isReal } = this._metricBaseReal(this._calMetric);
+                this._setCalMetric((isReal && def.real) ? def.real : def.base);
+                this._renderMetricsCalendar();
+            });
+        });
+        // Toggle de fonte (Facebook estimado ⟷ Real da Shopify)
+        container.querySelectorAll('.mcal-src-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const { baseDef } = this._metricBaseReal(this._calMetric);
+                const querReal = btn.dataset.real === '1';
+                this._setCalMetric((querReal && baseDef.real) ? baseDef.real : baseDef.base);
                 this._renderMetricsCalendar();
             });
         });
