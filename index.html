@@ -26,11 +26,61 @@
         })();
     </script>
     <link rel="stylesheet" href="css/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
+         refresh do dashboard, Supabase no SupabaseSync.init, lucide no
+         createIcons — todos rodam em DOMContentLoaded). Sem defer elas
+         bloqueiam a PRIMEIRA PINTURA; com defer a tela de carregamento aparece
+         na hora e o app pinta antes de baixar/executar os ~4 MB de JS. -->
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- ============ Tela de carregamento (splash) ============
+         Aparece instantaneamente enquanto o app carrega. A faixa de cor varre
+         o ícone da direita pra esquerda via `transform` (roda na thread de
+         composição), então a animação continua fluida MESMO enquanto a main
+         thread está travada executando os scripts do boot. -->
+    <style>
+        #app-splash {
+            position: fixed; inset: 0; z-index: 999999;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--bg-primary, #0e0e16);
+            transition: opacity .35s ease;
+        }
+        #app-splash.app-splash-hide { opacity: 0; pointer-events: none; }
+        .app-splash-logo { position: relative; width: 78px; height: 78px; color: rgba(139,92,246,0.20); }
+        .app-splash-logo .app-splash-base { width: 100%; height: 100%; display: block; }
+        .app-splash-sweep {
+            position: absolute; inset: 0; overflow: hidden;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M3%203v18h18'/%3E%3Cpath%20d='M18%2017V9'/%3E%3Cpath%20d='M13%2017V5'/%3E%3Cpath%20d='M8%2017v-3'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+                    mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23000'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M3%203v18h18'/%3E%3Cpath%20d='M18%2017V9'/%3E%3Cpath%20d='M13%2017V5'/%3E%3Cpath%20d='M8%2017v-3'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+        }
+        .app-splash-sweep::before {
+            content: ""; position: absolute; top: -25%; bottom: -25%; left: 0; width: 68%;
+            background: linear-gradient(90deg, transparent 0%, var(--accent, #8b5cf6) 45%, #c4b5fd 55%, transparent 100%);
+            animation: appSplashSweep 1.15s cubic-bezier(.4,0,.2,1) infinite;
+            will-change: transform;
+        }
+        @keyframes appSplashSweep {
+            0%   { transform: translateX(185%); }   /* entra pela direita */
+            100% { transform: translateX(-185%); }  /* sai pela esquerda */
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .app-splash-sweep::before { animation-duration: 2.4s; }
+        }
+    </style>
 </head>
 <body>
+    <!-- Tela de carregamento (splash) — removida via JS quando o app fica pronto -->
+    <div id="app-splash" aria-hidden="true">
+        <div class="app-splash-logo">
+            <svg class="app-splash-base" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>
+            </svg>
+            <div class="app-splash-sweep"></div>
+        </div>
+    </div>
+
     <!-- Top Bar removed — controles realocados para a sidebar -->
 
 
@@ -4707,7 +4757,7 @@
                     <h3><i data-lucide="sliders-horizontal" style="width:16px;height:16px;vertical-align:-3px"></i> Ordem do menu</h3>
                     <button class="btn-close" id="sidebar-settings-close">&times;</button>
                 </div>
-                <p class="loja-card-hint">Use as setas pra reordenar os itens do menu lateral.</p>
+                <p class="loja-card-hint">Arraste pelo <i data-lucide="grip-vertical" style="width:12px;height:12px;vertical-align:-2px"></i> ou use as setas pra reordenar os itens do menu lateral.</p>
                 <div id="sidebar-order-list" class="sidebar-order-list"></div>
                 <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem">
                     <button id="sidebar-order-reset" class="btn btn-secondary btn-sm">Restaurar padrão</button>
@@ -6681,7 +6731,10 @@
     <script src="js/app.js"></script>
     <script src="js/currency.js"></script>
     <script src="js/range-picker.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- defer: xlsx (~900 KB) só é usado em import/export de planilha (funnel.js,
+         ad-hierarchy.js), nunca no boot. Sem defer ele bloqueava o download de
+         todos os scripts abaixo dele. -->
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="js/sheets.js"></script>
     <script src="js/products.js"></script>
     <script src="js/goals.js"></script>
@@ -6788,5 +6841,35 @@
     <!-- Google APIs loaded AFTER app scripts so gapiLoaded/gisLoaded exist -->
     <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
     <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+    <!-- Esconde a tela de carregamento quando o app fica pronto. Registrado por
+         último, então seu handler de DOMContentLoaded roda DEPOIS do init pesado
+         de todos os módulos; os dois requestAnimationFrame garantem que o app já
+         pintou antes do fade. setTimeout é rede de segurança pro splash nunca
+         ficar preso. -->
+    <script>
+        (function () {
+            var splash = document.getElementById('app-splash');
+            if (!splash) return;
+            var escondido = false;
+            function esconder() {
+                if (escondido) return;
+                escondido = true;
+                splash.classList.add('app-splash-hide');
+                setTimeout(function () {
+                    if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+                }, 450);
+            }
+            function esconderNoProximoFrame() {
+                requestAnimationFrame(function () { requestAnimationFrame(esconder); });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', esconderNoProximoFrame);
+            } else {
+                esconderNoProximoFrame();
+            }
+            setTimeout(esconder, 8000);
+        })();
+    </script>
 </body>
 </html>

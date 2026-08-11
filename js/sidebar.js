@@ -181,8 +181,9 @@ const Sidebar = {
         if (!box) return;
         order = order || this._getOrder();
         box.innerHTML = order.map((id, i) => `
-            <div class="sidebar-order-item">
-                <span>${this._labels[id] || id}</span>
+            <div class="sidebar-order-item" draggable="true" data-id="${id}">
+                <span class="sidebar-order-grip" title="Arraste para reordenar"><i data-lucide="grip-vertical" style="width:14px;height:14px"></i></span>
+                <span class="sidebar-order-label">${this._labels[id] || id}</span>
                 <div class="sidebar-order-acoes">
                     <button type="button" class="btn-icon" data-mover-cima="${id}" ${i === 0 ? 'disabled' : ''} title="Mover pra cima"><i data-lucide="chevron-up" style="width:14px;height:14px"></i></button>
                     <button type="button" class="btn-icon" data-mover-baixo="${id}" ${i === order.length - 1 ? 'disabled' : ''} title="Mover pra baixo"><i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
@@ -195,7 +196,60 @@ const Sidebar = {
         box.querySelectorAll('[data-mover-baixo]').forEach(btn => {
             btn.addEventListener('click', () => this._moverItem(btn.dataset.moverBaixo, 1));
         });
+        this._wireDrag(box);
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    // Arrastar-e-soltar pra reordenar (além das setas). HTML5 drag nativo:
+    // cada item é draggable; ao soltar sobre outro, o arrastado assume a
+    // posição do alvo. Persiste igual às setas (mesmo _saveOrder/_applyOrder).
+    _wireDrag(box) {
+        let arrastadoId = null;
+        box.querySelectorAll('.sidebar-order-item').forEach(item => {
+            item.addEventListener('dragstart', (e) => {
+                arrastadoId = item.dataset.id;
+                item.classList.add('sidebar-order-dragging');
+                try {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', arrastadoId);
+                } catch {}
+            });
+            item.addEventListener('dragend', () => {
+                arrastadoId = null;
+                box.querySelectorAll('.sidebar-order-item').forEach(el => {
+                    el.classList.remove('sidebar-order-dragging', 'sidebar-order-dragover');
+                });
+            });
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                try { e.dataTransfer.dropEffect = 'move'; } catch {}
+                if (item.dataset.id && item.dataset.id !== arrastadoId) {
+                    item.classList.add('sidebar-order-dragover');
+                }
+            });
+            item.addEventListener('dragleave', () => item.classList.remove('sidebar-order-dragover'));
+            item.addEventListener('drop', (e) => {
+                e.preventDefault();
+                item.classList.remove('sidebar-order-dragover');
+                let origem = arrastadoId;
+                if (!origem) { try { origem = e.dataTransfer.getData('text/plain'); } catch {} }
+                const alvo = item.dataset.id;
+                if (origem && alvo && origem !== alvo) this._reordenarPara(origem, alvo);
+            });
+        });
+    },
+
+    _reordenarPara(origemId, alvoId) {
+        const order = this._getOrder();
+        const de = order.indexOf(origemId);
+        if (de < 0) return;
+        order.splice(de, 1);                 // tira o arrastado
+        const para = order.indexOf(alvoId);  // recalcula a posição do alvo
+        if (para < 0) return;
+        order.splice(para, 0, origemId);     // insere antes do alvo
+        this._saveOrder(order);
+        this._applyOrder(order);
+        this._renderSettingsList(order);
     },
 
     _moverItem(id, direcao) {
