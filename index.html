@@ -264,10 +264,6 @@
             <button class="sidebar-utility-btn" id="sidebar-ai-key-btn" title="Configurar chave OpenAI/Claude para AI Ad Generator">
                 <i data-lucide="key-round" style="width:16px;height:16px"></i>
             </button>
-            <button class="sidebar-utility-btn hidden" id="btn-onboarding" title="Primeiros passos — conexões da conta">
-                <i data-lucide="rocket" style="width:16px;height:16px"></i>
-                <span id="onboarding-badge" class="onboarding-badge">0/0</span>
-            </button>
         </div>
 
         <!-- Profile -->
@@ -4775,23 +4771,23 @@
             </div>
         </div>
 
-        <!-- ==================== Modal: Primeiros passos (onboarding) ==================== -->
+        <!-- ==================== Modal: Configuração da loja (onboarding) ==================== -->
         <div id="modal-onboarding" class="modal hidden">
             <div class="modal-overlay"></div>
-            <div class="modal-content onb2">
-                <button class="btn-close" id="onboarding-close" aria-label="Fechar">&times;</button>
-                <div class="onb2-head">
-                    <span class="onb2-eyebrow">Primeiros passos</span>
-                    <h2 class="onb2-title">Configure sua operação</h2>
-                    <p class="onb2-sub">Conecte suas fontes de dados — cada etapa se marca sozinha quando fica pronta.</p>
-                </div>
-                <div id="onboarding-progress" class="onb2-prog"></div>
-                <div id="onboarding-steps"></div>
-                <div class="onb2-foot">
-                    <button type="button" id="onboarding-dismiss" class="onb2-link">Concluir depois</button>
+            <div class="modal-content onb3">
+                <div id="onboarding-header" class="onb3-header"></div>
+                <div class="onb3-body">
+                    <div class="onb3-col" id="onboarding-essenciais"></div>
+                    <div class="onb3-col" id="onboarding-recomendadas"></div>
                 </div>
             </div>
         </div>
+
+        <!-- Botão flutuante: Configuração da loja (onboarding) — some quando os essenciais terminam -->
+        <button type="button" id="btn-onboarding" class="onboarding-fab hidden" title="Configuração da loja — primeiros passos">
+            <i data-lucide="rocket" style="width:19px;height:19px"></i>
+            <span id="onboarding-badge" class="onboarding-badge">0/0</span>
+        </button>
 
         <!-- ==================== Mapa de navegação (NAV-02) ==================== -->
         <button type="button" id="btn-nav-map" class="nav-map-btn" title="Mapa de navegação (todos os módulos)">
