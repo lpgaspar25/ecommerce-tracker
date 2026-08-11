@@ -153,6 +153,11 @@ const Sidebar = {
             // no fim, e ficaria "preso" no meio conforme reordena).
             if (node) parent.insertBefore(node, spacer || null);
         });
+        // O redesign (js/ux-shell.js) esconde essa sidebar e monta a dele
+        // própria a partir da mesma ordem — atualiza na hora, sem reload.
+        if (typeof UXShell !== 'undefined' && document.body.classList.contains('ux-v2-ready') && typeof UXShell._refreshNav === 'function') {
+            UXShell._refreshNav();
+        }
     },
 
     _wireSettingsModal() {

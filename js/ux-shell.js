@@ -240,28 +240,58 @@ const UXShell = {
             'dashboard';
     },
 
-    _buildSidebar() {
-        const sidebar = document.getElementById('app-sidebar');
-        const brand = sidebar?.querySelector('.sidebar-brand');
-        if (!sidebar || !brand) return;
+    // Cada aba nova (tab id) mapeada pro item de TOPO da antiga sidebar
+    // (js/sidebar.js — Sidebar._defaultOrder) a que pertencia, pra "Ordem do
+    // menu" continuar tendo efeito depois do redesign. As `sections` daqui são
+    // uma reorganização por fluxo de trabalho (mesclam/dividem os grupos
+    // antigos), então o mapeamento é de MUITOS-pra-um, não 1:1.
+    _TAB_GRUPO_ANTIGO: {
+        dashboard: 'dashboard', vendas: 'vendas',
+        fiscal: 'financeiro', reconciliation: 'financeiro', captures: 'financeiro',
+        products: 'produtos', importador: 'produtos',
+        goals: 'performance', diary: 'performance', diagnostico: 'performance',
+        calculator: 'simulacao', 'scale-sim': 'simulacao',
+        'ad-library': 'creative', 'ai-generations': 'creative', studio: 'creative',
+        creatives: 'creative', 'recent-edits': 'creative', 'saved-inspirations': 'creative',
+        'ad-launcher': 'launch', 'ads-manager': 'launch', 'ad-hierarchy': 'launch', pipeline: 'launch',
+        laboratorio: 'execucao', projects: 'execucao', mineracao: 'execucao',
+        'loja-codigo': 'loja', 'loja-empresa': 'loja',
+    },
 
-        brand.setAttribute('aria-label', 'Voltar para a Central da operação');
-        brand.innerHTML = `
-            <span class="ux-brand-mark"><i data-lucide="blocks"></i></span>
-            <span class="ux-brand-copy">
-                <strong>Tracker</strong>
-                <small>commerce OS</small>
-            </span>`;
+    // Reordena as sections pela ordem customizada em "Ordem do menu" — mas só
+    // quando o usuário de fato mudou algo. Na ordem PADRÃO, mantém a sequência
+    // curada do redesign (Comercial → Marketing → Mídia paga → ...) exatamente
+    // como está, pra não regredir a UX default por causa de um mapeamento
+    // aproximado. Ranking de cada section = posição mais cedo, na ordem
+    // customizada, de qualquer aba dela — empate mantém a ordem original
+    // (sort é estável).
+    _sectionsOrdenadas() {
+        try {
+            if (typeof Sidebar === 'undefined' || typeof Sidebar._getOrder !== 'function') return this.sections;
+            const ordem = Sidebar._getOrder();
+            const padrao = Sidebar._defaultOrder;
+            if (!Array.isArray(ordem) || JSON.stringify(ordem) === JSON.stringify(padrao)) return this.sections;
+            const posicao = {};
+            ordem.forEach((id, i) => { posicao[id] = i; });
+            const rank = (section) => {
+                let melhor = Infinity;
+                section.tabs.forEach(tab => {
+                    const grupoAntigo = this._TAB_GRUPO_ANTIGO[tab];
+                    if (grupoAntigo && posicao[grupoAntigo] !== undefined) melhor = Math.min(melhor, posicao[grupoAntigo]);
+                });
+                return melhor;
+            };
+            return this.sections
+                .map((section, i) => ({ section, i, r: rank(section) }))
+                .sort((a, b) => (a.r - b.r) || (a.i - b.i))
+                .map(x => x.section);
+        } catch { return this.sections; }
+    },
 
-        const actionButton = document.createElement('button');
-        actionButton.type = 'button';
-        actionButton.className = 'ux-sidebar-action';
-        actionButton.id = 'ux-sidebar-action';
-        actionButton.innerHTML = `
-            <i data-lucide="plus"></i>
-            <span>Nova ação</span>
-            <kbd>⌘ K</kbd>`;
-
+    // Monta o <nav> (Visão geral + sections). Extraído de _buildSidebar pra
+    // poder ser chamado de novo (_refreshNav) quando "Ordem do menu" mudar,
+    // sem duplicar o resto da sidebar (marca, botão "Nova ação").
+    _renderNav() {
         const nav = document.createElement('nav');
         nav.className = 'ux-sidebar-nav';
         nav.setAttribute('aria-label', 'Navegação principal');
@@ -274,7 +304,7 @@ const UXShell = {
 
         const saved = this._state();
         const openGroups = new Set(Array.isArray(saved.openGroups) ? saved.openGroups : []);
-        this.sections.forEach(section => {
+        this._sectionsOrdenadas().forEach(section => {
             const group = document.createElement('section');
             group.className = 'ux-nav-group';
             group.dataset.group = section.id;
@@ -316,7 +346,42 @@ const UXShell = {
             nav.appendChild(group);
         });
 
-        brand.after(actionButton, nav);
+        if (typeof lucide !== 'undefined') try { lucide.createIcons({ nodes: [nav] }); } catch {}
+        return nav;
+    },
+
+    // Reconstrói só o <nav> (mantém marca/ação intactos) — chamado quando
+    // "Ordem do menu" salva uma mudança, pra a barra nova refletir na hora.
+    _refreshNav() {
+        const sidebar = document.getElementById('app-sidebar');
+        const navAtual = sidebar?.querySelector('.ux-sidebar-nav');
+        if (!navAtual) return;
+        navAtual.replaceWith(this._renderNav());
+    },
+
+    _buildSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        const brand = sidebar?.querySelector('.sidebar-brand');
+        if (!sidebar || !brand) return;
+
+        brand.setAttribute('aria-label', 'Voltar para a Central da operação');
+        brand.innerHTML = `
+            <span class="ux-brand-mark"><i data-lucide="blocks"></i></span>
+            <span class="ux-brand-copy">
+                <strong>Tracker</strong>
+                <small>commerce OS</small>
+            </span>`;
+
+        const actionButton = document.createElement('button');
+        actionButton.type = 'button';
+        actionButton.className = 'ux-sidebar-action';
+        actionButton.id = 'ux-sidebar-action';
+        actionButton.innerHTML = `
+            <i data-lucide="plus"></i>
+            <span>Nova ação</span>
+            <kbd>⌘ K</kbd>`;
+
+        brand.after(actionButton, this._renderNav());
         actionButton.addEventListener('click', () => this.openCommand('', 'actions'));
 
         const collapseButton = sidebar.querySelector('#sidebar-collapse-btn');
@@ -388,6 +453,14 @@ const UXShell = {
         if (manageStores) {
             manageStores.classList.add('ux-topbar-icon-button');
             storeControl.appendChild(manageStores);
+        }
+        // "Ordem do menu" (js/sidebar.js) ficava dentro da .sidebar-store
+        // antiga, que o CSS do redesign esconde por completo — sem mover pra
+        // cá o botão fica inalcançável na UI nova.
+        const menuOrderBtn = document.getElementById('btn-sidebar-settings');
+        if (menuOrderBtn) {
+            menuOrderBtn.classList.add('ux-topbar-icon-button');
+            storeControl.appendChild(menuOrderBtn);
         }
 
         const nativeTools = topbar.querySelector('#ux-topbar-native');
