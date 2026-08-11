@@ -502,7 +502,7 @@
             const title = document.getElementById('adl-library-title');
             if (!modal || !list) return;
             if (title) title.textContent = labelMap[field] || 'Biblioteca';
-            list.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)"><i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite"></i> Carregando…</div>';
+            list.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)">' + window.loadingHTML('Carregando…') + '</div>';
             modal.style.display = 'flex';
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
@@ -910,7 +910,7 @@
             const list = document.getElementById('adl-import-interests-list');
             if (!modal || !list) return;
             modal.style.display = 'flex';
-            list.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)"><i data-lucide="loader-2" style="width:20px;height:20px;animation:spin 1s linear infinite"></i> Carregando…</div>';
+            list.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted)">' + window.loadingHTML('Carregando…') + '</div>';
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
             // Bind close + add buttons (once)

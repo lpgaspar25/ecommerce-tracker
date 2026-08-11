@@ -5,18 +5,73 @@
 const DashboardModule = {
     _chartInstance: null,
     _topMode: 'profit',
-    _calMetric: 'cpa',
-    _calSource: 'facebook',
+    // Métrica do Calendário — persiste entre reloads (antes resetava pra 'cpa'
+    // toda vez, o que confundia). A chave interna continua a mesma (cpa,
+    // cpaReal, conversion, conversionCombined, ...) pra não mexer no cálculo.
+    _calMetric: (() => { try { return localStorage.getItem('etracker_cal_metric') || 'cpa'; } catch { return 'cpa'; } })(),
     _calYear: new Date().getFullYear(),
     _calMonth: new Date().getMonth(), // 0-based
     _calProduct: 'todos',
     _calRegion: '',
+
+    // Métricas-base do Calendário. As 3 primeiras têm versão "Real" (Shopify);
+    // o resto só tem a estimativa do Facebook. O menu mostra a métrica-base +
+    // um toggle Facebook/Real, em vez de 11 abas planas (3 delas duplicadas).
+    _METRIC_BASES: [
+        { base: 'cpa',        label: 'CPA',       real: 'cpaReal' },
+        { base: 'conversion', label: 'Conversão', real: 'conversionCombined' },
+        { base: 'sales',      label: 'Vendas',    real: 'salesReal' },
+        { base: 'profit',     label: 'Lucro',     real: null },
+        { base: 'revenue',    label: 'Receita',   real: null },
+        { base: 'budget',     label: 'Gastos',    real: null },
+        { base: 'cpm',        label: 'CPM',       real: null },
+        { base: 'cpc',        label: 'CPC Médio', real: null },
+    ],
+    // De uma chave interna (ex.: 'cpaReal') → { baseDef, isReal }.
+    _metricBaseReal(key) {
+        for (const b of this._METRIC_BASES) {
+            if (b.base === key) return { baseDef: b, isReal: false };
+            if (b.real === key) return { baseDef: b, isReal: true };
+        }
+        return { baseDef: this._METRIC_BASES[0], isReal: false };
+    },
+    _setCalMetric(key) {
+        this._calMetric = key;
+        try { localStorage.setItem('etracker_cal_metric', key); } catch {}
+    },
+
+    // Rankings de funil (checkout/conversão) — dimensão e métrica escolhidas
+    _funilDim: 'produto',      // 'produto' | 'regiao'
+    _funilMode: 'piorCheckout',
+    // Volume mínimo pra entrar num ranking de TAXA: sem isso um produto com
+    // 1 ATC e 0 checkout aparece como "0% — pior checkout da loja", que é
+    // ruído, não sinal.
+    _MIN_ATC_FUNIL: 10,
+    _MIN_VIEWS_FUNIL: 50,
+    _viewsErro: '',
+    _funilLojaPais: null,
+    _funilLojaPaisKey: '',
 
     // Shopify real-sales cache (keyed by "start|end")
     _realSalesMap: null,
     _realSalesPrevMap: null,
     _realSalesCacheKey: '',
     _realSalesPrevCacheKey: '',
+
+    // Shopify product-views cache (DASH-02 — denominador da Conversão Real)
+    _viewsMap: null,
+    _viewsCacheKey: '',
+    // Visitas por PAÍS (denominador da Conversão Real quando um país está
+    // selecionado) — cache separado do _viewsMap sem filtro, keyed por
+    // "start|end|countryCode".
+    _viewsMapPorPais: null,
+    _viewsMapPorPaisKey: '',
+    // Vendas reais filtradas por país (DASH-02) — cache SEPARADO do
+    // _realSalesMap principal, só usado quando um país válido está
+    // selecionado, pra nunca contaminar o cache que CPA Real/Vendas
+    // Real/Top Produtos esperam sem filtro de país.
+    _realSalesMapPorPais: null,
+    _realSalesMapPorPaisKey: '',
 
     // Date state
     _startDate: '',
@@ -149,12 +204,50 @@ const DashboardModule = {
             });
         });
 
+        // Rankings de funil — classes próprias (não .dash-tab): o handler
+        // acima é global por classe e passaria a sobrescrever _topMode se
+        // estes botões compartilhassem a mesma classe.
+        document.querySelectorAll('.dash-funil-dim').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-dim').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilDim = btn.dataset.dim;
+                this._renderFunilRanking();
+            });
+        });
+        document.querySelectorAll('.dash-funil-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilMode = btn.dataset.funil;
+                this._renderFunilRanking();
+            });
+        });
+        document.querySelectorAll('.dash-funil-pais').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dash-funil-pais').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._funilPaisModo = btn.dataset.pmodo;
+                this._renderVendasPorPais();
+            });
+        });
+
         EventBus.on('dataLoaded', () => this.refresh());
-        EventBus.on('storeChanged', () => this.refresh());
+        // Ao trocar de loja, os mapas da Shopify (vendas reais, visitas, funil)
+        // são de OUTRA loja agora — descarta antes do refresh, senão o mesmo
+        // período mostraria os números da loja anterior sem erro nenhum.
+        EventBus.on('storeChanged', () => { this._descartarCachesShopify(); this.refresh(); });
         EventBus.on('diaryChanged', () => this.refresh());
         EventBus.on('productsChanged', () => this.refresh());
         EventBus.on('goalsChanged', () => this.refresh());
         EventBus.on('tabChanged', (tab) => { if (tab === 'dashboard') this.refresh(); });
+
+        // Primeira pintura dos cards de funil. O Dashboard já é a aba ativa no
+        // load, então 'tabChanged' não dispara pra ele, e sem nenhum evento de
+        // dados esses dois containers ficariam literalmente vazios — sem nem a
+        // mensagem explicando o porquê, que é pior que qualquer estado vazio.
+        this._renderFunilRanking();
+        this._renderVendasPorPais();
 
         // "Ver Tudo" button on Madgicx-style ranking → toggle expand inline
         document.getElementById('btn-mdgx-ranking-all')?.addEventListener('click', () => {
@@ -459,6 +552,19 @@ const DashboardModule = {
         });
     },
 
+    // Zera os mapas que vêm da Shopify (chaveados só por período/país, nunca
+    // por loja) — chamado ao TROCAR de loja, senão sobrevivem com dados da
+    // loja anterior enquanto o período não muda.
+    _descartarCachesShopify() {
+        this._realSalesMap = null; this._realSalesCacheKey = '';
+        this._realSalesPrevMap = null; this._realSalesPrevCacheKey = '';
+        this._viewsMap = null; this._viewsCacheKey = '';
+        this._viewsMapPorPais = null; this._viewsMapPorPaisKey = '';
+        this._viewsErro = '';
+        this._realSalesMapPorPais = null; this._realSalesMapPorPaisKey = '';
+        this._funilLojaPais = null; this._funilLojaPaisKey = '';
+    },
+
     refresh() {
         // Invalidate real-sales cache when period or compare changes
         const curKey = `${this._startDate}|${this._endDate}`;
@@ -480,6 +586,8 @@ const DashboardModule = {
         this._renderFunnelDiagnosis();
         this._renderChart();
         this._renderTopProducts();
+        this._renderFunilRanking();
+        this._renderVendasPorPais();
         this._renderMdgxRanking();
         this._renderMetricsCalendar();
         this._renderEcommerceDates();
@@ -976,6 +1084,137 @@ const DashboardModule = {
         return { sales, revenue };
     },
 
+    // ── Shopify product-views loader (DASH-02 — denominador da Conversão Real) ──
+    async _loadViewsMap() {
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        if (!hasShopify) { this._viewsMap = {}; return; }
+        const curKey = `${this._startDate}|${this._endDate}`;
+        if (this._viewsCacheKey !== curKey) {
+            try {
+                this._viewsMap = await ShopifyModule.fetchProductViewsByDate(this._startDate, this._endDate);
+                this._viewsCacheKey = curKey;
+            } catch (e) {
+                console.warn('[Dashboard] Shopify views fetch failed:', e);
+                this._viewsMap = {};
+                // Guarda o motivo: sem isso o ranking caía num "Sem dados"
+                // mudo e não havia como o usuário saber que o problema é a
+                // fonte de visitas, não a ausência de vendas.
+                this._viewsErro = String(e.message || e).slice(0, 220);
+                // Causa mais provável e de longe a mais acionável: o token da
+                // sessão foi emitido antes de read_reports entrar na lista de
+                // escopos, então a query de visitas é recusada. Confirma no
+                // próprio token em vez de adivinhar pela mensagem de erro.
+                this._viewsPrecisaReconectar = false;
+                try {
+                    if (await ShopifyModule.tokenTemEscopoDeVisitas() === false) this._viewsPrecisaReconectar = true;
+                } catch {}
+            }
+            if (this._viewsMap && Object.keys(this._viewsMap).length) this._viewsErro = '';
+        }
+    },
+
+    // "Sem dados" não diz NADA — os modos que dependem da Shopify podem
+    // esvaziar por 4 motivos bem diferentes, e o usuário não tem como
+    // distinguir. Cada um tem uma ação concreta associada.
+    _porqueRankingVazio(mode) {
+        const entradas = this._getPeriodEntries();
+        if (!entradas.length) {
+            return this._productFilter !== 'todos'
+                ? 'Sem entradas no Diário pra este produto no período — troque o filtro de produto ou o período.'
+                : 'Sem entradas no Diário neste período.';
+        }
+        const precisaShopify = ['salesReal', 'cpaReal', 'conversionReal'].includes(mode);
+        if (precisaShopify) {
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+                return 'Conecte a Shopify (Configurações → Integrações) — este modo usa dados reais da loja.';
+            }
+            const semVinculo = !(AppState.allProducts || []).some(p => ShopifyModule.getLink && ShopifyModule.getLink(p.id));
+            if (semVinculo) {
+                return 'Nenhum produto está vinculado a um produto da Shopify. Vincule em Produtos → Shopify pra cruzar vendas reais com os lançamentos do Diário.';
+            }
+            if (mode === 'conversionReal' && this._viewsPrecisaReconectar) {
+                return 'A Conversão Real precisa das visitas da Shopify, e a permissão de relatórios (<code>read_reports</code>) não estava na conexão atual — ela foi adicionada agora, mas só vale num token novo. <button type="button" class="btn btn-primary btn-sm" id="dash-reconectar-shopify" style="margin-top:0.5rem">Reconectar Shopify</button>';
+            }
+            if (mode === 'conversionReal' && this._viewsErro) {
+                return `Visitas por produto indisponíveis: ${escapeHtml(this._viewsErro)}`;
+            }
+            if (mode === 'conversionReal') {
+                return 'Sem visitas por produto no período — a Conversão Real precisa do número de visitantes que a Shopify reporta por produto.';
+            }
+            return 'Sem vendas reais da Shopify no período pros produtos vinculados.';
+        }
+        return 'Sem dados neste período.';
+    },
+
+    // Sum Shopify product views from a viewsMap ("date|shopifyProductId": views)
+    // for a given LOCAL productId (or all linked products if pid='todos'),
+    // across a date range [start, end]. Chaves vêm em id da Shopify, não o
+    // local — precisa converter via ShopifyModule.getLink antes de comparar.
+    _sumViews(viewsMap, pid, start, end) {
+        if (!viewsMap) return 0;
+        const shopifyIdFiltro = (pid && pid !== 'todos' && typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink)
+            ? String(ShopifyModule.getLink(pid) || '') : '';
+        let total = 0;
+        for (const [key, views] of Object.entries(viewsMap)) {
+            const [date, shopifyProductId] = key.split('|');
+            if (date < start || date > end) continue;
+            if (shopifyIdFiltro && shopifyProductId !== shopifyIdFiltro) continue;
+            total += Number(views || 0);
+        }
+        return total;
+    },
+
+    // Vendas reais filtradas por país — mapa separado, só carregado quando
+    // um país válido (código ISO de 2 letras) está selecionado.
+    async _loadRealSalesMapPorPais(countryCode) {
+        if (!countryCode) { this._realSalesMapPorPais = null; return; }
+        const key = `${this._startDate}|${this._endDate}|${countryCode}`;
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        // grava a chave mesmo sem Shopify, senão o render re-dispara sempre (loop de "Carregando")
+        if (!hasShopify) { this._realSalesMapPorPais = {}; this._realSalesMapPorPaisKey = key; return; }
+        if (this._realSalesMapPorPaisKey !== key) {
+            try {
+                this._realSalesMapPorPais = await ShopifyModule.getRealSalesMapByDate(this._startDate, this._endDate, { countryCode });
+                this._realSalesMapPorPaisKey = key;
+            } catch (e) {
+                console.warn('[Dashboard] Shopify sales by country fetch failed:', e);
+                this._realSalesMapPorPais = {};
+            }
+        }
+    },
+
+    // Visitas por país (denominador da Conversão Real por país). Cache próprio
+    // keyed por período + país, pra não misturar com o _viewsMap sem filtro.
+    async _loadViewsMapPorPais(countryCode) {
+        if (!countryCode) { this._viewsMapPorPais = null; this._viewsMapPorPaisKey = ''; return; }
+        const key = `${this._startDate}|${this._endDate}|${countryCode}`;
+        const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+        // grava a chave mesmo sem Shopify, senão o render re-dispara sempre (loop de "Carregando")
+        if (!hasShopify) { this._viewsMapPorPais = {}; this._viewsMapPorPaisKey = key; return; }
+        if (this._viewsMapPorPaisKey !== key) {
+            try {
+                this._viewsMapPorPais = await ShopifyModule.getViewsMapPorPais(this._startDate, this._endDate, countryCode);
+                this._viewsMapPorPaisKey = key;
+            } catch (e) {
+                console.warn('[Dashboard] Shopify views by country failed:', e);
+                this._viewsMapPorPais = {};
+            }
+        }
+    },
+
+    // A tag de país do calendário (_calRegion) vem de campanhas do Facebook
+    // e nem sempre é um código ISO de país só (js/region-tags.js: "EN" =
+    // UK+IE+AU, "EUA" em vez de "US", "EU+" = grupo). Só filtra o lado
+    // Shopify (dados reais, que usam country_code de verdade) quando a tag
+    // já é um código de país único — "EN" parece um código de 2 letras mas
+    // NÃO é (é a única composta de 2 letras nesse app), por isso a exclusão
+    // explícita antes do regex.
+    _regionParaCountryCode(region) {
+        if (region === 'EN') return null;
+        if (region && /^[A-Z]{2}$/.test(region)) return region;
+        return null;
+    },
+
     // Format period-over-period delta as "±X%" (or absolute for integer metrics)
     _fmtDelta(curr, prev, { percent = true, inverse = false, currency = false } = {}) {
         if (this._compareMode === 'none' || !prev) return '';
@@ -1035,13 +1274,25 @@ const DashboardModule = {
             this._mdgxDaily[id][date].sales += sales;
             this._mdgxDaily[id][date].revenue += revenue;
         };
+        // Mesmo loop de pedidos, agora acumulando também por PAÍS DE ENTREGA —
+        // o pedido já traz shipping_address, então isto não custa request novo.
+        this._mdgxPorPais = {};     // { productId: { 'País': { sales, revenue } } }
+        const _addPais = (id, pais, sales, revenue) => {
+            if (!id) return;
+            const chave = pais || 'Sem país no pedido';
+            if (!this._mdgxPorPais[id]) this._mdgxPorPais[id] = {};
+            if (!this._mdgxPorPais[id][chave]) this._mdgxPorPais[id][chave] = { sales: 0, revenue: 0 };
+            this._mdgxPorPais[id][chave].sales += sales;
+            this._mdgxPorPais[id][chave].revenue += revenue;
+        };
         if (hasShopify && this._startDate && this._endDate) {
-            container.innerHTML = container.innerHTML || '<div class="mdgx-ranking-empty">Carregando vendas...</div>';
+            container.innerHTML = container.innerHTML || ('<div class="mdgx-ranking-empty">' + window.loadingHTML('Carregando vendas...') + '</div>');
             try {
                 const orders = await ShopifyModule.fetchOrders(this._startDate, this._endDate, { silent: true });
                 for (const o of (orders || [])) {
                     const cur = o.currency || ShopifyModule.getConfig?.()?.shopCurrency || 'BRL';
                     const oDate = _orderDate(o.created_at);
+                    const oPais = o.shipping_address?.country || o.shipping_address?.country_code || '';
                     for (const li of (o.line_items || [])) {
                         const pid = String(li.product_id || '');
                         if (!pid) continue;
@@ -1051,6 +1302,7 @@ const DashboardModule = {
                         salesByShopifyPid[pid].sales += qty;
                         salesByShopifyPid[pid].revenue += unitPrice * qty;
                         _addDaily(pid, oDate, qty, unitPrice * qty);
+                        _addPais(pid, oPais, qty, unitPrice * qty);
                     }
                 }
             } catch (e) {
@@ -1226,6 +1478,7 @@ const DashboardModule = {
                 <div class="mdgx-daily-tabs">
                     <button class="mdgx-daily-tab active" data-view="lista"><i data-lucide="list" style="width:14px;height:14px;vertical-align:-2px"></i> Lista</button>
                     <button class="mdgx-daily-tab" data-view="cal"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> Calendário</button>
+                    <button class="mdgx-daily-tab" data-view="pais"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Países</button>
                 </div>
                 <div id="mdgx-daily-body"></div>
             </div>`;
@@ -1264,10 +1517,31 @@ const DashboardModule = {
                 </div>`;
             }).join('');
         };
+        // Vendas por PAÍS DE ENTREGA deste produto — vem do mesmo lote de
+        // pedidos do ranking (nenhum request extra), então respeita o período
+        // selecionado igual às outras duas abas.
+        const renderPais = () => {
+            const porPais = (this._mdgxPorPais && this._mdgxPorPais[id]) || {};
+            const linhas = Object.entries(porPais)
+                .map(([pais, v]) => ({ pais, ...v }))
+                .sort((a, b) => b.sales - a.sales);
+            if (!linhas.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            const total = linhas.reduce((s, l) => s + l.sales, 0);
+            body.innerHTML = `<table class="mdgx-daily-table">
+                <thead><tr><th>País</th><th class="num">Vendas</th><th class="num">%</th><th class="num">Receita</th></tr></thead>
+                <tbody>${linhas.map(l => `<tr>
+                    <td>${escapeHtml(l.pais)}</td>
+                    <td class="num"><strong>${l.sales}</strong></td>
+                    <td class="num">${total > 0 ? ((l.sales / total) * 100).toFixed(0) : 0}%</td>
+                    <td class="num">${money(l.revenue)}</td>
+                </tr>`).join('')}</tbody></table>`;
+        };
+
         renderList();
         modal.querySelectorAll('.mdgx-daily-tab').forEach(t => t.addEventListener('click', () => {
             modal.querySelectorAll('.mdgx-daily-tab').forEach(x => x.classList.toggle('active', x === t));
-            if (t.dataset.view === 'cal') renderCal(); else renderList();
+            const v = t.dataset.view;
+            if (v === 'cal') renderCal(); else if (v === 'pais') renderPais(); else renderList();
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
         }));
         const close = () => modal.remove();
@@ -1280,10 +1554,14 @@ const DashboardModule = {
         const container = document.getElementById('dash-top-products');
         if (!container) return;
 
-        const needsReal = this._topMode === 'cpaReal' || this._topMode === 'salesReal';
-        if (needsReal && this._realSalesMap === null) {
-            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
-            this._loadRealSalesMaps().then(() => this._renderTopProducts());
+        const needsReal = this._topMode === 'cpaReal' || this._topMode === 'salesReal' || this._topMode === 'conversionReal';
+        const needsViews = this._topMode === 'conversionReal';
+        const pendencias = [];
+        if (needsReal && this._realSalesMap === null) pendencias.push(this._loadRealSalesMaps());
+        if (needsViews && this._viewsMap === null) pendencias.push(this._loadViewsMap());
+        if (pendencias.length) {
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando vendas Shopify...') + '</div>';
+            Promise.all(pendencias).then(() => this._renderTopProducts());
             return;
         }
 
@@ -1300,6 +1578,15 @@ const DashboardModule = {
             const cpaReal = real.sales > 0 ? agg.budget / real.sales : 0;
             const cpaRealBRL = real.sales > 0 ? agg.budgetBRL / real.sales : 0;
             const cpaRealPrev = realPrev.sales > 0 ? prevAgg.budget / realPrev.sales : 0;
+            // Conversão Real (DASH-03) — mesma fórmula do Calendário de
+            // Métricas: vendas reais da Shopify ÷ visitas reais do produto
+            // na Shopify. Sem filtro de país aqui (Top Produtos não tem
+            // esse seletor) — visitas por país por produto não existem na
+            // Shopify de qualquer forma, então não perde nada.
+            const views = this._sumViews(this._viewsMap, pid, this._startDate, this._endDate);
+            const viewsPrev = this._sumViews(this._viewsMap, pid, this._compareStart, this._compareEnd);
+            const convReal = views > 0 ? (real.sales / views) * 100 : 0;
+            const convRealPrev = viewsPrev > 0 ? (realPrev.sales / viewsPrev) * 100 : 0;
             return {
                 pid, name: getProductName(pid),
                 ...agg,
@@ -1307,6 +1594,7 @@ const DashboardModule = {
                 realSales: real.sales,
                 realSalesPrev: realPrev.sales,
                 cpaReal, cpaRealBRL, cpaRealPrev,
+                convReal, convRealPrev, views,
             };
         });
 
@@ -1317,13 +1605,19 @@ const DashboardModule = {
         else if (mode === 'cpa') ranked = ranked.filter(p => p.cpa > 0).sort((a, b) => a.cpa - b.cpa);
         else if (mode === 'cpaReal') ranked = ranked.filter(p => p.cpaReal > 0).sort((a, b) => a.cpaReal - b.cpaReal);
         else if (mode === 'salesReal') ranked.sort((a, b) => b.realSales - a.realSales);
+        else if (mode === 'conversionReal') ranked = ranked.filter(p => p.convReal > 0).sort((a, b) => b.convReal - a.convReal);
         else if (mode === 'budget') ranked.sort((a, b) => b.budget - a.budget);
         else ranked.sort((a, b) => b.revenue - a.revenue);
 
         ranked = ranked.slice(0, 5);
 
         if (ranked.length === 0) {
-            container.innerHTML = '<div class="dash-empty">Sem dados</div>';
+            container.innerHTML = `<div class="dash-empty">${this._porqueRankingVazio(mode)}</div>`;
+            container.querySelector('#dash-reconectar-shopify')?.addEventListener('click', () => {
+                // Reabre o modal de configuração da Shopify, onde o usuário
+                // confirma o domínio e dispara o OAuth com os escopos novos.
+                if (ShopifyModule.openConfigModal) ShopifyModule.openConfigModal();
+            });
             return;
         }
 
@@ -1344,6 +1638,9 @@ const DashboardModule = {
             } else if (mode === 'salesReal') {
                 mainVal = p.realSales + (p.realSales === 1 ? ' venda' : ' vendas');
                 delta = this._fmtDelta(p.realSales, p.realSalesPrev, { percent: false });
+            } else if (mode === 'conversionReal') {
+                mainVal = p.convReal.toFixed(2) + '%';
+                delta = this._fmtDelta(p.convReal, p.convRealPrev, { percent: false });
             } else if (mode === 'budget') {
                 mainVal = this._fmtCurrency(p.budget);
                 delta = this._fmtDelta(p.budget, p.prevAgg.budget);
@@ -1357,7 +1654,24 @@ const DashboardModule = {
                 <span class="dash-rank-name">${escapeHtml(p.name)}</span>
                 <span class="dash-rank-value" style="color:${mode === 'profit' ? profitColor : ''}">${mainVal}${delta}</span>
             </div>`;
-        }).join('');
+        }).join('') + (mode === 'conversionReal' ? this._rodapeConversaoReal() : '');
+    },
+
+    // A Conversão Real usa como denominador as sessões que ENTRARAM pela
+    // página do produto (landing page) — a Shopify não expõe visualização de
+    // produto nesta loja. Duas ressalvas que mudam a leitura do número e por
+    // isso não podem ficar só no código:
+    //  • quem entra pela home e navega até o produto não é contado;
+    //  • em loja multi-idioma, sessão que entra pelo handle traduzido não casa
+    //    com o produto e sai do denominador — o que INFLA a conversão.
+    _rodapeConversaoReal() {
+        const cob = typeof ShopifyModule !== 'undefined' && ShopifyModule.getCoberturaViews
+            ? ShopifyModule.getCoberturaViews() : null;
+        let aviso = 'Base: sessões que entraram pela página do produto.';
+        if (cob && cob.orfas > 0 && cob.pct < 95) {
+            aviso += ` ${cob.pct.toFixed(0)}% das sessões de produto casaram com um produto do catálogo — ${cob.orfas.toLocaleString('pt-BR')} ficaram de fora (handle traduzido), então a taxa real é um pouco menor.`;
+        }
+        return `<div class="dash-conv-rodape">${escapeHtml(aviso)}</div>`;
     },
 
     // Row 4 Left: Pipeline summary
@@ -1684,6 +1998,235 @@ const DashboardModule = {
     },
 
     // Opportunity map - products with untapped potential
+    // ══════════════════════════════════════════════════════════════
+    //  Rankings de funil — checkout / conversão por produto ou país
+    //
+    //  "Checkout" aqui é o evento InitiateCheckout do pixel do Facebook
+    //  (campo `checkout` do Diário), NÃO o funil de checkout da Shopify —
+    //  a Shopify não expõe isso. Por isso a dimensão "país" é a TAG DE
+    //  REGIÃO DA CAMPANHA (segmentação do anúncio), a única que carrega
+    //  esse evento. O país real de entrega dos pedidos vive noutro card,
+    //  separado de propósito: são dimensões diferentes e misturar as duas
+    //  numa taxa só daria um número com numerador e denominador de escopos
+    //  diferentes (o mesmo erro que já corrigimos na Conversão Real).
+    // ══════════════════════════════════════════════════════════════
+
+    // Entradas de CAMPANHA (as únicas com `region`) no intervalo pedido.
+    // _getPeriodEntries exclui campanha de propósito — daí a versão própria.
+    _entradasCampanha(inicio, fim) {
+        return (AppState.diary || []).filter(e => {
+            if (!e.isCampaign || !e.region) return false;
+            if (!e.date || e.date < inicio || e.date > fim) return false;
+            if (this._productFilter !== 'todos' && e.productId !== this._productFilter) return false;
+            return true;
+        });
+    },
+
+    _agruparPorRegiao(entries) {
+        const map = {};
+        entries.forEach(e => {
+            if (!map[e.region]) map[e.region] = [];
+            map[e.region].push(e);
+        });
+        return map;
+    },
+
+    // Devolve [{ chave, nome, agg }] já agregado, na dimensão pedida.
+    // Reusa _aggregate() nas duas dimensões pra taxa/moeda saírem idênticas.
+    _linhasFunil(dim, anterior = false) {
+        if (dim === 'regiao') {
+            const inicio = anterior ? this._compareStart : this._startDate;
+            const fim = anterior ? this._compareEnd : this._endDate;
+            if (!inicio || !fim) return [];
+            const grupos = this._agruparPorRegiao(this._entradasCampanha(inicio, fim));
+            return Object.entries(grupos).map(([regiao, entries]) => ({
+                chave: regiao,
+                nome: (typeof RegionTags !== 'undefined' && RegionTags.labelPlain) ? RegionTags.labelPlain(regiao) : regiao,
+                agg: this._aggregate(entries),
+            }));
+        }
+        const entries = anterior ? this._getPrevPeriodEntries() : this._getPeriodEntries();
+        const grupos = this._groupByProduct(entries);
+        return Object.entries(grupos).map(([pid, pEntries]) => ({
+            chave: pid,
+            nome: getProductName(pid),
+            agg: this._aggregate(pEntries),
+        }));
+    },
+
+    _taxaCheckout(agg) {
+        return agg.addToCart > 0 ? (agg.checkout / agg.addToCart) * 100 : 0;
+    },
+
+    // Delta entre duas TAXAS, em pontos percentuais. Não dá pra usar
+    // _fmtDelta({percent:false}) aqui: aquele ramo formata `${diff}` cru,
+    // pensado pra contagens inteiras (vendas) — com taxa vira "−40.2439...".
+    // E "+10" sem unidade leria como "10 vendas", não "10 pontos".
+    _deltaPP(atual, anterior) {
+        if (this._compareMode === 'none') return '';
+        if (!isFinite(atual) || !isFinite(anterior)) return '';
+        const diff = atual - anterior;
+        if (Math.abs(diff) < 0.05) return '';
+        const sign = diff > 0 ? '+' : '−';
+        const cls = diff > 0 ? 'dash-delta-up' : 'dash-delta-down';
+        return `<span class="dash-delta ${cls}">${sign}${Math.abs(diff).toFixed(1)}pp</span>`;
+    },
+
+    _renderFunilRanking() {
+        const container = document.getElementById('dash-funil-lista');
+        if (!container) return;
+        const dim = this._funilDim;
+        const modo = this._funilMode;
+        const linhas = this._linhasFunil(dim);
+        const rotuloDim = dim === 'regiao' ? 'país' : 'produto';
+        const elRotulo = document.getElementById('dash-funil-rotulo');
+        if (elRotulo) elRotulo.textContent = rotuloDim;
+
+        if (!linhas.length) {
+            container.innerHTML = `<div class="dash-empty">${dim === 'regiao'
+                ? 'Sem campanhas com tag de país no período. As tags saem do nome da campanha no Facebook (ex.: "EUA", "BR", "EN").'
+                : 'Sem entradas no Diário neste período.'}</div>`;
+            return;
+        }
+
+        // Mapa do período anterior pra calcular variação por chave.
+        const antMapa = {};
+        if (this._compareMode !== 'none') {
+            this._linhasFunil(dim, true).forEach(l => { antMapa[l.chave] = l.agg; });
+        }
+
+        let ranked = [];
+        let renderValor = () => '';
+        let vazio = '';
+
+        if (modo === 'piorCheckout' || modo === 'melhorCheckout') {
+            const pior = modo === 'piorCheckout';
+            ranked = linhas
+                .filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL)
+                .map(l => ({ ...l, taxa: this._taxaCheckout(l.agg) }))
+                .sort((a, b) => pior ? a.taxa - b.taxa : b.taxa - a.taxa);
+            renderValor = (l) => {
+                const ant = antMapa[l.chave];
+                const delta = ant ? this._deltaPP(l.taxa, this._taxaCheckout(ant)) : '';
+                return `${l.taxa.toFixed(1)}%${delta}`;
+            };
+            vazio = `Nenhum ${rotuloDim} com pelo menos ${this._MIN_ATC_FUNIL} adições ao carrinho no período — sem volume, a taxa de checkout é ruído.`;
+
+        } else if (modo === 'melhorConv') {
+            ranked = linhas
+                .filter(l => l.agg.pageViews >= this._MIN_VIEWS_FUNIL)
+                .map(l => ({ ...l, taxa: l.agg.convPage }))
+                .sort((a, b) => b.taxa - a.taxa);
+            renderValor = (l) => {
+                const ant = antMapa[l.chave];
+                const delta = ant ? this._deltaPP(l.taxa, ant.convPage) : '';
+                return `${l.taxa.toFixed(2)}%${delta}`;
+            };
+            vazio = `Nenhum ${rotuloDim} com pelo menos ${this._MIN_VIEWS_FUNIL} visitantes no período.`;
+
+        } else if (modo === 'oportunidades') {
+            // Quanto checkout a mais sairia se a taxa subisse até a MEDIANA
+            // do próprio conjunto. Alvo mediana (não o melhor) de propósito:
+            // é uma meta que metade dos itens já bate, não um teto irreal.
+            const comVolume = linhas.filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL);
+            const taxas = comVolume.map(l => this._taxaCheckout(l.agg)).sort((a, b) => a - b);
+            const mediana = taxas.length ? taxas[Math.floor(taxas.length / 2)] : 0;
+            ranked = comVolume
+                .map(l => {
+                    const taxa = this._taxaCheckout(l.agg);
+                    return { ...l, taxa, ganho: Math.round(l.agg.addToCart * Math.max(0, mediana - taxa) / 100) };
+                })
+                .filter(l => l.ganho >= 1)
+                .sort((a, b) => b.ganho - a.ganho);
+            renderValor = (l) => `+${l.ganho} checkout${l.ganho === 1 ? '' : 's'} <span class="dash-funil-sub">${l.taxa.toFixed(1)}% → ${mediana.toFixed(1)}%</span>`;
+            vazio = taxas.length
+                ? `Nenhum ${rotuloDim} abaixo da mediana de checkout (${mediana.toFixed(1)}%) com volume suficiente — o funil está equilibrado.`
+                : `Nenhum ${rotuloDim} com pelo menos ${this._MIN_ATC_FUNIL} adições ao carrinho no período.`;
+
+        } else if (modo === 'quedas') {
+            if (this._compareMode === 'none') {
+                container.innerHTML = `<div class="dash-empty">Escolha um período de comparação acima pra ver tendências — sem período anterior não há do que cair.</div>`;
+                return;
+            }
+            ranked = linhas
+                .filter(l => l.agg.addToCart >= this._MIN_ATC_FUNIL && antMapa[l.chave])
+                .map(l => {
+                    const taxa = this._taxaCheckout(l.agg);
+                    const taxaAnt = this._taxaCheckout(antMapa[l.chave]);
+                    return { ...l, taxa, taxaAnt, queda: taxaAnt - taxa };
+                })
+                .filter(l => l.queda > 0.5)   // ignora oscilação irrelevante
+                .sort((a, b) => b.queda - a.queda);
+            renderValor = (l) => `−${l.queda.toFixed(1)}pp <span class="dash-funil-sub">${l.taxaAnt.toFixed(1)}% → ${l.taxa.toFixed(1)}%</span>`;
+            vazio = `Nenhum ${rotuloDim} com queda relevante na taxa de checkout — nada piorou de forma significativa.`;
+        }
+
+        if (!ranked.length) {
+            container.innerHTML = `<div class="dash-empty">${vazio}</div>`;
+            return;
+        }
+
+        container.innerHTML = ranked.slice(0, 6).map((l, i) => `
+            <div class="dash-rank-item">
+                <span class="dash-rank-pos">${i + 1}</span>
+                <span class="dash-rank-name">${escapeHtml(l.nome)}</span>
+                <span class="dash-rank-value">${renderValor(l)}</span>
+            </div>`).join('');
+    },
+
+    // Funil REAL da Shopify por país — sessões → carrinho → checkout → compra,
+    // direto do ShopifyQL. É a conversão REAL de verdade (visitante da loja
+    // que comprou), não a estimativa do pixel do Facebook do card ao lado.
+    // A Shopify NÃO expõe esse funil por produto (as colunas de produto não
+    // existem no dataset `sessions`), só por país e no total — por isso este
+    // card é por país e o Top Produtos explica a limitação em vez de fingir.
+    async _renderVendasPorPais() {
+        const container = document.getElementById('dash-vendas-pais');
+        if (!container) return;
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            container.innerHTML = '<div class="dash-empty">Conecte a Shopify pra ver o funil real por país.</div>';
+            return;
+        }
+        const chave = `${this._startDate}|${this._endDate}`;
+        if (this._funilLojaPaisKey !== chave) {
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando funil por país…') + '</div>';
+            try {
+                this._funilLojaPais = await ShopifyModule.fetchFunilLoja(this._startDate, this._endDate, { porPais: true });
+                this._funilLojaPaisKey = chave;
+            } catch (e) {
+                container.innerHTML = `<div class="dash-empty">Funil indisponível: ${escapeHtml(String(e.message).slice(0, 160))}</div>`;
+                return;
+            }
+        }
+        const linhas = (this._funilLojaPais || []).filter(l => l.sessoes > 0);
+        if (!linhas.length) {
+            container.innerHTML = '<div class="dash-empty">Sem sessões na Shopify neste período.</div>';
+            return;
+        }
+        const modo = this._funilPaisModo || 'conversao';
+        const taxa = (l) => modo === 'checkout'
+            ? (l.carrinho > 0 ? (l.checkout / l.carrinho) * 100 : 0)
+            : (l.sessoes > 0 ? (l.compras / l.sessoes) * 100 : 0);
+        // Piso de volume pelo mesmo motivo do card ao lado: sem volume a taxa
+        // é ruído. Pisos diferentes por métrica de propósito — o denominador
+        // da conversão (sessões) é uma ordem de grandeza maior que o do
+        // checkout (carrinhos), então um piso único deixaria passar país com
+        // 40 sessões e 0 compra ocupando o ranking com "0,00%".
+        const piso = modo === 'checkout' ? 30 : 200;
+        const comVolume = linhas.filter(l => (modo === 'checkout' ? l.carrinho : l.sessoes) >= piso);
+        if (!comVolume.length) {
+            container.innerHTML = '<div class="dash-empty">Nenhum país com volume suficiente no período.</div>';
+            return;
+        }
+        const ordenadas = [...comVolume].sort((a, b) => taxa(b) - taxa(a));
+        container.innerHTML = ordenadas.slice(0, 6).map((l, i) => `
+            <div class="dash-rank-item">
+                <span class="dash-rank-pos">${i + 1}</span>
+                <span class="dash-rank-name">${escapeHtml(l.chave)}</span>
+                <span class="dash-rank-value">${taxa(l).toFixed(2)}% <span class="dash-funil-sub">${modo === 'checkout' ? `${l.checkout}/${l.carrinho} carrinhos` : `${l.compras}/${l.sessoes} sessões`}</span></span>
+            </div>`).join('');
+    },
+
     _renderOpportunities() {
         const container = document.getElementById('dash-opportunities');
         if (!container) return;
@@ -2116,9 +2659,21 @@ const DashboardModule = {
 
         // Trigger async Shopify fetch for real-metric tabs
         const needsReal = this._calMetric === 'cpaReal' || this._calMetric === 'salesReal' || this._calMetric === 'conversionCombined';
-        if (needsReal && this._realSalesMap === null) {
-            container.innerHTML = '<div class="dash-empty">Carregando vendas Shopify...</div>';
-            this._loadRealSalesMaps().then(() => this._renderMetricsCalendar());
+        const needsViews = this._calMetric === 'conversionCombined';
+        const countryCodeReal = needsViews ? this._regionParaCountryCode(this._calRegion) : null;
+        const countryKeyAtual = countryCodeReal ? `${this._startDate}|${this._endDate}|${countryCodeReal}` : '';
+
+        const pendencias = [];
+        if (needsReal && this._realSalesMap === null) pendencias.push(this._loadRealSalesMaps());
+        if (needsViews && this._viewsMap === null) pendencias.push(this._loadViewsMap());
+        if (countryCodeReal && this._realSalesMapPorPaisKey !== countryKeyAtual) pendencias.push(this._loadRealSalesMapPorPais(countryCodeReal));
+        if (!countryCodeReal && this._realSalesMapPorPais !== null) { this._realSalesMapPorPais = null; this._realSalesMapPorPaisKey = ''; }
+        if (countryCodeReal && this._viewsMapPorPaisKey !== countryKeyAtual) pendencias.push(this._loadViewsMapPorPais(countryCodeReal));
+        if (!countryCodeReal && this._viewsMapPorPais !== null) { this._viewsMapPorPais = null; this._viewsMapPorPaisKey = ''; }
+
+        if (pendencias.length) {
+            container.innerHTML = '<div class="dash-empty">' + window.loadingHTML('Carregando vendas Shopify...') + '</div>';
+            Promise.all(pendencias).then(() => this._renderMetricsCalendar());
             return;
         }
 
@@ -2142,22 +2697,8 @@ const DashboardModule = {
             }
         }
 
-        // Keep the data source explicit: operators must always know whether
-        // attribution comes from Meta or from the Shopify source of truth.
-        const sourceMetric = (facebookKey, shopifyKey) =>
-            this._calSource === 'shopify' ? shopifyKey : facebookKey;
-
-        // Metric tabs + product selector on same row
-        const tabs = [
-            { key: sourceMetric('cpa', 'cpaReal'), label: 'CPA' },
-            { key: sourceMetric('conversion', 'conversionCombined'), label: 'Conversão' },
-            { key: 'profit',             label: 'Lucro'            },
-            { key: 'revenue',            label: 'Receita'          },
-            { key: sourceMetric('sales', 'salesReal'), label: 'Vendas' },
-            { key: 'budget',             label: 'Gastos'           },
-            { key: 'cpm',                label: 'CPM'              },
-            { key: 'cpc',                label: 'CPC Médio'        },
-        ];
+        // Métrica-base ativa + se está no modo Real (Shopify)
+        const { baseDef: metricAtual, isReal } = this._metricBaseReal(this._calMetric);
 
         // Build product options — dropdown customizado (mostra plataforma FB/Google + conta de anúncio, igual ao ranking)
         const products = (AppState.products || []);
@@ -2179,15 +2720,33 @@ const DashboardModule = {
             `<option value="${r}"${this._calRegion === r ? ' selected' : ''}>${regionLabel(r)}</option>`
         ).join('');
 
+        // Aviso quando as visitas da Shopify (denominador da Conversão Real)
+        // estão indisponíveis — quase sempre a permissão read_reports faltando
+        // no token atual. Antes o usuário só via "Sem visitas Shopify" em todo
+        // dia, sem saber o que fazer. Agora mostra o motivo + botão de reconectar.
+        let avisoViews = '';
+        if (this._calMetric === 'conversionCombined') {
+            const hasShopify = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
+            const mapaViews = this._calRegion ? this._viewsMapPorPais : this._viewsMap;
+            const semViews = !mapaViews || Object.keys(mapaViews).length === 0;
+            if (hasShopify && semViews) {
+                const btnRec = '<button type="button" class="btn btn-primary btn-sm" id="mcal-reconectar-shopify" style="margin-left:0.5rem">Reconectar Shopify</button>';
+                avisoViews = (this._viewsErro && !this._viewsPrecisaReconectar)
+                    ? `<div class="mcal-views-aviso">Visitas da Shopify indisponíveis: ${escapeHtml(this._viewsErro)}${btnRec}</div>`
+                    : `<div class="mcal-views-aviso"><strong>Visitas da Shopify indisponíveis.</strong> A Conversão Real precisa das visitas (Shopify Analytics), que exigem a permissão <code>read_reports</code> — ela não está na conexão atual. Reconecte a Shopify pra concedê-la (os pedidos/vendas já funcionam; só as visitas dependem dessa permissão).${btnRec}</div>`;
+            }
+        }
+
         const headerHtml = `
         <div class="mcal-header-bar">
-            <div class="mcal-tabs">${tabs.map(t =>
-                `<button class="mcal-tab${this._calMetric === t.key ? ' active' : ''}" data-metric="${t.key}">${t.label}</button>`
+            <div class="mcal-tabs">${this._METRIC_BASES.map(b =>
+                `<button class="mcal-tab${metricAtual.base === b.base ? ' active' : ''}" data-base="${b.base}">${b.label}</button>`
             ).join('')}</div>
-            <div class="mcal-source-toggle" role="group" aria-label="Fonte dos dados">
-                <button type="button" class="mcal-source-btn${this._calSource === 'facebook' ? ' active' : ''}" data-source="facebook" aria-pressed="${this._calSource === 'facebook'}">Facebook</button>
-                <button type="button" class="mcal-source-btn${this._calSource === 'shopify' ? ' active' : ''}" data-source="shopify" aria-pressed="${this._calSource === 'shopify'}">Real (Shopify)</button>
-            </div>
+            ${metricAtual.real ? `
+            <div class="mcal-src-toggle" role="group" aria-label="Fonte dos dados">
+                <button class="mcal-src-btn${!isReal ? ' active' : ''}" data-real="0" title="Vendas estimadas pelo pixel do Facebook">Facebook</button>
+                <button class="mcal-src-btn${isReal ? ' active' : ''}" data-real="1" title="Vendas reais da sua loja Shopify">Real (Shopify)</button>
+            </div>` : ''}
             <div class="mcal-prod-dd" id="mcal-product-dd">
                 <button type="button" class="mcal-product-select mcal-prod-dd-btn" id="mcal-prod-dd-btn">
                     <span class="mcal-prod-dd-cur">${curLabelHtml}</span>
@@ -2202,7 +2761,9 @@ const DashboardModule = {
                 <option value=""${this._calRegion === '' ? ' selected' : ''}>Todos os países</option>
                 ${regionOptions}
             </select>
-        </div>`;
+        </div>
+        ${this._calMetric === 'conversionCombined' ? `<p class="mcal-conv-fonte">Real = vendas reais da Shopify ÷ visitas do produto na Shopify (Shopify Analytics). Com um país selecionado, usa as visitas E as vendas <strong>daquele país</strong>. Tags combinadas (ex. "EN" = vários países) não filtram os dados reais.</p>` : ''}
+        ${avisoViews}`;
 
         // Month navigation header
         const names = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -2222,32 +2783,29 @@ const DashboardModule = {
 
         container.innerHTML = headerHtml + navHtml + '<div class="mcal-months-wrapper">' + monthHtml + '</div>' + summaryHtml;
 
-        // Tab click handlers
+        // Reconectar Shopify (quando as visitas estão indisponíveis por falta de escopo)
+        container.querySelector('#mcal-reconectar-shopify')?.addEventListener('click', () => {
+            if (ShopifyModule.openConfigModal) ShopifyModule.openConfigModal();
+        });
+
+        // Abas de métrica-base — mantém o modo Real se a nova métrica também tiver
         container.querySelectorAll('.mcal-tab').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this._calMetric = btn.dataset.metric;
+                const def = this._METRIC_BASES.find(b => b.base === btn.dataset.base);
+                if (!def) return;
+                const { isReal } = this._metricBaseReal(this._calMetric);
+                this._setCalMetric((isReal && def.real) ? def.real : def.base);
                 this._renderMetricsCalendar();
             });
         });
-
-        // Data-source toggle. Preserve the selected business metric while
-        // swapping only its attribution model.
-        container.querySelectorAll('.mcal-source-btn').forEach(btn => {
+        // Toggle de fonte (Facebook estimado ⟷ Real da Shopify)
+        container.querySelectorAll('.mcal-src-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const nextSource = btn.dataset.source;
-                if (!nextSource || nextSource === this._calSource) return;
-                const baseMetric = {
-                    cpaReal: 'cpa', conversionCombined: 'conversion', salesReal: 'sales',
-                    cpa: 'cpa', conversion: 'conversion', sales: 'sales',
-                }[this._calMetric];
-                this._calSource = nextSource;
-                if (baseMetric) {
-                    this._calMetric = nextSource === 'shopify'
-                        ? ({ cpa: 'cpaReal', conversion: 'conversionCombined', sales: 'salesReal' }[baseMetric])
-                        : baseMetric;
-                }
+                const { baseDef } = this._metricBaseReal(this._calMetric);
+                const querReal = btn.dataset.real === '1';
+                this._setCalMetric((querReal && baseDef.real) ? baseDef.real : baseDef.base);
                 this._renderMetricsCalendar();
             });
         });
@@ -2329,6 +2887,7 @@ const DashboardModule = {
         const realPrev = compareActive ? this._sumRealSales(this._realSalesPrevMap, pid, this._compareStart, this._compareEnd) : { sales: 0, revenue: 0 };
 
         let label = '', value = '', prevValue = null, inverse = false, percent = true;
+        let realConvNumForDelta = 0; // preenchido no case conversionCombined, lido de novo no numericCur abaixo
 
         const fmtMoney = (v) => (this._currency === 'BRL' ? 'R$' : '$') + this._compactNum(v);
 
@@ -2376,10 +2935,14 @@ const DashboardModule = {
             }
             case 'conversionCombined': {
                 label = 'Conversão + Real';
-                const computeConv = (entries, aggData, salesOverride) => {
-                    const sales = salesOverride !== undefined ? salesOverride : aggData.sales;
-                    let pct = aggData.pageViews > 0 ? (sales / aggData.pageViews) * 100 : 0;
-                    if (pct === 0 && salesOverride === undefined) {
+                // Meta = estimativa do Facebook (visitantes do diário, com o
+                // fallback de atc/checkout/sale rate de sempre). Real = vendas
+                // reais da Shopify ÷ VISITAS REAIS do produto na Shopify — não
+                // mais dividido por agg.pageViews (visitas do Facebook), que
+                // era o bug: misturava fonte no denominador da métrica "Real".
+                const computeConvMeta = (entries, aggData) => {
+                    let pct = aggData.pageViews > 0 ? (aggData.sales / aggData.pageViews) * 100 : 0;
+                    if (pct === 0) {
                         let sum = 0, n = 0;
                         entries.forEach(e => {
                             const atc = Number(e.atcRate || 0);
@@ -2391,12 +2954,43 @@ const DashboardModule = {
                     }
                     return pct;
                 };
-                const metaConv = computeConv(curEntries, agg);
-                const realConv = computeConv(curEntries, agg, realCur.sales);
+                const metaConv = computeConvMeta(curEntries, agg);
                 const metaTxt = metaConv > 0 ? metaConv.toFixed(2) + '%' : '--';
-                const realTxt = realConv > 0 ? realConv.toFixed(2) + '%' : '--';
+
+                let realTxt;
+                if (this._calRegion) {
+                    // Com país: Real = vendas do país ÷ visitas do país (ambos
+                    // da Shopify). Tag composta não vira country_code único.
+                    const countryCode = this._regionParaCountryCode(this._calRegion);
+                    if (!countryCode) {
+                        realTxt = `indisponível (país "${this._calRegion}" é tag composta)`;
+                    } else {
+                        const vendasPais = this._sumRealSales(this._realSalesMapPorPais, pid, this._startDate, this._endDate).sales;
+                        const viewsPais = this._sumViews(this._viewsMapPorPais, pid, this._startDate, this._endDate);
+                        if (viewsPais === 0) {
+                            realTxt = vendasPais > 0 ? `${vendasPais} venda(s) em ${this._calRegion}, sem visitas Shopify` : '--';
+                        } else {
+                            realConvNumForDelta = (vendasPais / viewsPais) * 100;
+                            realTxt = realConvNumForDelta.toFixed(2) + '%';
+                        }
+                    }
+                } else {
+                    const viewsCur = this._sumViews(this._viewsMap, pid, this._startDate, this._endDate);
+                    if (viewsCur === 0) {
+                        realTxt = realCur.sales > 0 ? `${realCur.sales} venda(s), sem visitas Shopify` : '--';
+                    } else {
+                        realConvNumForDelta = (realCur.sales / viewsCur) * 100;
+                        realTxt = realConvNumForDelta.toFixed(2) + '%';
+                    }
+                }
                 value = `Meta ${metaTxt} · Real ${realTxt}`;
-                prevValue = compareActive ? computeConv(prevEntries, prevAgg, realPrev.sales) : 0;
+
+                if (compareActive && !this._calRegion) {
+                    const viewsPrev = this._sumViews(this._viewsMap, pid, this._compareStart, this._compareEnd);
+                    prevValue = viewsPrev > 0 ? (realPrev.sales / viewsPrev) * 100 : 0;
+                } else {
+                    prevValue = 0;
+                }
                 percent = false;
                 break;
             }
@@ -2482,8 +3076,10 @@ const DashboardModule = {
                     return pct;
                 }
                 // For combined "Meta + Real" tabs, delta is computed on the Real value
+                // (já calculado no case acima, com o denominador certo — visitas
+                // reais da Shopify, não agg.pageViews).
                 if (metric === 'conversionCombined') {
-                    return agg.pageViews > 0 ? (realCur.sales / agg.pageViews) * 100 : 0;
+                    return realConvNumForDelta;
                 }
                 return 0;
             })();
@@ -2609,8 +3205,37 @@ const DashboardModule = {
                 // Meta (Conversão) = vendas reportadas pelo FB ÷ visitantes (usa fbSales se houver)
                 const fbSalesSum = dayEntries.reduce((a, e) => a + (Number(e.fbSales ?? (e.salesSource === 'shopify' ? 0 : e.sales)) || 0), 0);
                 const metaConv = pv > 0 ? (fbSalesSum / pv) * 100 : 0;
-                // Real = vendas reais Shopify ÷ visitantes
-                const realConv = pv > 0 ? (real.sales / pv) * 100 : 0;
+
+                // Com país selecionado: usa vendas E visitas DAQUELE país
+                // (mesma fonte real da Shopify nos dois lados). Tag composta
+                // (ex.: "EN" = vários países) não vira country_code único,
+                // então aí sim não dá pra filtrar os dados reais.
+                if (this._calRegion) {
+                    const countryCode = this._regionParaCountryCode(this._calRegion);
+                    if (!countryCode) {
+                        return { text: `${metaConv > 0 ? metaConv.toFixed(2) + '%' : '--'}<span class="mcal-meta-sub">"${escapeHtml(this._calRegion)}" é tag composta — não filtra dados reais</span>`, cls: 'mcal-val-neutral' };
+                    }
+                    const vendasPais = this._sumRealSales(this._realSalesMapPorPais, pid, dayStr, dayStr).sales;
+                    const viewsPais = this._sumViews(this._viewsMapPorPais, pid, dayStr, dayStr);
+                    if (viewsPais === 0) {
+                        if (vendasPais > 0) return { text: `${vendasPais}<span class="mcal-meta-sub">Sem visitas Shopify em ${escapeHtml(this._calRegion)}</span>`, cls: 'mcal-val-neutral' };
+                        return renderCombined(metaConv, 0, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
+                    }
+                    const realConvPais = (vendasPais / viewsPais) * 100;
+                    return renderCombined(metaConv, realConvPais, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
+                }
+
+                // Real = vendas reais da Shopify ÷ VISITAS REAIS do produto na
+                // Shopify (fetchProductViewsByDate) — não mais dividido por pv
+                // (visitas do Facebook), que misturava fonte no denominador.
+                const views = this._sumViews(this._viewsMap, pid, dayStr, dayStr);
+                if (views === 0) {
+                    if (real.sales > 0) {
+                        return { text: `${real.sales}<span class="mcal-meta-sub">Sem visitas Shopify</span>`, cls: 'mcal-val-neutral' };
+                    }
+                    return renderCombined(metaConv, 0, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
+                }
+                const realConv = (real.sales / views) * 100;
                 return renderCombined(metaConv, realConv, (v) => v.toFixed(2) + '%', /*lowerIsBetter*/ false);
             }
         }

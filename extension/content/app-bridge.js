@@ -12,7 +12,8 @@
 
             // Separa os tipos
             const captures = queue.filter(item => item && item.tipo === 'remote-capture');
-            const products = queue.filter(item => !item || item.tipo !== 'remote-capture');
+            const galleries = queue.filter(item => item && item.tipo === 'gallery');
+            const products = queue.filter(item => !item || (item.tipo !== 'remote-capture' && item.tipo !== 'gallery'));
 
             // Produtos → módulo Importer (comportamento original)
             if (products.length || force) {
@@ -29,6 +30,15 @@
                     source: 'etracker-extension',
                     type: 'remote-capture-data',
                     captures,
+                }, location.origin);
+            }
+
+            // Galerias de fornecedor (Yupoo etc.) → Lançamento de Produto (Estúdio)
+            if (galleries.length) {
+                window.postMessage({
+                    source: 'etracker-extension',
+                    type: 'gallery-import-data',
+                    galleries,
                 }, location.origin);
             }
 

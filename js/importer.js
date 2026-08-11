@@ -970,8 +970,21 @@ const ImporterModule = (() => {
             const p = _state.rawProducts.find(x => x.id === id);
             if (!p) continue;
             try {
-                if (mode === 'duplicate') await publishProduct(shop, p);
-                else await publishMarketsTranslations(shop, p);
+                if (mode === 'duplicate') {
+                    const created = await publishProduct(shop, p);
+                    // Sem isso o produto existe na Shopify mas fica invisível
+                    // na tela Produtos até um re-import manual (gap real,
+                    // achado revisando os dois fluxos de publish do app).
+                    if (typeof ProductsModule !== 'undefined' && created) {
+                        ProductsModule.upsertFromShopify(created, {
+                            title: p.title,
+                            price: Number(p.variants?.[0]?.price) || 0,
+                            image: p.images?.[0]?.src || '',
+                        });
+                    }
+                } else {
+                    await publishMarketsTranslations(shop, p);
+                }
                 done++;
             } catch (err) {
                 errors++;
@@ -1480,6 +1493,11 @@ const ImporterModule = (() => {
         parseCSV,
         csvToProducts,
         compressImageFromUrl,
+        // Reaproveitados pelo Lançamento de Produto (Estúdio) pra publicar
+        // produto novo na Shopify — mesmo fluxo productCreate + staged upload.
+        publishProduct,
+        shopifyStagedUploadImage,
+        shopifyGraphQL,
     };
 })();
 

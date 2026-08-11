@@ -1,6 +1,6 @@
 /* ===========================
    AI Ad Generator
-   - Gera imagens via OpenAI DALL-E 3 OU Google Imagen 3
+   - Gera imagens via OpenAI (GPT Image / DALL-E 3) OU Google Gemini Image
    - Gera copy via OpenAI GPT-4o-mini
    - Comprime imagens para WebP (canvas) antes de salvar
    - Persiste gerações em localStorage
@@ -17,13 +17,21 @@ const AIAdGenerator = {
     _setup() {
         document.getElementById('aiad-generate')?.addEventListener('click', () => this.generateImages());
         document.getElementById('aiad-gen-copy')?.addEventListener('click', () => this.generateCopy());
-        document.getElementById('aiad-config')?.addEventListener('click', () => this.openConfig());
-        document.getElementById('btn-aiad-config')?.addEventListener('click', () => this.openConfig());
+        // Seletor de provedor de IA pra copy (openai/google/grok/anthropic) —
+        // slot próprio pra não confundir com o seletor de provedor de IMAGEM
+        // (#aiad-provider) que já existe nesta mesma tela.
+        const copyProviderSlot = document.getElementById('aiad-copy-provider-slot');
+        if (copyProviderSlot) {
+            copyProviderSlot.innerHTML = this.htmlSeletorTextoProvider('aiad-copy-provider', 'etracker_text_provider_copy');
+            this.wireSeletorTextoProvider('aiad-copy-provider');
+        }
+        document.getElementById('aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
+        document.getElementById('btn-aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
         document.getElementById('aiad-prompt-templates')?.addEventListener('click', () => this.showTemplates());
         document.getElementById('btn-aigen-clear')?.addEventListener('click', () => this.clearAllGenerations());
 
         // Sidebar API Keys button
-        document.getElementById('sidebar-ai-key-btn')?.addEventListener('click', () => this.openConfig());
+        document.getElementById('sidebar-ai-key-btn')?.addEventListener('click', () => this.openApiKeysModal());
 
         // Provider change → update UI
         const providerEl = document.getElementById('aiad-provider');
@@ -49,7 +57,7 @@ const AIAdGenerator = {
         const provider = this._getProvider();
         const qualityEl = document.getElementById('aiad-quality');
         if (qualityEl) {
-            const isGoogle = provider === 'google' || provider === 'google-imagen2';
+            const isGoogle = provider === 'google' || provider === 'google-pro';
             qualityEl.disabled = isGoogle;
             qualityEl.style.opacity = isGoogle ? '0.45' : '';
 
@@ -65,14 +73,13 @@ const AIAdGenerator = {
                     <option value="standard">Padrão</option>`;
                 qualityEl.title = 'Qualidade para DALL-E 3';
             } else {
-                qualityEl.title = 'Qualidade não se aplica ao Google Imagen';
+                qualityEl.title = 'Qualidade não se aplica ao Google Gemini Image';
             }
         }
         // Update config button label
         const configBtn = document.getElementById('btn-aiad-config');
         if (configBtn) {
-            const label = (provider === 'google' || provider === 'google-imagen2') ? 'Configurar Google AI' : 'Configurar OpenAI';
-            configBtn.innerHTML = `<i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> ${label}`;
+            configBtn.innerHTML = `<i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px"></i> Chaves de API`;
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch(e) {}
         }
     },
@@ -83,61 +90,323 @@ const AIAdGenerator = {
         return (sel ? sel.value : null) || localStorage.getItem('aiad_provider') || 'gpt-image-2';
     },
 
-    // ── OpenAI key ───────────────────────────────────────────────────
-    _getOpenAIKey() {
-        return localStorage.getItem('openai_api_key') || '';
+    // Registro dos provedores de IA. Adicionar um novo provedor é só somar um
+    // item aqui — a tela e a persistência são genéricas a partir disso.
+    _PROVIDERS: [
+        {
+            id: 'openai', nome: 'OpenAI', storageKey: 'openai_api_key', prefixos: ['sk-'],
+            uso: 'GPT Image 1/2, DALL-E 3, GPT-4o-mini (copy) e a visão do Estúdio.',
+            link: 'https://platform.openai.com/api-keys',
+        },
+        {
+            // A Google trocou o formato em 2026: "AIzaSy..." (Standard key) está
+            // sendo descontinuado em set/2026; o AI Studio já emite "AQ...."
+            // (Auth key) por padrão. Os dois são válidos até lá — aceitar só um
+            // rejeitaria a chave que a maioria dos usuários novos recebe hoje.
+            id: 'google', nome: 'Google AI (Gemini)', storageKey: 'google_ai_api_key', prefixos: ['AIzaSy', 'AQ.'],
+            uso: 'Gemini Image (geração e edição) nas telas de IA e no Estúdio.',
+            link: 'https://aistudio.google.com/app/apikey',
+        },
+        {
+            id: 'grok', nome: 'xAI (Grok)', storageKey: 'grok_api_key', prefixos: ['xai-'],
+            uso: 'Geração de imagem com os modelos Grok Image.',
+            link: 'https://console.x.ai',
+        },
+        {
+            id: 'anthropic', nome: 'Claude (Anthropic)', storageKey: 'anthropic_api_key', prefixos: ['sk-ant-'],
+            uso: 'Copy e análise com Claude (ex.: biblioteca de copy).',
+            link: 'https://console.anthropic.com/settings/keys',
+        },
+    ],
+
+    // Prefixo do override POR LOJA: cada loja pode guardar suas próprias chaves
+    // em etracker_apikeys__<storeId> (JSON { providerId: chave }). Sem override,
+    // a loja herda o POOL GLOBAL (os storageKeys de sempre). É o modelo pedido:
+    // "compartilho as chaves entre lojas, mas quero poder colocar uma específica
+    // numa loja".
+    STORE_KEYS_PREFIX: 'etracker_apikeys__',
+
+    _storeOverrides(storeId) {
+        if (!storeId) return {};
+        try { return JSON.parse(localStorage.getItem(this.STORE_KEYS_PREFIX + storeId) || '{}'); } catch { return {}; }
     },
-    _setOpenAIKey(key) {
-        if (key) localStorage.setItem('openai_api_key', key);
-        else localStorage.removeItem('openai_api_key');
+    _setStoreKey(storeId, providerId, key) {
+        if (!storeId) return;
+        const ov = this._storeOverrides(storeId);
+        if (key) ov[providerId] = key; else delete ov[providerId];
+        if (Object.keys(ov).length) localStorage.setItem(this.STORE_KEYS_PREFIX + storeId, JSON.stringify(ov));
+        else localStorage.removeItem(this.STORE_KEYS_PREFIX + storeId);
     },
 
-    // ── Google AI key ────────────────────────────────────────────────
-    _getGoogleKey() {
-        return localStorage.getItem('google_ai_api_key') || '';
-    },
-    _setGoogleKey(key) {
-        if (key) localStorage.setItem('google_ai_api_key', key);
-        else localStorage.removeItem('google_ai_api_key');
-    },
-
-    // ── Config dialogs ───────────────────────────────────────────────
-    openConfig() {
-        if (this._getProvider() === 'google') {
-            this._configGoogle();
-        } else {
-            this._configOpenAI();
+    _getKey(providerId) {
+        const p = this._PROVIDERS.find(x => x.id === providerId);
+        if (!p) return '';
+        // Override da loja atual ganha do global — exceto no modo "Todas as
+        // lojas" (__ALL__), onde não existe uma loja única e o pool global vale.
+        const sid = (typeof getCurrentStoreId === 'function') ? getCurrentStoreId() : '';
+        const todas = (typeof isAllStoresSelected === 'function') ? isAllStoresSelected() : false;
+        if (sid && !todas) {
+            const ov = this._storeOverrides(sid);
+            if (ov[providerId]) return ov[providerId];
         }
+        return localStorage.getItem(p.storageKey) || '';
+    },
+    _setKey(providerId, key) {
+        const p = this._PROVIDERS.find(x => x.id === providerId);
+        if (!p) return;
+        if (key) localStorage.setItem(p.storageKey, key);
+        else localStorage.removeItem(p.storageKey);
     },
 
-    _configOpenAI() {
-        const current = this._getOpenAIKey();
-        const masked = current ? `${current.slice(0, 7)}…${current.slice(-4)}` : '(vazio)';
-        const newKey = prompt(
-            `Cole sua chave OpenAI (sk-...).\n\nUsada para DALL-E 3 (imagens) + GPT-4o-mini (copies).\nObtenha em: https://platform.openai.com/api-keys\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
-            current
-        );
-        if (newKey === null) return;
-        const trimmed = newKey.trim();
-        if (trimmed && !trimmed.startsWith('sk-')) {
-            if (typeof showToast === 'function') showToast('Chave inválida — deve começar com "sk-"', 'error');
-            return;
-        }
-        this._setOpenAIKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave OpenAI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave OpenAI removida', 'success');
+    // Atalhos mantidos por compatibilidade — Studio e outras telas chamam
+    // estes dois direto (ex.: window.AIAdGenerator?._getOpenAIKey?.()).
+    _getOpenAIKey() { return this._getKey('openai'); },
+    _setOpenAIKey(key) { this._setKey('openai', key); },
+    _getGoogleKey() { return this._getKey('google'); },
+    _setGoogleKey(key) { this._setKey('google', key); },
+    _getGrokKey() { return this._getKey('grok'); },
+    _setGrokKey(key) { this._setKey('grok', key); },
+    _getAnthropicKey() { return this._getKey('anthropic'); },
+    _setAnthropicKey(key) { this._setKey('anthropic', key); },
+
+    // ── Texto multi-provedor (descrição de produto, copy de anúncio, etc) ──
+    // Um só helper pra falar com os 4 provedores de _PROVIDERS. Cada tela que
+    // gera texto (descrição, copy, variações) chama isto em vez de ter seu
+    // próprio fetch hardcoded num provedor só. As 4 chamadas HTTP abaixo são
+    // as mesmas já validadas em js/loja.js (Código do agente da loja) —
+    // portadas aqui pra usar _getKey() (pool global + override por loja) em
+    // vez da chave própria e sem override que loja.js usava.
+    _TEXT_MODELS: {
+        openai: 'gpt-4o-mini',
+        google: 'gemini-2.5-flash',
+        grok: 'grok-2-latest',
+        anthropic: 'claude-sonnet-4-5',
     },
 
-    _configGoogle() {
-        const current = this._getGoogleKey();
-        const masked = current ? `${current.slice(0, 6)}…${current.slice(-4)}` : '(vazio)';
-        const newKey = prompt(
-            `Cole sua chave Google AI Studio (AIza...).\n\nUsada para Google Imagen 3.\nObtenha em: https://aistudio.google.com/app/apikey\n\nAtual: ${masked}\n\nDeixe vazio + OK para remover.`,
-            current
-        );
-        if (newKey === null) return;
-        const trimmed = newKey.trim();
-        this._setGoogleKey(trimmed);
-        if (typeof showToast === 'function') showToast(trimmed ? 'Chave Google AI salva <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>' : 'Chave Google AI removida', 'success');
+    async _textoOpenAI(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature,
+                ...(json ? { response_format: { type: 'json_object' } } : {}),
+                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async _textoAnthropic(modelo, chave, system, prompt, { maxTokens, temperature }) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json', 'x-api-key': chave,
+                'anthropic-version': '2023-06-01',
+                // Sem isso a Anthropic recusa CORS de chamada direta do navegador.
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: modelo, max_tokens: maxTokens, temperature, system, messages: [{ role: 'user', content: prompt }] }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.content?.[0]?.text || '';
+    },
+
+    async _textoGrok(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        // API da xAI é compatível com o formato da OpenAI (mesmo endpoint shape).
+        const res = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature,
+                ...(json ? { response_format: { type: 'json_object' } } : {}),
+                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `xAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async _textoGemini(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(chave)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                generationConfig: { maxOutputTokens: maxTokens, temperature, ...(json ? { responseMimeType: 'application/json' } : {}) },
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    },
+
+    // gerarTexto({ provider, system, prompt, json, maxTokens, temperature, model })
+    // provider: 'openai' | 'google' | 'grok' | 'anthropic' (mesmos ids de _PROVIDERS).
+    // json: pede resposta em JSON puro (suportado nativamente por openai/grok/gemini;
+    // na Anthropic não existe modo JSON forçado — inclua a instrução no `system`).
+    // Retorna a string de texto gerada (chame JSON.parse você mesmo se json:true).
+    async gerarTexto({ provider, system = '', prompt, json = false, maxTokens = 1200, temperature = 0.7, model } = {}) {
+        const p = this._PROVIDERS.find(x => x.id === provider);
+        if (!p) throw new Error('Provedor de IA desconhecido: ' + provider);
+        const chave = this._getKey(provider);
+        if (!chave) throw new Error(`Configure a chave de API do provedor (${p.nome}) em Configurar chaves de API.`);
+        const modelo = model || this._TEXT_MODELS[provider];
+        const opts = { json, maxTokens, temperature };
+        if (provider === 'openai') return this._textoOpenAI(modelo, chave, system, prompt, opts);
+        if (provider === 'anthropic') return this._textoAnthropic(modelo, chave, system, prompt, opts);
+        if (provider === 'grok') return this._textoGrok(modelo, chave, system, prompt, opts);
+        if (provider === 'google') return this._textoGemini(modelo, chave, system, prompt, opts);
+        throw new Error('Provedor de IA sem implementação de texto: ' + provider);
+    },
+
+    // <select> reutilizável de provedor de TEXTO (openai/google/grok/anthropic),
+    // pra descrição/copy/variações. `storageKey` guarda a escolha (ex.:
+    // 'etracker_text_provider_desc'); cada tela pode ter a sua própria, ou
+    // compartilhar 'etracker_text_provider' se quiser uma escolha só pro app
+    // todo. Só lista provedor que já geram texto (todos os 4 hoje).
+    htmlSeletorTextoProvider(selectId, storageKeyEscolha) {
+        const salvo = localStorage.getItem(storageKeyEscolha) || 'openai';
+        return `<select id="${selectId}" class="input input-sm" data-text-provider-key="${this._esc(storageKeyEscolha)}" title="Provedor de IA para gerar o texto">
+            ${this._PROVIDERS.map(p => `<option value="${p.id}" ${p.id === salvo ? 'selected' : ''}>${this._esc(p.nome)}</option>`).join('')}
+        </select>`;
+    },
+    // Liga o <select> criado por htmlSeletorTextoProvider pra persistir a escolha.
+    wireSeletorTextoProvider(selectId) {
+        const sel = document.getElementById(selectId);
+        if (!sel || sel.dataset.textProviderWired) return;
+        sel.dataset.textProviderWired = '1';
+        const storageKey = sel.dataset.textProviderKey;
+        sel.addEventListener('change', () => { if (storageKey) localStorage.setItem(storageKey, sel.value); });
+    },
+    // Lê o provedor escolhido no <select> (ou o salvo, se o select não estiver montado).
+    lerTextoProvider(selectId, storageKeyEscolha) {
+        const sel = document.getElementById(selectId);
+        return (sel ? sel.value : null) || localStorage.getItem(storageKeyEscolha) || 'openai';
+    },
+
+    // Mantido por retrocompatibilidade — quem chamava openConfig() foca no
+    // provedor selecionado, mas agora todos aparecem na mesma tela.
+    openConfig() { this.openApiKeysModal(); },
+    _configOpenAI() { this.openApiKeysModal(); },
+    _configGoogle() { this.openApiKeysModal(); },
+
+    // ── Modal único de chaves de API (OpenAI / Google / Grok / futuros) ──
+    openApiKeysModal() {
+        this.renderApiKeysModal();
+        if (typeof openModal === 'function') openModal('api-keys-modal');
+    },
+
+    // Escopo atual do modal de chaves: '' = pool global; <storeId> = override
+    // daquela loja. Guardado só em memória (reseta ao reabrir).
+    _apikeysEscopo: '',
+
+    renderApiKeysModal() {
+        const lista = document.getElementById('api-keys-list');
+        if (!lista) return;
+        const escopo = this._apikeysEscopo || '';
+        const daLoja = !!escopo;
+        const stores = (typeof AppState !== 'undefined' && Array.isArray(AppState.stores)) ? AppState.stores : [];
+        const nomeLoja = (id) => (stores.find(s => s.id === id)?.name) || 'esta loja';
+
+        // Seletor de escopo (só aparece se houver mais de uma loja OU já houver
+        // lojas — não polui quem tem loja única).
+        const seletorEscopo = stores.length > 1 ? `
+            <div class="apikeys-escopo">
+                <label style="font-size:0.8rem;color:var(--text-muted)">Aplicar chaves a</label>
+                <select id="apikeys-escopo-sel" class="input input-sm">
+                    <option value="">Global (todas as lojas)</option>
+                    ${stores.map(s => `<option value="${this._esc(s.id)}" ${s.id === escopo ? 'selected' : ''}>Só a loja "${this._esc(s.name)}"</option>`).join('')}
+                </select>
+                ${daLoja ? `<p class="apikeys-usage" style="margin:0.3rem 0 0">Sem chave própria, esta loja usa a chave global. Defina uma abaixo pra sobrescrever só aqui.</p>` : ''}
+            </div>` : '';
+
+        const overrides = daLoja ? this._storeOverrides(escopo) : {};
+
+        lista.innerHTML = seletorEscopo + this._PROVIDERS.map(p => {
+            const proprio = daLoja ? (overrides[p.id] || '') : '';
+            const global = localStorage.getItem(p.storageKey) || '';
+            const atual = daLoja ? (proprio || global) : this._getKey(p.id);
+            const herdando = daLoja && !proprio && !!global;
+            const prefixoUsado = (p.prefixos || []).find(pre => atual.startsWith(pre));
+            const mascara = atual
+                ? `${this._esc(atual.slice(0, prefixoUsado ? prefixoUsado.length + 4 : 4))}…${this._esc(atual.slice(-4))}`
+                : 'nenhuma chave';
+            const status = herdando ? `herdando a global · ${mascara}` : mascara;
+            // Copiar de outra loja (só no escopo de loja e havendo outra loja)
+            const outras = daLoja ? stores.filter(s => s.id !== escopo) : [];
+            const copiarHtml = outras.length ? `
+                <div class="apikeys-copiar">
+                    <select class="input input-sm" data-copiar-de>
+                        <option value="">Copiar chave de…</option>
+                        ${outras.map(s => `<option value="${this._esc(s.id)}">${this._esc(s.name)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="copiar">Copiar</button>
+                </div>` : '';
+            return `
+                <div class="apikeys-row" data-provider="${p.id}">
+                    <div class="apikeys-row-head">
+                        <strong>${this._esc(p.nome)}</strong>
+                        <span class="apikeys-status ${(atual && !herdando) ? 'is-set' : ''}">${(atual && !herdando) ? '<i data-lucide="check-circle-2" style="width:13px;height:13px;vertical-align:-2px"></i> ' : ''}${status}</span>
+                    </div>
+                    <p class="apikeys-usage">${this._esc(p.uso)}</p>
+                    <div class="apikeys-row-input">
+                        <input type="password" class="input input-sm" data-key-input placeholder="${this._esc((p.prefixos || []).join(' ou '))}..." autocomplete="off">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="save">Salvar${daLoja ? ' nesta loja' : ''}</button>
+                        ${(daLoja ? !!proprio : !!atual) ? `<button type="button" class="btn btn-secondary btn-sm" data-action="remove">${daLoja ? 'Usar global' : 'Remover'}</button>` : ''}
+                    </div>
+                    ${copiarHtml}
+                    <a href="${p.link}" target="_blank" rel="noopener" class="apikeys-link">Obter chave <i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-1px"></i></a>
+                </div>`;
+        }).join('');
+
+        document.getElementById('apikeys-escopo-sel')?.addEventListener('change', (e) => {
+            this._apikeysEscopo = e.target.value;
+            this.renderApiKeysModal();
+        });
+
+        lista.querySelectorAll('.apikeys-row').forEach(row => {
+            const providerId = row.dataset.provider;
+            const p = this._PROVIDERS.find(x => x.id === providerId);
+            const input = row.querySelector('[data-key-input]');
+            const gravar = (val) => daLoja ? this._setStoreKey(escopo, providerId, val) : this._setKey(providerId, val);
+            row.querySelector('[data-action="save"]')?.addEventListener('click', () => {
+                const val = input.value.trim();
+                if (!val) { if (typeof showToast === 'function') showToast('Cole uma chave antes de salvar', 'error'); return; }
+                const foraDoPadrao = (p.prefixos || []).length && !p.prefixos.some(pre => val.startsWith(pre));
+                gravar(val);
+                if (typeof showToast === 'function') {
+                    showToast(
+                        foraDoPadrao
+                            ? `Chave ${p.nome} salva${daLoja ? ' nesta loja' : ''} — formato incomum. Se a geração falhar, confira se colou a chave certa.`
+                            : `Chave ${p.nome} salva${daLoja ? ` só na loja "${nomeLoja(escopo)}"` : ''} <i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i>`,
+                        foraDoPadrao ? 'warning' : 'success'
+                    );
+                }
+                this.renderApiKeysModal();
+            });
+            row.querySelector('[data-action="remove"]')?.addEventListener('click', () => {
+                gravar('');
+                if (typeof showToast === 'function') showToast(daLoja ? `"${nomeLoja(escopo)}" volta a usar a chave global de ${p.nome}` : `Chave ${p.nome} removida`, 'success');
+                this.renderApiKeysModal();
+            });
+            row.querySelector('[data-action="copiar"]')?.addEventListener('click', () => {
+                const de = row.querySelector('[data-copiar-de]')?.value;
+                if (!de) { if (typeof showToast === 'function') showToast('Escolha de qual loja copiar', 'error'); return; }
+                // chave efetiva da outra loja: override dela, senão a global
+                const chave = this._storeOverrides(de)[providerId] || localStorage.getItem(p.storageKey) || '';
+                if (!chave) { if (typeof showToast === 'function') showToast('Aquela loja não tem chave pra copiar', 'error'); return; }
+                this._setStoreKey(escopo, providerId, chave);
+                if (typeof showToast === 'function') showToast(`Chave ${p.nome} copiada de "${nomeLoja(de)}"`, 'success');
+                this.renderApiKeysModal();
+            });
+        });
+        if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch (e) {}
     },
 
     // ── Generate images ───────────────────────────────────────────────
@@ -155,7 +424,7 @@ const AIAdGenerator = {
         const quality = opts.quality || document.getElementById('aiad-quality')?.value || 'standard';
         const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
 
-        const providerLabel = { 'google': 'Google Imagen 3', 'google-imagen2': 'Google Imagen 2', 'gpt-image-2': 'GPT Image 2', 'gpt-image-1': 'GPT Image 1', 'openai': 'DALL-E 3' }[provider] || provider;
+        const providerLabel = { 'google': 'Gemini Image', 'google-pro': 'Gemini Image Pro', 'gpt-image-2': 'GPT Image 2', 'gpt-image-1': 'GPT Image 1', 'openai': 'DALL-E 3' }[provider] || provider;
         const results = document.getElementById('aiad-results');
         if (results) {
             results.innerHTML = `<div class="aiad-loading">Gerando ${count} imagem(ns) com ${providerLabel}…</div>`;
@@ -166,8 +435,8 @@ const AIAdGenerator = {
             let items;
             if (provider === 'google') {
                 items = await this._generateWithGoogle(prompt, size, count);
-            } else if (provider === 'google-imagen2') {
-                items = await this._generateWithGoogleImagen2(prompt, size, count);
+            } else if (provider === 'google-pro') {
+                items = await this._generateWithGoogle(prompt, size, count, 'gemini-3-pro-image');
             } else if (provider === 'gpt-image-2') {
                 items = await this._generateWithGPTImage(prompt, size, count, quality, 'gpt-image-2');
             } else if (provider === 'gpt-image-1') {
@@ -285,97 +554,77 @@ const AIAdGenerator = {
         }));
     },
 
-    // ── Google Imagen 3 ────────────────────────────────────────────────
-    async _generateWithGoogle(prompt, size, count) {
+    // ── Google (Gemini Image / "Nano Banana") ──────────────────────────
+    // Os modelos Imagen que ficavam aqui (imagen-3.0-generate-001 e
+    // imagen-2.0-generate-001, endpoint :predict) foram DESCONTINUADOS: a doc
+    // oficial anuncia desligamento em 17/08/2026 e manda migrar para os
+    // Nano Banana. Estes usam :generateContent, não :predict, e devolvem a
+    // imagem em candidates[].content.parts[].inlineData — formato diferente.
+    async _generateWithGoogle(prompt, size, count, modeloPreferido) {
         const key = this._getGoogleKey();
         if (!key) {
-            this._configGoogle();
-            throw new Error('Chave Google AI não configurada');
-        }
-
-        // Mapa size → aspectRatio
-        const aspectMap = {
-            '1024x1024': '1:1',
-            '1024x1792': '9:16',
-            '1792x1024': '16:9'
-        };
-        const aspectRatio = aspectMap[size] || '1:1';
-
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${key}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: {
-                        sampleCount: Math.min(count, 4),
-                        aspectRatio,
-                        safetyFilterLevel: 'block_some',
-                        personGeneration: 'allow_adult'
-                    }
-                })
-            }
-        );
-
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message || 'Erro na Google Imagen API');
-
-        const predictions = data.predictions || [];
-        if (!predictions.length) throw new Error('Google Imagen não retornou imagens. Verifique sua chave e região.');
-
-        const now = Date.now();
-        return predictions.map((p, i) => ({
-            id: 'gen_' + (now + i) + '_' + Math.random().toString(36).slice(2, 7),
-            provider: 'google',
-            prompt,
-            size,
-            createdAt: new Date().toISOString(),
-            dataUrl: `data:${p.mimeType || 'image/png'};base64,${p.bytesBase64Encoded}`
-        }));
-    },
-
-    // ── Google Imagen 2 ────────────────────────────────────────────────
-    async _generateWithGoogleImagen2(prompt, size, count) {
-        const key = this._getGoogleKey();
-        if (!key) {
-            this._configGoogle();
+            this.openApiKeysModal();
             throw new Error('Chave Google AI não configurada');
         }
 
         const aspectMap = { '1024x1024': '1:1', '1024x1792': '9:16', '1792x1024': '16:9' };
         const aspectRatio = aspectMap[size] || '1:1';
 
-        const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/imagen-2.0-generate-001:predict?key=${key}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt }],
-                    parameters: {
-                        sampleCount: Math.min(count, 4),
-                        aspectRatio,
-                        safetyFilterLevel: 'block_some',
-                        personGeneration: 'allow_adult'
-                    }
-                })
-            }
-        );
+        const modelos = modeloPreferido
+            ? [modeloPreferido, 'gemini-3.1-flash-image', 'gemini-3-pro-image']
+            : ['gemini-3.1-flash-image', 'gemini-3-pro-image'];
 
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message || 'Erro Google Imagen 2');
-        const predictions = data.predictions || [];
-        if (!predictions.length) throw new Error('Google Imagen 2 não retornou imagens. Verifique sua chave e região.');
+        // generateContent devolve UMA imagem por chamada — o paralelo cobre o
+        // "n" que o :predict fazia com sampleCount.
+        const umaImagem = async () => {
+            let ultimoErro = '';
+            for (const modelo of [...new Set(modelos)]) {
+                const res = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                responseModalities: ['IMAGE'],
+                                imageConfig: { aspectRatio, imageSize: '2K' },
+                            },
+                        }),
+                    }
+                );
+                if (!res.ok) {
+                    ultimoErro = (await res.text()).slice(0, 200);
+                    if (res.status === 404 || res.status === 403 || res.status === 400) continue;
+                    throw new Error('Google: ' + ultimoErro);
+                }
+                const data = await res.json();
+                const partes = data?.candidates?.[0]?.content?.parts || [];
+                const img = partes.find(p => p.inlineData?.data || p.inline_data?.data);
+                const b64 = img?.inlineData?.data || img?.inline_data?.data;
+                if (b64) return { b64, mime: img?.inlineData?.mimeType || 'image/png' };
+                const txt = partes.map(p => p.text).filter(Boolean).join(' ').slice(0, 160);
+                throw new Error('Google não devolveu imagem' + (txt ? `: ${txt}` : '.'));
+            }
+            throw new Error('Google: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
+        };
+
+        const resultados = await Promise.allSettled(
+            Array.from({ length: Math.min(count, 4) }, () => umaImagem())
+        );
+        const ok = resultados.filter(r => r.status === 'fulfilled').map(r => r.value);
+        if (!ok.length) {
+            throw new Error(resultados[0]?.reason?.message || 'Google não retornou imagens');
+        }
 
         const now = Date.now();
-        return predictions.map((p, i) => ({
+        return ok.map((p, i) => ({
             id: 'gen_' + (now + i) + '_' + Math.random().toString(36).slice(2, 7),
-            provider: 'google-imagen2',
+            provider: 'google',
             prompt,
             size,
             createdAt: new Date().toISOString(),
-            dataUrl: `data:${p.mimeType || 'image/png'};base64,${p.bytesBase64Encoded}`
+            dataUrl: `data:${p.mime};base64,${p.b64}`
         }));
     },
 
@@ -519,8 +768,8 @@ const AIAdGenerator = {
         results.innerHTML = items.map((item, i) => `
             <div class="aiad-result-item" data-id="${item.id}">
                 <img src="${srcs[i]}" alt="${this._esc(item.prompt.slice(0, 60))}" loading="lazy">
-                <div class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
-                    ${ {'google':'Google Imagen 3','google-imagen2':'Google Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
+                <div class="aiad-result-badge ${ String(item.provider || '').startsWith('google') ? 'aiad-badge-google' : 'aiad-badge-openai'}">
+                    ${ {'google':'Gemini Image','google-pro':'Gemini Image Pro','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }
                 </div>
                 <div class="aiad-result-actions">
                     <button class="btn btn-secondary btn-sm" data-action="download" data-id="${item.id}" title="Baixar WebP"><i data-lucide="download" style="width:13px;height:13px"></i></button>
@@ -573,7 +822,7 @@ const AIAdGenerator = {
         }
     },
 
-    // ── Generate copy (always OpenAI) ─────────────────────────────────
+    // ── Generate copy (provedor escolhido em #aiad-copy-provider) ──────
     async generateCopy() {
         const prompt = document.getElementById('aiad-prompt')?.value.trim();
         if (!prompt) {
@@ -581,10 +830,11 @@ const AIAdGenerator = {
             return;
         }
 
-        const key = this._getOpenAIKey();
-        if (!key) {
-            if (typeof showToast === 'function') showToast('Gerar copy requer chave OpenAI', 'error');
-            this._configOpenAI();
+        const provider = this.lerTextoProvider('aiad-copy-provider', 'etracker_text_provider_copy');
+        if (!this._getKey(provider)) {
+            const nome = this._PROVIDERS.find(p => p.id === provider)?.nome || provider;
+            if (typeof showToast === 'function') showToast(`Gerar copy requer chave de ${nome}`, 'error');
+            this.openApiKeysModal();
             return;
         }
 
@@ -596,30 +846,21 @@ const AIAdGenerator = {
         try {
             const sysPrompt = `Você é um copywriter de e-commerce. Receba a descrição do produto/anúncio e gere copy em português brasileiro: 3 headlines curtas (até 40 chars), 3 descrições (até 125 chars) e 3 CTAs (até 20 chars). Responda APENAS em JSON válido com a estrutura: {"headlines":[],"descriptions":[],"ctas":[]}`;
 
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${key}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        { role: 'system', content: sysPrompt },
-                        { role: 'user', content: prompt }
-                    ],
-                    response_format: { type: 'json_object' },
-                    temperature: 0.8
-                })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error.message);
-            const content = data.choices?.[0]?.message?.content || '{}';
-            const parsed = JSON.parse(content);
+            const content = await this.gerarTexto({ provider, system: sysPrompt, prompt, json: true, maxTokens: 600, temperature: 0.8 });
+            const parsed = JSON.parse(this._extrairJsonTexto(content) || '{}');
             this._renderCopy(parsed);
         } catch (err) {
             if (body) body.innerHTML = `<p style="color:#dc2626">Erro: ${this._esc(err.message)}</p>`;
         }
+    },
+
+    // Anthropic não tem modo JSON nativo — às vezes devolve o objeto cercado de
+    // texto/```json apesar da instrução no prompt. Extrai o primeiro bloco {...}.
+    _extrairJsonTexto(texto) {
+        const s = String(texto || '').trim();
+        if (s.startsWith('{') || s.startsWith('[')) return s;
+        const m = s.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        return m ? m[0] : s;
     },
 
     _renderCopy(parsed) {
@@ -630,7 +871,7 @@ const AIAdGenerator = {
                 <h4>${label}</h4>
                 <div class="aiad-copy-text-list">
                     ${(items || []).map(t => `
-                        <div class="aiad-copy-text" data-copy="${this._esc(t)}">
+                        <div class="aiad-copy-text" data-copy="${this._esc(t)}" title="Copiar" role="button" tabindex="0" aria-label="Copiar: ${this._esc(t)}">
                             <span>${this._esc(t)}</span>
                             <i data-lucide="copy" style="width:13px;height:13px;color:var(--text-muted)"></i>
                         </div>
@@ -644,11 +885,17 @@ const AIAdGenerator = {
             renderList('CTAs', parsed.ctas);
         if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch(e) {}
 
+        const copiar = (el) => {
+            navigator.clipboard.writeText(el.dataset.copy).then(() => {
+                if (typeof showToast === 'function') showToast('Copiado: ' + el.dataset.copy.slice(0, 40), 'success');
+            });
+        };
         body.querySelectorAll('.aiad-copy-text').forEach(el => {
-            el.addEventListener('click', () => {
-                navigator.clipboard.writeText(el.dataset.copy).then(() => {
-                    if (typeof showToast === 'function') showToast('Copiado: ' + el.dataset.copy.slice(0, 40), 'success');
-                });
+            el.addEventListener('click', () => copiar(el));
+            // role="button" não dá o comportamento nativo de <button> — Enter/Espaço
+            // precisam ser tratados na mão pra ficar acessível por teclado de verdade.
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copiar(el); }
             });
         });
     },
@@ -768,7 +1015,7 @@ const AIAdGenerator = {
                 <div class="aigen-card-meta">
                     <span class="aigen-card-prompt" title="${this._esc(item.revisedPrompt || item.prompt)}">${this._esc((item.prompt || '').slice(0, 80))}${(item.prompt || '').length > 80 ? '…' : ''}</span>
                     <div class="aigen-card-actions">
-                        <span class="aiad-result-badge ${ (item.provider === 'google' || item.provider === 'google-imagen2') ? 'aiad-badge-google' : 'aiad-badge-openai'}">${ {'google':'Imagen 3','google-imagen2':'Imagen 2','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }</span>
+                        <span class="aiad-result-badge ${ String(item.provider || '').startsWith('google') ? 'aiad-badge-google' : 'aiad-badge-openai'}">${ {'google':'Gemini','google-pro':'Gemini Pro','gpt-image-2':'GPT Image 2','gpt-image-1':'GPT Image 1','openai':'DALL-E 3'}[item.provider] || item.provider }</span>
                         <button class="btn-icon" data-action="save-creative" data-id="${item.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="dl" data-id="${item.id}" title="Baixar"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                         <button class="btn-icon" data-action="cp" data-id="${item.id}" title="Copiar prompt"><i data-lucide="copy" style="width:13px;height:13px"></i></button>
@@ -820,7 +1067,13 @@ const AIAdGenerator = {
         }
         // Build modal HTML
         const opts = products.map(p => `<option value="${this._esc(p.id)}">${this._esc(p.name)}</option>`).join('');
-        const defaultName = (item.prompt || '').slice(0, 60).trim() || 'AI Creative';
+        // Mesmo gerador de nome do resto da ferramenta (produto + tipo, com
+        // contador) — só cai pro prompt truncado se o CreativesModule não
+        // tiver carregado por algum motivo.
+        const gerarNome = (productId) => (typeof CreativesModule?._gerarNomeAutomatico === 'function')
+            ? CreativesModule._gerarNomeAutomatico({ productId, type: 'Imagem' })
+            : ((item.prompt || '').slice(0, 60).trim() || 'AI Creative');
+        const defaultName = gerarNome('');
         const modalHtml = `
             <div id="modal-save-creative-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;">
                 <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.5rem;width:min(420px,90vw);display:flex;flex-direction:column;gap:1rem;">
@@ -858,6 +1111,17 @@ const AIAdGenerator = {
 
         document.getElementById('sc-cancel-btn')?.addEventListener('click', close);
         overlay?.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        // Ao escolher o produto, upgrada o nome pra incluir o nome dele —
+        // mas só se o usuário ainda não mexeu no campo manualmente.
+        const nameInput = document.getElementById('sc-name-input');
+        let nomeEditadoManualmente = false;
+        nameInput?.addEventListener('input', () => { nomeEditadoManualmente = true; });
+        document.getElementById('sc-product-select')?.addEventListener('change', (e) => {
+            if (nomeEditadoManualmente || !nameInput) return;
+            nameInput.value = gerarNome(e.target.value);
+        });
+
         document.getElementById('sc-save-btn')?.addEventListener('click', async () => {
             const productId = document.getElementById('sc-product-select')?.value;
             const name = document.getElementById('sc-name-input')?.value.trim() || defaultName;

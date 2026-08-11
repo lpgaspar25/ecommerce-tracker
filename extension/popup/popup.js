@@ -72,7 +72,24 @@ async function extract() {
         els.preview.style.display = 'none';
         els.btnSend.disabled = false;
         els.btnCollection.style.display = 'none';
+    } else if (result.kind === 'gallery') {
+        const g = result.gallery;
+        _current = { type: 'gallery', payload: g };
+        renderGalleryPreview(g);
+        els.btnSend.disabled = false;
+        els.btnCollection.style.display = 'none';
     }
+}
+
+function renderGalleryPreview(g) {
+    setStatus(`Galeria (${g.site}) detectada · ${g.images.length} fotos`, 'ok');
+    els.preview.style.display = '';
+    els.img.src = g.images?.[0]?.src || '';
+    els.img.alt = g.title || '';
+    els.title.textContent = g.title || '—';
+    els.vendor.textContent = g.site;
+    els.price.textContent = '—';
+    els.imgs.textContent = `${g.images.length} fotos em tamanho cheio`;
 }
 
 function renderPreview(p, method) {
@@ -104,16 +121,23 @@ async function renderQueueCount() {
 async function sendToApp() {
     if (!_current) return;
     const queue = await loadQueue();
+    let destino = 'importador';
     if (_current.type === 'product') {
         queue.push(_current.payload);
     } else if (_current.type === 'collection') {
         for (const prod of _current.payload.products) queue.push(prod);
+    } else if (_current.type === 'gallery') {
+        // tipo:'gallery' distingue da captura de produto/coleção no
+        // app-bridge.js, que roteia cada tipo pro módulo certo.
+        queue.push({ tipo: 'gallery', ..._current.payload });
+        destino = 'studio';
     }
     await saveQueue(queue);
     setStatus(`✓ Adicionado à fila (${queue.length})`, 'ok');
 
-    // Open the importer tab to flush the queue
-    const url = `${APP_URL}/?tab=importador&fromExt=1`;
+    // Open the right tab to flush the queue — galeria vai pro Estúdio
+    // (Lançamento de Produto), o resto continua indo pro Importador.
+    const url = `${APP_URL}/?tab=${destino}&fromExt=1${destino === 'studio' ? '&modo=lancamento' : ''}`;
     const tabs = await chrome.tabs.query({ url: APP_URL + '/*' });
     if (tabs.length) {
         await chrome.tabs.update(tabs[0].id, { active: true, url });

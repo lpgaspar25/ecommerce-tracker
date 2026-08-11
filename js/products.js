@@ -4,6 +4,27 @@
 
 const ProductsModule = {
     _images: [],
+    // { [codigoIdioma]: { title, descriptionHtml, handle, variants:[{name,values:[]}], traduzidoEm } }
+    _translations: {},
+
+    // código interno → nome PT-BR + nome em inglês (prompt da IA) + locale
+    // Shopify (para enviar tradução). "Ingles Americano" não tem locale
+    // Shopify próprio (a loja usa "en"), então fica sem envio.
+    _LANG_INFO: {
+        'Ingles': { nome: 'Inglês', en: 'English', locale: 'en' },
+        'Ingles Americano': { nome: 'Inglês (EUA)', en: 'American English', locale: '' },
+        'Portugues': { nome: 'Português', en: 'Brazilian Portuguese', locale: 'pt-BR' },
+        'Espanhol': { nome: 'Espanhol', en: 'Spanish', locale: 'es' },
+        'Frances': { nome: 'Francês', en: 'French', locale: 'fr' },
+        'Alemao': { nome: 'Alemão', en: 'German', locale: 'de' },
+        'Italiano': { nome: 'Italiano', en: 'Italian', locale: 'it' },
+        'Holandes': { nome: 'Holandês', en: 'Dutch', locale: 'nl' },
+        'Polones': { nome: 'Polonês', en: 'Polish', locale: 'pl' },
+        'Checol': { nome: 'Tcheco', en: 'Czech', locale: 'cs' },
+        'Dinamarques': { nome: 'Dinamarquês', en: 'Danish', locale: 'da' },
+        'Sueco': { nome: 'Sueco', en: 'Swedish', locale: 'sv' },
+        'Noruegues': { nome: 'Norueguês', en: 'Norwegian', locale: 'nb' },
+    },
 
     COUNTRIES: [
         { code: 'GB', label: 'GB — Reino Unido', currency: 'GBP' },
@@ -92,15 +113,69 @@ const ProductsModule = {
 
         // Rich text toolbar (execCommand — simple, no deps)
         document.querySelectorAll('#product-form .prod-rich-btn').forEach(btn => {
+            if (!btn.dataset.cmd) return; // botões sem data-cmd (ex.: inserir imagem) têm handler próprio
             btn.addEventListener('mousedown', (e) => {
                 e.preventDefault(); // prevent editor blur
                 document.execCommand(btn.dataset.cmd, false, null);
                 document.getElementById('product-description')?.focus();
             });
         });
+        // Inserir imagem na descrição (toolbar de imagem) — captura a seleção
+        // ANTES do overlay roubar o foco, senão perdemos onde o cursor estava.
+        document.getElementById('prod-rich-img-btn')?.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            this._abrirInserirImagemDescricao();
+        });
 
         // AI description button
         document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
+        document.getElementById('btn-prod-ai-desc-imgs')?.addEventListener('click', () => this.melhorarImagensDescricao());
+        // Seletor de provedor de IA pra descrição (openai/google/grok/anthropic)
+        const descProviderSlot = document.getElementById('prod-desc-provider-slot');
+        if (descProviderSlot && typeof AIAdGenerator !== 'undefined') {
+            descProviderSlot.innerHTML = AIAdGenerator.htmlSeletorTextoProvider('prod-desc-provider', 'etracker_text_provider_desc');
+            AIAdGenerator.wireSeletorTextoProvider('prod-desc-provider');
+        }
+
+        // IA nas imagens do produto
+        document.getElementById('btn-prod-gen-gallery')?.addEventListener('click', () => this.abrirGerarGaleria());
+        document.getElementById('btn-prod-auditar')?.addEventListener('click', () => this.auditarProduto());
+
+        // Idiomas mudam quais traduções aparecem (o 1º marcado é a origem).
+        document.querySelectorAll('#product-languages input[type="checkbox"]').forEach(cb =>
+            cb.addEventListener('change', () => this._renderTraducoes()));
+        document.getElementById('btn-prod-trad-shopify')?.addEventListener('click', () => this._enviarTraducoesShopify());
+        document.getElementById('btn-prod-trad-pull')?.addEventListener('click', () => this._puxarIdiomasDaLoja());
+        document.getElementById('btn-prod-gen-cover')?.addEventListener('click', () => this.abrirGerarCapa());
+        document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
+        document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
+        document.getElementById('btn-prod-send-shopify')?.addEventListener('click', () => this.abrirEnviarShopify());
+        const provSel = document.getElementById('prod-img-provider');
+        const modSel = document.getElementById('prod-img-modelo');
+        // Em "Automático" não dá pra fixar versão — não se sabe de antemão
+        // qual dos dois provedores vai atender. Some as opções e trava o
+        // select nesse caso; nos demais, mostra só as versões do provedor.
+        const sincronizarModeloImagem = () => {
+            if (!modSel) return;
+            const prov = provSel?.value;
+            const auto = prov === 'auto';
+            modSel.disabled = auto;
+            [...modSel.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== prov; });
+            const opt = modSel.selectedOptions[0];
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) modSel.value = '';
+        };
+        if (provSel) {
+            provSel.value = localStorage.getItem('studio_img_provider') || 'auto';
+            provSel.addEventListener('change', () => {
+                localStorage.setItem('studio_img_provider', provSel.value);
+                sincronizarModeloImagem();
+            });
+        }
+        if (modSel) {
+            modSel.value = localStorage.getItem('studio_img_modelo') || '';
+            modSel.addEventListener('change', () => localStorage.setItem('studio_img_modelo', modSel.value));
+        }
+        sincronizarModeloImagem();
 
         // Importar preços/custos por país de outro produto
         document.getElementById('btn-import-country-costs')?.addEventListener('click', () => this.openImportCountryCosts());
@@ -186,6 +261,7 @@ const ProductsModule = {
             const tagsEl = document.getElementById('product-tags');
             if (tagsEl) tagsEl.value = (product.tags || []).join(', ');
             this._images = (product.images || []).slice();
+            this._translations = JSON.parse(JSON.stringify(product.translations || {}));
             this._renderShopifyVariants(product);
         } else {
             title.textContent = 'Adicionar Produto';
@@ -214,6 +290,7 @@ const ProductsModule = {
             // FB accounts: render picker fresh with nothing checked
             this._renderFbAccountPicker(null);
             this._images = [];
+            this._translations = {};
         }
 
         // Reset AI status
@@ -221,6 +298,7 @@ const ProductsModule = {
         if (aiStatus) { aiStatus.style.display = 'none'; aiStatus.textContent = ''; }
 
         this._renderProductImages();
+        this._renderTraducoes();
         this.updateProfitPreview();
         this._renderShopifySection(product);
         openModal('product-modal');
@@ -699,6 +777,7 @@ const ProductsModule = {
             sku: (document.getElementById('product-sku')?.value || '').trim(),
             tags: (document.getElementById('product-tags')?.value || '').split(',').map(t => t.trim()).filter(Boolean),
             images: this._images || [],
+            translations: this._translations || {},
             storeId: getWritableStoreId()
         };
     },
@@ -843,8 +922,9 @@ const ProductsModule = {
             'Dinamarques': 'Danish', 'Sueco': 'Swedish', 'Noruegues': 'Norwegian'
         };
         const lang = langMap[language] || 'English';
-        const openAIKey = localStorage.getItem('openai_api_key') || '';
-        const googleKey = localStorage.getItem('google_ai_api_key') || '';
+        const provider = (typeof AIAdGenerator !== 'undefined')
+            ? AIAdGenerator.lerTextoProvider('prod-desc-provider', 'etracker_text_provider_desc')
+            : 'openai';
 
         const statusEl = document.getElementById('prod-ai-desc-status');
         const btn = document.getElementById('btn-prod-ai-desc');
@@ -852,41 +932,12 @@ const ProductsModule = {
         if (btn) btn.disabled = true;
 
         try {
+            if (typeof AIAdGenerator === 'undefined') throw new Error('Módulo de IA não carregado — recarregue a página.');
             const sysPrompt = `You are a professional e-commerce copywriter. Write a compelling product description in ${lang}. 2–3 paragraphs, highlight key benefits, persuasive tone. Format as simple HTML using only <p> and <strong> tags. Do NOT include a title or heading — only the body text.`;
-            let html = '';
-
-            if (openAIKey) {
-                const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIKey}` },
-                    body: JSON.stringify({
-                        model: 'gpt-4o-mini',
-                        messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: `Product name: ${name}` }],
-                        temperature: 0.8
-                    })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message);
-                html = data.choices?.[0]?.message?.content || '';
-            } else if (googleKey) {
-                const res = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${googleKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            system_instruction: { parts: [{ text: sysPrompt }] },
-                            contents: [{ parts: [{ text: `Product name: ${name}` }] }],
-                            generationConfig: { temperature: 0.8 }
-                        })
-                    }
-                );
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message || 'Google AI error');
-                html = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            } else {
-                throw new Error('Configure uma chave OpenAI ou Google AI (AI Ad Generator → Configurar IA)');
-            }
+            const html = await AIAdGenerator.gerarTexto({
+                provider, system: sysPrompt, prompt: `Product name: ${name}`,
+                maxTokens: 700, temperature: 0.8,
+            });
 
             if (!html) throw new Error('Resposta vazia da IA');
             const descEl = document.getElementById('product-description');
@@ -902,46 +953,33 @@ const ProductsModule = {
         }
     },
 
+    // Antes tinha um compressor WebP próprio, duplicado (canvas manual) —
+    // o resto deste MESMO arquivo já usa o motor compartilhado
+    // (comprimirImagemParaDataUrl, em app.js) pras fotos geradas por IA.
+    // Unificado: upload manual passa pelo mesmo motor, e agora registra
+    // dimensão/tamanho final junto (STUDIO-10).
     async _handleImageFiles(files) {
         for (const file of Array.from(files)) {
             if (!file.type.startsWith('image/')) continue;
             if (this._images.length >= 5) break;
-            const dataUrl = await this._compressImageToWebP(file, 800, 0.75);
-            this._images.push({ dataUrl, name: file.name });
+            try {
+                const { blob, width, height } = await comprimirImagem(file, 800, 0.75, { formato: 'image/webp' });
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const fr = new FileReader();
+                    fr.onloadend = () => resolve(fr.result);
+                    fr.onerror = () => reject(new Error('Falha ao ler a imagem comprimida'));
+                    fr.readAsDataURL(blob);
+                });
+                this._images.push({ dataUrl, name: file.name, width, height, size: blob.size });
+            } catch (e) {
+                console.error('[Produtos] falha ao processar imagem:', e);
+                if (typeof showToast === 'function') showToast(`Falha ao processar "${file.name}": ${e.message}`, 'error');
+            }
         }
         this._renderProductImages();
         // reset input so same file can be re-selected
         const inp = document.getElementById('prod-image-input');
         if (inp) inp.value = '';
-    },
-
-    async _compressImageToWebP(file, maxW = 800, quality = 0.75) {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    try {
-                        const scale = Math.min(1, maxW / img.naturalWidth);
-                        const w = Math.round(img.naturalWidth * scale);
-                        const h = Math.round(img.naturalHeight * scale);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = w; canvas.height = h;
-                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                        canvas.toBlob(blob => {
-                            if (!blob) { resolve(ev.target.result); return; }
-                            const fr = new FileReader();
-                            fr.onloadend = () => resolve(fr.result || ev.target.result);
-                            fr.readAsDataURL(blob);
-                        }, 'image/webp', quality);
-                    } catch { resolve(ev.target.result); }
-                };
-                img.onerror = () => resolve(ev.target.result);
-                img.src = ev.target.result;
-            };
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(file);
-        });
     },
 
     _renderProductImages() {
@@ -958,11 +996,15 @@ const ProductsModule = {
         // Imagem pode vir de upload (dataUrl base64) ou da Shopify (url do CDN).
         // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
         thumbs.innerHTML = this._images.map((img, i) => `
-            <div class="prod-image-thumb">
-                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy">
+            <div class="prod-image-thumb" draggable="true" data-pos="${i}" title="Arraste pra reordenar">
+                <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-trocar="${i}" title="Clique pra trocar esta imagem" style="cursor:pointer">
+                <button type="button" class="prod-image-zoom" data-ampliar="${i}" title="Ampliar"><i data-lucide="zoom-in" style="width:12px;height:12px"></i></button>
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
+                <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
+                ${img.melhorada ? '<span class="prod-image-ai" title="Versão melhorada por IA">IA</span>' : ''}
                 ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
+                ${img.enviadaShopify ? '<span class="prod-image-src" title="Já enviada para a Shopify"><i data-lucide="check" style="width:10px;height:10px;vertical-align:-1px"></i> Enviada</span>' : ''}
             </div>
         `).join('');
         thumbs.querySelectorAll('.prod-image-remove').forEach(btn => {
@@ -971,10 +1013,1364 @@ const ProductsModule = {
                 this._renderProductImages();
             });
         });
+        thumbs.querySelectorAll('[data-enhance]').forEach(btn => {
+            btn.addEventListener('click', () => this.melhorarImagem(parseInt(btn.dataset.enhance, 10)));
+        });
+        // Ampliar tem ícone próprio — sem isso não dá pra conferir de verdade
+        // se a versão melhorada ficou boa (a miniatura tem ~90px).
+        thumbs.querySelectorAll('[data-ampliar]').forEach(el => {
+            el.addEventListener('click', () => {
+                const im = this._images[parseInt(el.dataset.ampliar, 10)];
+                if (!im) return;
+                const rotulo = [im.name || im.alt || `Imagem ${Number(el.dataset.ampliar) + 1}`,
+                                im.melhorada ? '(melhorada por IA)' : ''].filter(Boolean).join(' ');
+                abrirImagemAmpliada(im.dataUrl || im.url, rotulo);
+            });
+        });
+        // Clicar na imagem em si abre o seletor (STUDIO-08) — trocar não fica
+        // restrito ao botão de IA (que só melhora a imagem já presente).
+        thumbs.querySelectorAll('[data-trocar]').forEach(el => {
+            el.addEventListener('click', () => this._abrirSeletorImagem(parseInt(el.dataset.trocar, 10)));
+        });
+        // Reordenar por arrastar — a 1ª posição sempre vira a capa (mesmo
+        // comportamento da galeria da Shopify), sem precisar de botão extra.
+        let _arrastandoDe = null;
+        thumbs.querySelectorAll('.prod-image-thumb').forEach(el => {
+            el.addEventListener('dragstart', (e) => {
+                _arrastandoDe = parseInt(el.dataset.pos, 10);
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', String(_arrastandoDe)); } catch {}
+                el.classList.add('is-arrastando');
+            });
+            el.addEventListener('dragend', () => {
+                el.classList.remove('is-arrastando');
+                thumbs.querySelectorAll('.is-alvo-drop').forEach(t => t.classList.remove('is-alvo-drop'));
+                _arrastandoDe = null;
+            });
+            el.addEventListener('dragover', (e) => {
+                if (_arrastandoDe === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                el.classList.add('is-alvo-drop');
+            });
+            el.addEventListener('dragleave', () => el.classList.remove('is-alvo-drop'));
+            el.addEventListener('drop', (e) => {
+                e.preventDefault();
+                el.classList.remove('is-alvo-drop');
+                const destino = parseInt(el.dataset.pos, 10);
+                if (_arrastandoDe === null || _arrastandoDe === destino) return;
+                const [item] = this._images.splice(_arrastandoDe, 1);
+                this._images.splice(destino, 0, item);
+                this._renderProductImages();
+            });
+        });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
         // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
         // Imagens da Shopify são URLs e não contam para esse limite.
         const enviadas = this._images.filter(im => im.dataUrl).length;
         if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+    },
+
+    // Seletor de imagem (STUDIO-08) — clicar numa miniatura da galeria abre
+    // isto em vez de só ampliar. Reúne fotos já usadas neste produto, o que
+    // o Estúdio já gerou pra ele e outras fontes conhecidas (Shopify,
+    // variante, fornecedor, criativo) — sem ficar restrito ao botão de IA.
+    _abrirSeletorImagem(idx) {
+        const pid = document.getElementById('product-id')?.value || '';
+        const geradas = window.StudioModule?._dados?.(pid)?.fotos || [];
+        const outras = window.StudioModule?._fontesDeImagem?.(pid) || [];
+        const proprias = this._images.map((im, i) => ({ im, i })).filter(({ i }) => i !== idx);
+
+        const secao = (titulo, itens, render) => itens.length
+            ? `<div class="psel-secao"><div class="psel-secao-titulo">${this._esc(titulo)}</div><div class="psel-grid">${itens.map(render).join('')}</div></div>`
+            : '';
+
+        const html = `
+            <strong style="font-size:1rem">Escolher imagem</strong>
+            ${secao('Já usadas neste produto', proprias, ({ im, i }) => `
+                <button type="button" class="psel-item" data-fonte="propria" data-idx="${i}">
+                    <img src="${this._esc(im.dataUrl || im.url || '')}" alt="" loading="lazy">
+                </button>`)}
+            ${secao('Geradas por IA (Estúdio)', geradas, (f) => `
+                <button type="button" class="psel-item" data-fonte="gerada" data-media="${this._esc(f.mediaId || '')}" data-thumb="${this._esc(f.thumb || '')}">
+                    <img src="${this._esc(f.thumb || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.presetLabel || 'IA')}</span>
+                </button>`)}
+            ${secao('Outras fontes', outras, (f) => `
+                <button type="button" class="psel-item" data-fonte="outra" data-url="${this._esc(f.url || '')}">
+                    <img src="${this._esc(f.url || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.origem || '')}</span>
+                </button>`)}
+            ${(!proprias.length && !geradas.length && !outras.length) ? '<p style="color:var(--text-muted);font-size:0.85rem">Nenhuma outra imagem encontrada pra este produto — suba uma nova pelo botão de upload.</p>' : ''}
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="psel-cancelar">Cancelar</button>
+            </div>
+        `;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#psel-cancelar')?.addEventListener('click', () => ov.remove());
+            ov.querySelectorAll('.psel-item').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const fonte = btn.dataset.fonte;
+                    const atual = this._images[idx] || {};
+                    try {
+                        if (fonte === 'propria') {
+                            const origem = this._images[parseInt(btn.dataset.idx, 10)];
+                            if (origem) this._images[idx] = { ...origem };
+                        } else if (fonte === 'gerada') {
+                            const mediaId = btn.dataset.media;
+                            const rec = mediaId && window.MediaStore?.isSupported?.() ? await MediaStore.get(mediaId) : null;
+                            const dataUrl = rec?.blob
+                                ? await comprimirImagemParaDataUrl(rec.blob, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' })
+                                : btn.dataset.thumb;
+                            this._images[idx] = { ...atual, dataUrl, url: '', melhorada: true, name: (atual.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp' };
+                        } else if (fonte === 'outra') {
+                            const url = btn.dataset.url;
+                            if (url.startsWith('data:')) this._images[idx] = { ...atual, dataUrl: url, url: '' };
+                            else this._images[idx] = { ...atual, url, dataUrl: '' };
+                        }
+                        ov.remove();
+                        this._renderProductImages();
+                    } catch (e) {
+                        showToast('Falha ao trocar a imagem: ' + String(e.message).slice(0, 140), 'error');
+                    }
+                });
+            });
+        });
+    },
+
+    // ── Toolbar de imagem na descrição do produto ───────────────────────
+    // Diferente de _abrirSeletorImagem (troca uma foto da GALERIA), isto
+    // insere um <img> DENTRO do texto da descrição, na posição do cursor —
+    // reaproveita a mesma agregação de fontes (própria/gerada/outra) e o
+    // mesmo _abrirOverlay, só troca a ação de "substituir" pra "inserir".
+    // Insere via Range.insertNode em vez de execCommand('insertHTML'): o
+    // execCommand depende do editor estar genuinamente focado no momento da
+    // chamada (falha em silêncio, devolvendo false, se não estiver — e abrir
+    // o overlay pra escolher/enviar a imagem sempre tira o foco do editor
+    // antes desta função rodar). Range.insertNode não tem essa dependência.
+    _inserirImagemNaDescricao(src, alt) {
+        const editor = document.getElementById('product-description');
+        if (!editor) return;
+        const img = document.createElement('img');
+        img.src = src;
+        if (alt) img.alt = alt;
+
+        const range = this._descInsertRange;
+        if (range && editor.contains(range.startContainer)) {
+            range.deleteContents();
+            range.insertNode(img);
+            range.setStartAfter(img);
+            range.collapse(true);
+        } else {
+            editor.appendChild(img);
+        }
+        editor.focus();
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        if (range) { try { sel.addRange(range); } catch {} }
+        this._descInsertRange = null;
+    },
+
+    _abrirInserirImagemDescricao() {
+        // Guarda ONDE o cursor estava no editor antes do overlay roubar o
+        // foco — sem isso a imagem sempre cairia no fim do texto, não onde
+        // o usuário realmente clicou.
+        const editor = document.getElementById('product-description');
+        const sel = window.getSelection();
+        // anchorNode === o PRÓPRIO editor (não um nó de texto/elemento
+        // dentro dele) só é uma posição de cursor real quando o editor está
+        // genuinamente vazio — qualquer outra vez é sobra da Selection depois
+        // de um innerHTML= anterior (ex.: recarregar a descrição), que deixa
+        // o anchor "grudado" no container mesmo com foco já em outro campo.
+        // Sem essa distinção, inserir sempre caía no início do texto.
+        const selecaoValida = editor && sel?.rangeCount && editor.contains(sel.anchorNode)
+            && (sel.anchorNode !== editor || editor.childNodes.length === 0);
+        this._descInsertRange = selecaoValida
+            ? sel.getRangeAt(0).cloneRange()
+            : null;
+
+        const pid = document.getElementById('product-id')?.value || '';
+        const geradas = window.StudioModule?._dados?.(pid)?.fotos || [];
+        const outras = window.StudioModule?._fontesDeImagem?.(pid) || [];
+        const proprias = this._images.map((im, i) => ({ im, i }));
+
+        const secao = (titulo, itens, render) => itens.length
+            ? `<div class="psel-secao"><div class="psel-secao-titulo">${this._esc(titulo)}</div><div class="psel-grid">${itens.map(render).join('')}</div></div>`
+            : '';
+
+        const html = `
+            <strong style="font-size:1rem">Inserir imagem na descrição</strong>
+            ${secao('Fotos deste produto', proprias, ({ im, i }) => `
+                <button type="button" class="psel-item" data-fonte="propria" data-idx="${i}">
+                    <img src="${this._esc(im.dataUrl || im.url || '')}" alt="" loading="lazy">
+                </button>`)}
+            ${secao('Geradas por IA (Estúdio)', geradas, (f) => `
+                <button type="button" class="psel-item" data-fonte="gerada" data-media="${this._esc(f.mediaId || '')}" data-thumb="${this._esc(f.thumb || '')}">
+                    <img src="${this._esc(f.thumb || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.presetLabel || 'IA')}</span>
+                </button>`)}
+            ${secao('Outras fontes', outras, (f) => `
+                <button type="button" class="psel-item" data-fonte="outra" data-url="${this._esc(f.url || '')}">
+                    <img src="${this._esc(f.url || '')}" alt="" loading="lazy">
+                    <span class="psel-tag">${this._esc(f.origem || '')}</span>
+                </button>`)}
+            ${(!proprias.length && !geradas.length && !outras.length) ? '<p style="color:var(--text-muted);font-size:0.85rem">Nenhuma foto encontrada pra este produto ainda — envie uma nova abaixo.</p>' : ''}
+
+            <div class="psel-secao">
+                <div class="psel-secao-titulo">Enviar nova imagem</div>
+                <input type="file" id="pdesc-img-upload" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary btn-sm" id="pdesc-img-upload-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Escolher arquivo</button>
+                <label style="display:flex;align-items:center;gap:0.35rem;margin-top:0.5rem;font-size:0.8rem;color:var(--text-muted)">
+                    <input type="checkbox" id="pdesc-img-melhorar"> Melhorar com IA antes de inserir
+                </label>
+                <div id="pdesc-img-status" style="font-size:0.78rem;color:var(--text-muted);min-height:1.1em;margin-top:0.3rem"></div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="pdesc-cancelar">Cancelar</button>
+            </div>
+        `;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#pdesc-cancelar')?.addEventListener('click', () => { this._descInsertRange = null; ov.remove(); });
+
+            ov.querySelectorAll('.psel-item').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const fonte = btn.dataset.fonte;
+                    try {
+                        if (fonte === 'propria') {
+                            const im = this._images[parseInt(btn.dataset.idx, 10)];
+                            if (im) { ov.remove(); this._inserirImagemNaDescricao(im.dataUrl || im.url, ''); }
+                        } else if (fonte === 'gerada') {
+                            const mediaId = btn.dataset.media;
+                            const rec = mediaId && window.MediaStore?.isSupported?.() ? await MediaStore.get(mediaId) : null;
+                            const dataUrl = rec?.blob
+                                ? await comprimirImagemParaDataUrl(rec.blob, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' })
+                                : btn.dataset.thumb;
+                            ov.remove();
+                            this._inserirImagemNaDescricao(dataUrl, '');
+                        } else if (fonte === 'outra') {
+                            ov.remove();
+                            this._inserirImagemNaDescricao(btn.dataset.url, '');
+                        }
+                    } catch (e) {
+                        showToast('Falha ao inserir a imagem: ' + String(e.message).slice(0, 140), 'error');
+                    }
+                });
+            });
+
+            const status = ov.querySelector('#pdesc-img-status');
+            ov.querySelector('#pdesc-img-upload-btn')?.addEventListener('click', () => ov.querySelector('#pdesc-img-upload')?.click());
+            ov.querySelector('#pdesc-img-upload')?.addEventListener('change', async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                try {
+                    status.textContent = 'Processando…';
+                    let dataUrl = await comprimirImagemParaDataUrl(file, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+                    if (ov.querySelector('#pdesc-img-melhorar')?.checked) {
+                        status.textContent = 'Melhorando com IA…';
+                        dataUrl = await this._melhorarBlob(file);
+                    }
+                    ov.remove();
+                    this._inserirImagemNaDescricao(dataUrl, '');
+                } catch (e) {
+                    status.textContent = 'Erro: ' + String(e.message).slice(0, 140);
+                }
+            });
+        });
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  IA nas imagens do produto
+    //  Melhorar qualidade, gerar capa a partir de um padrão de criativo
+    //  e gerar o produto em uso / sobre uma superfície.
+    //
+    //  Nota honesta sobre "melhorar qualidade": nenhum dos provedores faz
+    //  upscale determinístico com chave de API (o do Google existe só no
+    //  Vertex AI, que exige service account). O que acontece aqui é
+    //  RE-SÍNTESE guiada — o modelo redesenha a foto tentando preservar
+    //  tudo. Por isso a original é sempre guardada em `_original`, e dá
+    //  para desfazer imagem por imagem.
+    // ══════════════════════════════════════════════════════════════
+
+    // Imagens do produto vivem no localStorage como base64, então não dá pra
+    // guardar 4K: 1200px em WebP 0.82 é bem melhor que os 800px/0.75 do
+    // upload comum sem estourar a cota.
+    _IMG_MAX: 1200,
+    _IMG_QUALIDADE: 0.82,
+
+    _provedorImagem() {
+        return document.getElementById('prod-img-provider')?.value || 'auto';
+    },
+
+    // Versão específica do modelo, se fixada na tela. Vazio = cascata padrão.
+    _modeloImagem() {
+        return document.getElementById('prod-img-modelo')?.value || '';
+    },
+
+    _statusImagem(texto, cor) {
+        const el = document.getElementById('prod-img-ai-status');
+        if (!el) return;
+        if (!texto) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = '';
+        el.textContent = texto;
+        el.style.color = cor || 'var(--text-muted)';
+    },
+
+    // Contexto textual do produto pro prompt — usa o que está no formulário
+    // agora (pode ter edição não salva), não o que está no AppState.
+    _contextoDoFormulario() {
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        const vendor = (document.getElementById('product-vendor')?.value || '').trim();
+        const desc = (document.getElementById('product-description')?.innerText || '')
+            .replace(/\s+/g, ' ').trim().slice(0, 220);
+        return [nome, vendor && `by ${vendor}`, desc].filter(Boolean).join(' — ');
+    },
+
+    // Melhora um blob e devolve dataUrl WebP na dimensão pedida.
+    async _melhorarBlob(blob, { largura, altura } = {}) {
+        const dim = (largura && altura)
+            ? { largura, altura }
+            : await dimensoesDaImagem(blob);
+
+        const gerado = await ImageAI.editar(blob, ImageAI.promptMelhoria(this._contextoDoFormulario()), {
+            provedor: this._provedorImagem(),
+            modelo: this._modeloImagem() || undefined,
+            largura: dim.largura,
+            altura: dim.altura,
+            // Pede a render MAIOR que o destino de propósito: reduzir depois
+            // no canvas ("supersampling") sai mais nítido do que gerar já no
+            // tamanho final. O Gemini ignora e segue a proporção da referência.
+            alvoPixels: Math.min(8294400, Math.max(1500000, dim.largura * dim.altura * 4)),
+            formato: 'image/webp',
+            compressao: 90,
+        });
+
+        // Normaliza no canvas: garante as dimensões exatas e converte o JPEG
+        // do Gemini (que não tem WebP na saída) para WebP.
+        return await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, {
+            formato: 'image/webp',
+            largura: dim.largura,
+            altura: dim.altura,
+        });
+    },
+
+    async melhorarImagem(idx) {
+        const img = this._images[idx];
+        if (!img) return;
+        const origem = img.dataUrl || img.url;
+        if (!origem) { showToast('Imagem sem origem', 'error'); return; }
+
+        this._statusImagem('Melhorando a imagem…');
+        try {
+            const blob = await bytesDaImagem(origem);
+            const dim = await dimensoesDaImagem(blob);
+            const dataUrl = await this._melhorarBlob(blob, dim);
+
+            // Substitui NA MESMA POSIÇÃO, guardando a original pra desfazer.
+            this._images[idx] = {
+                ...img,
+                dataUrl,
+                url: '',                       // agora é local, não mais o CDN
+                melhorada: true,
+                _original: img._original || { dataUrl: img.dataUrl || '', url: img.url || '' },
+                name: (img.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
+            };
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${idx + 1}`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade', produto: (document.getElementById('product-name')?.value || '').trim() });
+            this._renderProductImages();
+            this._statusImagem('');
+            showToast(`Imagem ${idx + 1} melhorada (${dim.largura}×${dim.altura}, WebP)`, 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao melhorar: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    async melhorarTodasImagens() {
+        const alvos = this._images
+            .map((im, i) => ({ im, i }))
+            .filter(({ im }) => (im.dataUrl || im.url) && !im.melhorada);
+        if (!alvos.length) { showToast('Nada para melhorar — todas já foram processadas.', 'info'); return; }
+        if (!confirm(`Melhorar ${alvos.length} imagem(ns)? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let n = 0; n < alvos.length; n++) {
+            const { im, i } = alvos[n];
+            this._statusImagem(`Melhorando ${n + 1} de ${alvos.length}…`);
+            try {
+                const blob = await bytesDaImagem(im.dataUrl || im.url);
+                const dim = await dimensoesDaImagem(blob);
+                const dataUrl = await this._melhorarBlob(blob, dim);
+                this._images[i] = {
+                    ...im, dataUrl, url: '', melhorada: true,
+                    _original: im._original || { dataUrl: im.dataUrl || '', url: im.url || '' },
+                    name: (im.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp',
+                };
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${i + 1}`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade', produto: (document.getElementById('product-name')?.value || '').trim() });
+                ok++;
+                this._renderProductImages();
+            } catch (e) {
+                console.warn('[Produtos] falha ao melhorar imagem', i, e.message);
+                falhas++;
+            }
+        }
+        this._statusImagem('');
+        showToast(falhas
+            ? `${ok} melhorada(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) melhorada(s) em WebP.`, falhas ? 'warning' : 'success');
+    },
+
+    // ── Imagens dentro do HTML da descrição ──
+    // Mantém as MESMAS dimensões: a descrição é HTML que vai pra loja e
+    // trocar o tamanho de uma imagem quebraria o layout da página.
+    async melhorarImagensDescricao() {
+        const editor = document.getElementById('product-description');
+        if (!editor) return;
+        const imgs = [...editor.querySelectorAll('img')];
+        if (!imgs.length) { showToast('A descrição não tem imagens.', 'info'); return; }
+        if (!confirm(`Melhorar ${imgs.length} imagem(ns) da descrição? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let i = 0; i < imgs.length; i++) {
+            const el = imgs[i];
+            const origem = el.getAttribute('src');
+            if (!origem) { falhas++; continue; }
+            this._statusImagem(`Melhorando imagem ${i + 1} de ${imgs.length} da descrição…`);
+            try {
+                const blob = await bytesDaImagem(origem);
+                // Dimensão de destino: o que o HTML declara (width/height ou
+                // style) manda; sem isso, o tamanho natural do arquivo.
+                const natural = await dimensoesDaImagem(blob);
+                const largura = parseInt(el.getAttribute('width'), 10) || natural.largura;
+                const altura = parseInt(el.getAttribute('height'), 10) || natural.altura;
+
+                const dataUrl = await this._melhorarBlob(blob, { largura, altura });
+                el.setAttribute('src', dataUrl);
+                el.dataset.melhorada = '1';
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Melhorar qualidade — imagem ${i + 1} da descrição`, thumb: dataUrl, origem: 'Produto', tipo: 'Melhorar qualidade (descrição)', produto: (document.getElementById('product-name')?.value || '').trim() });
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha na imagem da descrição', i, e.message);
+                falhas++;
+            }
+        }
+        this._statusImagem('');
+        showToast(falhas
+            ? `${ok} imagem(ns) da descrição melhorada(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) da descrição melhorada(s).`, falhas ? 'warning' : 'success');
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  TRADUÇÕES
+    //  Traduz título, descrição, URL (handle) e variantes para os idiomas
+    //  marcados em "Idiomas / Mercados" (o 1º é a origem). Ficam guardadas
+    //  no produto (translations[idioma]) e editáveis aqui. As imagens da
+    //  descrição podem ser traduzidas mantendo a dimensão original.
+    // ══════════════════════════════════════════════════════════════
+
+    _abrirTrad: null,
+
+    _idiomasSelecionados() {
+        return [...document.querySelectorAll('#product-languages input[type="checkbox"]:checked')].map(cb => cb.value);
+    },
+
+    // locale Shopify → código interno. Casa exato (pt-BR→Portugues) e, se
+    // falhar, pela base do idioma (fr-CA → fr → Frances).
+    _localeParaCodigo(locale) {
+        const l = String(locale || '').toLowerCase();
+        const base = l.split('-')[0];
+        let achado = Object.entries(this._LANG_INFO).find(([, v]) => v.locale && v.locale.toLowerCase() === l);
+        if (!achado) achado = Object.entries(this._LANG_INFO).find(([, v]) => v.locale && v.locale.toLowerCase() === base);
+        return achado ? achado[0] : null;
+    },
+
+    // Marca as checkboxes de idioma a partir dos locales já configurados na
+    // loja Shopify — evita ter que marcar 8 idiomas na mão por produto.
+    async _puxarIdiomasDaLoja() {
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro para puxar os idiomas.', 'error'); return;
+        }
+        this._statusTrad('Buscando idiomas da loja…');
+        try {
+            const locales = await ShopifyModule.localesDaLoja();
+            this._statusTrad('');
+            if (!locales.length) { showToast('A loja não retornou idiomas.', 'info'); return; }
+            const cbs = [...document.querySelectorAll('#product-languages input[type="checkbox"]')];
+            const adicionados = [], semMapa = [];
+            locales.forEach(l => {
+                const code = this._localeParaCodigo(l.locale);
+                if (!code) { semMapa.push(l.locale); return; }
+                const cb = cbs.find(x => x.value === code);
+                if (cb && !cb.checked) { cb.checked = true; adicionados.push(this._LANG_INFO[code]?.nome || code); }
+            });
+            this._renderTraducoes();
+            if (adicionados.length) showToast(`Idiomas marcados: ${adicionados.join(', ')}`, 'success');
+            else showToast('Todos os idiomas da loja já estavam marcados.', 'info');
+            if (semMapa.length) console.warn('[Produtos] locales sem mapa interno:', semMapa);
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao buscar idiomas: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    _statusTrad(txt, cor) {
+        const el = document.getElementById('prod-trad-status');
+        if (!el) return;
+        if (!txt) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = ''; el.textContent = txt; el.style.color = cor || 'var(--text-muted)';
+    },
+
+    // Chamada de texto pra IA — OpenAI primeiro, Google como reserva. Usada
+    // só pra traduzir (a imagem tem seu próprio caminho no ImageAI).
+    async _traduzirComIA(system, user, { json = false } = {}) {
+        const openAIKey = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
+        const googleKey = window.AIAdGenerator?._getKey?.('google') || localStorage.getItem('google_ai_api_key') || '';
+        if (openAIKey) {
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+                    ...(json ? { response_format: { type: 'json_object' } } : {}),
+                    temperature: 0.3,
+                }),
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.choices?.[0]?.message?.content || '';
+        }
+        if (googleKey) {
+            const res = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
+                {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: system + (json ? ' Output raw JSON only, no markdown fences.' : '') }] },
+                        contents: [{ parts: [{ text: user }] }],
+                        generationConfig: { temperature: 0.3, ...(json ? { responseMimeType: 'application/json' } : {}) },
+                    }),
+                }
+            );
+            const data = await res.json();
+            if (data.error) throw new Error(data.error.message || 'Google AI erro');
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+        throw new Error('Configure a chave OpenAI ou Google AI em Chaves de API');
+    },
+
+    // Conteúdo de origem lido do FORMULÁRIO (pode ter edição não salva).
+    _conteudoOrigem() {
+        const pid = document.getElementById('product-id')?.value;
+        const prod = pid ? (AppState.allProducts || []).find(p => p.id === pid) : null;
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        return {
+            title: nome,
+            descriptionHtml: (document.getElementById('product-description')?.innerHTML || '').trim(),
+            handle: prod?.shopifyHandle || _handleSimples(nome),
+            variants: (prod?.shopifyOptions || []).map(o => ({ name: o.name, values: o.values || [] })),
+        };
+    },
+
+    async _traduzirIdioma(langCode) {
+        const info = this._LANG_INFO[langCode];
+        if (!info) return;
+        const origem = this._conteudoOrigem();
+        if (!origem.title && !origem.descriptionHtml) {
+            showToast('Nada para traduzir — preencha título/descrição.', 'error');
+            return;
+        }
+        this._statusTrad(`Traduzindo para ${info.nome}…`);
+        try {
+            const system = `You are a professional e-commerce translator. Translate the product content given as JSON from its source language into ${info.en}.`
+                + ` Rules: translate naturally for online shoppers, not word-for-word.`
+                + ` descriptionHtml: translate ONLY the human-readable text and keep every HTML tag, attribute and <img> element exactly as-is.`
+                + ` Never translate brand names, model names or trademarks (e.g. Ray-Ban, Shimano, Ferrari, Mercedes-Benz).`
+                + ` handle: a URL slug in ${info.en} — lowercase ASCII, words separated by hyphens, no spaces or accents.`
+                + ` variants: translate each option name and its values (e.g. "Color"→localized, "Black"→localized).`
+                + ` Return ONLY valid JSON: {"title":"...","descriptionHtml":"...","handle":"...","variants":[{"name":"...","values":["..."]}]}`;
+            const txt = await this._traduzirComIA(system, JSON.stringify(origem), { json: true });
+            const t = JSON.parse(txt);
+            this._translations[langCode] = {
+                title: t.title || '',
+                descriptionHtml: t.descriptionHtml || '',
+                handle: (t.handle || '').trim(),
+                variants: Array.isArray(t.variants) ? t.variants : [],
+                traduzidoEm: new Date().toISOString(),
+            };
+            this._abrirTrad = langCode;   // já abre pra revisar
+            this._statusTrad('');
+            this._renderTraducoes();
+            showToast(`Traduzido para ${info.nome}`, 'success');
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao traduzir: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    async _traduzirImagensIdioma(langCode) {
+        const t = this._translations[langCode];
+        const info = this._LANG_INFO[langCode];
+        if (!t) return;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = t.descriptionHtml || '';
+        const imgs = [...tmp.querySelectorAll('img')];
+        if (!imgs.length) { showToast('A descrição traduzida não tem imagens.', 'info'); return; }
+        if (!confirm(`Traduzir o texto de ${imgs.length} imagem(ns) para ${info.nome}? Cada uma é uma chamada paga à IA.`)) return;
+
+        let ok = 0, falhas = 0;
+        for (let i = 0; i < imgs.length; i++) {
+            const el = imgs[i];
+            const origem = el.getAttribute('src');
+            if (!origem) { falhas++; continue; }
+            this._statusTrad(`Traduzindo imagem ${i + 1} de ${imgs.length} para ${info.nome}…`);
+            try {
+                const blob = await bytesDaImagem(origem);
+                const natural = await dimensoesDaImagem(blob);
+                const largura = parseInt(el.getAttribute('width'), 10) || natural.largura;
+                const altura = parseInt(el.getAttribute('height'), 10) || natural.altura;
+                const prompt = ImageAI.promptTraducaoImagem(info.en);
+                const gerado = await ImageAI.editar(blob, prompt, {
+                    provedor: this._provedorImagem(), modelo: this._modeloImagem() || undefined,
+                    largura, altura, formato: 'image/webp', compressao: 90,
+                });
+                const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE,
+                    { formato: 'image/webp', largura, altura });
+                el.setAttribute('src', dataUrl);
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Tradução de imagem — ${info.nome}`, thumb: dataUrl, origem: 'Produto', tipo: 'Tradução de imagem', produto: (document.getElementById('product-name')?.value || '').trim() });
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha ao traduzir imagem', i, e.message);
+                falhas++;
+            }
+        }
+        t.descriptionHtml = tmp.innerHTML;   // grava as imagens traduzidas de volta
+        this._statusTrad('');
+        this._renderTraducoes();
+        showToast(falhas
+            ? `${ok} imagem(ns) traduzida(s), ${falhas} falharam.`
+            : `${ok} imagem(ns) traduzida(s) para ${info.nome}.`, falhas ? 'warning' : 'success');
+    },
+
+    _tradEditorHtml(code, t) {
+        const temImg = /<img/i.test(t.descriptionHtml || '');
+        const vars = (t.variants || []).map(v =>
+            `<div class="prod-trad-var"><strong>${escapeHtml(v.name)}:</strong> ${(v.values || []).map(escapeHtml).join(', ')}</div>`).join('');
+        return `
+            <div class="prod-trad-editor">
+                <label>Título</label>
+                <input class="input input-sm" data-trad-lang="${code}" data-trad-field="title" value="${escapeHtml(t.title || '')}">
+                <label>URL (handle)</label>
+                <input class="input input-sm" data-trad-lang="${code}" data-trad-field="handle" value="${escapeHtml(t.handle || '')}">
+                <label>Descrição</label>
+                <div class="prod-trad-desc" contenteditable="true" data-trad-lang="${code}" data-trad-field="descriptionHtml">${t.descriptionHtml || ''}</div>
+                ${vars ? `<label>Variantes</label><div class="prod-trad-vars">${vars}</div>` : ''}
+                ${temImg ? `<button type="button" class="btn btn-secondary btn-sm" data-trad-imgs="${code}" style="margin-top:0.5rem"><i data-lucide="languages" style="width:13px;height:13px;vertical-align:-2px"></i> Traduzir imagens da descrição</button>` : ''}
+            </div>`;
+    },
+
+    _renderTraducoes() {
+        const lista = document.getElementById('prod-trad-lista');
+        const origemEl = document.getElementById('prod-trad-origem');
+        if (!lista) return;
+        const idiomas = this._idiomasSelecionados();
+        const origem = idiomas[0];
+        const alvos = idiomas.slice(1);
+        if (origemEl) origemEl.textContent = origem ? (this._LANG_INFO[origem]?.nome || origem) : '—';
+
+        const shopifyOk = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured();
+        // Botão de envio só faz sentido com Shopify conectado e algo traduzido.
+        const btnShopify = document.getElementById('btn-prod-trad-shopify');
+        if (btnShopify) {
+            const temTraducao = alvos.some(c => this._translations[c]);
+            btnShopify.style.display = (temTraducao && shopifyOk) ? '' : 'none';
+        }
+        // "Puxar idiomas da loja" só aparece com Shopify conectado.
+        const btnPull = document.getElementById('btn-prod-trad-pull');
+        if (btnPull) btnPull.style.display = shopifyOk ? '' : 'none';
+
+        if (!alvos.length) {
+            lista.innerHTML = `<p class="studio-vazio" style="font-size:0.76rem;padding:0.4rem 0">Marque 2 ou mais idiomas em "Idiomas / Mercados" — o 1º é a origem, os demais são traduzidos.</p>`;
+            return;
+        }
+
+        lista.innerHTML = alvos.map(code => {
+            const info = this._LANG_INFO[code] || { nome: code };
+            const t = this._translations[code];
+            const aberto = this._abrirTrad === code;
+            return `
+            <div class="prod-trad-item ${aberto ? 'aberto' : ''}" data-lang="${code}">
+                <div class="prod-trad-head">
+                    <span class="prod-trad-nome">${escapeHtml(info.nome)}</span>
+                    ${t ? `<span class="prod-trad-ok"><i data-lucide="check" style="width:11px;height:11px;vertical-align:-1px"></i> traduzido</span>` : ''}
+                    <span style="flex:1"></span>
+                    ${t ? `<button type="button" class="btn-icon" data-trad-toggle="${code}" title="Ver/editar"><i data-lucide="chevron-${aberto ? 'up' : 'down'}" style="width:14px;height:14px"></i></button>` : ''}
+                    <button type="button" class="btn btn-secondary btn-sm" data-trad-run="${code}">${t ? 'Retraduzir' : 'Traduzir com IA'}</button>
+                </div>
+                ${aberto && t ? this._tradEditorHtml(code, t) : ''}
+            </div>`;
+        }).join('');
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+
+        lista.querySelectorAll('[data-trad-run]').forEach(b =>
+            b.addEventListener('click', () => this._traduzirIdioma(b.dataset.tradRun)));
+        lista.querySelectorAll('[data-trad-toggle]').forEach(b =>
+            b.addEventListener('click', () => {
+                this._abrirTrad = this._abrirTrad === b.dataset.tradToggle ? null : b.dataset.tradToggle;
+                this._renderTraducoes();
+            }));
+        lista.querySelectorAll('[data-trad-imgs]').forEach(b =>
+            b.addEventListener('click', () => this._traduzirImagensIdioma(b.dataset.tradImgs)));
+        // Edição inline reflete direto no objeto guardado.
+        lista.querySelectorAll('[data-trad-field]').forEach(el => {
+            const ev = el.tagName === 'DIV' ? 'input' : 'input';
+            el.addEventListener(ev, () => {
+                const code = el.dataset.tradLang, field = el.dataset.tradField;
+                if (!this._translations[code]) return;
+                this._translations[code][field] = (field === 'descriptionHtml') ? el.innerHTML : el.value;
+            });
+        });
+    },
+
+    // Envia as traduções guardadas para a Shopify — todos os idiomas que já
+    // foram traduzidos, não só um. Escrita real na loja, então confirma antes.
+    async _enviarTraducoesShopify() {
+        const pid = document.getElementById('product-id')?.value;
+        const produto = pid ? (AppState.allProducts || []).find(p => p.id === pid) : null;
+        if (!produto) { showToast('Salve o produto antes de enviar traduções.', 'error'); return; }
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro.', 'error'); return;
+        }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) { showToast('Vincule o produto à Shopify primeiro.', 'error'); return; }
+        const gid = String(sid).startsWith('gid://') ? sid : `gid://shopify/Product/${sid}`;
+
+        // Monta { localeShopify: traducao } só dos idiomas já traduzidos e que
+        // têm locale Shopify (Inglês-EUA não tem locale próprio).
+        const porIdioma = {};
+        const nomes = [];
+        this._idiomasSelecionados().slice(1).forEach(code => {
+            const t = this._translations[code];
+            const info = this._LANG_INFO[code];
+            if (t && info?.locale) { porIdioma[info.locale] = t; nomes.push(info.nome); }
+        });
+        if (!Object.keys(porIdioma).length) {
+            showToast('Traduza ao menos um idioma antes de enviar.', 'error'); return;
+        }
+        if (!confirm(`Enviar ${nomes.length} tradução(ões) — ${nomes.join(', ')} — para a Shopify?\n\nIsso grava as traduções na loja (título, descrição, URL e variantes por idioma).`)) return;
+
+        // Variantes de origem: casam os valores traduzidos com os GIDs certos.
+        const variantesOrigem = (produto.shopifyOptions || []).map(o => ({ name: o.name, values: o.values || [] }));
+
+        this._statusTrad('Enviando traduções para a Shopify…');
+        const btn = document.getElementById('btn-prod-trad-shopify');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await ShopifyModule.enviarTraducoesDoProduto(gid, porIdioma, {
+                variantesOrigem,
+                onProgress: (m) => this._statusTrad(m),
+            });
+            this._statusTrad('');
+            const okNomes = res.ok.map(loc => Object.entries(this._LANG_INFO).find(([, v]) => v.locale === loc)?.[1]?.nome || loc);
+            if (res.falhas.length) {
+                showToast(`${res.ok.length} enviada(s), ${res.falhas.length} falharam: ${res.falhas.map(f => f.locale).join(', ')}`, 'warning');
+                console.warn('[Produtos] falhas de tradução Shopify:', res.falhas);
+            } else {
+                showToast(`Traduções enviadas para a Shopify: ${okNomes.join(', ')}`, 'success');
+            }
+        } catch (e) {
+            this._statusTrad('');
+            showToast('Falha ao enviar: ' + String(e.message).slice(0, 160), 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    // ── Gerar a GALERIA INTEIRA de uma vez ──
+    // A capa sozinha não fecha uma página de produto: a loja precisa do
+    // conjunto (estúdio, ângulo, em uso, detalhe, escala). Aqui o usuário
+    // marca os cenários e os padrões que quer e a ferramenta gera tudo em
+    // sequência, sempre a partir da MESMA foto base do produto real.
+    abrirGerarGaleria() {
+        const base = this._images.find(im => im.dataUrl || im.url);
+        if (!base) { showToast('Adicione ao menos uma foto do produto para servir de base.', 'error'); return; }
+
+        const presets = (window.StudioModule?.PRESETS_FOTO) || [];
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        const nichos = [...new Set(padroes.map(p => p.nicho).filter(Boolean))].sort();
+
+        const linhaPreset = (p) => `
+            <label class="prod-gal-item">
+                <input type="checkbox" data-preset="${p.id}" checked>
+                <span>${escapeHtml(p.label)}</span>
+            </label>`;
+        const linhaPadrao = (p) => `
+            <label class="prod-gal-item" data-nicho="${escapeHtml(p.nicho || '')}">
+                <input type="checkbox" data-padrao="${p.id}">
+                ${p.exemploThumb ? `<img src="${p.exemploThumb}" alt="">` : ''}
+                <span>${escapeHtml(p.nome)}${p.nicho ? ` <em>${escapeHtml(p.nicho)}</em>` : ''}</span>
+            </label>`;
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar galeria do produto</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">
+                Marque o que quer gerar. Cada item é uma chamada paga à IA, feita a partir da foto base do produto.
+            </p>
+
+            <div>
+                <div class="prod-gal-titulo">Cenários <button type="button" class="prod-gal-toggle" data-toggle="preset">alternar todos</button></div>
+                <div class="prod-gal-lista">${presets.map(linhaPreset).join('')}</div>
+            </div>
+
+            ${padroes.length ? `
+            <div>
+                <div class="prod-gal-titulo">
+                    Padrões de criativo
+                    ${nichos.length > 1 ? `<select id="pgal-nicho" class="input input-sm" style="width:auto;margin-left:auto">
+                        <option value="">Todos os nichos</option>
+                        ${nichos.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+                    </select>` : ''}
+                </div>
+                <div class="prod-gal-lista" id="pgal-padroes">${padroes.map(linhaPadrao).join('')}</div>
+            </div>` : ''}
+
+            <label class="prod-gal-item" style="border:none;padding-left:0">
+                <input type="checkbox" id="pgal-substituir">
+                <span>Substituir as imagens atuais (por padrão, as novas são <strong>adicionadas</strong>)</span>
+            </label>
+
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;align-items:center">
+                <span id="pgal-conta" class="prod-gal-conta"></span>
+                <button type="button" class="btn btn-primary btn-sm" id="pgal-gerar">Gerar</button>
+            </div>
+        `, (ov) => {
+            const marcados = () => [...ov.querySelectorAll('input[type=checkbox][data-preset]:checked, input[type=checkbox][data-padrao]:checked')];
+            const atualizaConta = () => {
+                const n = marcados().length;
+                ov.querySelector('#pgal-conta').textContent = n ? `${n} imagem(ns)` : 'nada marcado';
+                ov.querySelector('#pgal-gerar').disabled = !n;
+            };
+            ov.addEventListener('change', atualizaConta);
+            atualizaConta();
+
+            ov.querySelector('[data-toggle="preset"]')?.addEventListener('click', () => {
+                const caixas = [...ov.querySelectorAll('input[data-preset]')];
+                const ligar = !caixas.every(c => c.checked);
+                caixas.forEach(c => { c.checked = ligar; });
+                atualizaConta();
+            });
+            ov.querySelector('#pgal-nicho')?.addEventListener('change', (e) => {
+                ov.querySelectorAll('#pgal-padroes .prod-gal-item').forEach(el => {
+                    el.style.display = (!e.target.value || el.dataset.nicho === e.target.value) ? '' : 'none';
+                });
+            });
+
+            ov.querySelector('#pgal-gerar').addEventListener('click', () => {
+                const itens = marcados().map(c => c.dataset.preset
+                    ? { tipo: 'preset', id: c.dataset.preset }
+                    : { tipo: 'padrao', id: c.dataset.padrao });
+                const substituir = ov.querySelector('#pgal-substituir').checked;
+                ov.remove();
+                this._gerarGaleria(itens, substituir);
+            });
+        });
+    },
+
+    async _gerarGaleria(itens, substituir) {
+        const base = this._images.find(im => im.dataUrl || im.url);
+        if (!base || !itens.length) return;
+
+        const presets = (window.StudioModule?.PRESETS_FOTO) || [];
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        const contexto = this._contextoDoFormulario();
+        const idProduto = document.getElementById('product-id')?.value || null;
+
+        // A base é lida UMA vez — reusar o mesmo blob evita refetch por item.
+        let blobBase;
+        try { blobBase = await bytesDaImagem(base.dataUrl || base.url); }
+        catch (e) { showToast('Não consegui ler a foto base: ' + e.message, 'error'); return; }
+
+        const novas = [];
+        let falhas = 0;
+        for (let i = 0; i < itens.length; i++) {
+            const item = itens[i];
+            const preset = item.tipo === 'preset' ? presets.find(p => p.id === item.id) : null;
+            const padrao = item.tipo === 'padrao' ? padroes.find(p => p.id === item.id) : null;
+            const rotulo = preset?.label || padrao?.nome || item.id;
+            this._statusImagem(`Gerando ${i + 1} de ${itens.length} — ${rotulo}…`);
+
+            try {
+                let blobs = [blobBase];
+                let prompt;
+
+                if (preset) {
+                    prompt = `${preset.prompt}${contexto ? ` The product is: ${contexto}.` : ''}`
+                        + ' Do not add any text, logo, badge or label that is not already visible on the product in the input image.';
+                } else if (padrao) {
+                    prompt = window.StudioModule?.montarPromptDoPadrao?.(padrao, idProduto, {
+                        produto: (document.getElementById('product-name')?.value || '').trim() || 'the product',
+                        marca: (document.getElementById('product-vendor')?.value || '').trim(),
+                    }) || padrao.esqueleto;
+
+                    // Padrão tem referência visual: manda os pixels dela também.
+                    let ref = null;
+                    if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                        try { ref = (await MediaStore.get(padrao.exemploMediaId))?.blob || null; } catch {}
+                    }
+                    if (!ref && padrao.exemploThumb) {
+                        try { ref = await bytesDaImagem(padrao.exemploThumb); } catch {}
+                    }
+                    if (ref) {
+                        blobs = [ref, blobBase];
+                        prompt = `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting and colour grading. THE SECOND IMAGE is the real product. Rebuild the scene of the first image featuring the product from the second image, keeping that product's exact shape, colour, materials and every marking unchanged. ${prompt}`;
+                    }
+                } else { continue; }
+
+                const gerado = await ImageAI.editar(blobs, prompt, {
+                    provedor: this._provedorImagem(),
+                    modelo: this._modeloImagem() || undefined,
+                    largura: 1024, altura: 1024,
+                    formato: 'image/webp', compressao: 90,
+                });
+                const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+                novas.push({ dataUrl, name: `${_handleSimples(rotulo)}.webp`, melhorada: true, cenario: rotulo });
+                if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Galeria: ${rotulo}`, thumb: dataUrl, origem: 'Produto', tipo: rotulo, produto: (document.getElementById('product-name')?.value || '').trim() });
+
+                // Mostra o que já saiu enquanto o resto ainda gera.
+                if (substituir && novas.length === 1) this._images = [];
+                this._images.push(novas[novas.length - 1]);
+                this._renderProductImages();
+            } catch (e) {
+                console.warn('[Produtos] falha ao gerar', rotulo, e.message);
+                falhas++;
+            }
+        }
+
+        this._statusImagem('');
+        if (!novas.length) { showToast('Nenhuma imagem foi gerada. Veja o console para o motivo.', 'error'); return; }
+        showToast(falhas
+            ? `${novas.length} imagem(ns) gerada(s), ${falhas} falharam.`
+            : `Galeria gerada: ${novas.length} imagem(ns).`, falhas ? 'warning' : 'success');
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Enviar imagens para a Shopify
+    //  Única escrita que o app faz na loja — por isso é sempre um botão
+    //  explícito com confirmação, nunca automático ao salvar. As imagens
+    //  aqui são re-sintetizadas por IA; empurrar direto pra página que o
+    //  cliente vê sem o usuário conferir seria arriscado.
+    // ══════════════════════════════════════════════════════════════
+
+    abrirEnviarShopify() {
+        const idProduto = document.getElementById('product-id')?.value || null;
+        const produto = idProduto ? (AppState.allProducts || []).find(p => p.id === idProduto) : null;
+        if (!produto) {
+            showToast('Salve o produto antes de enviar imagens para a Shopify.', 'error');
+            return;
+        }
+        const sid = this._shopifyIdDe(produto);
+        if (!sid) {
+            showToast('Vincule o produto à Shopify primeiro (Conexão Shopify).', 'error');
+            return;
+        }
+        // "const ShopifyModule" no topo do arquivo não vira propriedade de
+        // window — window.ShopifyModule é sempre undefined. É o identificador
+        // léxico que funciona (já documentado, mesma pegadinha de antes).
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            showToast('Conecte a Shopify primeiro (Conexão Shopify).', 'error');
+            return;
+        }
+
+        // Só as que ainda não foram — reenviar a mesma imagem duplicaria na
+        // Shopify. `_images` reflete o formulário aberto, pode ter imagem
+        // nova desde a última vez que a tela foi salva.
+        const pendentes = this._images
+            .map((im, i) => ({ im, i }))
+            .filter(({ im }) => (im.dataUrl) && !im.enviadaShopify);
+
+        if (!pendentes.length) {
+            showToast('Nada novo para enviar — imagens da Shopify não precisam reenvio.', 'info');
+            return;
+        }
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Enviar para a Shopify</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">
+                ${pendentes.length} imagem(ns) ${pendentes.length > 1 ? 'vão' : 'vai'} para o produto <strong>${escapeHtml(produto.name)}</strong> na loja.
+                Isso é uma escrita real na Shopify — a imagem fica visível na página do produto.
+            </p>
+            <div class="prod-gal-lista">
+                ${pendentes.map(({ im, i }) => `
+                    <label class="prod-gal-item">
+                        <input type="checkbox" data-idx="${i}" checked>
+                        <img src="${im.dataUrl}" alt="">
+                        <span>${escapeHtml(im.name || `Imagem ${i + 1}`)}${i === 0 ? ' <em>(capa)</em>' : ''}</span>
+                    </label>`).join('')}
+            </div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;align-items:center">
+                <span id="pship-conta" class="prod-gal-conta"></span>
+                <button type="button" class="btn btn-secondary btn-sm" id="pship-cancelar">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-sm" id="pship-enviar">Confirmar envio</button>
+            </div>
+        `, (ov) => {
+            const atualizaConta = () => {
+                const n = ov.querySelectorAll('input[data-idx]:checked').length;
+                ov.querySelector('#pship-conta').textContent = `${n} selecionada(s)`;
+                ov.querySelector('#pship-enviar').disabled = !n;
+            };
+            ov.addEventListener('change', atualizaConta);
+            atualizaConta();
+            ov.querySelector('#pship-cancelar').addEventListener('click', () => ov.remove());
+            ov.querySelector('#pship-enviar').addEventListener('click', () => {
+                const idxs = [...ov.querySelectorAll('input[data-idx]:checked')].map(c => parseInt(c.dataset.idx, 10));
+                ov.remove();
+                this._enviarParaShopify(sid, idxs);
+            });
+        });
+    },
+
+    async _enviarParaShopify(shopifyIdBruto, indices) {
+        const gid = String(shopifyIdBruto).startsWith('gid://') ? shopifyIdBruto : `gid://shopify/Product/${shopifyIdBruto}`;
+
+        this._statusImagem(`Enviando 0 de ${indices.length} para a Shopify…`);
+        let idsConhecidos;
+        try {
+            idsConhecidos = await ShopifyModule.idsDeMidiaAtual(gid);
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Não consegui consultar a Shopify: ' + e.message, 'error');
+            return;
+        }
+
+        let ok = 0, falhas = 0;
+        const capaIdx = indices.includes(0) ? 0 : null;
+        let capaMediaId = null;
+
+        for (let n = 0; n < indices.length; n++) {
+            const i = indices[n];
+            const im = this._images[i];
+            if (!im?.dataUrl) { falhas++; continue; }
+            this._statusImagem(`Enviando ${n + 1} de ${indices.length} para a Shopify…`);
+            try {
+                const media = await ShopifyModule.enviarImagemDoProduto(gid, im.dataUrl, {
+                    nome: im.name, alt: (document.getElementById('product-name')?.value || '').trim(),
+                    idsConhecidos,
+                });
+                if (media?.id) {
+                    idsConhecidos.add(media.id);
+                    im.enviadaShopify = true;
+                    im.shopifyMediaId = media.id;
+                    if (i === capaIdx) capaMediaId = media.id;
+                }
+                ok++;
+            } catch (e) {
+                console.warn('[Produtos] falha ao enviar imagem', i, 'para a Shopify:', e.message);
+                falhas++;
+            }
+        }
+
+        // A imagem marcada "Capa" localmente (posição 0) também vira a
+        // capa na Shopify — sem isso ela entraria no fim da galeria de lá.
+        if (capaMediaId) {
+            this._statusImagem('Definindo capa na Shopify…');
+            try { await ShopifyModule.reordenarMidia(gid, [{ id: capaMediaId, posicao: 0 }]); }
+            catch (e) { console.warn('[Produtos] falha ao definir capa na Shopify:', e.message); }
+        }
+
+        this._statusImagem('');
+        this._renderProductImages();
+        showToast(falhas
+            ? `${ok} enviada(s) para a Shopify, ${falhas} falharam.`
+            : `${ok} imagem(ns) enviada(s) para a Shopify.`, falhas ? 'warning' : 'success');
+    },
+
+    // ── Gerar capa a partir de um padrão de criativo (com filtro de nicho) ──
+    abrirGerarCapa() {
+        const padroes = (window.StudioModule?._state?.padroes) || [];
+        if (!padroes.length) {
+            showToast('Nenhum padrão de criativo ainda. Crie um no Estúdio de Produto (Padrões de criativo).', 'info');
+            return;
+        }
+        const base = this._images[0];
+        if (!base || !(base.dataUrl || base.url)) {
+            showToast('Adicione ao menos uma foto do produto para servir de base.', 'error');
+            return;
+        }
+
+        const nichos = [...new Set(padroes.map(p => p.nicho).filter(Boolean))].sort();
+        const opcoesNicho = ['<option value="">Todos os nichos</option>']
+            .concat(nichos.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)).join('');
+
+        const cartao = (p) => `
+            <button type="button" class="prod-padrao-card" data-padrao="${p.id}" data-nicho="${escapeHtml(p.nicho || '')}">
+                ${p.exemploThumb ? `<img src="${p.exemploThumb}" alt="">` : '<span class="prod-padrao-sem"></span>'}
+                <span class="prod-padrao-nome">${escapeHtml(p.nome)}</span>
+                ${p.nicho ? `<span class="prod-padrao-nicho">${escapeHtml(p.nicho)}${p.subnicho ? ' · ' + escapeHtml(p.subnicho) : ''}</span>` : ''}
+            </button>`;
+
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar capa a partir de um padrão</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">Usa a primeira foto do produto como base e reaplica o enquadramento do padrão escolhido.</p>
+            <select id="pcapa-nicho" class="input input-sm">${opcoesNicho}</select>
+            <div id="pcapa-lista" class="prod-padrao-grid">${padroes.map(cartao).join('')}</div>
+        `, (ov) => {
+            const filtro = ov.querySelector('#pcapa-nicho');
+            filtro.addEventListener('change', () => {
+                ov.querySelectorAll('.prod-padrao-card').forEach(c => {
+                    c.style.display = (!filtro.value || c.dataset.nicho === filtro.value) ? '' : 'none';
+                });
+            });
+            ov.querySelectorAll('.prod-padrao-card').forEach(c => {
+                c.addEventListener('click', () => {
+                    const p = padroes.find(x => x.id === c.dataset.padrao);
+                    ov.remove();
+                    if (p) this._gerarComPadrao(p);
+                });
+            });
+        });
+    },
+
+    async _gerarComPadrao(padrao) {
+        const base = this._images[0];
+        this._statusImagem(`Gerando capa com o padrão "${padrao.nome}"…`);
+        try {
+            const blobBase = await bytesDaImagem(base.dataUrl || base.url);
+            // O esqueleto do padrão já vem com marcadores; preenche com o que
+            // está no formulário agora (produto pode nem estar salvo ainda).
+            const idProduto = document.getElementById('product-id')?.value || null;
+            let prompt = window.StudioModule?.montarPromptDoPadrao?.(padrao, idProduto, {
+                produto: (document.getElementById('product-name')?.value || '').trim() || 'the product',
+                marca: (document.getElementById('product-vendor')?.value || '').trim(),
+            }) || padrao.esqueleto;
+
+            // A referência visual do padrão entra como PIXEL quando existe —
+            // descrever a composição em texto não reproduz o enquadramento.
+            const blobs = [blobBase];
+            let refBlob = null;
+            if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                try { refBlob = (await MediaStore.get(padrao.exemploMediaId))?.blob || null; } catch {}
+            }
+            if (!refBlob && padrao.exemploThumb) {
+                try { refBlob = await bytesDaImagem(padrao.exemploThumb); } catch {}
+            }
+            if (refBlob) {
+                blobs.unshift(refBlob);   // [referência, produto] — o prompt fala em "first/second image"
+                prompt = `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting and colour grading. THE SECOND IMAGE is the real product. Rebuild the scene of the first image featuring the product from the second image, keeping that product's exact shape, colour, materials and every marking unchanged. ${prompt}`;
+            }
+
+            const gerado = await ImageAI.editar(blobs, prompt, {
+                provedor: this._provedorImagem(),
+                modelo: this._modeloImagem() || undefined,
+                largura: 1024, altura: 1024,
+                formato: 'image/webp', compressao: 90,
+            });
+            const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+
+            // Capa entra na primeira posição — é o que a lista rotula "Capa".
+            this._images.unshift({ dataUrl, name: `capa-${padrao.id}.webp`, melhorada: true });
+            this._renderProductImages();
+            this._statusImagem('');
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Capa — ${padrao.nome}`, thumb: dataUrl, origem: 'Produto', tipo: 'Capa', produto: (document.getElementById('product-name')?.value || '').trim() });
+            showToast(`Capa gerada com o padrão "${padrao.nome}"`, 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao gerar capa: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    // ── Produto em uso / sobre uma superfície ──
+    abrirGerarCenario() {
+        const base = this._images[0];
+        if (!base || !(base.dataUrl || base.url)) {
+            showToast('Adicione ao menos uma foto do produto para servir de base.', 'error');
+            return;
+        }
+        const sugestoes = [
+            'being held in a person\'s hand, outdoors',
+            'on top of a rustic wooden table',
+            'on top of a white marble countertop',
+            'being worn by an adult model, natural light',
+            'on top of a car dashboard',
+            'on a beach towel with sand and sea in the background',
+        ];
+        this._abrirOverlay(`
+            <strong style="font-size:1rem">Gerar produto em uso</strong>
+            <p style="margin:0;font-size:0.8rem;color:var(--text-muted)">Descreva onde/como o produto aparece. Em inglês funciona melhor nos modelos de imagem.</p>
+            <input id="pcen-texto" class="input" placeholder="ex.: on top of a wooden table / being used by a fisherman" list="pcen-sugestoes">
+            <datalist id="pcen-sugestoes">${sugestoes.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+            <div class="prod-cenario-chips">${sugestoes.map(s => `<button type="button" class="prod-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button type="button" class="btn btn-primary btn-sm" id="pcen-gerar">Gerar</button>
+            </div>
+        `, (ov) => {
+            const campo = ov.querySelector('#pcen-texto');
+            ov.querySelectorAll('.prod-cenario-chip').forEach(b => {
+                b.addEventListener('click', () => { campo.value = b.dataset.sug; campo.focus(); });
+            });
+            const gerar = () => {
+                const txt = campo.value.trim();
+                if (!txt) { showToast('Descreva o cenário', 'error'); campo.focus(); return; }
+                ov.remove();
+                this._gerarCenario(txt);
+            };
+            ov.querySelector('#pcen-gerar').addEventListener('click', gerar);
+            campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); gerar(); } });
+            setTimeout(() => campo.focus(), 30);
+        });
+    },
+
+    async _gerarCenario(sobre) {
+        const base = this._images[0];
+        this._statusImagem('Gerando o produto em uso…');
+        try {
+            const blob = await bytesDaImagem(base.dataUrl || base.url);
+            const gerado = await ImageAI.editar(blob, ImageAI.promptCenario(sobre, this._contextoDoFormulario()), {
+                provedor: this._provedorImagem(),
+                modelo: this._modeloImagem() || undefined,
+                largura: 1024, altura: 1024,
+                formato: 'image/webp', compressao: 90,
+            });
+            const dataUrl = await comprimirImagemParaDataUrl(gerado, this._IMG_MAX, this._IMG_QUALIDADE, { formato: 'image/webp' });
+            this._images.push({ dataUrl, name: 'em-uso.webp', melhorada: true });
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Produto em uso: ${sobre}`, thumb: dataUrl, origem: 'Produto', tipo: 'Cenário', produto: (document.getElementById('product-name')?.value || '').trim() });
+            this._renderProductImages();
+            this._statusImagem('');
+            showToast('Imagem do produto em uso gerada', 'success');
+        } catch (e) {
+            this._statusImagem('');
+            showToast('Falha ao gerar: ' + String(e.message).slice(0, 140), 'error');
+        }
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  Agente de auditoria do produto (fotos + descrição)
+    //  Só OpenAI (gpt-4o com visão) de propósito — diferente do resto do
+    //  módulo, que faz cascata Gemini→OpenAI pra GERAR imagem, aqui é uma
+    //  ANÁLISE (texto+visão) e o dispatcher de 4 provedores do loja.js é
+    //  privado daquele módulo, então reimplementa a chamada aqui em vez de
+    //  tentar reaproveitar.
+    // ══════════════════════════════════════════════════════════════
+
+    _extrairJsonAuditoria(texto) {
+        let t = String(texto || '').trim();
+        const cerca = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (cerca) t = cerca[1].trim();
+        const ini = t.search(/[{[]/);
+        if (ini > 0) t = t.slice(ini);
+        const fim = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+        if (fim >= 0) t = t.slice(0, fim + 1);
+        return JSON.parse(t);
+    },
+
+    async _openaiVisaoAuditoria(system, texto, imagens) {
+        const key = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
+        if (!key) throw new Error('Configure a chave OpenAI (AI Ad Generator → Configurar IA)');
+        const content = [{ type: 'text', text: texto }];
+        // this._images já guarda dataUrl OU url direto (nunca base64 cru) —
+        // a API da OpenAI aceita os dois formatos como image_url.url, então
+        // não precisa buscar/recodificar nada antes de mandar.
+        imagens.forEach(src => content.push({ type: 'image_url', image_url: { url: src, detail: 'low' } }));
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            body: JSON.stringify({
+                model: 'gpt-4o', max_tokens: 2000, temperature: 0.4,
+                response_format: { type: 'json_object' },
+                messages: [{ role: 'system', content: system }, { role: 'user', content }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async auditarProduto() {
+        const nome = (document.getElementById('product-name')?.value || '').trim();
+        const descricao = (document.getElementById('product-description')?.innerText || '').trim();
+        const fotos = this._images.filter(im => im.dataUrl || im.url).map(im => im.dataUrl || im.url);
+        if (!nome && !descricao && !fotos.length) {
+            showToast('Preencha o produto (nome, descrição ou fotos) antes de auditar', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-prod-auditar');
+        if (btn) { btn.disabled = true; btn.dataset.textoOriginal = btn.innerHTML; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;vertical-align:-2px;animation:spin 1s linear infinite"></i> Auditando…'; if (window.lucide?.createIcons) lucide.createIcons(); }
+
+        try {
+            const sistema = `Você é um auditor de qualidade de páginas de produto de e-commerce. Analise as fotos e a descrição recebidas e aponte só problemas REAIS e específicos — nada de elogio genérico nem achado forçado quando está tudo bem.
+Pra cada achado, dê uma sugestão prática e, quando fizer sentido, um "promptPronto": em inglês se for sobre foto (prompt pronto pra colar num editor de imagem por IA), ou a instrução de copy pronta em português se for sobre a descrição.
+Devolva APENAS um JSON: {"achados": [{"area":"foto"|"descricao","indiceFoto":0,"severidade":"alta"|"media"|"baixa","problema":"...","sugestao":"...","promptPronto":"..."}]}
+Regras: "area":"foto" sempre vem com "indiceFoto" (índice da foto, começando em 0, na ordem que as fotos foram recebidas); "area":"descricao" não usa indiceFoto. Máximo 8 achados, do mais importante pro menos importante. Se uma área estiver genuinamente sem problema, não invente achado só pra preencher.
+Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estranho, produto pequeno/ilegível na foto, poucas fotos (só 1, ou nenhuma "em uso"/detalhe), inconsistência entre o que a foto mostra e o que a descrição promete, erro de gramática/ortografia, falta de informação essencial (material, tamanho, garantia, cuidados), tom de venda fraco ou genérico demais.`;
+
+            const contexto = `Produto: ${nome || '(sem nome)'}.\nDescrição atual (texto puro, sem HTML):\n${descricao || '(vazia)'}\nVocê recebeu ${fotos.length} foto(s) deste produto, nesta ordem (índice 0, 1, 2...).`;
+
+            const txt = await this._openaiVisaoAuditoria(sistema, contexto, fotos);
+            const parsed = this._extrairJsonAuditoria(txt);
+            const achados = Array.isArray(parsed.achados) ? parsed.achados : [];
+            this._renderAuditoriaResultados(achados, fotos);
+        } catch (e) {
+            showToast('Falha na auditoria: ' + String(e.message).slice(0, 160), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.textoOriginal || btn.innerHTML; delete btn.dataset.textoOriginal; if (window.lucide?.createIcons) lucide.createIcons(); }
+        }
+    },
+
+    _renderAuditoriaResultados(achados, fotos) {
+        const severidadeCor = { alta: 'var(--danger, #ef4444)', media: 'var(--warning, #f59e0b)', baixa: 'var(--text-muted)' };
+        const severidadeLabel = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+        const cartao = (a, i) => `
+            <div class="prod-audit-item">
+                <div class="prod-audit-head">
+                    <span class="prod-audit-sev" style="background:${severidadeCor[a.severidade] || severidadeCor.baixa}">${severidadeLabel[a.severidade] || 'Baixa'}</span>
+                    <span class="prod-audit-area">${a.area === 'foto' ? `Foto ${Number.isFinite(a.indiceFoto) ? a.indiceFoto + 1 : ''}` : 'Descrição'}</span>
+                    ${a.area === 'foto' && fotos[a.indiceFoto] ? `<img src="${this._esc(fotos[a.indiceFoto])}" alt="" class="prod-audit-thumb">` : ''}
+                </div>
+                <p class="prod-audit-problema">${this._esc(a.problema || '')}</p>
+                <p class="prod-audit-sugestao">${this._esc(a.sugestao || '')}</p>
+                ${a.promptPronto ? `
+                    <div class="prod-audit-prompt-row">
+                        <input type="text" class="input input-sm" readonly value="${this._esc(a.promptPronto)}" data-audit-prompt="${i}">
+                        <button type="button" class="btn btn-secondary btn-sm" data-copiar-prompt="${i}" title="Copiar prompt pronto"><i data-lucide="copy" style="width:12px;height:12px"></i></button>
+                    </div>` : ''}
+            </div>`;
+
+        const html = `
+            <strong style="font-size:1rem">Auditoria do produto</strong>
+            ${achados.length
+                ? `<p style="margin:0;font-size:0.8rem;color:var(--text-muted)">${achados.length} ponto(s) encontrado(s) — copie o prompt pronto pra aplicar direto onde precisar.</p>
+                   <div class="prod-audit-lista">${achados.map(cartao).join('')}</div>`
+                : `<p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Nenhum problema real encontrado nas fotos e na descrição atuais.</p>`}
+            <div style="display:flex;justify-content:flex-end">
+                <button type="button" class="btn btn-secondary btn-sm" id="paudit-fechar">Fechar</button>
+            </div>`;
+        this._abrirOverlay(html, (ov) => {
+            ov.querySelector('#paudit-fechar')?.addEventListener('click', () => ov.remove());
+            ov.querySelectorAll('[data-copiar-prompt]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const campo = ov.querySelector(`[data-audit-prompt="${btn.dataset.copiarPrompt}"]`);
+                    try {
+                        await navigator.clipboard.writeText(campo.value);
+                        showToast('Prompt copiado', 'success');
+                    } catch (e) {
+                        showToast('Não consegui copiar: ' + e.message, 'error');
+                    }
+                });
+            });
+        });
+    },
+
+    // Overlay leve reaproveitado pelos dois seletores acima.
+    _abrirOverlay(html, aoAbrir) {
+        document.getElementById('prod-img-overlay')?.remove();
+        const ov = document.createElement('div');
+        ov.id = 'prod-img-overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center';
+        ov.innerHTML = `<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;width:min(680px,94vw);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:0.8rem">${html}</div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+        aoAbrir?.(ov);
     },
 
     // Mostra as variantes trazidas da Shopify (leitura). Elas existem para
@@ -1269,7 +2665,7 @@ const ProductsModule = {
         const controls = document.getElementById('shopify-import-controls');
         const list = document.getElementById('shopify-import-list');
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
-        status.textContent = 'Carregando produtos da Shopify...';
+        status.innerHTML = window.loadingHTML('Carregando produtos da Shopify...');
         controls.style.display = 'none';
         list.innerHTML = '';
         confirmBtn.disabled = true;
@@ -1331,6 +2727,60 @@ const ProductsModule = {
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
         if (countEl) countEl.textContent = `${count} selecionados`;
         if (confirmBtn) confirmBtn.disabled = count === 0;
+    },
+
+    // Sincroniza um produto recém-PUBLICADO na Shopify (por Importador ou
+    // Lançamento) pra dentro de AppState.allProducts — sem isso, o produto
+    // existe de verdade na loja mas fica invisível na tela Produtos até
+    // alguém lembrar de rodar um re-import manual pelo Shopify. Mesma forma
+    // de registro que _importSelectedShopifyProducts já usa (linhas acima),
+    // só que a partir do retorno cru de uma mutation productCreate (que só
+    // tem id/handle) em vez do objeto já formatado do ShopifyModule.
+    //
+    // `shopifyProduct` — { id, handle } (o `product` devolvido por
+    // productCreate). `opts` completa o que a mutation não devolve:
+    // { title, price, currency, image, storeId }.
+    upsertFromShopify(shopifyProduct, opts = {}) {
+        if (!shopifyProduct?.id) return null;
+        const shopifyId = String(shopifyProduct.id).split('/').pop(); // gid://shopify/Product/123 → "123"
+        const existente = (AppState.allProducts || []).find(p => String(p.shopifyId || '') === shopifyId);
+        const storeId = opts.storeId || existente?.storeId || (typeof getWritableStoreId === 'function' ? getWritableStoreId() : null);
+
+        const registro = {
+            id: existente?.id || generateId('prod'),
+            name: opts.title || existente?.name || '(sem título)',
+            language: existente?.language || 'Ingles',
+            price: opts.price ?? existente?.price ?? 0,
+            priceCurrency: opts.currency || existente?.priceCurrency || 'USD',
+            cost: existente?.cost || 0,
+            costCurrency: existente?.costCurrency || 'USD',
+            tax: existente?.tax || 0,
+            variableCosts: existente?.variableCosts || 0,
+            cpa: existente?.cpa || 0,
+            cpaCurrency: existente?.cpaCurrency || 'USD',
+            countryPrices: existente?.countryPrices || [],
+            status: existente?.status || 'ativo',
+            storeId,
+            shopifyId,
+            shopifyHandle: shopifyProduct.handle || existente?.shopifyHandle || '',
+            shopifyImage: opts.image || existente?.shopifyImage || '',
+            shopifyImportedAt: new Date().toISOString(),
+        };
+
+        if (existente) {
+            Object.assign(existente, registro);
+        } else {
+            AppState.allProducts.push(registro);
+            if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
+                try { SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(registro)); } catch {}
+            }
+        }
+
+        if (typeof filterDataByStore === 'function') filterDataByStore();
+        if (typeof populateProductDropdowns === 'function') populateProductDropdowns();
+        this.render();
+        if (typeof EventBus !== 'undefined') EventBus.emit('productsChanged');
+        return registro;
     },
 
     async _importSelectedShopifyProducts() {

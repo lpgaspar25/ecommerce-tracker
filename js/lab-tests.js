@@ -30,20 +30,35 @@ const LabTestsModule = {
         outro:     { label: 'Outro',         icon: '<i data-lucide="pin" style="width:14px;height:14px;vertical-align:-2px"></i>' },
     },
 
-    init() {
-        this._load();
+    _bc: null,
+
+    async init() {
+        this._loadPromise = this._load();
+        await this._loadPromise;
         this._bindEvents();
         if (typeof EventBus !== 'undefined') {
-            EventBus.on('dataLoaded', () => this._backfillDiaryFromTests());
+            // Espera o load em progresso — 'dataLoaded' pode disparar antes do
+            // IndexedDB responder (raro, mas o load agora é assíncrono).
+            EventBus.on('dataLoaded', async () => { await this._loadPromise; this._backfillDiaryFromTests(); });
+            EventBus.emit('labTestsChanged'); // dá um sinal pra quem renderizou antes do load assíncrono terminar
         }
-        // Multi-tab safety: when another tab writes to lab tests storage,
-        // re-read in this tab to avoid using stale in-memory state on next save.
-        window.addEventListener('storage', (e) => {
-            if (e.key === this._storageKey) {
-                this._load();
-                if (document.getElementById('lab-cards-container')) this._renderCards();
-            }
-        });
+        // Multi-tab safety: quando outra aba salva, essa aba recarrega — evita
+        // usar estado em memória desatualizado no próximo save. IndexedDB não
+        // dispara o evento 'storage' (isso é só localStorage), por isso o
+        // aviso entre abas agora vai por BroadcastChannel.
+        if (typeof BroadcastChannel !== 'undefined') {
+            this._bc = new BroadcastChannel('etracker_lab_tests');
+            this._bc.onmessage = async (e) => {
+                if (e.data === 'changed') {
+                    await this._load();
+                    if (document.getElementById('lab-cards-container')) this._renderCards();
+                }
+            };
+        }
+    },
+
+    _notifyOtherTabs() {
+        try { this._bc?.postMessage('changed'); } catch {}
     },
 
     // Sync ALL tests into Diário on every load.
@@ -62,67 +77,84 @@ const LabTestsModule = {
         if (synced > 0) console.log(`[LabTests] Synced ${synced} test(s) into Diário`);
     },
 
-    _load() {
-        try { this._tests = JSON.parse(localStorage.getItem(this._storageKey)) || []; }
-        catch { this._tests = []; }
+    // Testes vivem no IndexedDB (via KVStore) — sem teto de ~5-10MB do
+    // localStorage. Na primeira vez que roda depois do upgrade, migra o que
+    // já estava salvo em localStorage (dado + backups) e libera aquele
+    // espaço na hora, já que era o que mais enchia o storage.
+    async _load() {
+        try {
+            let tests = (typeof KVStore !== 'undefined') ? await KVStore.get(this._storageKey) : null;
+            if (tests === null) tests = await this._migrarDeLocalStorage();
+            this._tests = Array.isArray(tests) ? tests : [];
+        } catch (e) {
+            console.error('[LabTests] load failed:', e);
+            this._tests = [];
+        }
+    },
+
+    // Migração única: se ainda tem dado no localStorage (versão anterior à
+    // troca pro IndexedDB), move pro KVStore e limpa o localStorage — dado
+    // vivo e backups. Retorna os testes migrados (ou null se não tinha nada).
+    async _migrarDeLocalStorage() {
+        let tests = null;
+        try {
+            const legacy = localStorage.getItem(this._storageKey);
+            if (legacy) {
+                tests = JSON.parse(legacy);
+                if (typeof KVStore !== 'undefined') await KVStore.set(this._storageKey, tests);
+            }
+        } catch (e) { console.warn('[LabTests] migração do localStorage falhou:', e); }
+        // Limpa a chave viva + todos os backups antigos, mesmo se não havia
+        // dado pra migrar (backups órfãos não servem mais pra nada aqui).
+        try {
+            localStorage.removeItem(this._storageKey);
+            const prefix = `${this._storageKey}_backup_`;
+            const toRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(prefix)) toRemove.push(k);
+            }
+            toRemove.forEach(k => localStorage.removeItem(k));
+        } catch {}
+        return tests;
     },
 
     // Multi-tab-safe persist for save/edit flows: re-read disk and merge by id
     // (newer updatedAt wins). For deletions, use _persistOverwrite which skips
     // the merge — otherwise deleted-from-memory items would resurrect from disk.
-    _persist() {
+    // Nunca lança — devolve true/false; quem chama decide o que fazer na falha.
+    async _persist() {
         let onDisk = [];
-        try { onDisk = JSON.parse(localStorage.getItem(this._storageKey)) || []; } catch {}
+        try { onDisk = (await KVStore.get(this._storageKey)) || []; } catch {}
 
         const merged = this._mergeTests(onDisk, this._tests);
         this._tests = merged;
-        try {
-            localStorage.setItem(this._storageKey, JSON.stringify(merged));
-        } catch (err) {
-            // QuotaExceededError ou similar — tenta liberar backups e re-salvar
-            console.warn('[LabTests] persist falhou, tentando limpar backups:', err);
-            this._purgeOldBackups();
-            try {
-                localStorage.setItem(this._storageKey, JSON.stringify(merged));
-            } catch (err2) {
-                console.error('[LabTests] persist falhou de novo:', err2);
-                if (typeof showToast === 'function') {
-                    showToast('Erro ao salvar: armazenamento cheio. Exporte ou apague itens antigos.', 'error');
-                }
-                throw err2;
-            }
-        }
-        try { this._writeBackup(merged); } catch {}
-        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
-    },
 
-    // Apaga TODOS os backups antigos para liberar espaço
-    _purgeOldBackups() {
-        const prefix = `${this._storageKey}_backup_`;
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith(prefix)) keysToRemove.push(k);
+        try {
+            await KVStore.set(this._storageKey, merged);
+        } catch (e) {
+            console.error('[LabTests] persist falhou:', e);
+            if (typeof showToast === 'function') showToast('Erro ao salvar teste. Tente de novo.', 'error');
+            return false;
         }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
+        try { await this._writeBackup(merged); } catch {}
+        this._notifyOtherTabs();
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+        return true;
     },
 
     // Used for deletions: write in-memory directly to disk, no merge.
-    _persistOverwrite() {
+    async _persistOverwrite() {
         try {
-            localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
-        } catch (err) {
-            this._purgeOldBackups();
-            try {
-                localStorage.setItem(this._storageKey, JSON.stringify(this._tests));
-            } catch (err2) {
-                if (typeof showToast === 'function') {
-                    showToast('Erro ao salvar: armazenamento cheio.', 'error');
-                }
-                throw err2;
-            }
+            await KVStore.set(this._storageKey, this._tests);
+        } catch (e) {
+            console.error('[LabTests] persistOverwrite falhou:', e);
+            if (typeof showToast === 'function') showToast('Erro ao salvar. Tente de novo.', 'error');
+            return false;
         }
-        try { this._writeBackup(this._tests); } catch {}
+        try { await this._writeBackup(this._tests); } catch {}
+        this._notifyOtherTabs();
+        return true;
     },
 
     // ===== Shopify Result Tracker =====
@@ -474,7 +506,7 @@ const LabTestsModule = {
         // Persiste no teste
         test.shopifyResult = result;
         test.updatedAt = new Date().toISOString();
-        this._persist();
+        await this._persist();
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
 
         return result;
@@ -491,34 +523,30 @@ const LabTestsModule = {
         return Array.from(byId.values());
     },
 
-    _writeBackup(tests) {
+    async _writeBackup(tests) {
+        const today = new Date().toISOString().slice(0, 10);
+        const prefix = `${this._storageKey}_backup_`;
+        try { await KVStore.set(`${prefix}${today}`, tests); } catch {}
+        // A poda roda MESMO que a escrita de hoje tenha falhado acima — senão,
+        // assim que o storage aperta uma vez, os backups antigos nunca mais
+        // são liberados e o problema só piora dia após dia.
         try {
-            const today = new Date().toISOString().slice(0, 10);
-            localStorage.setItem(`${this._storageKey}_backup_${today}`, JSON.stringify(tests));
-            // Trim backups older than 7 days
             const cutoff = Date.now() - 7 * 86400000;
-            for (let i = localStorage.length - 1; i >= 0; i--) {
-                const k = localStorage.key(i);
-                if (!k || !k.startsWith(`${this._storageKey}_backup_`)) continue;
-                const dStr = k.slice(`${this._storageKey}_backup_`.length);
-                const d = Date.parse(dStr);
-                if (d && d < cutoff) localStorage.removeItem(k);
+            const keys = await KVStore.keys(prefix);
+            for (const k of keys) {
+                const d = Date.parse(k.slice(prefix.length));
+                if (d && d < cutoff) await KVStore.del(k);
             }
         } catch {}
     },
 
     // Returns the most recent backup that contains tests (for recovery UIs).
-    _latestBackup() {
+    async _latestBackup() {
         const prefix = `${this._storageKey}_backup_`;
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k && k.startsWith(prefix)) keys.push(k);
-        }
-        keys.sort().reverse();
+        const keys = (await KVStore.keys(prefix)).sort().reverse();
         for (const k of keys) {
             try {
-                const arr = JSON.parse(localStorage.getItem(k) || '[]');
+                const arr = await KVStore.get(k, []);
                 if (Array.isArray(arr) && arr.length) return { key: k, date: k.slice(prefix.length), tests: arr };
             } catch {}
         }
@@ -822,7 +850,7 @@ const LabTestsModule = {
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
     },
 
-    _bulkReactivate() {
+    async _bulkReactivate() {
         const ids = Array.from(this._selectedIds);
         let reactivated = 0;
         ids.forEach(id => {
@@ -835,26 +863,20 @@ const LabTestsModule = {
         });
         if (!reactivated) return;
         this._selectedIds.clear();
-        try {
-            this._persist();
-            this._renderCards();
-            if (typeof showToast === 'function') showToast(`${reactivated} teste(s) reativado(s)`, 'success');
-        } catch (e) { console.error('[LabTests] reactivate failed:', e); }
+        await this._persist();
+        this._renderCards();
+        if (typeof showToast === 'function') showToast(`${reactivated} teste(s) reativado(s)`, 'success');
     },
 
-    _bulkDelete() {
+    async _bulkDelete() {
         const count = this._selectedIds.size;
         if (count === 0) return;
         if (!confirm(`Excluir ${count} teste(s) permanentemente? Esta ação não pode ser desfeita.`)) return;
         this._tests = this._tests.filter(t => !this._selectedIds.has(t.id));
         this._selectedIds.clear();
-        try {
-            this._persistOverwrite();
-            this._renderCards();
-            if (typeof showToast === 'function') showToast(`${count} teste(s) excluído(s)`, 'success');
-        } catch (err) {
-            console.error('[LabTests] bulk delete failed:', err);
-        }
+        await this._persistOverwrite();
+        this._renderCards();
+        if (typeof showToast === 'function') showToast(`${count} teste(s) excluído(s)`, 'success');
     },
 
     // Menu rápido de status no card (concluir / cancelar / reativar) — sem abrir o modal
@@ -884,21 +906,19 @@ const LabTestsModule = {
         </div>`;
     },
 
-    _quickSetStatus(id, status, result) {
+    async _quickSetStatus(id, status, result) {
         const t = this._tests.find(x => x.id === id);
         if (!t) return;
         t.status = status;
         if (status === 'concluido' && result) t.result = result;
         t.updatedAt = new Date().toISOString();
-        try {
-            this._persist();
-            this._renderCards();
-            if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
-            const nome = status === 'concluido'
-                ? `Concluído (${result === 'positivo' ? 'validado' : result === 'negativo' ? 'falhou' : 'neutro'})`
-                : status === 'cancelado' ? 'Cancelado' : 'Ativo';
-            if (typeof showToast === 'function') showToast(`Status atualizado: ${nome}`, 'success');
-        } catch (e) { console.error('[LabTests] quick status failed:', e); }
+        await this._persist();
+        this._renderCards();
+        if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
+        const nome = status === 'concluido'
+            ? `Concluído (${result === 'positivo' ? 'validado' : result === 'negativo' ? 'falhou' : 'neutro'})`
+            : status === 'cancelado' ? 'Cancelado' : 'Ativo';
+        if (typeof showToast === 'function') showToast(`Status atualizado: ${nome}`, 'success');
     },
 
     _renderCard(test) {
@@ -1545,18 +1565,18 @@ const LabTestsModule = {
         }).join('');
 
         container.querySelectorAll('.lab-obs-del').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const idx = parseInt(btn.dataset.idx);
                 if (this._editingId) {
                     const test = this._tests.find(t => t.id === this._editingId);
-                    if (test) { test.observations.splice(idx, 1); this._persist(); this._renderObservations(test.observations); }
+                    if (test) { test.observations.splice(idx, 1); await this._persist(); this._renderObservations(test.observations); }
                 }
             });
         });
     },
 
-    _addObservation() {
+    async _addObservation() {
         const text = document.getElementById('lab-obs-text')?.value?.trim();
         if (!text) { showToast('Escreva a observação', 'error'); return; }
 
@@ -1568,7 +1588,7 @@ const LabTestsModule = {
             if (test) {
                 if (!test.observations) test.observations = [];
                 test.observations.push({ date, text, sentiment });
-                this._persist();
+                await this._persist();
                 this._renderObservations(test.observations);
             }
         } else {
@@ -1653,7 +1673,7 @@ const LabTestsModule = {
         return this._tempTasks;
     },
 
-    _addTask() {
+    async _addTask() {
         const text = document.getElementById('lab-task-text')?.value?.trim();
         if (!text) { showToast('Escreva a tarefa', 'error'); return; }
         const dueDate = document.getElementById('lab-task-due')?.value || '';
@@ -1664,7 +1684,7 @@ const LabTestsModule = {
             done: false,
             dueDate,
         });
-        if (this._editingId) this._persist();
+        if (this._editingId) await this._persist();
         this._renderTasks(tasks);
         document.getElementById('lab-task-text').value = '';
         document.getElementById('lab-task-due').value = '';
@@ -1672,34 +1692,34 @@ const LabTestsModule = {
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
-    _toggleTask(idx) {
+    async _toggleTask(idx) {
         const tasks = this._getTasksList();
         if (!tasks[idx]) return;
         tasks[idx].done = !tasks[idx].done;
-        if (this._editingId) this._persist();
+        if (this._editingId) await this._persist();
         this._renderTasks(tasks);
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
-    _setTaskDueDate(idx, dueDate) {
+    async _setTaskDueDate(idx, dueDate) {
         const tasks = this._getTasksList();
         if (!tasks[idx]) return;
         tasks[idx].dueDate = dueDate || '';
-        if (this._editingId) this._persist();
+        if (this._editingId) await this._persist();
         this._renderTasks(tasks);
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
-    _deleteTask(idx) {
+    async _deleteTask(idx) {
         const tasks = this._getTasksList();
         if (!tasks[idx]) return;
         tasks.splice(idx, 1);
-        if (this._editingId) this._persist();
+        if (this._editingId) await this._persist();
         this._renderTasks(tasks);
         if (typeof EventBus !== 'undefined') EventBus.emit('labTestsChanged');
     },
 
-    _handleSave(e) {
+    async _handleSave(e) {
         e.preventDefault();
         const get = (id) => document.getElementById(id)?.value?.trim() || '';
 
@@ -1781,11 +1801,10 @@ const LabTestsModule = {
             savedTest = newTest;
         }
 
-        try {
-            this._persist();
-        } catch (err) {
+        const ok = await this._persist();
+        if (!ok) {
             // _persist já mostrou toast de erro. Não fecha o modal pra usuário editar/exportar.
-            console.error('[LabTests] save failed:', err);
+            console.error('[LabTests] save failed');
             return;
         }
         try { if (savedTest) this._syncTestToDiary(savedTest); } catch (e) { console.warn('[LabTests] sync to diary failed:', e); }
@@ -1816,10 +1835,10 @@ const LabTestsModule = {
         });
     },
 
-    _deleteTest(id) {
+    async _deleteTest(id) {
         const test = this._tests.find(t => t.id === id);
         this._tests = this._tests.filter(t => t.id !== id);
-        this._persistOverwrite();
+        await this._persistOverwrite();
         if (test) this._removeTestFromDiary(test);
         this._renderCards();
         showToast('Teste excluído', 'success');
@@ -2375,7 +2394,7 @@ const LabTestsModule = {
         </div>`;
     },
 
-    _advanceStage(testId, stageId) {
+    async _advanceStage(testId, stageId) {
         const test = this._tests.find(t => t.id === testId);
         if (!test || !test.stages) return;
 
@@ -2397,7 +2416,7 @@ const LabTestsModule = {
 
         test.stages = stages;
         test.updatedAt = new Date().toISOString();
-        this._persist();
+        await this._persist();
         this._renderCards();
         showToast('Fase avançada!', 'success');
     },

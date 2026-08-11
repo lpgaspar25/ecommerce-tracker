@@ -220,6 +220,41 @@ const CreativesModule = {
         }
     },
 
+    // ---- Nome automático do criativo ----
+    // Arquivo "IMG_1234.mp4", hash de export de IA ou screenshot não diz nada
+    // — nesses casos cai pro nome montado a partir do formulário.
+    _ARQUIVO_SEM_NOME_UTIL: /^(img|imagem|image|dsc|dscn|vid|video|mov|movie|whatsapp[\s_-]?(image|video)|screenshot|captura([\s_-]?de[\s_-]?tela)?|print|download|arquivo|file|export|output|untitled|sem[\s_-]?t[ií]tulo|new[\s_-]?(image|video)|photo|foto|clipboard)([\s_-].*)?$/i,
+
+    _nomeDoArquivoUtil(fileName) {
+        if (!fileName) return '';
+        let base = String(fileName).replace(/\.[^./\\]+$/, '').trim();
+        if (!base) return '';
+        // UUID ou hash puro (nome de export automático) não é nome nenhum
+        if (/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(base)) return '';
+        if (/^[0-9a-f]{10,}$/i.test(base)) return '';
+        if (this._ARQUIVO_SEM_NOME_UTIL.test(base)) return '';
+        base = base.replace(/[_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        if (!base) return '';
+        return (base[0].toUpperCase() + base.slice(1)).slice(0, 80);
+    },
+
+    // Nome automático do criativo. Prioriza o nome do arquivo quando ele diz
+    // algo de útil; sem isso, monta a partir do que já foi preenchido no
+    // formulário (produto, tipo, ângulo/hook), com contador pra não colidir
+    // com um criativo existente do mesmo produto com o mesmo rótulo.
+    _gerarNomeAutomatico({ fileName, productId, type, angle, hookType } = {}) {
+        const doArquivo = this._nomeDoArquivoUtil(fileName);
+        if (doArquivo) return doArquivo;
+
+        const p = productId ? (AppState.allProducts || AppState.products || []).find(x => x.id === productId) : null;
+        const partes = [p?.name, type, String(angle || hookType || '').trim()].filter(Boolean);
+        const rotulo = partes.length ? partes.join(' — ') : 'Criativo';
+        if (!productId) return rotulo;
+        const existentes = (AppState.allCreatives || []).filter(c =>
+            c.productId === productId && (c.name || '').startsWith(rotulo)).length;
+        return existentes ? `${rotulo} #${existentes + 1}` : rotulo;
+    },
+
     // ---- Media (foto/vídeo) — blob in IndexedDB, small thumb in localStorage ----
     _formMedia: null,
 
@@ -231,22 +266,48 @@ const CreativesModule = {
             showToast('Arquivo muito grande (máx. 60MB).', 'error');
             return;
         }
+
+        // Imagem: comprime pra JPEG (lado maior até 1500px, nunca aumenta) antes
+        // de guardar — os criativos que sobem costumam ser PNG de vários MB, e
+        // isso pesa tanto no IndexedDB quanto no upload do formulário.
+        let arquivoFinal = file;
+        if (!isVideo) {
+            try {
+                const { blob, comprimiu } = await comprimirImagem(file);
+                if (comprimiu) {
+                    const base = (file.name || 'imagem').replace(/\.[^.]+$/, '');
+                    arquivoFinal = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+                }
+            } catch (e) { console.warn('compressão falhou, usando arquivo original', e); }
+        }
+
         let thumb = '';
         try {
-            thumb = isVideo ? await this._videoThumb(file) : await this._imageThumb(file);
+            thumb = isVideo ? await this._videoThumb(arquivoFinal) : await this._imageThumb(arquivoFinal);
         } catch (e) { console.warn('thumb failed', e); }
         const prev = this._formMedia || {};
         this._formMedia = {
-            file,
+            file: arquivoFinal,
             mediaType: isVideo ? 'video' : 'image',
             mediaThumb: thumb || '',
-            mediaName: file.name || '',
+            mediaName: arquivoFinal.name || '',
             mediaId: '',
             prevMediaId: prev.prevMediaId || prev.mediaId || '',
             changed: true,
             removed: false,
         };
         this._renderFormMediaPreview();
+
+        // Sugere o nome a partir do arquivo — só se o usuário ainda não
+        // escreveu nada, pra nunca sobrescrever o que ele já digitou.
+        const nameInput = document.getElementById('creative-name');
+        if (nameInput && !nameInput.value.trim()) {
+            nameInput.value = this._gerarNomeAutomatico({
+                fileName: file.name,
+                productId: document.getElementById('creative-product')?.value || '',
+                type: document.getElementById('creative-type')?.value || '',
+            });
+        }
     },
 
     _clearFormMedia() {
@@ -352,7 +413,7 @@ const CreativesModule = {
         const cap = document.getElementById('creative-lightbox-caption');
         if (!box || !body) return;
         cap && (cap.textContent = c.name || '');
-        body.innerHTML = '<div class="creative-lightbox-loading">Carregando…</div>';
+        body.innerHTML = '<div class="creative-lightbox-loading">' + window.loadingHTML('Carregando…') + '</div>';
         box.style.display = 'flex';
         // Revoke any previous object URL
         if (this._lightboxUrl) { try { URL.revokeObjectURL(this._lightboxUrl); } catch {} this._lightboxUrl = null; }
@@ -481,14 +542,23 @@ const CreativesModule = {
             showToast('Mídia não suportada neste navegador; salvando só os dados.', 'warning');
         }
 
+        const typeVal = document.getElementById('creative-type').value;
+        const angleVal = document.getElementById('creative-angle').value.trim();
+        const hookTypeVal = document.getElementById('creative-hook-type').value;
+        // Sem arquivo (ex.: só colou uma URL de imagem) e sem nome digitado —
+        // o nome nunca fica vazio, mas também nunca sobrescreve o que o
+        // usuário escreveu.
+        const nameVal = document.getElementById('creative-name').value.trim()
+            || this._gerarNomeAutomatico({ productId, type: typeVal, angle: angleVal, hookType: hookTypeVal });
+
         const data = {
             id,
             productId,
-            name: document.getElementById('creative-name').value.trim(),
-            type: document.getElementById('creative-type').value,
-            angle: document.getElementById('creative-angle').value.trim(),
+            name: nameVal,
+            type: typeVal,
+            angle: angleVal,
             hookText: document.getElementById('creative-hook-text').value.trim(),
-            hookType: document.getElementById('creative-hook-type').value,
+            hookType: hookTypeVal,
             platform: document.getElementById('creative-platform').value,
             status: document.getElementById('creative-status').value || 'ativo',
             launchDate: document.getElementById('creative-launch-date').value,
@@ -695,11 +765,24 @@ const CreativesModule = {
         const createdCreatives = [];
 
         for (let i = 0; i < total; i++) {
-            const file = this._bulkFiles[i];
+            const arquivoOriginal = this._bulkFiles[i];
             try {
-                const isVideo = (file.type || '').startsWith('video');
+                const isVideo = (arquivoOriginal.type || '').startsWith('video');
                 const mediaType = defaults.type || (isVideo ? 'video' : 'imagem');
                 const mediaTypeStored = isVideo ? 'video' : 'image';
+
+                // Imagem: comprime pra JPEG (lado maior até 1500px, nunca aumenta)
+                // antes de guardar — mesmo motor do formulário único.
+                let file = arquivoOriginal;
+                if (!isVideo) {
+                    try {
+                        const { blob, comprimiu } = await comprimirImagem(arquivoOriginal);
+                        if (comprimiu) {
+                            const base = (arquivoOriginal.name || 'imagem').replace(/\.[^.]+$/, '');
+                            file = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+                        }
+                    } catch (err) { console.warn('compressão falhou para', arquivoOriginal.name, err); }
+                }
 
                 // Generate thumbnail
                 let thumb = '';
@@ -719,8 +802,11 @@ const CreativesModule = {
                     }
                 }
 
-                // Build creative name from filename (without extension)
-                const nameWithoutExt = (file.name || '').replace(/\.[^.]+$/, '').trim() || `Criativo ${i + 1}`;
+                // Nome automático — mesma lógica do formulário único, pra não
+                // ter dois jeitos de nomear criativo na ferramenta. Usa o nome
+                // ORIGINAL do arquivo (antes da troca de extensão pra .jpg).
+                const nameWithoutExt = this._gerarNomeAutomatico({ fileName: arquivoOriginal.name, productId, type: mediaType })
+                    || `Criativo ${i + 1}`;
 
                 const data = {
                     id: generateId('crtv'),

@@ -22,7 +22,18 @@ export async function onRequestGet({ request, env }) {
     return new Response('Missing SHOPIFY_TOKENS KV binding', { status: 500 });
   }
 
-  const scopes = url.searchParams.get('scopes') || env.SCOPES || 'read_orders,read_products,read_all_orders';
+  // write_products/write_files: necessários para enviar as imagens geradas
+  // pela ferramenta de volta para o produto na loja (stagedUploadsCreate →
+  // upload → productUpdate). Sem eles a Shopify recusa a mutation.
+  // ATENÇÃO: mudar esta lista invalida o token já concedido — o usuário
+  // precisa reconectar a loja para os novos escopos valerem.
+  // Conjunto completo de escopos que o app usa hoje:
+  //  read_orders/read_all_orders/read_products → leitura de vendas e produtos
+  //  write_products/write_files → enviar imagens (productUpdate, fileCreate)
+  //  read_translations/write_translations → ler digests e registrar traduções
+  //  read_locales/write_locales → ler shopLocales e habilitar idioma
+  const scopes = url.searchParams.get('scopes') || env.SCOPES
+    || 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales';
   const nonce = crypto.randomUUID();
 
   // Encode the minimal state client<->Shopify sees

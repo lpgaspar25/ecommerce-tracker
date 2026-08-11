@@ -1,0 +1,1317 @@
+// Loja — Código & Tema / Empresa & Site. Um "cofre" por loja pra guardar
+// snippets de código Liquid/tema, dados cadastrais, domínio, redes sociais
+// e imagens de referência (logo, documentos, capturas). Tudo no IndexedDB
+// (KVStore/MediaStore) — nunca localStorage, e sempre escopado por loja
+// (mesmo padrão de produtos/metas/diário: cada registro carrega storeId).
+const LojaModule = (() => {
+    const SNIPPETS_KEY = 'etracker_loja_snippets';
+    const EMPRESA_KEY = 'etracker_loja_empresa';
+
+    const TAGS_SNIPPET = [
+        { id: 'secao', label: 'Seção' },
+        { id: 'snippet', label: 'Snippet' },
+        { id: 'css', label: 'CSS' },
+        { id: 'js', label: 'JS' },
+        { id: 'outro', label: 'Outro' },
+    ];
+
+    let _snippets = [];
+    let _empresaMap = {};
+    let _carregado = false;
+    // Snippets abertos no momento (accordion) — nasce vazio: tudo começa
+    // fechado, só mostrando o nome. Um snippet recém-criado entra aqui
+    // pra abrir automático (senão o usuário criaria um card fechado e vazio).
+    const _expandidos = new Set();
+    // Quais textareas de código estão no modo "expandido" (altura maior) —
+    // só de sessão, não precisa persistir.
+    const _codigoExpandido = new Set();
+
+    async function _carregar() {
+        if (_carregado) return;
+        _snippets = (await KVStore.get(SNIPPETS_KEY)) || [];
+        _empresaMap = (await KVStore.get(EMPRESA_KEY)) || {};
+        _carregado = true;
+    }
+
+    function _icones() {
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    }
+
+    function _nomeDaLoja(storeId) {
+        return AppState.stores?.find(s => s.id === storeId)?.name || '—';
+    }
+
+    function _agora() { return new Date().toISOString(); }
+
+    // Cards minimizáveis (Pedir à IA / Criar seção com IA) — estado
+    // persistido, senão volta a abrir toda vez que renderCodigo() re-renderiza
+    // o painel (o que acontece a cada ação da lista de snippets).
+    const MINIMIZADOS_KEY = 'etracker_loja_cards_minimizados';
+    function _cardsMinimizados() {
+        try { return JSON.parse(localStorage.getItem(MINIMIZADOS_KEY) || '[]'); } catch { return []; }
+    }
+    function _isCardMinimizado(id) { return _cardsMinimizados().includes(id); }
+    function _alternarCardMinimizado(id) {
+        const lista = _cardsMinimizados();
+        const idx = lista.indexOf(id);
+        if (idx >= 0) lista.splice(idx, 1); else lista.push(id);
+        try { localStorage.setItem(MINIMIZADOS_KEY, JSON.stringify(lista)); } catch {}
+    }
+
+    // ── Código & Tema ────────────────────────────────────────────────────
+    async function renderCodigo() {
+        await _carregar();
+        const panel = document.getElementById('tab-loja-codigo');
+        if (!panel) return;
+        const todas = isAllStoresSelected();
+        const storeId = getCurrentStoreId();
+        const lista = todas ? _snippets : _snippets.filter(s => s.storeId === storeId);
+
+        panel.innerHTML = `
+            <div class="section-header">
+                <h2><i data-lucide="code-2" style="width:14px;height:14px;vertical-align:-2px"></i> Código & Tema</h2>
+                <div><button class="btn btn-primary" id="loja-snip-add"><i data-lucide="plus" style="width:13px;height:13px;vertical-align:-2px"></i> Novo snippet</button></div>
+            </div>
+            ${todas ? '' : _renderAgenteBox()}
+            ${todas ? '' : _renderCriarSecaoBox()}
+            <p class="loja-intro">
+                Guarde aqui trechos de código Liquid, CSS ou JS do tema — seções, snippets, ajustes que você já fez — pra reaproveitar sem precisar abrir o editor de tema toda vez.
+                ${todas ? ' Mostrando snippets de todas as lojas.' : ''}
+            </p>
+            <div id="loja-snip-list">${_renderSnippetsList(lista, todas)}</div>
+        `;
+        _wireCodigoEvents(storeId);
+        if (!todas) { _wireAgenteEvents(); _wireCriarSecaoEvents(storeId); }
+        _icones();
+    }
+
+    // ── Agente de Loja (Fase 1) ──────────────────────────────────────────
+    // Pede em texto livre, a IA propõe um plano (produto + campos a mudar),
+    // SEMPRE mostra preview antes de tocar na loja de verdade — nunca aplica
+    // direto. A IA só decide O QUÊ mudar; quem monta e executa a mutation
+    // exata é este código, nunca uma query/mutation gerada pela IA.
+    const STATUS_LABELS = { ACTIVE: 'Ativo', DRAFT: 'Rascunho', ARCHIVED: 'Arquivado' };
+    const CAMPO_LABELS = { title: 'Título', status: 'Status', price: 'Preço', templateSuffix: 'Template' };
+
+    const SISTEMA_AGENTE = `Você ajuda a operar uma loja Shopify. Recebe um pedido em português e uma lista de produtos existentes (id, título, status, preço). Sua tarefa é identificar QUAL produto da lista o pedido se refere e QUAIS campos mudar.
+
+Responda em JSON:
+{
+  "entendimento": "frase curta em pt-BR resumindo o que você entendeu",
+  "produtoId": "id EXATO de um produto da lista fornecida, ou null se não achar um correspondente claro",
+  "confianca": "alta" | "media" | "baixa",
+  "mudancas": [ { "campo": "title"|"status"|"price"|"templateSuffix", "valor": "..." } ]
+}
+
+Regras:
+- "campo" só pode ser title, status, price ou templateSuffix — nunca invente outro campo.
+- "status" só pode valer ACTIVE, DRAFT ou ARCHIVED (traduza "ativo"→ACTIVE, "rascunho"/"inativo"→DRAFT, "arquivado"→ARCHIVED).
+- "price" é só o número, sem símbolo de moeda (ex.: "45.00").
+- "templateSuffix" é o nome do template SEM o prefixo "product." nem extensão (ex.: pedido "usar o template x7-testecoments" → valor "x7-testecoments"). Se o pedido for pra REMOVER um template customizado (voltar ao padrão), valor null.
+- Se o pedido não deixar claro qual produto da lista, ou não corresponder a nenhum, produtoId null e confianca "baixa" — não chute.
+- Se o pedido pedir uma ação fora do escopo (editar código/Liquid, mexer em coleção, etc.), devolva mudancas vazio e explique em "entendimento" que isso ainda não é suportado.`;
+
+    // ── Criar seção com IA ────────────────────────────────────────────────
+    // Gera uma seção Liquid completa (não edita produto nenhum) a partir de
+    // um pedido em texto livre. Conhecimento condensado de skills reais de
+    // engenharia Shopify (sticky add-to-cart, seletor visual de variantes)
+    // que o usuário trouxe — generalizado pra qualquer seção, não só essas.
+    const SISTEMA_CRIAR_SECAO = `Você é um engenheiro Shopify sênior especializado em temas Online Store 2.0 (Dawn e similares). Gera código Liquid completo, correto e pronto pra colar no editor de código da Shopify, a partir de um pedido em português.
+
+Responda em JSON:
+{
+  "arquivos": [
+    {
+      "nome": "nome curto do arquivo, até 40 caracteres (ex.: 'Carrossel de avaliações por categoria')",
+      "tipo": "secao" | "snippet",
+      "caminhoTema": "caminho relativo à raiz do tema, ex.: sections/carrossel-avaliacoes.liquid",
+      "codigo": "o arquivo Liquid COMPLETO — HTML + {% style %} + <script> + {% schema %} quando for seção"
+    }
+  ],
+  "explicacao": "1-2 frases em pt-BR explicando o que foi gerado e o que preserva/integra do tema",
+  "comoConfigurar": ["bullet 1 em pt-BR explicando uma configuração específica que a seção gerada tem, e o efeito prático dela", "bullet 2...", "..."],
+  "avisoCodigoAntigo": "se o pedido sugerir que já existe uma versão anterior (ex.: 'transforma esse código que eu já tenho' ou 'substitui o carrossel atual'), uma frase avisando pra remover a instalação antiga (bloco de Liquid personalizado, snippet duplicado) pra não ficar duas rodando juntas. Vazio se não se aplica."
+}
+
+Regras de engenharia (não pule nenhuma):
+- "arquivos" é uma LISTA — quase sempre terá 1 item, mas SEMPRE que o pedido resultar num snippet reutilizável (chamado via {% render %}), gere TAMBÉM a seção que faz esse render como um segundo item da lista, pronta pra colar — nunca devolva um snippet sozinho pedindo pro usuário criar a seção por conta própria. Do mesmo jeito, se o código precisar de um segundo arquivo de apoio (outro snippet, um asset .js/.css separado), inclua todos como itens de "arquivos".
+- Seção autônoma quando o componente pode ocupar seu próprio lugar no template ou só melhora algo existente via JavaScript, sem precisar de nenhum outro arquivo. Snippet só quando for reutilizado por várias seções — e nesse caso o próprio pedido já deve te levar a gerar a seção correspondente junto, conforme a regra acima.
+- SEMPRE inclua {% schema %} com "name" (até 25 caracteres) e "presets" pra aparecer em "Adicionar seção" em toda seção gerada. Restrinja "templates"/"enabled_on" aos tipos de página que o código realmente usa (ex.: product, se usa objeto product).
+- Nunca deixe valores fixos que o lojista claramente vai querer editar — texto, cor, imagem, número visual (tamanho/espaçamento) — tudo isso vira "settings" no schema, com o tipo certo (text/textarea/richtext/image_picker/url/color/color_scheme/range/select/checkbox/product/collection). Listas repetíveis (cards, depoimentos, itens) viram "blocks", nunca um número fixo de campos numerados.
+- Se o pedido envolve TRANSFORMAR um seletor nativo de variantes em algo visual: reaproveite os inputs/labels originais (mova pra um wrapper, não recrie o formulário) pra manter preço/mídia/disponibilidade sincronizados com o tema. Nunca construa um <form> de compra paralelo.
+- Se o pedido envolve preço: guarde centavos numéricos em data-*, nunca a saída do filtro "money" (pode vir com HTML embutido tipo <span class="money">). Formate no JavaScript.
+- Escope CSS e IDs com {{ section.id }} (ou {{ block.id }} em blocks) pra não vazar estilo/script entre múltiplas instâncias da mesma seção na página.
+- Se o código tem estado que precisa sobreviver a edições no personalizador da Shopify (reordenar, editar em tempo real), escute "shopify:section:load"/"shopify:section:unload" e destrua listeners/observers antigos antes de reinicializar.
+- Acessibilidade: mantenha inputs nativos (radio/checkbox) no DOM mesmo se ocultos visualmente, com foco de teclado visível; aria-label descritivo; respeite prefers-reduced-motion.
+- "comoConfigurar" tem que citar os NOMES REAIS dos settings que você colocou no schema (não genérico) — o usuário vai ler isso pra saber o que cada opção faz no personalizador.
+- Não invente objeto Liquid que não existe. Se não tiver certeza de um objeto/filtro, prefira uma abordagem mais simples e correta a uma mais impressionante e arriscada.`;
+
+    // ── Provedor de IA do Agente — chave e modelo PRÓPRIOS, independentes
+    // da chave OpenAI compartilhada por Estúdio/Lançamento/Produtos. Cada
+    // provedor guarda sua própria chave (localStorage, mesmo padrão já usado
+    // no resto do app) e o modelo escolhido — nunca herda de outro lugar.
+    const PROVEDORES_IA = [
+        { id: 'openai', label: 'OpenAI', modeloPadrao: 'gpt-4o', placeholderChave: 'sk-...' },
+        { id: 'anthropic', label: 'Claude (Anthropic)', modeloPadrao: 'claude-sonnet-5', placeholderChave: 'sk-ant-...' },
+        { id: 'xai', label: 'Grok (xAI)', modeloPadrao: 'grok-2-latest', placeholderChave: 'xai-...' },
+        { id: 'gemini', label: 'Gemini (Google)', modeloPadrao: 'gemini-2.5-flash', placeholderChave: 'AIza...' },
+    ];
+    const PROVEDOR_KEY = 'loja_agente_provedor';
+    const MODELO_KEY_PREFIX = 'loja_agente_modelo_';
+    const CHAVE_KEY_PREFIX = 'loja_agente_chave_';
+
+    function _provedorInfo(id) { return PROVEDORES_IA.find(p => p.id === id) || PROVEDORES_IA[0]; }
+
+    function _configIA() {
+        const provedor = localStorage.getItem(PROVEDOR_KEY) || 'openai';
+        const info = _provedorInfo(provedor);
+        const modelo = localStorage.getItem(MODELO_KEY_PREFIX + provedor) || info.modeloPadrao;
+        const chave = localStorage.getItem(CHAVE_KEY_PREFIX + provedor) || '';
+        return { provedor, modelo, chave };
+    }
+
+    function _salvarProvedorIA(provedor) { localStorage.setItem(PROVEDOR_KEY, provedor); }
+    function _salvarModeloIA(provedor, modelo) { localStorage.setItem(MODELO_KEY_PREFIX + provedor, modelo); }
+    function _salvarChaveIA(provedor, chave) { localStorage.setItem(CHAVE_KEY_PREFIX + provedor, chave); }
+
+    async function _chamarOpenAI(modelo, chave, system, userContent, maxTokens = 1200) {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature: 0.3,
+                response_format: { type: 'json_object' },
+                messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
+
+    async function _chamarAnthropic(modelo, chave, system, userContent, maxTokens = 1200) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json', 'x-api-key': chave,
+                'anthropic-version': '2023-06-01',
+                // Sem isso a Anthropic recusa CORS de chamada direta do navegador.
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: modelo, max_tokens: maxTokens, system, messages: [{ role: 'user', content: userContent }] }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.content?.[0]?.text || '';
+    }
+
+    async function _chamarXAI(modelo, chave, system, userContent, maxTokens = 1200) {
+        // API da xAI é compatível com o formato da OpenAI (mesmo endpoint shape).
+        const res = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature: 0.3,
+                messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `xAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
+
+    async function _chamarGemini(modelo, chave, system, userContent, maxTokens = 1200) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(chave)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: userContent }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, temperature: 0.3 },
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    }
+
+    async function _pedirPlanoIA(system, userContent, maxTokens = 1200) {
+        const { provedor, modelo, chave } = _configIA();
+        if (!chave) throw new Error(`Configure a chave de API do provedor (${_provedorInfo(provedor).label}) no ícone de engrenagem, ao lado de "Pedir à IA".`);
+        if (provedor === 'openai') return _chamarOpenAI(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'anthropic') return _chamarAnthropic(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'xai') return _chamarXAI(modelo, chave, system, userContent, maxTokens);
+        if (provedor === 'gemini') return _chamarGemini(modelo, chave, system, userContent, maxTokens);
+        throw new Error('Provedor de IA desconhecido: ' + provedor);
+    }
+
+    function _extrairJson(texto) {
+        let t = String(texto || '').trim();
+        const cerca = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (cerca) t = cerca[1].trim();
+        const ini = t.search(/[{[]/);
+        if (ini > 0) t = t.slice(ini);
+        const fim = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+        if (fim >= 0) t = t.slice(0, fim + 1);
+        return JSON.parse(t);
+    }
+
+    // Estado do plano pendente de confirmação (null enquanto não há nada proposto).
+    let _agentePlano = null;
+
+    function _renderAgenteBox() {
+        const { provedor, modelo, chave } = _configIA();
+        const min = _isCardMinimizado('agente');
+        return `
+            <div class="loja-card loja-agente${min ? ' is-minimizado' : ''}">
+                <div class="loja-agente-head">
+                    <h3 class="loja-card-title"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Pedir à IA</h3>
+                    <button type="button" class="loja-copy-btn" data-card-minimizar="agente" title="${min ? 'Expandir' : 'Minimizar'}">
+                        <i data-lucide="${min ? 'chevron-down' : 'chevron-up'}" style="width:14px;height:14px"></i>
+                    </button>
+                    <button type="button" class="loja-copy-btn" id="loja-agente-config-btn" title="Configurar provedor de IA">
+                        <i data-lucide="settings" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+                <div class="loja-card-corpo">
+                    <div class="loja-agente-config" id="loja-agente-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Provedor</label>
+                                <select class="input" id="loja-agente-provedor">
+                                    ${PROVEDORES_IA.map(p => `<option value="${p.id}" ${p.id === provedor ? 'selected' : ''}>${p.label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Modelo</label>
+                                <input type="text" class="input" id="loja-agente-modelo" value="${escapeHtml(modelo)}" placeholder="${escapeHtml(_provedorInfo(provedor).modeloPadrao)}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Chave da API (${escapeHtml(_provedorInfo(provedor).label)})</label>
+                            <input type="password" class="input" id="loja-agente-chave" value="${escapeHtml(chave)}" placeholder="${escapeHtml(_provedorInfo(provedor).placeholderChave)}" autocomplete="off">
+                        </div>
+                        <p class="loja-card-hint">Chave só deste Agente — independente da chave OpenAI usada em Estúdio/Lançamento/Produtos.</p>
+                    </div>
+                    <p class="loja-card-hint">Descreva o que quer mudar num produto — preço, status, template. A IA propõe, você confirma antes de qualquer coisa ir pra loja de verdade.</p>
+                    <div class="loja-agente-input-row">
+                        <textarea id="loja-agente-pedido" class="input" rows="2" placeholder="Ex.: atualizar o preço do Óculos Ferrari pra 45 e ativar o produto"></textarea>
+                        <button type="button" class="btn btn-primary" id="loja-agente-enviar">Pedir</button>
+                    </div>
+                    <div id="loja-agente-resultado"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    function _wireAgenteEvents() {
+        document.getElementById('loja-agente-enviar')?.addEventListener('click', _processarPedidoAgente);
+
+        document.getElementById('loja-agente-config-btn')?.addEventListener('click', () => {
+            document.getElementById('loja-agente-config')?.classList.toggle('is-aberta');
+        });
+
+        document.querySelector('[data-card-minimizar="agente"]')?.addEventListener('click', () => {
+            _alternarCardMinimizado('agente');
+            renderCodigo();
+        });
+
+        const provSel = document.getElementById('loja-agente-provedor');
+        const modeloInput = document.getElementById('loja-agente-modelo');
+        const chaveInput = document.getElementById('loja-agente-chave');
+
+        provSel?.addEventListener('change', () => {
+            _salvarProvedorIA(provSel.value);
+            // Troca de provedor: recarrega o card de config com o modelo/chave
+            // JÁ salvos daquele provedor (cada um é independente).
+            const cfg = _configIA();
+            if (modeloInput) modeloInput.value = cfg.modelo;
+            if (chaveInput) { chaveInput.value = cfg.chave; chaveInput.placeholder = _provedorInfo(cfg.provedor).placeholderChave; }
+            const label = document.querySelector('#loja-agente-chave')?.closest('.form-group')?.querySelector('label');
+            if (label) label.textContent = `Chave da API (${_provedorInfo(cfg.provedor).label})`;
+        });
+        modeloInput?.addEventListener('change', () => _salvarModeloIA(provSel.value, modeloInput.value.trim() || _provedorInfo(provSel.value).modeloPadrao));
+        chaveInput?.addEventListener('change', () => _salvarChaveIA(provSel.value, chaveInput.value.trim()));
+    }
+
+    async function _processarPedidoAgente() {
+        const campo = document.getElementById('loja-agente-pedido');
+        const pedido = (campo?.value || '').trim();
+        const resultado = document.getElementById('loja-agente-resultado');
+        if (!pedido || !resultado) return;
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            resultado.innerHTML = `<div class="loja-agente-erro">Conecte a Shopify primeiro (menu do perfil → Shopify).</div>`;
+            return;
+        }
+        _agentePlano = null;
+        resultado.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Buscando produtos da loja…</div>`;
+        _icones();
+        try {
+            const produtos = await ShopifyModule.fetchShopifyProducts();
+            const listaParaIA = produtos.slice(0, 150).map(p => ({
+                id: p.id, titulo: p.title, status: p.status, precoMin: p.priceMin,
+            }));
+            resultado.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Pensando…</div>`;
+            _icones();
+            const txt = await _pedirPlanoIA(SISTEMA_AGENTE, `Pedido: """${pedido}"""\n\nProdutos existentes (JSON): ${JSON.stringify(listaParaIA)}`);
+            const plano = _extrairJson(txt);
+            await _montarPreviewPlano(plano, produtos, pedido);
+        } catch (e) {
+            resultado.innerHTML = `<div class="loja-agente-erro">Erro: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    async function _montarPreviewPlano(plano, produtos, pedidoOriginal) {
+        const resultado = document.getElementById('loja-agente-resultado');
+        if (!resultado) return;
+        const produto = produtos.find(p => String(p.id) === String(plano.produtoId));
+        if (!produto || plano.confianca === 'baixa' || !plano.mudancas?.length) {
+            resultado.innerHTML = `<div class="loja-agente-erro">
+                ${escapeHtml(plano.entendimento || 'Não consegui identificar um produto claro nesse pedido.')}
+                <br><small>Tente citar o nome exato do produto (ex.: "no produto Óculos Ferrari Portofino...").</small>
+            </div>`;
+            return;
+        }
+
+        const precisaTema = plano.mudancas.some(m => m.campo === 'templateSuffix');
+        const precisaPreco = plano.mudancas.some(m => m.campo === 'price');
+        const multiVariante = precisaPreco && produto.variants.length > 1;
+
+        _agentePlano = { produto, mudancas: plano.mudancas, pedidoOriginal, temaId: null, variantId: produto.variants[0]?.id || null };
+
+        const linhas = plano.mudancas.map(m => {
+            if (m.campo === 'title') return `<li>${CAMPO_LABELS.title}: <s>${escapeHtml(produto.title)}</s> → <strong>${escapeHtml(m.valor)}</strong></li>`;
+            if (m.campo === 'status') return `<li>${CAMPO_LABELS.status}: <s>${STATUS_LABELS[produto.status] || produto.status}</s> → <strong>${STATUS_LABELS[m.valor] || m.valor}</strong></li>`;
+            if (m.campo === 'price') return `<li>${CAMPO_LABELS.price}: <s>${produto.currency} ${produto.priceMin.toFixed(2)}</s> → <strong>${produto.currency} ${Number(m.valor).toFixed(2)}</strong></li>`;
+            if (m.campo === 'templateSuffix') return `<li>${CAMPO_LABELS.templateSuffix}: <strong id="loja-agente-template-label">carregando…</strong></li>`;
+            return '';
+        }).join('');
+
+        resultado.innerHTML = `
+            <div class="loja-plano">
+                <div class="loja-plano-entendimento">${escapeHtml(plano.entendimento || '')}</div>
+                <div class="loja-plano-produto"><i data-lucide="package" style="width:13px;height:13px;vertical-align:-2px"></i> ${escapeHtml(produto.title)}</div>
+                <ul class="loja-plano-mudancas">${linhas}</ul>
+                ${multiVariante ? `
+                    <div class="form-group">
+                        <label>Qual variante recebe o preço novo?</label>
+                        <select class="input" id="loja-agente-variante">
+                            ${produto.variants.map(v => `<option value="${v.id}">${escapeHtml(v.title || v.sku || v.id)} — ${produto.currency} ${v.price.toFixed(2)}</option>`).join('')}
+                        </select>
+                    </div>` : ''}
+                ${precisaTema ? `
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tema</label>
+                            <select class="input" id="loja-agente-tema"><option>Carregando temas…</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Template</label>
+                            <select class="input" id="loja-agente-template"><option>—</option></select>
+                        </div>
+                    </div>` : ''}
+                <div class="loja-plano-acoes">
+                    <button type="button" class="btn btn-secondary" id="loja-agente-cancelar">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="loja-agente-aplicar">Aplicar mudanças</button>
+                </div>
+                <div id="loja-agente-status-final"></div>
+            </div>
+        `;
+        _icones();
+
+        document.getElementById('loja-agente-cancelar')?.addEventListener('click', () => {
+            _agentePlano = null;
+            resultado.innerHTML = '';
+        });
+        document.getElementById('loja-agente-variante')?.addEventListener('change', (e) => {
+            if (_agentePlano) _agentePlano.variantId = e.target.value;
+        });
+        document.getElementById('loja-agente-aplicar')?.addEventListener('click', _aplicarPlanoAgente);
+
+        if (precisaTema) await _carregarSeletorDeTema(plano.mudancas.find(m => m.campo === 'templateSuffix').valor);
+    }
+
+    async function _carregarSeletorDeTema(suffixSugerido) {
+        const temaSel = document.getElementById('loja-agente-tema');
+        const tplSel = document.getElementById('loja-agente-template');
+        const label = document.getElementById('loja-agente-template-label');
+        if (!temaSel || !tplSel) return;
+        try {
+            const temas = await ShopifyModule.fetchThemes();
+            if (!temas.length) throw new Error('nenhum tema encontrado');
+            temaSel.innerHTML = temas.map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.role === 'MAIN' ? ' (publicado)' : ''}</option>`).join('');
+            const principal = temas.find(t => t.role === 'MAIN') || temas[0];
+            temaSel.value = principal.id;
+            if (_agentePlano) _agentePlano.temaId = principal.id;
+            await _carregarTemplatesDoTema(principal.id, suffixSugerido);
+            temaSel.addEventListener('change', () => {
+                if (_agentePlano) _agentePlano.temaId = temaSel.value;
+                _carregarTemplatesDoTema(temaSel.value, suffixSugerido);
+            });
+        } catch (e) {
+            temaSel.innerHTML = `<option value="">Erro ao carregar temas</option>`;
+            tplSel.innerHTML = `<option value="">—</option>`;
+            if (label) label.textContent = suffixSugerido || 'padrão';
+            const resultado = document.getElementById('loja-agente-resultado');
+            const aviso = document.createElement('div');
+            aviso.className = 'loja-agente-aviso';
+            aviso.textContent = `Não consegui listar os temas (${e.message}). Se a loja ainda não foi reautorizada com o escopo de leitura de temas, reconecte a Shopify no menu do perfil. Vou usar o template "${suffixSugerido || 'padrão'}" digitado como veio no pedido.`;
+            resultado?.appendChild(aviso);
+        }
+    }
+
+    async function _carregarTemplatesDoTema(temaId, suffixSugerido) {
+        const tplSel = document.getElementById('loja-agente-template');
+        const label = document.getElementById('loja-agente-template-label');
+        if (!tplSel) return;
+        tplSel.innerHTML = `<option>Carregando…</option>`;
+        try {
+            const templates = await ShopifyModule.fetchProductTemplates(temaId);
+            const opcoes = [{ suffix: null, filename: 'templates/product.json (padrão)' }, ...templates];
+            tplSel.innerHTML = opcoes.map(t => `<option value="${t.suffix || ''}">${escapeHtml(t.suffix || 'Padrão')}</option>`).join('');
+            const bate = opcoes.find(t => (t.suffix || '') === (suffixSugerido || ''));
+            tplSel.value = bate ? (bate.suffix || '') : (opcoes[0].suffix || '');
+            if (_agentePlano) _agentePlano.mudancas = _agentePlano.mudancas.map(m => m.campo === 'templateSuffix' ? { ...m, valor: tplSel.value || null } : m);
+            if (label) label.textContent = tplSel.value || 'Padrão';
+            tplSel.addEventListener('change', () => {
+                if (_agentePlano) _agentePlano.mudancas = _agentePlano.mudancas.map(m => m.campo === 'templateSuffix' ? { ...m, valor: tplSel.value || null } : m);
+                if (label) label.textContent = tplSel.value || 'Padrão';
+            });
+        } catch (e) {
+            tplSel.innerHTML = `<option value="${escapeHtml(suffixSugerido || '')}">${escapeHtml(suffixSugerido || 'padrão')} (não confirmado)</option>`;
+            if (label) label.textContent = suffixSugerido || 'padrão';
+        }
+    }
+
+    async function _aplicarPlanoAgente() {
+        if (!_agentePlano) return;
+        const { produto, mudancas, variantId } = _agentePlano;
+        const status = document.getElementById('loja-agente-status-final');
+        const btn = document.getElementById('loja-agente-aplicar');
+        if (btn) btn.disabled = true;
+        if (status) status.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Aplicando…</div>`;
+        _icones();
+        try {
+            const camposProduto = {};
+            mudancas.forEach(m => { if (m.campo === 'title' || m.campo === 'status' || m.campo === 'templateSuffix') camposProduto[m.campo] = m.valor; });
+            if (Object.keys(camposProduto).length) {
+                await ShopifyModule.updateProductFields(produto.gid, camposProduto);
+            }
+            const precoMudanca = mudancas.find(m => m.campo === 'price');
+            if (precoMudanca) {
+                const variantGid = `gid://shopify/ProductVariant/${variantId}`;
+                await ShopifyModule.updateVariantPrice(produto.gid, variantGid, precoMudanca.valor);
+            }
+            if (status) status.innerHTML = `<div class="loja-agente-sucesso"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Aplicado em "${escapeHtml(produto.title)}".</div>`;
+            showToast('Mudanças aplicadas na Shopify', 'success');
+            const campoPedido = document.getElementById('loja-agente-pedido');
+            if (campoPedido) campoPedido.value = '';
+            _agentePlano = null;
+            _icones();
+        } catch (e) {
+            if (status) status.innerHTML = `<div class="loja-agente-erro">Falhou: ${escapeHtml(e.message)}</div>`;
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // ── Criar seção com IA — UI ──────────────────────────────────────────
+    function _renderCriarSecaoBox() {
+        const min = _isCardMinimizado('criarsecao');
+        return `
+            <div class="loja-card loja-agente${min ? ' is-minimizado' : ''}">
+                <div class="loja-agente-head">
+                    <h3 class="loja-card-title"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Criar seção com IA</h3>
+                    <button type="button" class="loja-copy-btn" data-card-minimizar="criarsecao" title="${min ? 'Expandir' : 'Minimizar'}">
+                        <i data-lucide="${min ? 'chevron-down' : 'chevron-up'}" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+                <div class="loja-card-corpo">
+                    <p class="loja-card-hint">Descreva a seção que você quer — a IA gera o código Liquid completo (schema incluído). Quando o pedido resultar num snippet reutilizável, a seção que faz o {% render %} dele vem junto automaticamente. Salva tudo aqui embaixo, vinculado, e explica como configurar cada opção. Usa o mesmo provedor/chave de "Pedir à IA" acima.</p>
+                    <div class="loja-agente-input-row">
+                        <textarea id="loja-criar-pedido" class="input" rows="2" placeholder="Ex.: transformar meu seletor de variantes em cards visuais com foto, ou criar um carrossel de avaliações segmentado por categoria"></textarea>
+                        <button type="button" class="btn btn-primary" id="loja-criar-enviar">Criar</button>
+                    </div>
+                    <div id="loja-criar-resultado"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    function _wireCriarSecaoEvents(storeId) {
+        document.getElementById('loja-criar-enviar')?.addEventListener('click', () => _processarCriarSecao(storeId));
+        document.querySelector('[data-card-minimizar="criarsecao"]')?.addEventListener('click', () => {
+            _alternarCardMinimizado('criarsecao');
+            renderCodigo();
+        });
+    }
+
+    async function _processarCriarSecao(storeId) {
+        const campo = document.getElementById('loja-criar-pedido');
+        const pedido = (campo?.value || '').trim();
+        const resultado = document.getElementById('loja-criar-resultado');
+        if (!pedido || !resultado) return;
+        resultado.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Gerando código — seções completas demoram um pouco mais…</div>`;
+        _icones();
+        try {
+            const txt = await _pedirPlanoIA(SISTEMA_CRIAR_SECAO, pedido, 8000);
+            const plano = _extrairJson(txt);
+            const arquivos = Array.isArray(plano.arquivos) ? plano.arquivos : (plano.codigo ? [plano] : []);
+            const validos = arquivos.filter(a => a?.codigo && String(a.codigo).trim());
+            if (!validos.length) throw new Error('A IA não devolveu código — tente descrever de novo, com mais detalhe.');
+
+            // Mesmo grupoId em todos os arquivos desta geração — é o que
+            // deixa visível, na lista, que um snippet e a seção que o chama
+            // nasceram juntos e precisam ser instalados juntos.
+            const grupoId = validos.length > 1 ? generateId('grupo') : '';
+            const criados = validos.map(a => ({
+                id: generateId('snip'), storeId, grupoId,
+                nome: a.nome || 'Gerado por IA',
+                descricao: plano.explicacao || '',
+                tag: a.tipo === 'snippet' ? 'snippet' : 'secao',
+                codigo: a.codigo,
+                caminhoTema: _sanitizarCaminhoTema(a.caminhoTema || ''),
+                criadoEm: _agora(), atualizadoEm: _agora(),
+            }));
+            criados.forEach(novo => { _snippets.unshift(novo); _expandidos.add(novo.id); });
+            await KVStore.set(SNIPPETS_KEY, _snippets);
+
+            const bullets = (plano.comoConfigurar || []).map(b => `<li>${escapeHtml(b)}</li>`).join('');
+            const listaArquivos = criados.map(novo => `<li><i data-lucide="check" style="width:12px;height:12px;vertical-align:-1px"></i> ${escapeHtml(novo.nome)} <span class="loja-tag-pill" data-tag="${novo.tag}" style="margin-left:0.3rem">${_tagLabel(novo.tag)}</span></li>`).join('');
+            resultado.innerHTML = `
+                <div class="loja-plano">
+                    <div class="loja-plano-produto"><i data-lucide="check" style="width:13px;height:13px;vertical-align:-2px"></i> Salvo${criados.length > 1 ? 's' : ''} ${criados.length > 1 ? `${criados.length} arquivos vinculados` : 'como snippet'}${criados.length === 1 ? `: "${escapeHtml(criados[0].nome)}"` : ''}</div>
+                    ${criados.length > 1 ? `<ul class="loja-instalar-passos">${listaArquivos}</ul>` : ''}
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0.4rem 0">${escapeHtml(plano.explicacao || '')}</p>
+                    ${bullets ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.3rem">Como configurar:</div><ul class="loja-instalar-passos">${bullets}</ul>` : ''}
+                    ${plano.avisoCodigoAntigo ? `<div class="loja-agente-aviso">${escapeHtml(plano.avisoCodigoAntigo)}</div>` : ''}
+                </div>
+            `;
+            campo.value = '';
+
+            // Atualiza só a lista de snippets — preserva o resultado acima
+            // (um renderCodigo() completo apagaria essa explicação).
+            const todas = isAllStoresSelected();
+            const lista = todas ? _snippets : _snippets.filter(s => s.storeId === getCurrentStoreId());
+            const box = document.getElementById('loja-snip-list');
+            if (box) box.innerHTML = _renderSnippetsList(lista, todas);
+            _icones();
+        } catch (e) {
+            resultado.innerHTML = `<div class="loja-agente-erro">Erro: ${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function _tagLabel(tagId) { return TAGS_SNIPPET.find(t => t.id === tagId)?.label || tagId; }
+
+    // Caminho de arquivo NO TEMA (relativo à raiz do tema), não caminho do
+    // sistema — cola frequente vem do Finder/VS Code com "~/", "./" ou "/"
+    // na frente.
+    function _sanitizarCaminhoTema(valor) {
+        return String(valor || '').trim().replace(/^~\/?/, '').replace(/^\.\/+/, '').replace(/^\/+/, '');
+    }
+
+    function _slug(texto) {
+        // ̀-ͯ = acentos combinantes depois do NFD — escrito em
+        // escape hex de propósito (o caractere literal é invisível e some
+        // silenciosamente em qualquer cópia/colagem).
+        return String(texto || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+    }
+
+    // Extensão do bloco de código no markdown — puramente cosmética (o
+    // Liquid não tem highlighter próprio na maioria dos renderizadores, mas
+    // "liquid" já é reconhecido por GitHub/VS Code).
+    const LINGUAGEM_MD = { secao: 'liquid', snippet: 'liquid', css: 'css', js: 'javascript', outro: '' };
+
+    function _baixarSnippetMarkdown(s) {
+        const linguagem = LINGUAGEM_MD[s.tag] ?? '';
+        const md = [
+            `# ${s.nome || 'Sem nome'}`,
+            '',
+            `**Tipo:** ${_tagLabel(s.tag)}`,
+            s.descricao ? `\n${s.descricao}` : '',
+            '',
+            '```' + linguagem,
+            s.codigo || '',
+            '```',
+            '',
+        ].join('\n');
+        const blob = new Blob([md], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${_slug(s.nome) || 'snippet'}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function _renderSnippetsList(lista, todas) {
+        if (!lista.length) return '<div class="loja-empty">Nenhum snippet salvo ainda. Clique em "Novo snippet" pra começar.</div>';
+        // Snippets do mesmo grupo (gerados juntos, ex. snippet + a seção que
+        // faz {% render %} dele) ficam adjacentes na lista — senão o vínculo
+        // fica invisível mesmo mostrando o badge.
+        const ordenada = [...lista].sort((a, b) => {
+            if (a.grupoId && a.grupoId === b.grupoId) return 0;
+            return (a.grupoId || '').localeCompare(b.grupoId || '');
+        });
+        return ordenada.map(s => {
+            const aberto = _expandidos.has(s.id);
+            const doGrupo = s.grupoId ? lista.filter(x => x.grupoId === s.grupoId && x.id !== s.id) : [];
+            return `
+            <div class="loja-snippet-item${aberto ? ' is-aberto' : ''}" data-snip="${s.id}">
+                <div class="loja-snippet-header">
+                    <button type="button" class="loja-snippet-toggle" data-snip-toggle="${s.id}">
+                        <i data-lucide="chevron-right" class="loja-snippet-chevron"></i>
+                        <span class="loja-snippet-nome">${escapeHtml(s.nome) || 'Sem nome'}</span>
+                        <span class="loja-tag-pill" data-tag="${s.tag}">${_tagLabel(s.tag)}</span>
+                        ${todas ? `<span class="loja-store-badge">${escapeHtml(_nomeDaLoja(s.storeId))}</span>` : ''}
+                        ${doGrupo.length ? `<span class="loja-vinculo-badge" title="Instalar junto com: ${escapeHtml(doGrupo.map(x => x.nome).join(', '))}"><i data-lucide="link-2" style="width:10px;height:10px"></i> vinculado a ${doGrupo.length}</span>` : ''}
+                    </button>
+                    <button type="button" class="loja-copy-btn" data-snip-copiar="${s.id}" title="Copiar código">
+                        <i data-lucide="copy" style="width:13px;height:13px"></i>
+                    </button>
+                    <button type="button" class="loja-copy-btn" data-snip-baixar="${s.id}" title="Baixar como Markdown">
+                        <i data-lucide="download" style="width:13px;height:13px"></i>
+                    </button>
+                    <button type="button" class="loja-row-x" data-snip-del="${s.id}" title="Remover">&times;</button>
+                </div>
+                <div class="loja-snippet-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Nome</label>
+                            <input type="text" class="input" data-snip-field="nome" value="${escapeHtml(s.nome)}" placeholder="Nome do snippet">
+                        </div>
+                        <div class="form-group" style="flex:0 0 150px">
+                            <label>Tipo</label>
+                            <select class="input" data-snip-field="tag">
+                                ${TAGS_SNIPPET.map(t => `<option value="${t.id}" ${s.tag === t.id ? 'selected' : ''}>${t.label}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%">
+                            <label>Descrição</label>
+                            <input type="text" class="input" data-snip-field="descricao" value="${escapeHtml(s.descricao)}" placeholder="Pra que serve esse código">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%">
+                            <label>Caminho no tema <span style="font-weight:400;color:var(--text-muted)">(onde esse código vira arquivo — ex.: sections/nome-da-secao.liquid)</span></label>
+                            <input type="text" class="input" data-snip-field="caminhoTema" value="${escapeHtml(s.caminhoTema || '')}" placeholder="sections/minha-secao.liquid ou snippets/meu-snippet.liquid">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%">
+                            <div class="loja-code-label-row">
+                                <label>Código</label>
+                                <button type="button" class="loja-copy-btn" data-snip-img="${s.id}" title="Inserir imagem no código">
+                                    <i data-lucide="image-plus" style="width:12px;height:12px"></i>
+                                </button>
+                                <button type="button" class="loja-copy-btn" data-snip-expandir="${s.id}" title="Expandir/recolher código">
+                                    <i data-lucide="maximize-2" style="width:12px;height:12px"></i>
+                                </button>
+                            </div>
+                            <textarea class="input loja-code-area${_codigoExpandido.has(s.id) ? ' is-expandido' : ''}" data-snip-field="codigo" placeholder="{% comment %} ... {% endcomment %}" spellcheck="false">${escapeHtml(s.codigo)}</textarea>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-snip-instalar="${s.id}">
+                        <i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Instalar no tema
+                    </button>
+                    <div class="loja-instalar-painel" id="loja-instalar-${s.id}" style="display:none">
+                        <div class="loja-instalar-bloco">
+                            <h4>Manual — sem abrir nada por você</h4>
+                            <p class="loja-card-hint">Baixa o arquivo pronto (nome e conteúdo certos) pra você instalar do seu jeito — CLI do tema, editor de código, repositório com GitHub conectado, ou mandar pra outra pessoa.</p>
+                            <ol class="loja-instalar-passos">
+                                <li>Baixe o arquivo abaixo — já sai com o nome certo: <code>${escapeHtml((s.caminhoTema || '').split('/').pop() || 'arquivo.liquid')}</code>.</li>
+                                <li>No admin da Shopify: <strong>Loja virtual → Temas → ⋮ no tema → Editar código</strong>.</li>
+                                <li>Na pasta <strong>${(s.caminhoTema || '').startsWith('snippets/') ? 'Snippets' : (s.caminhoTema || '').startsWith('sections/') ? 'Sections' : (s.caminhoTema || '').startsWith('assets/') ? 'Assets' : 'correspondente'}</strong>, clique em <strong>Adicionar um novo arquivo</strong> (ou abra o já existente) com o caminho <code>${escapeHtml(s.caminhoTema || '(defina o caminho acima)')}</code>.</li>
+                                <li>Cole o conteúdo do arquivo baixado e salve.</li>
+                            </ol>
+                            <div class="loja-instalar-acoes">
+                                <button type="button" class="btn btn-secondary btn-sm" data-instalar-baixar-arquivo="${s.id}">
+                                    <i data-lucide="download" style="width:13px;height:13px;vertical-align:-2px"></i> Baixar arquivo
+                                </button>
+                            </div>
+                        </div>
+                        <div class="loja-instalar-bloco" id="loja-instalar-shopify-${s.id}">
+                            <h4>Direto pela Shopify</h4>
+                            <div class="form-group">
+                                <label>Tema</label>
+                                <select class="input" data-instalar-tema="${s.id}"><option>Carregando temas…</option></select>
+                            </div>
+                            <div class="loja-instalar-status" data-instalar-status="${s.id}"></div>
+                            <div class="loja-instalar-acoes">
+                                <button type="button" class="btn btn-secondary btn-sm" data-instalar-copiar="${s.id}">Copiar código</button>
+                                <button type="button" class="btn btn-primary btn-sm" data-instalar-abrir="${s.id}">Abrir editor de código</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        }).join('');
+    }
+
+    function _wireCodigoEvents(storeId) {
+        document.getElementById('loja-snip-add')?.addEventListener('click', async () => {
+            const novo = {
+                id: generateId('snip'), storeId, nome: '', descricao: '', tag: 'snippet', codigo: '', caminhoTema: '',
+                criadoEm: _agora(), atualizadoEm: _agora(),
+            };
+            _snippets.unshift(novo);
+            _expandidos.add(novo.id); // recém-criado nasce aberto — senão seria um card fechado e vazio
+            await KVStore.set(SNIPPETS_KEY, _snippets);
+            renderCodigo();
+        });
+
+        const box = document.getElementById('loja-snip-list');
+        // input (não só change): textarea de código se beneficia de salvar
+        // sem depender do usuário lembrar de clicar em algo — mas sem
+        // re-renderizar a cada tecla (isso mataria o cursor no meio da digitação).
+        let _debounce = null;
+        // Grava o valor em ambos os handlers (não só no 'input'): <select>
+        // não garante disparar 'input' em toda troca — só 'change' — então
+        // depender de um só handler pra escrever deixava o <select> de tag
+        // com o valor sempre desatualizado.
+        const _gravarCampo = (ev, { sanitizarCaminho } = {}) => {
+            const tgt = ev.target.closest('[data-snip-field]');
+            if (!tgt) return null;
+            const item = ev.target.closest('.loja-snippet-item');
+            const s = _snippets.find(x => x.id === item?.dataset.snip);
+            if (!s) return null;
+            let valor = tgt.value;
+            // Caminho de arquivo, não caminho do sistema — cola frequente vem
+            // do Finder/VS Code com "~/", "./" ou "/" na frente (ex.: usuário
+            // copiou "Copiar caminho" de outro app). Isso quebraria a
+            // detecção de colisão e o link do editor, então limpa no blur.
+            if (sanitizarCaminho && tgt.dataset.snipField === 'caminhoTema') {
+                valor = _sanitizarCaminhoTema(valor);
+                tgt.value = valor;
+            }
+            s[tgt.dataset.snipField] = valor;
+            s.atualizadoEm = _agora();
+            // Nome digitado no corpo expandido — reflete no rótulo do cabeçalho
+            // (que fica visível mesmo aberto) sem precisar re-renderizar tudo.
+            if (tgt.dataset.snipField === 'nome') {
+                const rotulo = item?.querySelector('.loja-snippet-nome');
+                if (rotulo) rotulo.textContent = tgt.value || 'Sem nome';
+            }
+            return s;
+        };
+        box?.addEventListener('input', (ev) => {
+            if (!_gravarCampo(ev)) return;
+            clearTimeout(_debounce);
+            _debounce = setTimeout(() => KVStore.set(SNIPPETS_KEY, _snippets), 400);
+        });
+        box?.addEventListener('change', (ev) => {
+            if (!_gravarCampo(ev, { sanitizarCaminho: true })) return;
+            clearTimeout(_debounce);
+            KVStore.set(SNIPPETS_KEY, _snippets);
+        });
+        box?.addEventListener('click', async (ev) => {
+            const copiar = ev.target.closest('[data-snip-copiar]');
+            if (copiar) {
+                const s = _snippets.find(x => x.id === copiar.dataset.snipCopiar);
+                if (!s) return;
+                try {
+                    await navigator.clipboard.writeText(s.codigo || '');
+                    showToast('Código copiado', 'success');
+                } catch (e) {
+                    showToast('Não consegui copiar: ' + e.message, 'error');
+                }
+                return;
+            }
+            const baixar = ev.target.closest('[data-snip-baixar]');
+            if (baixar) {
+                const s = _snippets.find(x => x.id === baixar.dataset.snipBaixar);
+                if (s) _baixarSnippetMarkdown(s);
+                return;
+            }
+            const del = ev.target.closest('[data-snip-del]');
+            if (del) {
+                if (!confirm('Remover este snippet?')) return;
+                _snippets = _snippets.filter(s => s.id !== del.dataset.snipDel);
+                _expandidos.delete(del.dataset.snipDel);
+                await KVStore.set(SNIPPETS_KEY, _snippets);
+                renderCodigo();
+                return;
+            }
+            const toggle = ev.target.closest('[data-snip-toggle]');
+            if (toggle) {
+                const id = toggle.dataset.snipToggle;
+                if (_expandidos.has(id)) _expandidos.delete(id); else _expandidos.add(id);
+                renderCodigo();
+                return;
+            }
+            const instalar = ev.target.closest('[data-snip-instalar]');
+            if (instalar) { _abrirPainelInstalar(instalar.dataset.snipInstalar); return; }
+
+            const img = ev.target.closest('[data-snip-img]');
+            if (img) {
+                const area = ev.target.closest('.loja-snippet-item')?.querySelector('.loja-code-area');
+                if (area) _abrirInserirImagem(area);
+                return;
+            }
+
+            const expandir = ev.target.closest('[data-snip-expandir]');
+            if (expandir) {
+                const id = expandir.dataset.snipExpandir;
+                if (_codigoExpandido.has(id)) _codigoExpandido.delete(id); else _codigoExpandido.add(id);
+                // Só alterna a classe — um renderCodigo() completo perderia a
+                // posição do cursor/scroll de quem está no meio de editar o código.
+                const area = ev.target.closest('.loja-snippet-item')?.querySelector('.loja-code-area');
+                area?.classList.toggle('is-expandido', _codigoExpandido.has(id));
+                return;
+            }
+        });
+    }
+
+    // ── Inserir imagem no código (LAUNCH-04) ─────────────────────────────
+    // Sobe uma imagem (opcionalmente editada por IA, com os mesmos recursos
+    // de cenário/ângulo/formato/biblioteca de prompts já usados no
+    // Lançamento) pros Arquivos da loja e cola a URL pública no ponto do
+    // cursor do textarea de código — não existe um "campo de imagem" no
+    // código Liquid gerado, então a URL é o jeito de levar uma imagem real
+    // pra dentro de um {% schema %} ou de uma tag <img> que o usuário edite.
+    const SUGESTOES_CENARIO_LOJA = [
+        'clean e-commerce banner, soft studio lighting',
+        'lifestyle scene with natural light, minimal background',
+        'flat lay on a neutral textured surface',
+        'seasonal promotional background, subtle and elegant',
+    ];
+    const ANGULOS_CAMERA_LOJA = [
+        { id: 'frontal',  label: 'Frontal',        instrucao: 'Camera angle: straight-on frontal view.' },
+        { id: '3-4-esq',  label: '3/4 esquerdo',   instrucao: 'Camera angle: three-quarter view from the front-left.' },
+        { id: '3-4-dir',  label: '3/4 direito',    instrucao: 'Camera angle: three-quarter view from the front-right.' },
+        { id: 'lateral',  label: 'Lateral',         instrucao: 'Camera angle: direct side profile, 90 degrees from the front.' },
+        { id: 'superior', label: 'Superior (topo)', instrucao: 'Camera angle: top-down flat-lay view.' },
+        { id: 'em-uso',   label: 'Em uso',          instrucao: 'Camera angle: the product actively being used, in a natural context.' },
+    ];
+    const DIMENSOES_LOJA = [
+        { id: '16x9', label: 'Banner 16:9',   w: 1920, h: 1080, ar: '16:9' },
+        { id: '1x1',  label: 'Quadrado 1:1',  w: 1080, h: 1080, ar: '1:1' },
+        { id: '4x5',  label: 'Retrato 4:5',   w: 1080, h: 1350, ar: '4:5' },
+        { id: '21x9', label: 'Hero 21:9',     w: 2100, h: 900,  ar: '21:9' },
+    ];
+
+    function _provedorImagemLoja() {
+        return localStorage.getItem('studio_img_provider') || 'auto';
+    }
+    function _modeloImagemLoja() {
+        return localStorage.getItem('studio_img_modelo') || '';
+    }
+
+    // Cola texto na posição do cursor de um <textarea> e reemite 'input' pra
+    // o listener que já grava o campo (_gravarCampo) pegar a mudança sozinho
+    // — sem isso a URL entraria no DOM mas nunca no _snippets em memória.
+    function _inserirNoCursor(textarea, texto) {
+        const ini = textarea.selectionStart ?? textarea.value.length;
+        const fim = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = textarea.value.slice(0, ini) + texto + textarea.value.slice(fim);
+        const pos = ini + texto.length;
+        textarea.setSelectionRange(pos, pos);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
+    }
+
+    function _abrirInserirImagem(textarea) {
+        document.querySelectorAll('.lanc-ov').forEach(el => el.remove());
+        let _blobBase = null;
+
+        const ov = document.createElement('div');
+        ov.className = 'lanc-ov';
+        ov.innerHTML = `
+            <div class="lanc-ov-caixa">
+                <h3><i data-lucide="image-plus" style="width:16px;height:16px;vertical-align:-3px"></i> Inserir imagem no código</h3>
+                <p class="lanc-hint">Sobe a imagem pros Arquivos da loja e cola a URL pública no código, no lugar do cursor.</p>
+                <input type="file" id="loja-img-upload" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary btn-sm" id="loja-img-upload-btn"><i data-lucide="upload" style="width:13px;height:13px;vertical-align:-2px"></i> Escolher imagem</button>
+                <img id="loja-img-preview" class="lanc-ref-preview" style="display:none;width:60px;height:60px;margin-top:0.4rem">
+                <div class="lanc-avancado" id="loja-img-avancado" style="display:none">
+                    <span style="font-size:0.78rem;color:var(--text-muted)">Editar com IA antes de inserir (opcional — sem nada aqui, sobe a imagem como está)</span>
+                    <div class="prompt-lib-row" style="margin-top:0.4rem">
+                        <input type="text" id="loja-img-cenario" class="input" placeholder="Cenário (ex.: clean e-commerce banner)" list="loja-img-cenario-sugestoes">
+                        <button type="button" class="btn btn-secondary btn-sm" id="loja-img-cenario-lib" title="Biblioteca de prompts"><i data-lucide="library" style="width:14px;height:14px"></i></button>
+                    </div>
+                    <datalist id="loja-img-cenario-sugestoes">${SUGESTOES_CENARIO_LOJA.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>
+                    <div class="lanc-cenario-chips">${SUGESTOES_CENARIO_LOJA.map(s => `<button type="button" class="lanc-cenario-chip" data-sug="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}</div>
+                    <div class="lanc-avancado-row">
+                        <select id="loja-img-angulo" class="input input-sm" title="Ângulo de câmera (opcional)">
+                            <option value="">Ângulo automático</option>
+                            ${ANGULOS_CAMERA_LOJA.map(a => `<option value="${a.id}">${escapeHtml(a.label)}</option>`).join('')}
+                        </select>
+                        <select id="loja-img-formato" class="input input-sm" title="Formato/proporção de saída (opcional)">
+                            <option value="">Formato original</option>
+                            ${DIMENSOES_LOJA.map(d => `<option value="${d.id}">${escapeHtml(d.label)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <input type="text" id="loja-img-descricao" class="input" style="margin-top:0.4rem" placeholder="Ou descreva o que quer mudar">
+                </div>
+                <div class="bulk-progress" id="loja-img-prog" style="display:none"><div class="bulk-progress-bar"><div class="bulk-progress-fill" id="loja-img-fill"></div></div></div>
+                <div id="loja-img-status" class="lanc-fotos-status"></div>
+                <div class="lanc-ov-acoes">
+                    <button type="button" class="btn btn-secondary" id="loja-img-fechar">Fechar</button>
+                    <button type="button" class="btn btn-primary" id="loja-img-ok" disabled>Inserir</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.querySelector('#loja-img-fechar').addEventListener('click', () => ov.remove());
+
+        const preview = ov.querySelector('#loja-img-preview');
+        const avancado = ov.querySelector('#loja-img-avancado');
+        const btnOk = ov.querySelector('#loja-img-ok');
+        ov.querySelector('#loja-img-upload-btn').addEventListener('click', () => ov.querySelector('#loja-img-upload').click());
+        ov.querySelector('#loja-img-upload').addEventListener('change', (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            _blobBase = f;
+            preview.src = URL.createObjectURL(f);
+            preview.style.display = '';
+            avancado.style.display = '';
+            btnOk.disabled = false;
+        });
+        ov.querySelectorAll('.lanc-cenario-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                ov.querySelector('#loja-img-cenario').value = chip.dataset.sug;
+                ov.querySelector('#loja-img-cenario').focus();
+            });
+        });
+        ov.querySelector('#loja-img-cenario-lib')?.addEventListener('click', () => {
+            const campo = ov.querySelector('#loja-img-cenario');
+            window.PromptTemplates?.open({
+                prefill: campo.value,
+                onUse: (texto) => { campo.value = texto; campo.focus(); },
+            });
+        });
+
+        const executar = async () => {
+            const status = ov.querySelector('#loja-img-status');
+            const prog = ov.querySelector('#loja-img-prog');
+            const fill = ov.querySelector('#loja-img-fill');
+            if (!_blobBase) { showToast('Escolha uma imagem primeiro', 'error'); return; }
+            if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+                showToast('Conecte a Shopify (Configurações → Integrações) pra hospedar a imagem', 'error');
+                return;
+            }
+            btnOk.disabled = true;
+            prog.style.display = '';
+            fill.style.width = '30%';
+            try {
+                const cenario = ov.querySelector('#loja-img-cenario').value.trim();
+                const descricao = ov.querySelector('#loja-img-descricao').value.trim();
+                const anguloId = ov.querySelector('#loja-img-angulo').value;
+                const angulo = ANGULOS_CAMERA_LOJA.find(a => a.id === anguloId);
+                const formatoId = ov.querySelector('#loja-img-formato').value;
+                const formato = DIMENSOES_LOJA.find(d => d.id === formatoId);
+
+                let saida = _blobBase;
+                if (cenario || descricao || angulo) {
+                    status.textContent = 'Gerando com IA…';
+                    let prompt = cenario
+                        ? ImageAI.promptCenario(cenario, '')
+                        : `Using the provided image, apply this change: ${descricao || 'adjust following the requested camera angle'}. Keep the rest of the image coherent, professional and suitable for an e-commerce website section.`;
+                    if (angulo) prompt += ` ${angulo.instrucao}`;
+                    saida = await ImageAI.editar(_blobBase, prompt, {
+                        formato: 'image/webp', compressao: 92,
+                        provedor: _provedorImagemLoja(), modelo: _modeloImagemLoja() || undefined,
+                        ...(formato ? { largura: formato.w, altura: formato.h, aspectRatio: formato.ar } : {}),
+                    });
+                }
+                fill.style.width = '70%';
+                status.textContent = 'Subindo pros Arquivos da loja…';
+                const url = await ShopifyModule.hospedarBlobImagem(saida, `secao-${Date.now()}`);
+                if (!url) throw new Error('A Shopify não devolveu a URL da imagem');
+                fill.style.width = '100%';
+                _inserirNoCursor(textarea, url);
+                showToast('Imagem inserida no código', 'success');
+                ov.remove();
+            } catch (e) {
+                status.textContent = 'Erro: ' + e.message;
+                status.style.color = 'var(--danger, #ef4444)';
+                btnOk.disabled = false;
+            }
+        };
+        btnOk.addEventListener('click', executar);
+        _icones();
+    }
+
+    // ── Instalar no tema (fluxo GUIADO — nunca escreve na Shopify sozinho) ──
+    // A Admin API tem uma mutation pra criar arquivo de tema (themeFilesUpsert),
+    // mas ela exige uma "Protected Scope Exemption" da própria Shopify além do
+    // escopo write_themes — aprovação manual, pode levar semanas, e há relatos
+    // de ACCESS_DENIED mesmo depois de aprovada. Em vez de prometer algo que
+    // pode nunca funcionar de verdade, o fluxo aqui é 100% funcional hoje:
+    // copia o código certo, mostra o caminho certo, e leva direto pro editor
+    // de código do tema escolhido — só falta colar e salvar.
+    async function _abrirPainelInstalar(id) {
+        const s = _snippets.find(x => x.id === id);
+        if (!s) return;
+        if (!s.caminhoTema?.trim()) {
+            showToast('Preencha o "Caminho no tema" primeiro', 'error');
+            document.querySelector(`[data-snip="${id}"] [data-snip-field="caminhoTema"]`)?.focus();
+            return;
+        }
+        const painel = document.getElementById(`loja-instalar-${id}`);
+        if (!painel) return;
+        const estavaAberto = painel.style.display !== 'none';
+        painel.style.display = estavaAberto ? 'none' : '';
+        if (estavaAberto) return;
+
+        // Bloco manual — baixar o arquivo funciona sempre, sem depender de
+        // sessão Shopify nenhuma.
+        painel.querySelector('[data-instalar-baixar-arquivo]').onclick = () => _baixarArquivoDoSnippet(s);
+
+        // Bloco "direto pela Shopify" — só faz sentido com sessão ativa;
+        // sem conexão, mostra um aviso simples em vez de travar o painel
+        // inteiro (o bloco manual continua funcionando do mesmo jeito).
+        const blocoShopify = document.getElementById(`loja-instalar-shopify-${id}`);
+        const temaSel = painel.querySelector('[data-instalar-tema]');
+        const status = painel.querySelector('[data-instalar-status]');
+        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured()) {
+            blocoShopify.innerHTML = `<h4>Direto pela Shopify</h4><div class="loja-agente-aviso">Conecte a Shopify (menu do perfil → Shopify) pra escolher o tema e abrir o editor direto daqui. O bloco manual acima já funciona sem isso.</div>`;
+            _icones();
+            return;
+        }
+
+        temaSel.innerHTML = '<option>Carregando…</option>';
+        try {
+            const temas = await ShopifyModule.fetchThemes();
+            if (!temas.length) throw new Error('nenhum tema encontrado');
+            temaSel.innerHTML = temas.map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.role === 'MAIN' ? ' (publicado)' : ''}</option>`).join('');
+            const principal = temas.find(t => t.role === 'MAIN') || temas[0];
+            temaSel.value = principal.id;
+            await _checarColisaoArquivo(temaSel.value, s.caminhoTema, status);
+            temaSel.addEventListener('change', () => _checarColisaoArquivo(temaSel.value, s.caminhoTema, status));
+        } catch (e) {
+            temaSel.innerHTML = '<option value="">Erro ao carregar temas</option>';
+            status.innerHTML = `<div class="loja-agente-aviso">Não consegui listar os temas (${escapeHtml(e.message)}). Se ainda não reautorizou a Shopify com o escopo de leitura de temas, reconecte no menu do perfil.</div>`;
+        }
+
+        painel.querySelector('[data-instalar-copiar]').onclick = async () => {
+            try { await navigator.clipboard.writeText(s.codigo || ''); showToast('Código copiado', 'success'); }
+            catch (e) { showToast('Não consegui copiar: ' + e.message, 'error'); }
+        };
+        painel.querySelector('[data-instalar-abrir]').onclick = async () => {
+            try { await navigator.clipboard.writeText(s.codigo || ''); showToast('Código copiado — cole no editor que vai abrir', 'success'); } catch {}
+            const shop = ShopifyModule.getConfig().shop;
+            const temaNumerico = (temaSel.value || '').match(/\/(\d+)$/)?.[1];
+            if (!shop || !temaNumerico) { showToast('Escolha um tema primeiro', 'error'); return; }
+            window.open(`https://${shop}/admin/themes/${temaNumerico}/editor`, '_blank');
+        };
+        _icones();
+    }
+
+    function _baixarArquivoDoSnippet(s) {
+        const nomeArquivo = (s.caminhoTema || '').split('/').pop() || `${_slug(s.nome) || 'arquivo'}.liquid`;
+        const blob = new Blob([s.codigo || ''], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nomeArquivo;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async function _checarColisaoArquivo(temaId, caminho, statusEl) {
+        if (!temaId || !statusEl) return;
+        statusEl.innerHTML = `<div class="loja-agente-status"><i data-lucide="loader-2" class="loja-spin"></i> Checando se o arquivo já existe…</div>`;
+        _icones();
+        try {
+            const arquivos = await ShopifyModule.fetchThemeFiles(temaId);
+            const existe = arquivos.includes(caminho);
+            statusEl.innerHTML = existe
+                ? `<div class="loja-agente-aviso">Já existe um arquivo em <code>${escapeHtml(caminho)}</code> nesse tema — colar e salvar vai SUBSTITUIR o conteúdo dele.</div>`
+                : `<div class="loja-agente-sucesso">Nenhum arquivo em <code>${escapeHtml(caminho)}</code> ainda nesse tema — vai ser um arquivo novo.</div>`;
+        } catch (e) {
+            statusEl.innerHTML = `<div class="loja-agente-aviso">Não consegui checar se o arquivo já existe (${escapeHtml(e.message)}) — confira manualmente antes de salvar.</div>`;
+        }
+    }
+
+    // ── Empresa & Site ───────────────────────────────────────────────────
+    function _empresaVazia() {
+        return {
+            razaoSocial: '', companyNumber: '', enderecoRegistrado: '', dadosFiscais: '',
+            dominio: '', temaAtivo: '', notasTecnicas: '',
+            instagram: '', emailSuporte: '', whatsapp: '', linkPoliticaPrivacidade: '', linkTermos: '',
+            notasLivres: '', imagens: [],
+        };
+    }
+
+    async function renderEmpresa() {
+        await _carregar();
+        const panel = document.getElementById('tab-loja-empresa');
+        if (!panel) return;
+
+        if (isAllStoresSelected()) {
+            panel.innerHTML = `
+                <div class="section-header"><h2><i data-lucide="briefcase" style="width:14px;height:14px;vertical-align:-2px"></i> Empresa & Site</h2></div>
+                <div class="loja-empty">Selecione uma loja específica no topo da sidebar — dados de empresa e site são por loja.</div>
+            `;
+            return;
+        }
+
+        const storeId = getCurrentStoreId();
+        const dados = _empresaMap[storeId] || _empresaVazia();
+
+        panel.innerHTML = `
+            <div class="section-header">
+                <h2><i data-lucide="briefcase" style="width:14px;height:14px;vertical-align:-2px"></i> Empresa & Site</h2>
+                <span id="loja-empresa-status" class="loja-save-status"></span>
+            </div>
+            <p class="loja-intro">Dados cadastrais, domínio, redes sociais e imagens da <strong>${escapeHtml(_nomeDaLoja(storeId))}</strong> — tudo num lugar só na hora de configurar app, suporte ou parceiro novo.</p>
+            <div class="loja-grid">
+                <div class="loja-card loja-card-wide">
+                    <h3 class="loja-card-title"><i data-lucide="scale" style="width:14px;height:14px;vertical-align:-2px"></i> Dados legais</h3>
+                    <div class="form-row">
+                        <div class="form-group"><label>Razão social</label><input type="text" class="input" data-emp-field="razaoSocial" value="${escapeHtml(dados.razaoSocial)}" placeholder="Ex.: Ambreux Ltd"></div>
+                        <div class="form-group"><label>Company number / CNPJ</label><input type="text" class="input" data-emp-field="companyNumber" value="${escapeHtml(dados.companyNumber)}"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%"><label>Endereço registrado</label><input type="text" class="input" data-emp-field="enderecoRegistrado" value="${escapeHtml(dados.enderecoRegistrado)}"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1 1 100%"><label>Dados fiscais adicionais</label><textarea class="input" data-emp-field="dadosFiscais" style="min-height:60px">${escapeHtml(dados.dadosFiscais)}</textarea></div>
+                    </div>
+                </div>
+
+                <div class="loja-card">
+                    <h3 class="loja-card-title"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:-2px"></i> Domínio & técnico</h3>
+                    <div class="form-group"><label>Domínio</label><input type="text" class="input" data-emp-field="dominio" value="${escapeHtml(dados.dominio)}" placeholder="getambreux.com"></div>
+                    <div class="form-group"><label>Tema Shopify ativo</label><input type="text" class="input" data-emp-field="temaAtivo" value="${escapeHtml(dados.temaAtivo)}"></div>
+                    <div class="form-group"><label>Notas técnicas / links de painéis</label><textarea class="input" data-emp-field="notasTecnicas" style="min-height:60px">${escapeHtml(dados.notasTecnicas)}</textarea></div>
+                </div>
+
+                <div class="loja-card">
+                    <h3 class="loja-card-title"><i data-lucide="share-2" style="width:14px;height:14px;vertical-align:-2px"></i> Redes sociais & contato</h3>
+                    <div class="form-group"><label>Instagram</label><input type="text" class="input" data-emp-field="instagram" value="${escapeHtml(dados.instagram)}"></div>
+                    <div class="form-group"><label>E-mail de suporte</label><input type="text" class="input" data-emp-field="emailSuporte" value="${escapeHtml(dados.emailSuporte)}"></div>
+                    <div class="form-group"><label>WhatsApp</label><input type="text" class="input" data-emp-field="whatsapp" value="${escapeHtml(dados.whatsapp)}"></div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Link política de privacidade</label><input type="text" class="input" data-emp-field="linkPoliticaPrivacidade" value="${escapeHtml(dados.linkPoliticaPrivacidade)}"></div>
+                        <div class="form-group"><label>Link termos de serviço</label><input type="text" class="input" data-emp-field="linkTermos" value="${escapeHtml(dados.linkTermos)}"></div>
+                    </div>
+                </div>
+
+                <div class="loja-card loja-card-wide">
+                    <h3 class="loja-card-title"><i data-lucide="file-text" style="width:14px;height:14px;vertical-align:-2px"></i> Notas livres</h3>
+                    <textarea class="input" data-emp-field="notasLivres" style="min-height:90px" placeholder="Qualquer outra coisa que não encaixou nos campos acima...">${escapeHtml(dados.notasLivres)}</textarea>
+                </div>
+
+                <div class="loja-card loja-card-wide">
+                    <h3 class="loja-card-title"><i data-lucide="image" style="width:14px;height:14px;vertical-align:-2px"></i> Imagens <span class="loja-pill">${(dados.imagens || []).length}</span></h3>
+                    <p class="loja-card-hint">Logo, documentos, capturas de tela — qualquer imagem de referência da empresa ou do site.</p>
+                    <div class="prod-image-upload-zone" id="loja-emp-img-zone">
+                        <i data-lucide="image-plus" style="width:28px;height:28px;color:var(--text-muted)"></i>
+                        <p>Arraste imagens ou clique para adicionar</p>
+                    </div>
+                    <input type="file" id="loja-emp-img-input" accept="image/*" multiple style="display:none">
+                    <div class="prod-image-thumbs" id="loja-emp-img-thumbs" style="${(dados.imagens || []).length ? '' : 'display:none'}">
+                        ${_renderImagensThumbs(dados.imagens || [])}
+                    </div>
+                </div>
+            </div>
+        `;
+        _wireEmpresaEvents(storeId, dados);
+        _icones();
+    }
+
+    function _renderImagensThumbs(imagens) {
+        return imagens.map(img => `
+            <div class="prod-image-thumb">
+                <img src="${img.thumb}" alt="" title="${escapeHtml(img.nome)}">
+                <button type="button" class="prod-image-remove" data-img-remover="${img.id}" title="Remover">&times;</button>
+            </div>
+        `).join('');
+    }
+
+    function _wireEmpresaEvents(storeId, dados) {
+        const panel = document.getElementById('tab-loja-empresa');
+        panel?.querySelectorAll('[data-emp-field]').forEach(el => {
+            el.addEventListener('change', () => {
+                dados[el.dataset.empField] = el.value;
+                _salvarEmpresa(storeId, dados);
+            });
+        });
+
+        const zone = document.getElementById('loja-emp-img-zone');
+        const input = document.getElementById('loja-emp-img-input');
+        zone?.addEventListener('click', () => input?.click());
+        zone?.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('prod-image-drop-hover'); });
+        zone?.addEventListener('dragleave', () => zone.classList.remove('prod-image-drop-hover'));
+        zone?.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('prod-image-drop-hover');
+            _adicionarImagens(storeId, dados, [...(e.dataTransfer?.files || [])]);
+        });
+        input?.addEventListener('change', () => {
+            _adicionarImagens(storeId, dados, [...input.files]);
+            input.value = '';
+        });
+
+        document.getElementById('loja-emp-img-thumbs')?.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-img-remover]');
+            if (!btn) return;
+            _removerImagem(storeId, dados, btn.dataset.imgRemover);
+        });
+    }
+
+    async function _adicionarImagens(storeId, dados, files) {
+        dados.imagens = dados.imagens || [];
+        let algumaFalhou = false;
+        for (const file of files) {
+            if (!file.type?.startsWith('image/')) continue;
+            try {
+                const id = generateId('empimg');
+                const mediaId = 'loja_empresa_' + storeId + '_' + id;
+                const cheia = await comprimirImagem(file, 2000, 0.88, { formato: 'image/webp' });
+                await MediaStore.put(mediaId, cheia.blob, { type: cheia.blob.type, name: id + '.webp' });
+                const thumb = await comprimirImagemParaDataUrl(cheia.blob, 200, 0.7, { formato: 'image/webp' });
+                dados.imagens.push({ id, mediaId, nome: file.name || '', thumb });
+            } catch (e) {
+                algumaFalhou = true;
+                console.error('[Loja] falha ao adicionar imagem:', e);
+            }
+        }
+        await _salvarEmpresa(storeId, dados);
+        if (algumaFalhou) showToast('Uma ou mais imagens falharam ao processar', 'error');
+        renderEmpresa();
+    }
+
+    async function _removerImagem(storeId, dados, imgId) {
+        const idx = (dados.imagens || []).findIndex(i => i.id === imgId);
+        if (idx < 0) return;
+        const [img] = dados.imagens.splice(idx, 1);
+        try { await MediaStore.del(img.mediaId); } catch {}
+        await _salvarEmpresa(storeId, dados);
+        renderEmpresa();
+    }
+
+    async function _salvarEmpresa(storeId, dados) {
+        dados.atualizadoEm = _agora();
+        _empresaMap[storeId] = dados;
+        await KVStore.set(EMPRESA_KEY, _empresaMap);
+        const el = document.getElementById('loja-empresa-status');
+        if (el) el.textContent = 'Salvo às ' + new Date().toLocaleTimeString('pt-BR');
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────────────
+    function init() {
+        if (typeof EventBus === 'undefined') return;
+        EventBus.on('tabChanged', (tab) => {
+            if (tab === 'loja-codigo') renderCodigo();
+            if (tab === 'loja-empresa') renderEmpresa();
+        });
+        EventBus.on('storeChanged', () => {
+            if (document.querySelector('#tab-loja-codigo.active')) renderCodigo();
+            if (document.querySelector('#tab-loja-empresa.active')) renderEmpresa();
+        });
+        if (document.querySelector('#tab-loja-codigo.active')) renderCodigo();
+        if (document.querySelector('#tab-loja-empresa.active')) renderEmpresa();
+    }
+
+    return { init, renderCodigo, renderEmpresa };
+})();
+
+window.LojaModule = LojaModule;
+document.addEventListener('DOMContentLoaded', () => LojaModule.init());

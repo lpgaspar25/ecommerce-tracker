@@ -421,7 +421,7 @@ const RemoteCapturesModule = (() => {
         const body = document.getElementById('cap-detail-body');
         const title = document.getElementById('cap-detail-title');
         if (!modal || !body) return;
-        body.innerHTML = '<p style="text-align:center;padding:2rem;color:var(--text-muted)">Carregando…</p>';
+        body.innerHTML = '<p style="text-align:center;padding:2rem;color:var(--text-muted)">' + window.loadingHTML('Carregando…') + '</p>';
         modal.classList.remove('hidden');
 
         const snap = await _loadSnapshot(id);

@@ -7,14 +7,17 @@
 // Purges only REGENERABLE caches (rebuilt from network/derived data) in priority order.
 const StorageManager = {
     // Keys safe to drop — they get rebuilt on demand. Heaviest / most-disposable first.
+    // etracker_shopify_orders_day_cache e etracker_lab_tests saíram daqui: agora
+    // vivem no IndexedDB (js/kv-store.js), fora do teto apertado do localStorage.
+    // etracker_recent_edits NÃO entra aqui: é histórico do usuário (não é cache
+    // regenerável) — apagar isso como efeito colateral de outro módulo cheio
+    // faz o usuário perder o histórico de edições sem nenhum aviso.
     _purgeable: [
-        'etracker_shopify_orders_day_cache',
         'etracker_shopify_orders_cache',
         'etracker_creative_metrics',
         'ai_ad_generations_v1',   // índice das gerações de IA (a chave real; os bytes ficam no IndexedDB)
         'etracker_adl_uploads',
         'etracker_usage_data',
-        'etracker_recent_edits',
         'etracker_funnel_snapshots',
         'etracker_importer_sessions',
     ],
@@ -61,6 +64,13 @@ const StorageManager = {
     },
 };
 window.StorageManager = StorageManager;
+
+// Markup de carregamento padrão (spinner girando + texto). Todos os estados de
+// "Carregando…" do app devem usar isto pra ficarem consistentes.
+window.loadingHTML = function (msg) {
+    const txt = (msg == null || msg === '') ? 'Carregando…' : msg;
+    return '<span class="app-loading"><span class="app-spinner"></span>' + txt + '</span>';
+};
 
 // ---- Event Bus ----
 const EventBus = {
@@ -468,6 +478,34 @@ function initTabs() {
             if (miningTabBtn) miningTabBtn.click();
         });
     }
+
+    // A extensão abre a aba certa via ?tab=<slug> (ex.: vindo do Importador
+    // ou de uma captura de galeria de fornecedor pro Lançamento no Estúdio).
+    // Isso já era esperado pelo popup.js da extensão, mas nada no app lia o
+    // parâmetro — a aba nunca trocava sozinha.
+    const tabDaUrl = new URLSearchParams(location.search).get('tab');
+    if (tabDaUrl) {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabDaUrl}"]`);
+        if (btn) btn.click();
+    }
+}
+
+// Sub-abas da tela Metas (Meta da loja / Calculadora de vendas) — reorganização
+// puramente visual pra não empilhar os dois cards inteiros um embaixo do outro.
+// StoreGoalModule e DailyTargetsCalculator continuam com dados e lógica 100%
+// separados; isso só troca qual dos dois containers fica visível.
+function _initMetasSubtabs() {
+    document.querySelectorAll('.metas-subtab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.metas-subtab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.subtab;
+            const loja = document.getElementById('metas-sub-meta-loja');
+            const calc = document.getElementById('metas-sub-calculadora');
+            if (loja) loja.style.display = tab === 'meta-loja' ? '' : 'none';
+            if (calc) calc.style.display = tab === 'calculadora' ? '' : 'none';
+        });
+    });
 }
 
 // ---- Theme ----
@@ -871,6 +909,163 @@ function escapeHtml(raw) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// Comprime uma imagem (Blob/File) pra JPEG, limitando o lado maior a maxDim —
+// nunca AUMENTA uma imagem já menor. Usado em qualquer upload de imagem que
+// precise ficar leve sem perder qualidade visível (criativos, capa de
+// produto): qualidade 0.9 em JPEG é visualmente indistinguível do original
+// pra fotos, e cortar o lado maior em 1500px já cobre os formatos de anúncio
+// mais comuns (Meta pede no máximo 1440px de largura recomendada).
+// GIF fica de fora — comprimir pra JPEG destruiria a animação.
+//
+// `opcoes` cobre os casos além do padrão:
+//   formato: 'image/webp' pra trocar o container (WebP mantém canal alfa, então
+//            o fundo branco NÃO é aplicado — só JPEG precisa dele).
+//   largura/altura: força dimensões EXATAS, ignorando maxDim. Usado quando a
+//            imagem nova precisa ocupar o lugar de uma antiga sem quebrar o
+//            layout (ex.: imagem dentro do HTML da descrição do produto).
+//   encaixe: 'cover' (padrão quando se força dimensão) recorta o excedente pra
+//            preencher sem distorcer; 'esticar' deforma pra caber.
+function comprimirImagem(blob, maxDim = 1500, quality = 0.9, opcoes = {}) {
+    return new Promise((resolve, reject) => {
+        if (!blob || !String(blob.type || '').startsWith('image/') || blob.type === 'image/gif') {
+            resolve({ blob, comprimiu: false });
+            return;
+        }
+        const formato = opcoes.formato || 'image/jpeg';
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            const largura = img.naturalWidth || img.width;
+            const altura = img.naturalHeight || img.height;
+
+            let w, h;
+            if (opcoes.largura && opcoes.altura) {
+                w = Math.max(1, Math.round(opcoes.largura));
+                h = Math.max(1, Math.round(opcoes.altura));
+            } else {
+                const maior = Math.max(largura, altura);
+                const escala = maior > maxDim ? maxDim / maior : 1; // nunca aumenta
+                w = Math.max(1, Math.round(largura * escala));
+                h = Math.max(1, Math.round(altura * escala));
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            // Fundo branco só faz sentido em JPEG, que não tem canal alfa —
+            // aplicá-lo em WebP destruiria transparência que o formato suporta.
+            if (formato === 'image/jpeg') {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, w, h);
+            }
+            ctx.imageSmoothingQuality = 'high';
+
+            const forcouDimensao = !!(opcoes.largura && opcoes.altura);
+            if (forcouDimensao && opcoes.encaixe !== 'esticar') {
+                // "cover": preenche o quadro inteiro mantendo a proporção da
+                // origem e recortando o excedente — esticar deformaria o produto.
+                const escala = Math.max(w / largura, h / altura);
+                const dw = largura * escala, dh = altura * escala;
+                ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+            } else {
+                ctx.drawImage(img, 0, 0, w, h);
+            }
+            URL.revokeObjectURL(url);
+
+            canvas.toBlob((out) => {
+                if (!out) { reject(new Error('Falha ao comprimir a imagem')); return; }
+                resolve({ blob: out, comprimiu: true, width: w, height: h });
+            }, formato, quality);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); };
+        img.src = url;
+    });
+}
+
+// Mesma compressão, mas devolve dataURL (base64) — usado onde a imagem é
+// guardada direto no localStorage (ex.: fotos de produto) em vez de no
+// IndexedDB via MediaStore.
+async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9, opcoes = {}) {
+    const { blob: comprimido } = await comprimirImagem(blob, maxDim, quality, opcoes);
+    return await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(String(r.result || ''));
+        r.onerror = () => reject(new Error('Falha ao converter a imagem'));
+        r.readAsDataURL(comprimido);
+    });
+}
+
+// "Estúdio branco" → "estudio-branco". Para nome de arquivo, sem acento nem
+// espaço. ̀-ͯ é a faixa dos acentos combinantes depois do NFD —
+// escrita escapada de propósito: o caractere literal some em cópia/colagem.
+function _handleSimples(texto) {
+    return String(texto || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'imagem';
+}
+
+// Lightbox genérico — qualquer tela pode ampliar uma imagem sem precisar do
+// próprio markup. Cria o elemento na primeira chamada e reusa depois.
+// (O Estúdio e os Criativos têm lightboxes próprios mais antigos, que
+// carregam blob do IndexedDB; este aqui é para quem já tem o src pronto.)
+function abrirImagemAmpliada(src, legenda = '') {
+    if (!src) return;
+    let box = document.getElementById('app-lightbox');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'app-lightbox';
+        box.className = 'creative-lightbox';   // reaproveita o estilo já existente
+        box.innerHTML = `
+            <button type="button" class="creative-lightbox-close" aria-label="Fechar">&times;</button>
+            <div class="creative-lightbox-body"></div>
+            <div class="creative-lightbox-caption"></div>`;
+        document.body.appendChild(box);
+        box.querySelector('.creative-lightbox-close').addEventListener('click', fecharImagemAmpliada);
+        box.addEventListener('click', (e) => { if (e.target === box) fecharImagemAmpliada(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && box.style.display === 'flex') fecharImagemAmpliada();
+        });
+    }
+    box.querySelector('.creative-lightbox-body').innerHTML =
+        `<img src="${src}" alt="${escapeHtml(legenda)}" style="max-width:100%;max-height:80vh;border-radius:10px">`;
+    box.querySelector('.creative-lightbox-caption').textContent = legenda || '';
+    box.style.display = 'flex';
+}
+
+function fecharImagemAmpliada() {
+    const box = document.getElementById('app-lightbox');
+    if (!box) return;
+    box.querySelector('.creative-lightbox-body').innerHTML = '';
+    box.style.display = 'none';
+}
+
+// Baixa os bytes de uma imagem, seja ela base64 (upload local) ou URL remota
+// (CDN da Shopify). Os dois casos aparecem misturados em product.images.
+async function bytesDaImagem(src) {
+    if (!src) throw new Error('Imagem sem origem');
+    const r = await fetch(src);           // funciona pra data: e https: com CORS
+    if (!r.ok) throw new Error(`Não consegui baixar a imagem (HTTP ${r.status})`);
+    return await r.blob();
+}
+
+// Dimensões reais de um blob de imagem — necessário pra devolver a versão
+// melhorada exatamente no mesmo tamanho da original.
+function dimensoesDaImagem(blob) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve({ largura: img.naturalWidth || img.width, altura: img.naturalHeight || img.height });
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não consegui ler a imagem')); };
+        img.src = url;
+    });
 }
 
 // Real brand SVG icons (small, inline, 14px) so badges show the official logo
@@ -1387,6 +1582,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     NotificationsModule.init();
     initTabs();
+    _initMetasSubtabs();
     initModals();
     initConfig();
     initRateModal();

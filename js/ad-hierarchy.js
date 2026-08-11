@@ -725,7 +725,7 @@
             const camp = this._state.campaigns.find(c => c.id === campaignId);
             if (camp?.source === 'fb' && this._fbConnected() && !this._state.fbAdsetsByCamp[campaignId]) {
                 const list = document.getElementById('adh-list-adset');
-                if (list) list.innerHTML = '<div class="adh-empty">Carregando do FB…</div>';
+                if (list) list.innerHTML = '<div class="adh-empty">' + window.loadingHTML('Carregando do FB…') + '</div>';
                 try {
                     const data = await FacebookAds.fetchAdsetsForCampaign(campaignId);
                     this._state.fbAdsetsByCamp[campaignId] = data;
@@ -757,7 +757,7 @@
             const adset = this._state.adsets.find(a => a.id === adsetId);
             if (adset?.source === 'fb' && this._fbConnected() && !this._state.fbAdsByAdset[adsetId]) {
                 const list = document.getElementById('adh-list-ad');
-                if (list) list.innerHTML = '<div class="adh-empty">Carregando do FB…</div>';
+                if (list) list.innerHTML = '<div class="adh-empty">' + window.loadingHTML('Carregando do FB…') + '</div>';
                 try {
                     const data = await FacebookAds.fetchAdsForAdset(adsetId);
                     this._state.fbAdsByAdset[adsetId] = data;

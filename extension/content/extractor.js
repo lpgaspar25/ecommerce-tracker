@@ -1,9 +1,68 @@
 /* Injected via chrome.scripting.executeScript on the active tab.
-   Returns { kind: 'product'|'collection'|'none', product?, collection?, error? } */
+   Returns { kind: 'product'|'collection'|'gallery'|'none', product?, collection?, gallery?, error? } */
 (function () {
     function abs(url) {
         try { return new URL(url, location.href).toString(); }
         catch { return url; }
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // Galerias de fornecedor (Yupoo, 1688, etc.) — cada site é uma foto-dump
+    // pra UM produto, sem preço/variante/título de venda. Diferente da
+    // extração de "product" (Shopify/JSON-LD/heurística) acima: aqui o
+    // objetivo é só trazer as fotos EM TAMANHO CHEIO pro Estúdio (Lançamento
+    // de Produto), não montar um produto pronto pra importar.
+    //
+    // Registro por site: pra adicionar um fornecedor novo, basta empurrar
+    // {name, test(url), extract()} nesta lista — test() decide se ESTE
+    // adaptador atende a URL atual; extract() devolve {title, images, sourceUrl}.
+    const SITE_GALLERIES = [
+        {
+            name: 'yupoo',
+            test: (url) => /(^|\.)x\.yupoo\.com$/.test(url.hostname) || /(^|\.)yupoo\.com$/.test(url.hostname),
+            // Yupoo serve cada foto em variantes por SUFIXO no mesmo path:
+            // .../<loja>/<hash>/small.jpeg (miniatura do grid) e
+            // .../<loja>/<hash>/original.jpeg (tamanho cheio, ~2500px, o que
+            // o fornecedor de fato upou). O grid inteiro já vem no HTML
+            // inicial (lazy-load nativo do navegador, sem paginação/API) —
+            // não precisa rolar a página nem esperar nada carregar.
+            extract() {
+                const titleEl = document.querySelector('.showalbumheader__gallerytitle');
+                const title = titleEl?.textContent?.trim() || document.title.split('|')[0].trim() || '';
+
+                const porHash = new Map(); // "loja/hash" -> {loja, hash}
+                document.querySelectorAll('img[src*="photo.yupoo.com"]').forEach((img) => {
+                    const m = img.src.match(/photo\.yupoo\.com\/([^/]+)\/([a-f0-9]+)\//i);
+                    if (!m) return;
+                    const chave = m[1] + '/' + m[2];
+                    if (!porHash.has(chave)) porHash.set(chave, { loja: m[1], hash: m[2] });
+                });
+
+                const images = [...porHash.values()].map(({ loja, hash }, i) => ({
+                    src: `https://photo.yupoo.com/${loja}/${hash}/original.jpeg`,
+                    position: i + 1,
+                    alt: title,
+                }));
+                if (!images.length) return null;
+                return { title, images, sourceUrl: location.href };
+            },
+        },
+    ];
+
+    function extractGallery() {
+        const url = new URL(location.href);
+        const site = SITE_GALLERIES.find((s) => {
+            try { return s.test(url); } catch { return false; }
+        });
+        if (!site) return null;
+        try {
+            const r = site.extract();
+            if (!r || !r.images?.length) return null;
+            return { site: site.name, ...r };
+        } catch (e) {
+            console.warn('[ETracker] extrator de galeria falhou:', site.name, e);
+            return null;
+        }
     }
 
     function pickPrice(p) {
@@ -214,6 +273,12 @@
 
     return (async function run() {
         try {
+            // 0) Site de galeria de fornecedor conhecido (Yupoo etc.) — checa
+            // primeiro porque essas páginas não têm preço/variante/título de
+            // venda; tentar as heurísticas de "product" nelas não faz sentido.
+            const gal = extractGallery();
+            if (gal) return { kind: 'gallery', gallery: gal };
+
             // 1) Try Shopify product API first (most reliable when available)
             const sh = await extractFromShopify();
             if (sh) return { kind: 'product', product: sh };

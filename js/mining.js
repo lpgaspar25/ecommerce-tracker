@@ -843,7 +843,8 @@ const MiningModule = {
         if (!ad) return;
 
         this._addToSwipe([ad]);
-        showToast(`Salvo: ${ad.pageName || 'Ad #' + ad.adId}`, 'success');
+        // Salvar 1: só avisa (com atalho pra Ad Library) pra não cortar a busca.
+        showToast(`Salvo no Swipe: ${ad.pageName || 'Ad #' + ad.adId}`, 'success');
 
         // Re-render to update saved status
         this._renderGrid();
@@ -855,11 +856,17 @@ const MiningModule = {
         const ads = [...this._selected].map(i => this._results[i]).filter(Boolean);
         this._addToSwipe(ads);
 
-        showToast(`${ads.length} anúncios salvos no Swipe File!`, 'success');
+        const n = ads.length;
         this._selected.clear();
-        document.getElementById('mining-select-all').checked = false;
+        const sel = document.getElementById('mining-select-all');
+        if (sel) sel.checked = false;
         this._renderGrid();
         this._updateBulkBar();
+
+        // Salvar em lote é a ação deliberada → leva pra Ad Library ver o
+        // resultado (foi o que o usuário pediu: "vá para a ad library").
+        showToast(`${n} anúncio(s) salvos — abrindo a Ad Library…`, 'success');
+        document.querySelector('.sidebar-link[data-tab="ad-library"]')?.click();
     },
 
     _addToSwipe(ads) {
@@ -910,6 +917,8 @@ const MiningModule = {
         if (typeof SwipeModule._renderGrid === 'function') {
             try { SwipeModule._renderGrid(); } catch {}
         }
+        // Avisa a Ad Library (que mostra os salvos) para atualizar.
+        if (typeof EventBus !== 'undefined') EventBus.emit('swipeChanged');
     },
 
     _openPreview(idx) {

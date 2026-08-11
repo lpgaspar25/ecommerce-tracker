@@ -1008,7 +1008,25 @@ const SheetsAPI = {
 
 // ---- Fallback: LocalStorage if no Sheets ----
 const LocalStore = {
+    // Chaves que "só crescem" e estouram o teto de ~5MB do localStorage vão pro
+    // IndexedDB (escala com o disco). O diário acumula uma linha por dia/anúncio
+    // vindo do Facebook e chegou a 3.7MB — sozinho estourava a quota e fazia
+    // TODA gravação falhar (Shopify não instalava, ordem do menu não persistia).
+    _IDB_KEYS: new Set(['diary']),
+    _mem: {},
+
     save(key, data) {
+        if (this._IDB_KEYS.has(key)) {
+            this._mem[key] = data;
+            // some com a cópia legada do localStorage (libera espaço na hora)
+            try { localStorage.removeItem(`etracker_${key}`); } catch {}
+            try {
+                if (typeof KVStore !== 'undefined') {
+                    KVStore.set(`etracker_${key}`, data).catch(err => console.warn('KVStore.set falhou', key, err));
+                }
+            } catch (err) { console.warn('KVStore indisponível para', key, err); }
+            return;
+        }
         const str = JSON.stringify(data);
         const write = () => localStorage.setItem(`etracker_${key}`, str);
         if (typeof StorageManager !== 'undefined') {
@@ -1021,8 +1039,36 @@ const LocalStore = {
         write();
     },
     load(key) {
+        if (Object.prototype.hasOwnProperty.call(this._mem, key)) return this._mem[key];
         const raw = localStorage.getItem(`etracker_${key}`);
         return raw ? JSON.parse(raw) : null;
+    },
+
+    // Move as _IDB_KEYS do localStorage pro IndexedDB (migração única) e recarrega
+    // de lá nos boots seguintes. Assíncrono; chamado depois do boot síncrono.
+    // Retorna a lista de chaves cujo valor veio do IndexedDB (pra re-render).
+    async hydrate() {
+        const carregadas = [];
+        for (const key of this._IDB_KEYS) {
+            const lsKey = `etracker_${key}`;
+            try {
+                const legacy = localStorage.getItem(lsKey);
+                if (legacy != null) {
+                    // Migração: grava no IDB e só então remove do localStorage.
+                    let val;
+                    try { val = JSON.parse(legacy); } catch { val = null; }
+                    if (val != null && typeof KVStore !== 'undefined') {
+                        await KVStore.set(lsKey, val);           // resolve só quando persiste
+                        try { localStorage.removeItem(lsKey); } catch {}
+                        this._mem[key] = val;
+                    }
+                } else if (typeof KVStore !== 'undefined') {
+                    const val = await KVStore.get(lsKey, null);
+                    if (val != null) { this._mem[key] = val; carregadas.push(key); }
+                }
+            } catch (err) { console.warn('LocalStore.hydrate falhou para', key, err); }
+        }
+        return carregadas;
     }
 };
 
@@ -1084,6 +1130,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     populateProductDropdowns();
     EventBus.emit('dataLoaded');
+
+    // Diário → IndexedDB: migra a cópia legada do localStorage (libera o espaço
+    // que estourava a quota) e, nos boots seguintes, recarrega de lá + re-render.
+    if (LocalStore && typeof LocalStore.hydrate === 'function') {
+        LocalStore.hydrate().then(carregadas => {
+            if (carregadas && carregadas.includes('diary')) {
+                AppState.allDiary = LocalStore.load('diary') || [];
+                normalizeAllDataStoreIds();
+                filterDataByStore();
+                EventBus.emit('dataLoaded');
+            }
+        }).catch(() => {});
+    }
 
     // Initialize Supabase cloud sync
     if (typeof SupabaseSync !== 'undefined') {

@@ -75,6 +75,14 @@
                     this._deleteItem(btn.dataset.deleteInspo, btn.dataset.boardId);
                     return;
                 }
+                const usar = e.target.closest('[data-usar-estudio]');
+                if (usar) { this._usarNoEstudio(usar.dataset.usarEstudio, usar.dataset.boardId); return; }
+                const ampliar = e.target.closest('[data-ampliar-inspo]');
+                if (ampliar) {
+                    const it = this._acharItem(ampliar.dataset.ampliarInspo, ampliar.dataset.boardId);
+                    if (it && typeof abrirImagemAmpliada === 'function') abrirImagemAmpliada(it.thumbnail || it.url, it.note || '');
+                    return;
+                }
                 const boardCard = e.target.closest('[data-open-board]');
                 if (boardCard) {
                     this._activeBoard = boardCard.dataset.openBoard;
@@ -180,14 +188,16 @@
         },
 
         _inspoCardHtml(item, boardId) {
-            const hasImg = item.thumbnail || (item.type === 'image' && item.url);
+            const src = item.thumbnail || (item.type === 'image' && item.url) || '';
+            const hasImg = !!src;
             const domain = item.type === 'url' && item.url ? (() => { try { return new URL(item.url).hostname; } catch { return ''; } })() : '';
             return `<div class="inspo-card">
                 ${hasImg
-                    ? `<div class="inspo-card-thumb"><img src="${this._esc(item.thumbnail || item.url)}" alt="" loading="lazy"></div>`
+                    ? `<div class="inspo-card-thumb"><img src="${this._esc(src)}" alt="" loading="lazy" data-ampliar-inspo="${this._esc(item.id)}" data-board-id="${this._esc(boardId)}" style="cursor:zoom-in"></div>`
                     : `<div class="inspo-card-link"><i data-lucide="link" style="width:20px;height:20px;color:var(--accent)"></i><span>${this._esc(domain || 'link')}</span></div>`
                 }
                 ${item.note ? `<div class="inspo-card-note">${this._esc(item.note)}</div>` : ''}
+                ${hasImg ? `<button class="btn btn-primary btn-sm inspo-card-usar" data-usar-estudio="${this._esc(item.id)}" data-board-id="${this._esc(boardId)}" title="Importar este anúncio para o Estúdio como criativo base"><i data-lucide="palette" style="width:12px;height:12px;vertical-align:-2px"></i> Usar no Estúdio</button>` : ''}
                 <div class="inspo-card-footer">
                     ${item.type === 'url' && item.url
                         ? `<a href="${this._esc(item.url)}" target="_blank" rel="noopener" class="inspo-card-url"><i data-lucide="external-link" style="width:11px;height:11px"></i>${this._esc(domain)}</a>`
@@ -293,6 +303,38 @@
             }
         },
 
+        _acharItem(itemId, boardId) {
+            const board = this._load().find(b => b.id === boardId);
+            return board?.items.find(i => i.id === itemId) || null;
+        },
+
+        // Importa o anúncio salvo para o Estúdio como PADRÃO de criativo — a
+        // IA lê a imagem e extrai o esqueleto do prompt, que depois pode ser
+        // reaplicado a qualquer produto (o "criativo base" que o usuário pediu).
+        async _usarNoEstudio(itemId, boardId) {
+            const item = this._acharItem(itemId, boardId);
+            if (!item) return;
+            const src = item.thumbnail || item.url;
+            if (!src) { if (typeof showToast === 'function') showToast('Esta inspiração não tem imagem.', 'error'); return; }
+            if (typeof StudioModule === 'undefined' || !StudioModule.criarPadraoDeImagem) {
+                if (typeof showToast === 'function') showToast('Estúdio não carregou. Recarregue a página.', 'error'); return;
+            }
+            if (typeof showToast === 'function') showToast('Enviando ao Estúdio — a IA está lendo o anúncio…', 'info');
+            try {
+                // bytesDaImagem (app.js) baixa data: e URL com CORS. Anúncio de
+                // página (sem imagem baixável) cai no catch com aviso claro.
+                const blob = await bytesDaImagem(src);
+                const nome = (item.note || 'Inspiração').slice(0, 50);
+                const file = new File([blob], nome.replace(/[^\w]+/g, '-').toLowerCase() + '.jpg', { type: blob.type || 'image/jpeg' });
+                const p = await StudioModule.criarPadraoDeImagem(file, nome);
+                // Vai pro Estúdio (o tabChanged re-renderiza os padrões).
+                document.querySelector('.sidebar-link[data-tab="studio"]')?.click();
+                if (typeof showToast === 'function') showToast(`Importado como padrão "${p.nome}" no Estúdio.`, 'success');
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Falha ao importar: ' + String(e.message || e).slice(0, 140), 'error');
+            }
+        },
+
         _deleteItem(itemId, boardId) {
             const boards = this._load();
             const board = boards.find(b => b.id === boardId);
@@ -301,6 +343,29 @@
             this._save(boards);
             this._renderGrid();
             this._renderTabs();
+        },
+
+        // Público: lista os boards (para pickers em outras telas, ex.: Ad Library).
+        listarBoards() {
+            return this._load().map(b => ({ id: b.id, name: b.name, color: b.color, count: (b.items || []).length }));
+        },
+
+        // Público: adiciona um item a um board. Sem boardId (ou inexistente),
+        // usa o 1º board, ou cria um "Inspirações" se não houver nenhum.
+        adicionarItem(boardId, item) {
+            const boards = this._load();
+            let board = boards.find(b => b.id === boardId);
+            if (!board) {
+                if (boards.length) board = boards[0];
+                else { board = { id: 'board_' + Date.now(), name: 'Inspirações', color: '#8b5cf6', items: [], createdAt: new Date().toISOString() }; boards.push(board); }
+            }
+            board.items.unshift({ id: 'inspo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), createdAt: new Date().toISOString(), ...item });
+            this._save(boards);
+            // Se a aba estiver aberta, reflete na hora.
+            if (document.getElementById('tab-saved-inspirations') && !document.getElementById('tab-saved-inspirations').classList.contains('hidden')) {
+                try { this._render(); } catch {}
+            }
+            return board;
         },
 
         // Public: save a generated image to first board (or show picker)

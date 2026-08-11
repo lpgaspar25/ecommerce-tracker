@@ -9,6 +9,9 @@
         _aspect: '1024x1024',
         _aspectLabel: 'Square',
         _outputs: 3,
+        // Mesma chave de storage do dropdown "aiad-provider" no AI Ad
+        // Generator — escolher aqui ou lá é a mesma preferência, não duas.
+        _provider: localStorage.getItem('aiad_provider') || 'gpt-image-2',
         _refImage: null, // { name, dataUrl }
         _busy: false,
 
@@ -20,6 +23,7 @@
         _setup() {
             this._bindTabs();
             this._bindAspect();
+            this._bindProvider();
             this._bindOutputs();
             this._bindUpload();
             this._bindTextarea();
@@ -76,6 +80,32 @@
                     this._aspect = item.dataset.aspect;
                     this._aspectLabel = item.dataset.aspectLabel || 'Square';
                     document.getElementById('adhub-aspect-label').textContent = this._aspectLabel;
+                    wrap.classList.remove('adhub-dropdown-open');
+                });
+            });
+        },
+
+        _bindProvider() {
+            const trigger = document.getElementById('adhub-provider-trigger');
+            const menu = document.getElementById('adhub-provider-menu');
+            const wrap = document.getElementById('adhub-provider-dropdown');
+            const label = document.getElementById('adhub-provider-label');
+            if (!trigger || !menu || !wrap) return;
+
+            // Reflete a preferência salva (pode ter vindo do AI Ad Generator).
+            const atual = menu.querySelector(`[data-provider="${this._provider}"]`);
+            if (label && atual) label.textContent = atual.dataset.providerLabel;
+
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                wrap.classList.toggle('adhub-dropdown-open');
+                this._closeOtherDropdowns(wrap);
+            });
+            menu.querySelectorAll('[data-provider]').forEach(item => {
+                item.addEventListener('click', () => {
+                    this._provider = item.dataset.provider;
+                    localStorage.setItem('aiad_provider', this._provider);
+                    if (label) label.textContent = item.dataset.providerLabel || item.dataset.provider;
                     wrap.classList.remove('adhub-dropdown-open');
                 });
             });
@@ -312,18 +342,25 @@
                         prompt: finalPrompt,
                         size: this._aspect,
                         count: this._outputs,
+                        provider: this._provider,
                     });
                     if (ta) {
                         ta.value = '';
                         ta.dispatchEvent(new Event('input'));
                     }
                     // Save to recent edits log
-                    this._logRecentEdit({
-                        prompt: finalPrompt,
-                        aspect: this._aspectLabel,
-                        outputs: this._outputs,
-                        refImage: this._refImage?.name || null,
-                    });
+                    const geradas = AIAdGenerator._getAllGenerations?.() || [];
+                    if (typeof RecentEdits !== 'undefined') {
+                        RecentEdits.add({
+                            prompt: finalPrompt,
+                            thumb: geradas[0]?.thumb || geradas[0]?.dataUrl || '',
+                            origem: 'AI Generations',
+                            tipo: 'Geração de imagem',
+                            aspect: this._aspectLabel,
+                            outputs: this._outputs,
+                            refImage: this._refImage?.name || null,
+                        });
+                    }
                 } catch (genErr) {
                     // Mostra erro persistente no grid em vez de só toast (que some)
                     const grid = document.getElementById('aigen-grid');
@@ -357,24 +394,6 @@
                     sendBtn.classList.remove('adhub-prompt-send-loading');
                 }
                 document.getElementById('aigen-loading-card')?.remove();
-            }
-        },
-
-        _logRecentEdit(entry) {
-            try {
-                const KEY = 'etracker_recent_edits';
-                let list = [];
-                try { list = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch {}
-                list.unshift({
-                    id: 're_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
-                    ...entry,
-                    createdAt: new Date().toISOString(),
-                });
-                if (list.length > 100) list = list.slice(0, 100);
-                localStorage.setItem(KEY, JSON.stringify(list));
-                if (typeof EventBus !== 'undefined') EventBus.emit('recentEditsChanged');
-            } catch (e) {
-                console.warn('[AiGenerations] _logRecentEdit failed', e);
             }
         },
 

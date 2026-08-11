@@ -535,9 +535,12 @@ async function searchFacebookAds(params) {
   ];
 
   const queries = [];
-  // 12 subrequests por invocação: dobra a vazão e continua bem abaixo do
-  // teto de subrequests do Worker, sem virar rajada contra o Facebook.
-  const perBatch = 24;
+  // O gargalo aqui NAO e rede, e CPU: cada pagina do Ad Library tem ~1 MB e o
+  // parser roda varios regex por anuncio. Com 24 o Worker estourou o limite de
+  // recursos da Cloudflare (503 "Worker exceeded resource limits") em uso real.
+  // 10 se mostrou estavel; para mais volume, o cliente faz MAIS invocacoes —
+  // cada chamada tem seu proprio orcamento de CPU.
+  const perBatch = 10;
   const startIdx = batchIdx * perBatch;
 
   for (let i = startIdx; i < Math.min(startIdx + perBatch, suffixes.length); i++) {

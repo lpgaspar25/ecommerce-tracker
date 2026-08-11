@@ -22,46 +22,66 @@ const StudioModule = (() => {
 
     // Cenários prontos. O texto é o prompt real mandado ao gpt-image-1.
     const PRESETS_FOTO = [
-        { id: 'estudio',   grupo: 'Catálogo', label: 'Estúdio branco', icone: 'lightbulb',
+        { id: 'estudio',   label: 'Estúdio branco', icone: 'lightbulb',
           prompt: 'Place this exact product on a clean seamless white studio background with soft diffused lighting and a subtle natural shadow beneath it. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Professional e-commerce product photography, sharp focus, high resolution.' },
-        { id: 'estudio_preto', grupo: 'Catálogo', label: 'Estúdio preto premium', icone: 'moon',
-          prompt: 'Place this exact product on a seamless matte black studio background with controlled rim lighting and a refined soft reflection. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Premium luxury e-commerce photography, crisp details, high resolution.' },
-        { id: 'gradiente', grupo: 'Catálogo', label: 'Fundo em gradiente', icone: 'blend',
-          prompt: 'Place this exact product on a clean premium colour-gradient studio backdrop using colours that complement the product. Keep the product itself completely unchanged. Soft commercial lighting, subtle grounded shadow, modern campaign photography.' },
-        { id: 'flutuante', grupo: 'Catálogo', label: 'Produto flutuante', icone: 'move-up',
-          prompt: 'Make this exact product appear gently floating in a clean premium studio composition with a realistic soft shadow beneath it. Keep the product itself completely unchanged. Dynamic commercial product photography, crisp focus, high resolution.' },
-        { id: 'lifestyle', grupo: 'Lifestyle', label: 'Lifestyle (casa UK)', icone: 'home',
+        { id: 'lifestyle', label: 'Lifestyle (casa UK)', icone: 'home',
           prompt: 'Place this exact product in a tasteful modern British home interior setting with warm natural window light. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Lifestyle editorial photography, shallow depth of field, realistic reflections and shadows.' },
-        { id: 'sala', grupo: 'Lifestyle', label: 'Sala sofisticada', icone: 'sofa',
-          prompt: 'Place this exact product in a sophisticated contemporary living room with elegant neutral materials and natural window light. Keep the product itself completely unchanged. Aspirational British lifestyle campaign, realistic scale and shadows.' },
-        { id: 'escritorio', grupo: 'Lifestyle', label: 'Mesa de trabalho', icone: 'briefcase-business',
-          prompt: 'Place this exact product on a refined modern work desk with subtle professional accessories and soft daylight. Keep the product itself completely unchanged. Premium productivity lifestyle photography, authentic and uncluttered.' },
-        { id: 'banheiro', grupo: 'Lifestyle', label: 'Banheiro premium', icone: 'bath',
-          prompt: 'Place this exact product in a clean premium bathroom setting with stone textures, soft daylight and tasteful styling. Keep the product itself completely unchanged. Realistic editorial product photography.' },
-        { id: 'mao', grupo: 'Em uso', label: 'Na mão / em uso', icone: 'hand',
+        { id: 'mao',       label: 'Na mão / em uso', icone: 'hand',
           prompt: 'Show this exact product being held naturally in a person\'s hand, realistic skin tones, neutral background, natural daylight. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Photorealistic, sharp focus on the product.' },
-        { id: 'modelo', grupo: 'Em uso', label: 'Com modelo', icone: 'user',
+        { id: 'modelo',    label: 'Com modelo', icone: 'user',
           prompt: 'Show this exact product being worn or used by an adult model in a natural, candid pose. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Editorial lifestyle photography, natural light, the product clearly visible and in focus.' },
-        { id: 'ugc', grupo: 'Em uso', label: 'UGC autêntico', icone: 'smartphone',
-          prompt: 'Show this exact product in an authentic user-generated-content scene captured on a modern smartphone, with natural imperfect framing and believable indoor daylight. Keep the product itself completely unchanged and clearly visible.' },
-        { id: 'presente', grupo: 'Em uso', label: 'Unboxing / presente', icone: 'gift',
-          prompt: 'Show this exact product during a premium but authentic unboxing moment, with hands opening tasteful packaging. Keep the product itself completely unchanged. Natural light, social-commerce photography, realistic materials.' },
-        { id: 'detalhe', grupo: 'Detalhes', label: 'Macro / detalhe', icone: 'zoom-in',
+        { id: 'detalhe',   label: 'Macro / detalhe', icone: 'zoom-in',
           prompt: 'Extreme close-up macro shot of this exact product showing its material texture and build quality. Keep the product itself completely unchanged. Studio lighting, very sharp focus, shallow depth of field.' },
-        { id: 'textura', grupo: 'Detalhes', label: 'Material e textura', icone: 'scan',
-          prompt: 'Create a premium close-up composition focused on the material, texture and craftsmanship of this exact product. Keep every product detail completely unchanged. Directional studio light, tactile realism, sharp micro-detail.' },
-        { id: 'embalagem', grupo: 'Detalhes', label: 'Produto + embalagem', icone: 'package-open',
-          prompt: 'Create a clean commercial composition showing this exact product beside its original packaging. Keep the product and packaging completely unchanged. Balanced studio lighting, realistic scale and shadows, high-end e-commerce photography.' },
-        { id: 'externo', grupo: 'Exterior', label: 'Urbano golden hour', icone: 'sun',
+        { id: 'externo',   label: 'Ambiente externo', icone: 'sun',
           prompt: 'Place this exact product in an outdoor urban setting during golden hour with warm directional sunlight. Keep the product itself completely unchanged — same shape, colour, material, branding and proportions. Photorealistic lifestyle photography.' },
-        { id: 'cidade_noturna', grupo: 'Exterior', label: 'Cidade noturna', icone: 'building-2',
-          prompt: 'Place this exact product in a stylish city-at-night setting with cinematic practical lights and subtle reflections. Keep the product itself completely unchanged and clearly readable. Premium urban campaign photography.' },
-        { id: 'natureza', grupo: 'Exterior', label: 'Natureza', icone: 'trees',
-          prompt: 'Place this exact product in a natural outdoor setting with organic textures, soft daylight and restrained greenery. Keep the product itself completely unchanged. Authentic premium lifestyle photography.' },
-        { id: 'viagem', grupo: 'Exterior', label: 'Viagem', icone: 'plane',
-          prompt: 'Place this exact product in an aspirational travel setting with subtle luggage and destination cues. Keep the product itself completely unchanged. Bright natural light, premium editorial travel photography, realistic scale.' },
-        { id: 'praia', grupo: 'Exterior', label: 'Praia', icone: 'waves',
-          prompt: 'Place this exact product in an elegant beach setting with warm sunlight, restrained sand texture and a premium holiday mood. Keep the product itself completely unchanged. Photorealistic commercial lifestyle image.' },
+
+        // ── Presets de anúncio (prompts fornecidos pelo usuário, verbatim).
+        // Os marcadores ${product.title/niche/market} são preenchidos em
+        // _preencherPromptPreset na hora de gerar. Não editar o texto abaixo.
+        { id: 'kit-hero', label: 'Kit premium (hero)', icone: 'package', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Packshot premium com produto, embalagem e acessórios. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'handheld', label: 'Na mão (escala)', icone: 'hand', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto real na mão, foco em escala e detalhes. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'lifestyle-action', label: 'Lifestyle em ação', icone: 'activity', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto em uso em uma situação coerente com o nicho. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'environment', label: 'No ambiente de uso', icone: 'trees', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Produto em primeiro plano no ambiente de uso. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, square 1:1 composition.' },
+        { id: 'macro-detail', label: 'Macro (acabamento)', icone: 'zoom-in', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Macro de acabamento, material ou mecanismo principal. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'comparison', label: 'Comparação / variantes', icone: 'columns-2', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Composição demonstrando variantes ou benefícios visuais. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details' },
+        { id: 'ugc', label: 'UGC (cliente)', icone: 'smartphone', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Fotografia natural de cliente, sem headline. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'dark-studio', label: 'Estúdio escuro', icone: 'moon', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Estúdio escuro com iluminação dramática. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+        { id: 'bright-studio', label: 'Estúdio claro', icone: 'sun-medium', grupo: 'anuncio',
+          prompt: 'Create a premium square ecommerce advertising image for ${product.title}. Preserve exactly the product identity, silhouette, materials, colors, logos and packaging from the supplied references. Concept: Estúdio claro com composição comercial limpa. Niche: ${product.niche}. Market: ${product.market}. The product must be the visual focus. No headline, no promotional badge, no CTA and no extra marketing copy. Any brand mark already present on the real product or packaging must remain accurate; do not invent logos. Photorealistic commercial photography, believable lighting, sharp product details, ' },
+    ];
+
+    // Ângulos de câmera predefinidos (STUDIO-05). Combinam com os cenários
+    // acima: cada cenário marcado roda uma vez por ângulo marcado. Nome
+    // "câmera" pra não colidir com _renderAngulos()/getTopAngles(), que são
+    // os ângulos de COPY/mensagem vindos dos criativos vencedores.
+    const ANGULOS_CAMERA = [
+        { id: 'frontal',  label: 'Frontal',        instrucao: 'Camera angle: straight-on frontal view, camera at the product\'s own height.' },
+        { id: '3-4-esq',  label: '3/4 esquerdo',   instrucao: 'Camera angle: three-quarter view shot from the front-left of the product.' },
+        { id: '3-4-dir',  label: '3/4 direito',    instrucao: 'Camera angle: three-quarter view shot from the front-right of the product.' },
+        { id: 'lateral',  label: 'Lateral',         instrucao: 'Camera angle: direct side profile, 90 degrees from the front.' },
+        { id: 'traseiro', label: 'Traseiro',        instrucao: 'Camera angle: shot from directly behind, showing the back of the product.' },
+        { id: 'superior', label: 'Superior (topo)', instrucao: 'Camera angle: top-down flat-lay view, camera positioned directly above the product.' },
+        { id: 'macro',    label: 'Detalhe / macro', instrucao: 'Camera angle: extreme close-up macro shot focused on the product\'s texture, material and finish.' },
+        { id: 'em-uso',   label: 'Em uso',          instrucao: 'Camera angle: the product actively being used, in a natural and realistic context.' },
+        { id: 'packshot', label: 'Packshot',        instrucao: 'Camera angle: clean isolated packshot, centered, no distracting elements, catalogue style.' },
+    ];
+    const PRESERVACAO_ANGULO_CAMERA = ' Keep the product itself completely unchanged — same shape, colour, material, branding, logos, text and proportions; only the camera angle/framing changes.';
+
+    // Formatos de saída. `ar` é a proporção pro Gemini; w/h a dimensão exata.
+    const DIMENSOES = [
+        { id: '1x1',  label: 'Quadrado 1:1',   w: 1080, h: 1080, ar: '1:1' },
+        { id: '9x16', label: 'Story 9:16',     w: 1080, h: 1920, ar: '9:16' },
+        { id: '4x5',  label: 'Feed 4:5',       w: 1080, h: 1350, ar: '4:5' },
+        { id: '16x9', label: 'YouTube 16:9',   w: 1920, h: 1080, ar: '16:9' },
+        { id: '4x3',  label: 'Clássico 4:3',   w: 1440, h: 1080, ar: '4:3' },
     ];
 
     // ══════════════════════════════════════════════════════════════
@@ -203,6 +223,12 @@ const StudioModule = (() => {
             .slice(0, 6)
             .forEach(c => fontes.push({ url: c.mediaThumb || c.imageUrl, origem: 'Criativo', mediaId: c.mediaId || '' }));
 
+        // Fotos que o próprio Estúdio já gerou pra este produto (STUDIO-08) —
+        // sem isso, escolher uma imagem-base sempre voltava pro catálogo
+        // original, mesmo já existindo versões geradas prontas.
+        (_state.porProduto[productId]?.fotos || []).slice(0, 8)
+            .forEach(f => fontes.push({ url: f.thumb, origem: f.presetLabel || 'Gerada', mediaId: f.mediaId || '' }));
+
         // Dedupe por URL
         const vistos = new Set();
         return fontes.filter(f => !vistos.has(f.url) && vistos.add(f.url));
@@ -231,17 +257,91 @@ const StudioModule = (() => {
         return await new Promise(res => canvas.toBlob(res, 'image/png'));
     }
 
+    // Preenche ${product.title/niche/market} dos presets de anúncio. O texto
+    // do prompt NÃO é alterado — só os marcadores são substituídos.
+    function _preencherPromptPreset(template, pid) {
+        const p = (AppState.allProducts || []).find(x => x.id === pid);
+        const title = p?.name || 'the product';
+        const niche = (p?.tags || []).find(Boolean) || p?.vendor || 'general ecommerce';
+        // Mercado a partir do 1º idioma do produto; senão, global.
+        const MERCADO = { Ingles: 'United Kingdom', 'Ingles Americano': 'United States', Portugues: 'Brazil', Espanhol: 'Spain', Frances: 'France', Alemao: 'Germany', Italiano: 'Italy', Holandes: 'Netherlands' };
+        const market = MERCADO[(p?.languages || [])[0]] || 'global market';
+        return String(template)
+            .replace(/\$\{product\.title\}/g, title)
+            .replace(/\$\{product\.niche\}/g, niche)
+            .replace(/\$\{product\.market\}/g, market);
+    }
+
+    // Dimensões marcadas na UI (default: só 1:1 se nada marcado).
+    function _dimensoesSelecionadas() {
+        const ids = [...document.querySelectorAll('#studio-dimensoes input:checked')].map(i => i.value);
+        const sel = DIMENSOES.filter(x => ids.includes(x.id));
+        return sel.length ? sel : [DIMENSOES[0]];
+    }
+
+    // Ângulos de câmera marcados (vazio = nenhum ângulo específico pedido).
+    function _angulosCameraSelecionados() {
+        const ids = [...document.querySelectorAll('#studio-angulos-camera input:checked')].map(i => i.value);
+        return ANGULOS_CAMERA.filter(a => ids.includes(a.id));
+    }
+
+    // Reenquadra um blob para a dimensão dada, mantendo o criativo idêntico.
+    // Deriva da MESMA base → as versões saem iguais, só em formatos diferentes.
+    async function _reframeParaDimensao(blob, dim) {
+        const prompt = (window.ImageAI?.promptReframe?.())
+            || 'Reframe this image to the new aspect ratio, keep the content identical, extend the background.';
+        const gerado = await ImageAI.editar([blob], prompt, {
+            provedor: _provedorImagem(),
+            modelo: _modeloImagem() || undefined,
+            largura: dim.w, altura: dim.h, aspectRatio: dim.ar,
+            formato: 'image/webp', compressao: 92,
+        });
+        // Força a dimensão EXATA (a API devolve algo próximo).
+        const { blob: norm } = await comprimirImagem(gerado, 4096, 0.92, { formato: 'image/webp', largura: dim.w, altura: dim.h });
+        return norm;
+    }
+
+    // Salva um criativo em cada dimensão pedida. A base (square) é salva
+    // direto no 1:1; as demais são reenquadradas a partir dela.
+    async function _salvarNasDimensoes(d, baseBlob, presetId, label, prompt, dims) {
+        for (const dim of dims) {
+            const ehQuadrado = dim.id === '1x1';
+            const outBlob = ehQuadrado ? baseBlob : await _reframeParaDimensao(baseBlob, dim);
+            const rotulo = dims.length > 1 ? `${label} · ${dim.label}` : label;
+            await _guardarFoto(d, outBlob, presetId, rotulo, prompt, dim.id);
+        }
+    }
+
     async function gerarFotos(presetIds, extra = '') {
         const pid = _state.productId;
         if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
         const d = _dados(pid);
         if (!d.fotoBase) { showToast('Escolha a foto base do produto', 'error'); return; }
 
-        const chave = window.AIAdGenerator?._getOpenAIKey?.() || localStorage.getItem('openai_api_key') || '';
-        if (!chave) { showToast('Configure a chave OpenAI em AI Generations', 'error'); return; }
+        // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
+        // quando o usuário selecionou Gemini bloquearia sem motivo.
+        const prov = _provedorImagem();
+        const chave = _chaveParaProvedor(prov);
+        if (!chave) {
+            showToast(prov === 'gemini'
+                ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : prov === 'openai'
+                    ? 'Configure a chave OpenAI em AI Generations → API Keys'
+                    : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
+            return;
+        }
 
+        // Um id pode ser um preset de texto (id cru) ou um cenário de
+        // referência — um criativo que o usuário subiu, cujo AMBIENTE vamos
+        // reaproveitar (id no formato "cen:<padraoId>").
         const presets = PRESETS_FOTO.filter(p => presetIds.includes(p.id));
-        if (!presets.length) { showToast('Escolha ao menos um cenário', 'error'); return; }
+        const cenariosRef = (presetIds || [])
+            .filter(id => String(id).startsWith('cen:'))
+            .map(id => (_state.padroes || []).find(p => p.id === id.slice(4)))
+            .filter(Boolean);
+        const angulos = _angulosCameraSelecionados();
+
+        if (!presets.length && !cenariosRef.length && !angulos.length) { showToast('Escolha ao menos um cenário ou ângulo', 'error'); return; }
 
         _state.gerando = true;
         _renderFotos();
@@ -255,27 +355,78 @@ const StudioModule = (() => {
             return;
         }
 
+        const m = d.marca;
+        // A estética da marca entra no prompt da foto — senão a imagem sai
+        // bonita mas sem nada a ver com a loja.
+        const estetica = m ? ` Overall aesthetic: ${(m.tom?.adjetivos || []).join(', ')}. Art direction aimed at ${m.publico?.quem || 'the target buyer'}.` : '';
+        // Contexto curto pro prompt de IMAGEM (o _dossie completo é longo
+        // demais e vira ruído). Só o essencial pra identificar o produto.
+        const prod = (AppState.allProducts || []).find(x => x.id === pid);
+        const contexto = [prod?.name, prod?.vendor && `by ${prod.vendor}`].filter(Boolean).join(' ');
+
+        const dims = _dimensoesSelecionadas();
         let ok = 0;
+
+        // Ângulo cruza com cada cenário marcado; sem ângulo marcado, roda
+        // uma vez só (comportamento de sempre — 100% compatível).
+        const angulosOuUnico = angulos.length ? angulos : [null];
+
+        // 1) Cenários de texto (os presets fixos). Os presets de anúncio têm
+        //    marcadores ${product.*} que são preenchidos aqui.
         for (const preset of presets) {
-            try {
-                const m = d.marca;
-                // A estética da marca entra no prompt da foto — senão a imagem
-                // sai bonita mas sem nada a ver com a loja.
-                const estetica = m ? ` Overall aesthetic: ${(m.tom?.adjetivos || []).join(', ')}. Art direction aimed at ${m.publico?.quem || 'the target buyer'}.` : '';
-                const prompt = `${preset.prompt}${estetica}${extra ? ' ' + extra : ''}`;
-                const blob = await _editarImagem(base, prompt, chave);
-                const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-                const mediaId = 'studio_' + id;
-                await MediaStore.put(mediaId, blob, { type: blob.type, name: `${preset.id}.png` });
-                const thumb = await _miniatura(blob);
-                d.fotos.unshift({ id, mediaId, thumb, preset: preset.id, presetLabel: preset.label,
-                                  prompt, criadoEm: new Date().toISOString() });
-                ok++;
-                _save();
-                _renderFotos();
-            } catch (err) {
-                console.error('[Studio] geração falhou:', err);
-                showToast(`${preset.label}: ${String(err.message).slice(0, 120)}`, 'error');
+            for (const angulo of angulosOuUnico) {
+                try {
+                    const promptPreset = _preencherPromptPreset(preset.prompt, pid);
+                    const prompt = `${promptPreset}${angulo ? ' ' + angulo.instrucao : ''}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem(base, prompt);
+                    const label = angulo ? `${preset.label} · ${angulo.label}` : preset.label;
+                    await _salvarNasDimensoes(d, blob, preset.id, label, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] geração falhou:', err);
+                    showToast(`${preset.label}: ${String(err.message).slice(0, 120)}`, 'error');
+                }
+            }
+        }
+
+        // 2) Cenários de referência: coloca o produto DENTRO da cena do criativo
+        //    subido. Manda [cena, produto] — a ordem casa com "first/second
+        //    image" do prompt.
+        for (const cen of cenariosRef) {
+            for (const angulo of angulosOuUnico) {
+                try {
+                    const cena = await _blobDoPadrao(cen);
+                    if (!cena) throw new Error('sem imagem de referência salva');
+                    const promptBase = (window.ImageAI?.promptCenaImagem?.(contexto))
+                        || `Use the two provided images. THE FIRST IMAGE is a scene; THE SECOND IMAGE is a product. Place the product naturally into the scene, keeping it unchanged.`;
+                    const prompt = `${promptBase}${angulo ? ' ' + angulo.instrucao : ''}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem([cena, base], prompt);
+                    const label = angulo ? `Cenário: ${cen.nome} · ${angulo.label}` : `Cenário: ${cen.nome}`;
+                    await _salvarNasDimensoes(d, blob, 'cen:' + cen.id, label, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] cenário de referência falhou:', err);
+                    showToast(`Cenário "${cen.nome}": ${String(err.message).slice(0, 120)}`, 'error');
+                }
+            }
+        }
+
+        // 3) Ângulos sozinhos — só quando nenhum cenário/preset foi marcado
+        //    (senão já rodaram cruzados nos blocos 1/2 acima).
+        if (!presets.length && !cenariosRef.length) {
+            for (const angulo of angulos) {
+                try {
+                    const prompt = `${angulo.instrucao}${PRESERVACAO_ANGULO_CAMERA}${estetica}${extra ? ' ' + extra : ''}`;
+                    const blob = await _editarImagem(base, prompt);
+                    await _salvarNasDimensoes(d, blob, 'ang:' + angulo.id, `Ângulo: ${angulo.label}`, prompt, dims);
+                    ok++;
+                    _save(); _renderFotos();
+                } catch (err) {
+                    console.error('[Studio] ângulo falhou:', err);
+                    showToast(`${angulo.label}: ${String(err.message).slice(0, 120)}`, 'error');
+                }
             }
         }
 
@@ -284,27 +435,52 @@ const StudioModule = (() => {
         if (ok) showToast(`${ok} foto(s) gerada(s)`, 'success');
     }
 
-    async function _editarImagem(blob, prompt, apiKey) {
-        const fd = new FormData();
-        fd.append('model', 'gpt-image-1');
-        fd.append('image', blob, 'produto.png');
-        fd.append('prompt', prompt);
-        fd.append('size', '1024x1024');
-        fd.append('quality', 'high');
-        fd.append('n', '1');
-        const r = await fetch('https://api.openai.com/v1/images/edits', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + apiKey },
-            body: fd,
+    // Grava uma foto gerada (blob → MediaStore + miniatura + registro).
+    async function _guardarFoto(d, blob, preset, presetLabel, prompt, dimId) {
+        const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const mediaId = 'studio_' + id;
+        await MediaStore.put(mediaId, blob, { type: blob.type, name: `${_handle(presetLabel)}.png` });
+        const thumb = await _miniatura(blob);
+        d.fotos.unshift({ id, mediaId, thumb, preset, presetLabel, prompt, dim: dimId || '1x1', criadoEm: new Date().toISOString() });
+        // Alimenta o histórico global de edições (aba Recent Edits).
+        if (window.RecentEdits?.add) {
+            const nomeProduto = (AppState.allProducts || []).find(x => x.id === _state.productId)?.name || '';
+            RecentEdits.add({ prompt: presetLabel || prompt, thumb, origem: 'Estúdio', tipo: presetLabel || '', produto: nomeProduto });
+        }
+    }
+
+    function _blobParaBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(String(r.result || '').split(',')[1] || '');
+            r.onerror = () => reject(new Error('Falha ao ler a imagem'));
+            r.readAsDataURL(blob);
         });
-        if (!r.ok) throw new Error((await r.text()).slice(0, 200));
-        const data = await r.json();
-        const b64 = data?.data?.[0]?.b64_json;
-        if (!b64) throw new Error('Resposta sem imagem');
-        const bytes = atob(b64);
-        const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        return new Blob([arr], { type: 'image/png' });
+    }
+
+    // Provedor escolhido na tela. Ambos EDITAM a foto real do produto —
+    // gerar do zero inventaria outro produto, que é o que queremos evitar.
+    function _provedorImagem() {
+        return document.getElementById('studio-img-provider')?.value || 'openai';
+    }
+
+    // Versão específica do modelo, se o usuário fixou uma na tela. Vazio
+    // deixa o ImageAI usar a cascata padrão (mais recente disponível).
+    function _modeloImagem() {
+        return document.getElementById('studio-img-modelo')?.value || '';
+    }
+
+    // Aceita 1 ou 2 imagens. Com 2, a primeira é a referência de composição
+    // e a segunda é o produto real — a doc dos dois provedores manda separar
+    // esses papéis pelo TEXTO do prompt, não por campo da API. Delega pro
+    // motor compartilhado (js/image-ai.js) — mesma cascata de modelos usada
+    // na página de Produto, com fallback automático e versão fixável.
+    async function _editarImagem(blobs, prompt, provedor) {
+        const lista = Array.isArray(blobs) ? blobs.filter(Boolean) : [blobs];
+        return ImageAI.editar(lista, prompt, {
+            provedor: provedor || _provedorImagem(),
+            modelo: _modeloImagem() || undefined,
+        });
     }
 
     async function _miniatura(blob, maxDim = 320) {
@@ -351,28 +527,39 @@ Responda APENAS com JSON válido:
 - nomeSugerido: rótulo curto em português para este padrão (ex.: "Caixa preta com luz de cima")
 - observacao: uma frase em português dizendo para que tipo de produto este padrão funciona melhor`;
 
-    async function _claudeVisao(system, base64, mediaType, texto) {
-        const key = localStorage.getItem('anthropic_api_key') || '';
-        if (!key) throw new Error('Configure a chave Anthropic (Ad Hub → chave da Anthropic)');
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Transcrição literal do produto ATUAL (diferente do esqueleto, que é
+    // genérico). Nenhum modelo de edição de imagem garante preservar texto
+    // fino sem que ele esteja escrito, palavra por palavra, no prompt — é a
+    // orientação oficial tanto da OpenAI quanto do Google. Sem isso o modelo
+    // "adivinha" (ex.: troca uma marcação real por "Polarized", que é comum
+    // em óculos, ou inventa um logo que não existia na composição).
+    const SISTEMA_MARCACOES = `Você transcreve, de forma literal e exata, todo texto e elemento gráfico de marca visível numa foto de produto.
+
+Liste CADA texto impresso, gravado, em relevo ou bordado (nome de marca, modelo, selos como "Polarized"/"Waterproof", texto em etiquetas, zíperes, embalagem) exatamente como está escrito — sem traduzir, sem corrigir ortografia, sem completar. Se a palavra estiver cortada ou ilegível, transcreva só o que dá pra ler com certeza.
+
+Responda APENAS com JSON válido:
+{"marcacoes":[{"texto":"...","local":"..."}],"temTexto":true|false}
+- texto: a palavra/frase exata, entre aspas no idioma original
+- local: onde está (ex.: "haste direita do óculos", "tampa do estojo")
+- temTexto: false e marcacoes:[] se a foto não tiver nenhum texto/logo visível`;
+
+    async function _visaoIA(system, base64, mediaType, texto) {
+        const key = _chaveOpenAI();
+        if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-api-key': key,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
             body: JSON.stringify({
-                model: 'claude-sonnet-4-5',
+                model: 'gpt-4o',
                 max_tokens: 2000,
-                system,
-                messages: [{
-                    role: 'user',
-                    content: [
-                        { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: base64 } },
+                response_format: { type: 'json_object' },
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: [
                         { type: 'text', text: texto },
-                    ],
-                }],
+                        { type: 'image_url', image_url: { url: `data:${mediaType || 'image/jpeg'};base64,${base64}`, detail: 'high' } },
+                    ] },
+                ],
             }),
         });
         if (!res.ok) {
@@ -380,7 +567,7 @@ Responda APENAS com JSON válido:
             throw new Error(err.error?.message || `HTTP ${res.status}`);
         }
         const data = await res.json();
-        return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        return data.choices?.[0]?.message?.content || '';
     }
 
     function _arquivoParaBase64(file) {
@@ -397,9 +584,9 @@ Responda APENAS com JSON válido:
     }
 
     // Analisa um criativo validado e devolve o esqueleto de prompt.
-    async function criarPadraoDeImagem(file, nomeManual) {
+    async function criarPadraoDeImagem(file, nomeManual, nicho, subnicho) {
         const { base64, mediaType, dataUrl } = await _arquivoParaBase64(file);
-        const txt = await _claudeVisao(SISTEMA_ESQUELETO, base64, mediaType,
+        const txt = await _visaoIA(SISTEMA_ESQUELETO, base64, mediaType,
             'Analise este criativo e escreva o esqueleto de prompt reutilizável, seguindo as regras.');
         const parsed = _extrairJson(txt);
 
@@ -421,6 +608,8 @@ Responda APENAS com JSON válido:
         const padrao = {
             id,
             nome: (nomeManual || '').trim() || parsed.nomeSugerido || 'Padrão sem nome',
+            nicho: (nicho || '').trim(),
+            subnicho: (subnicho || '').trim(),
             esqueleto: parsed.esqueleto,
             aspecto: parsed.aspecto || '1:1',
             observacao: parsed.observacao || '',
@@ -440,6 +629,73 @@ Responda APENAS com JSON válido:
         return await (await fetch(dataUrl)).blob();
     }
 
+    // Lê literalmente o texto/logo visível na foto base ATUAL do produto.
+    // Cacheado por produto e invalidado se a foto base mudar, pra não gastar
+    // uma chamada de visão a cada geração com padrões diferentes.
+    async function _marcacoesDoProduto(pid, base) {
+        const d = _dados(pid);
+        if (d._marcacoesCache && d._marcacoesCache.fonte === d.fotoBase) {
+            return d._marcacoesCache.dados;
+        }
+        const base64 = await _blobParaBase64(base);
+        const txt = await _visaoIA(SISTEMA_MARCACOES, base64, 'image/png',
+            'Transcreva literalmente todo texto e logo visível nesta foto de produto.');
+        const dados = _extrairJson(txt);
+        d._marcacoesCache = { fonte: d.fotoBase, dados };
+        return dados;
+    }
+
+    // Bloco final anexado ao prompt: trava o que já existe no produto real
+    // pra IA não inventar substituto (ex.: "Polarized" no lugar do texto
+    // real) nem acrescentar elemento gráfico que não estava no esqueleto.
+    // `alvo` muda a forma de apontar o produto conforme o número de imagens.
+    function _instrucaoPreservacao(marcacoes, alvo = 'the input photo') {
+        const lista = (marcacoes?.marcacoes || [])
+            .filter(m => m?.texto)
+            .map(m => `"${m.texto}"${m.local ? ` (${m.local})` : ''}`);
+        if (!lista.length) {
+            return ` This is a photo edit of a real product, not a new illustration — do not add any text, logo, tag, plaque, or badge to the product that is not already visible in ${alvo}.`;
+        }
+        return ` This is a photo edit of a real product, not a new illustration. The product in ${alvo} already has these exact markings — reproduce every one character-for-character, in the same position, without translating, paraphrasing, or substituting them: ${lista.join(', ')}. Do not add any other text, logo, tag, plaque, or badge beyond what is listed here.`;
+    }
+
+    // Instrução de transferência de composição, usada quando mandamos as DUAS
+    // imagens. Segue o padrão oficial dos dois provedores: separar os papéis
+    // no texto ("the first image" / "the second image"), já que nenhuma das
+    // APIs tem campo para dizer qual é estilo e qual é sujeito.
+    function _instrucaoComposicao(marca) {
+        const trocaMarca = marca
+            ? ` Any brand name or logo that appears in the first image must be replaced with "${marca}" — never keep the original brand from the first image.`
+            : ' Remove any brand name or logo that belongs to the first image; do not carry it over into the result.';
+        return `Use the two provided images. THE FIRST IMAGE is a reference advertising creative: copy its composition, framing, camera angle, product placement, background, surface, lighting, shadows, colour grading and text layout as closely as possible. THE SECOND IMAGE is the real product this new creative is for. Rebuild the scene of the first image, but featuring the product from the second image — including its own case, pouch, cloth and accessories exactly as they appear in the second image, replacing the ones from the first image. The product from the second image must keep its exact shape, proportions, colour, materials and every marking unchanged; do not restyle it to look like the product in the first image.${trocaMarca} Scene described in detail: `;
+    }
+
+    // {DESCRICAO_PRODUTO} vai para um modelo de IMAGEM, então precisa conter
+    // traço físico, não copy de venda. A descrição da Shopify é texto de
+    // marketing ("PROTECT YOUR EYES WITH STYLE…") e o modelo desenhava aquilo
+    // como texto na cena — por isso as opções/variantes vêm primeiro, que são
+    // objetivas (cor, modelo), e o texto livre entra só higienizado.
+    function _descricaoFisica(p) {
+        const opcoes = (p?.shopifyOptions || [])
+            .filter(o => !/^(title|tamanho|size)$/i.test(o.name || ''))
+            .map(o => `${o.name}: ${o.values.join('/')}`)
+            .join('; ');
+        if (opcoes) return opcoes;
+
+        const bruto = String(p?.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!bruto) return '';
+        const frases = bruto.split(/(?<=[.!?])\s+/)
+            // Fora headline gritada e chamada de venda — viram texto na imagem.
+            .filter(f => f && !(f === f.toUpperCase() && f.length > 12))
+            .filter(f => !/^(discover|shop|buy|get|protect|order|dont |don't )/i.test(f.trim()));
+        let saida = '';
+        for (const f of frases) {
+            if ((saida + ' ' + f).trim().length > 180) break;
+            saida = (saida + ' ' + f).trim();
+        }
+        return saida || frases[0] || '';
+    }
+
     // Preenche os marcadores do esqueleto com os dados do produto/marca.
     function montarPromptDoPadrao(padrao, productId, extras = {}) {
         if (!padrao) return '';
@@ -448,14 +704,9 @@ Responda APENAS com JSON válido:
         const marca = d.marca;
         const pagina = d.pagina;
 
-        // Descrição física: prioriza o texto do produto; cai para as opções da
-        // Shopify, que descrevem cor/modelo de forma objetiva.
-        const descTexto = String(p?.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        const opcoes = (p?.shopifyOptions || []).map(o => `${o.name}: ${o.values.join('/')}`).join('; ');
-
         const valores = {
             '{PRODUTO}': extras.produto || p?.name || 'the product',
-            '{DESCRICAO_PRODUTO}': extras.descricao || descTexto.slice(0, 300) || opcoes || 'the product as shown in the reference photo',
+            '{DESCRICAO_PRODUTO}': extras.descricao || _descricaoFisica(p) || 'the product exactly as shown in the reference photo',
             '{MARCA}': extras.marca || marca?.nome || p?.vendor || '',
             '{HEADLINE}': extras.headline || pagina?.hero?.titulo || marca?.tagline || '',
             '{SUBHEADLINE}': extras.subheadline || pagina?.hero?.subtitulo || '',
@@ -471,6 +722,27 @@ Responda APENAS com JSON válido:
         return prompt.replace(/\s{2,}/g, ' ').trim();
     }
 
+    // Recupera o criativo original do padrão. Padrões antigos (ou salvos sem
+    // IndexedDB) só têm a miniatura — ela serve de referência de composição,
+    // já que o produto real vem da outra imagem em alta resolução.
+    async function _blobDoPadrao(padrao) {
+        try {
+            if (padrao.exemploMediaId && window.MediaStore?.isSupported?.()) {
+                const rec = await MediaStore.get(padrao.exemploMediaId);
+                if (rec?.blob) return rec.blob;
+            }
+            if (padrao.exemploThumb) return await _dataUrlParaBlob(padrao.exemploThumb);
+        } catch (e) {
+            console.warn('[Studio] não consegui carregar o criativo de referência:', e.message);
+        }
+        return null;
+    }
+
+    function _marcaDoProduto(pid) {
+        const p = (AppState.allProducts || []).find(x => x.id === pid);
+        return (_dados(pid).marca?.nome || p?.vendor || '').trim();
+    }
+
     // Gera uma imagem aplicando o padrão à foto base do produto.
     async function gerarComPadrao(padraoId) {
         const pid = _state.productId;
@@ -480,24 +752,52 @@ Responda APENAS com JSON válido:
         const padrao = (_state.padroes || []).find(x => x.id === padraoId);
         if (!padrao) { showToast('Padrão não encontrado', 'error'); return; }
 
-        const chave = window.AIAdGenerator?._getOpenAIKey?.() || localStorage.getItem('openai_api_key') || '';
-        if (!chave) { showToast('Configure a chave OpenAI em AI Generations', 'error'); return; }
+        // A chave exigida depende do provedor escolhido — cobrar a da OpenAI
+        // quando o usuário selecionou Gemini bloquearia sem motivo.
+        const prov = _provedorImagem();
+        const chave = _chaveParaProvedor(prov);
+        if (!chave) {
+            showToast(prov === 'gemini'
+                ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : prov === 'openai'
+                    ? 'Configure a chave OpenAI em AI Generations → API Keys'
+                    : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
+            return;
+        }
 
         _state.gerando = true;
         _renderFotos();
         try {
             const base = await _urlParaBlobPng(d.fotoBase);
-            const prompt = montarPromptDoPadrao(padrao, pid);
-            const blob = await _editarImagem(base, prompt, chave);
+            // O criativo validado entra como PIXEL, não só como texto. Sem ele
+            // a composição era reinventada a partir da descrição — que era o
+            // motivo de o resultado não parecer com a referência.
+            const referencia = await _blobDoPadrao(padrao);
+            const marca = _marcaDoProduto(pid);
+
+            let prompt = montarPromptDoPadrao(padrao, pid);
+            if (referencia) prompt = _instrucaoComposicao(marca) + prompt;
+            try {
+                const marcacoes = await _marcacoesDoProduto(pid, base);
+                prompt += _instrucaoPreservacao(marcacoes, referencia ? 'the second image' : 'the input photo');
+            } catch (e) {
+                // Sem a transcrição a geração segue, só sem a trava extra —
+                // melhor gerar sem a proteção do que travar a feature toda.
+                console.warn('[Studio] não consegui transcrever as marcações do produto:', e.message);
+            }
+            // Ordem importa: o prompt fala em "first/second image".
+            const blob = await _editarImagem(referencia ? [referencia, base] : [base], prompt);
 
             const id = 'sf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
             const mediaId = 'studio_' + id;
             await MediaStore.put(mediaId, blob, { type: blob.type, name: `${padrao.id}.png` });
             const thumb = await _miniatura(blob);
             d.fotos.unshift({ id, mediaId, thumb, preset: padrao.id, presetLabel: padrao.nome,
-                              prompt, padraoId: padrao.id, criadoEm: new Date().toISOString() });
+                              prompt, padraoId: padrao.id, comReferencia: !!referencia,
+                              criadoEm: new Date().toISOString() });
             padrao.usos = (padrao.usos || 0) + 1;
             _save();
+            if (window.RecentEdits?.add) RecentEdits.add({ prompt: `Padrão: ${padrao.nome}`, thumb, origem: 'Estúdio' });
             showToast(`Gerado com o padrão "${padrao.nome}"`, 'success');
         } catch (err) {
             showToast('Falha: ' + String(err.message).slice(0, 140), 'error');
@@ -511,6 +811,46 @@ Responda APENAS com JSON válido:
     // ══════════════════════════════════════════════════════════════
     //  CLAUDE — gerador de página e copy interativo
     // ══════════════════════════════════════════════════════════════
+
+    // Chave da OpenAI — mesma que o AI Ad Hub já usa.
+    function _chaveOpenAI() {
+        return (window.AIAdGenerator?._getOpenAIKey?.()) || localStorage.getItem('openai_api_key') || '';
+    }
+    function _chaveGoogle() {
+        return (window.AIAdGenerator?._getGoogleKey?.()) || localStorage.getItem('google_ai_api_key') || '';
+    }
+
+    // Em 'auto' qualquer uma das duas serve — a cascata do ImageAI tenta o
+    // Gemini primeiro e cai pra OpenAI sozinha.
+    function _chaveParaProvedor(prov) {
+        if (prov === 'gemini') return _chaveGoogle();
+        if (prov === 'openai') return _chaveOpenAI();
+        return _chaveGoogle() || _chaveOpenAI();
+    }
+
+    // Texto pela OpenAI — mantida como implementação alternativa; o módulo usa
+    // _claude (Anthropic) como motor de texto de verdade (marca/página/chat).
+    async function _openai(system, mensagens, maxTokens = 3000) {
+        const key = _chaveOpenAI();
+        if (!key) throw new Error('Configure a chave OpenAI (AI Generations → API Keys)');
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+            body: JSON.stringify({
+                model: 'gpt-4o',
+                max_tokens: maxTokens,
+                temperature: 0.8,
+                response_format: { type: 'json_object' },
+                messages: [{ role: 'system', content: system }, ...mensagens],
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error?.message || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    }
 
     async function _claude(system, mensagens, maxTokens = 3000) {
         const key = localStorage.getItem('anthropic_api_key') || '';
@@ -846,11 +1186,15 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function _icones() { if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
 
     function _preencherProdutos() {
-        const sel = document.getElementById('studio-produto');
-        if (!sel) return;
-        const produtos = (AppState.allProducts || []).filter(p => p.status !== 'inativo');
-        sel.innerHTML = '<option value="">-- Escolha o produto --</option>' +
-            produtos.map(p => `<option value="${_esc(p.id)}"${p.id === _state.productId ? ' selected' : ''}>${_esc(p.name)}</option>`).join('');
+        const container = document.getElementById('studio-produto-picker');
+        if (!container || typeof ProductPicker === 'undefined') return;
+        ProductPicker.render(container, {
+            source: 'local',
+            instancia: 'studio',
+            selectedId: _state.productId || null,
+            placeholder: 'Buscar produto por nome ou SKU…',
+            onSelect: (item) => _selecionarProduto(item.id),
+        });
     }
 
     function _renderAngulos() {
@@ -896,20 +1240,73 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function _renderPresets() {
         const box = document.getElementById('studio-presets');
         if (!box || box.dataset.pronto) return;
-        const grupos = [...new Set(PRESETS_FOTO.map(p => p.grupo || 'Outros'))];
-        box.innerHTML = grupos.map(grupo => `
-            <section class="studio-preset-group" aria-label="${_esc(grupo)}">
-                <h4>${_esc(grupo)}</h4>
-                <div class="studio-preset-group-grid">
-                    ${PRESETS_FOTO.filter(p => (p.grupo || 'Outros') === grupo).map(p => `
-                        <label class="studio-preset">
-                            <input type="checkbox" value="${p.id}"${p.id === 'estudio' || p.id === 'lifestyle' ? ' checked' : ''}>
-                            <i data-lucide="${p.icone}" style="width:14px;height:14px" aria-hidden="true"></i> ${_esc(p.label)}
-                        </label>`).join('')}
-                </div>
-            </section>`).join('');
+        box.innerHTML = PRESETS_FOTO.map(p => `
+            <label class="studio-preset">
+                <input type="checkbox" value="${p.id}"${p.id === 'estudio' || p.id === 'lifestyle' ? ' checked' : ''}>
+                <i data-lucide="${p.icone}" style="width:14px;height:14px"></i> ${_esc(p.label)}
+            </label>`).join('');
         box.dataset.pronto = '1';
         _icones();
+    }
+
+    // Ângulos de câmera predefinidos (checkbox, sem marcação default — só
+    // entram no prompt se o usuário escolher explicitamente).
+    function _renderAngulosCamera() {
+        const box = document.getElementById('studio-angulos-camera');
+        if (!box || box.dataset.pronto) return;
+        box.innerHTML = ANGULOS_CAMERA.map(a => `
+            <label class="studio-preset">
+                <input type="checkbox" value="${a.id}">
+                ${_esc(a.label)}
+            </label>`).join('');
+        box.dataset.pronto = '1';
+        _icones();
+    }
+
+    // Cenários de referência = os criativos subidos (Padrões), usados como
+    // ambiente. Globais — aparecem para qualquer produto. Filtráveis por nicho
+    // (o "catálogo"): escolher "Óculos de Sol" mostra só os desse nicho.
+    function _renderCenariosRef() {
+        const bloco = document.getElementById('studio-cenarios-ref-bloco');
+        const grid = document.getElementById('studio-cenarios-ref');
+        const filtro = document.getElementById('studio-cenarios-ref-cat');
+        if (!bloco || !grid || !filtro) return;
+
+        const todos = _state.padroes || [];
+        if (!todos.length) { bloco.style.display = 'none'; return; }
+        bloco.style.display = '';
+
+        const nichos = [...new Set(todos.map(p => p.nicho).filter(Boolean))].sort();
+        const catAtual = filtro.value;
+        filtro.innerHTML = '<option value="">Todas as categorias</option>'
+            + nichos.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('');
+        filtro.value = nichos.includes(catAtual) ? catAtual : '';
+        if (!filtro._ligado) {
+            filtro.addEventListener('change', () => _renderCenariosRef());
+            filtro._ligado = true;
+        }
+
+        const lista = filtro.value ? todos.filter(p => p.nicho === filtro.value) : todos;
+        // Preserva o que já estava marcado antes do re-render (troca de filtro).
+        const marcados = new Set([...grid.querySelectorAll('input:checked')].map(i => i.value));
+
+        grid.innerHTML = lista.map(p => {
+            const val = 'cen:' + p.id;
+            const sub = [p.nicho, p.subnicho].filter(Boolean).join(' · ');
+            return `
+            <label class="studio-cenario-ref ${marcados.has(val) ? 'is-on' : ''}">
+                <input type="checkbox" value="${val}"${marcados.has(val) ? ' checked' : ''}>
+                ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<span class="studio-cenario-ref-sem"></span>'}
+                <span class="studio-cenario-ref-nome">${_esc(p.nome)}</span>
+                ${sub ? `<span class="studio-cenario-ref-cat">${_esc(sub)}</span>` : ''}
+            </label>`;
+        }).join('');
+
+        // O studio-presets é lido junto no gerar; estes checkboxes vivem em
+        // outro container, então marca/desmarca precisa refletir a classe.
+        grid.querySelectorAll('input').forEach(inp => {
+            inp.addEventListener('change', () => inp.closest('.studio-cenario-ref')?.classList.toggle('is-on', inp.checked));
+        });
     }
 
     async function _renderFotos() {
@@ -925,9 +1322,11 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         }
         box.innerHTML = carregando + d.fotos.map(f => `
             <div class="studio-foto" data-id="${f.id}">
-                <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy">
-                <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}</span>
+                <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy" data-expandir="${f.id}">
+                <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}${f.dim && f.dim !== '1x1' ? ` · ${_esc((DIMENSOES.find(x => x.id === f.dim) || {}).label || f.dim)}` : ''}</span>
                 <div class="studio-foto-acoes">
+                    <button class="btn-icon" data-acao="versoes" data-id="${f.id}" title="Gerar este criativo em outros formatos (story, 16:9, 4:3…)"><i data-lucide="ratio" style="width:13px;height:13px"></i></button>
+                    <button class="btn-icon" data-acao="capa" data-id="${f.id}" title="Definir como capa do produto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="baixar" data-id="${f.id}" title="Baixar em resolução cheia"><i data-lucide="download" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="criativo" data-id="${f.id}" title="Salvar em Meus Criativos"><i data-lucide="bookmark-plus" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="excluir" data-id="${f.id}" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
@@ -937,6 +1336,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         box.querySelectorAll('button[data-acao]').forEach(b => {
             b.addEventListener('click', () => _acaoFoto(b.dataset.acao, b.dataset.id));
+        });
+        box.querySelectorAll('img[data-expandir]').forEach(img => {
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', () => _abrirLightbox(img.dataset.expandir));
         });
     }
 
@@ -951,6 +1354,31 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             const a = document.createElement('a');
             a.href = url; a.download = `${_handle(f.presetLabel)}-${id}.png`; a.click();
             setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        } else if (acao === 'versoes') {
+            _abrirVersoes(f);
+
+        } else if (acao === 'capa') {
+            const p = (AppState.allProducts || []).find(x => x.id === _state.productId);
+            if (!p) { showToast('Produto não encontrado', 'error'); return; }
+            const rec = await MediaStore.get(f.mediaId);
+            if (!rec?.blob) { showToast('Arquivo não encontrado', 'error'); return; }
+            // O modelo de imagem do produto guarda base64 direto (dataUrl) — é o
+            // mesmo formato de quando o usuário sobe uma foto manualmente. Uma
+            // foto gerada por IA costuma vir grande (1024×1024+); comprime antes
+            // de virar a capa, senão pesa demais no localStorage.
+            let dataUrl;
+            try {
+                dataUrl = await comprimirImagemParaDataUrl(rec.blob, 1500, 0.9);
+            } catch (e) {
+                showToast('Falha ao preparar a imagem: ' + e.message, 'error');
+                return;
+            }
+            p.images = p.images || [];
+            p.images.unshift({ dataUrl, name: `${_handle(f.presetLabel || p.name)}.jpg` });
+            if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
+            if (typeof EventBus !== 'undefined') EventBus.emit('productsChanged');
+            showToast(`Definida como capa de "${p.name}"`, 'success');
 
         } else if (acao === 'excluir') {
             await MediaStore.del(f.mediaId);
@@ -985,6 +1413,68 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             EventBus.emit('creativesChanged');
             showToast('Salvo em Meus Criativos', 'success');
         }
+    }
+
+    // Picker de formatos + geração das versões de um criativo JÁ pronto.
+    // Todas derivam do mesmo blob → saem idênticas, só reenquadradas.
+    function _abrirVersoes(f) {
+        const jaTem = f.dim || '1x1';
+        const html = `
+            <div id="modal-versoes-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.1rem;width:min(420px,92vw);display:flex;flex-direction:column;gap:0.7rem">
+                    <strong style="font-size:0.95rem">Gerar este criativo em outros formatos</strong>
+                    <p style="margin:0;font-size:0.76rem;color:var(--text-muted)">Sai o mesmo criativo, só reenquadrado — a IA estende o fundo sem mexer no produto.</p>
+                    <div class="studio-dim-grid">
+                        ${DIMENSOES.map(dim => `
+                            <label class="studio-dim-chip ${dim.id === jaTem ? 'studio-dim-ja' : ''}">
+                                <input type="checkbox" value="${dim.id}" ${dim.id === jaTem ? 'disabled' : ''}>
+                                <span>${_esc(dim.label)}${dim.id === jaTem ? ' (atual)' : ''}</span>
+                            </label>`).join('')}
+                    </div>
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                        <button id="versoes-cancelar" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="versoes-gerar" class="btn btn-primary btn-sm">Gerar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const ov = document.getElementById('modal-versoes-overlay');
+        const fechar = () => ov?.remove();
+        ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        document.getElementById('versoes-cancelar').addEventListener('click', fechar);
+        document.getElementById('versoes-gerar').addEventListener('click', async () => {
+            const ids = [...ov.querySelectorAll('input:checked')].map(i => i.value);
+            const dims = DIMENSOES.filter(x => ids.includes(x.id));
+            fechar();
+            if (!dims.length) { showToast('Escolha ao menos um formato.', 'error'); return; }
+            await _gerarVersoes(f, dims);
+        });
+    }
+
+    async function _gerarVersoes(f, dims) {
+        const prov = _provedorImagem();
+        const chave = _chaveParaProvedor(prov);
+        if (!chave) { showToast('Configure a chave de IA em Chaves de API', 'error'); return; }
+
+        const rec = await MediaStore.get(f.mediaId);
+        if (!rec?.blob) { showToast('Arquivo original não encontrado.', 'error'); return; }
+
+        const d = _dados(_state.productId);
+        _state.gerando = true; _renderFotos();
+        let ok = 0;
+        for (const dim of dims) {
+            try {
+                const outBlob = await _reframeParaDimensao(rec.blob, dim);
+                await _guardarFoto(d, outBlob, f.preset, `${f.presetLabel} · ${dim.label}`, f.prompt, dim.id);
+                ok++;
+                _save(); _renderFotos();
+            } catch (e) {
+                console.error('[Studio] versão falhou', dim.id, e);
+                showToast(`${dim.label}: ${String(e.message).slice(0, 120)}`, 'error');
+            }
+        }
+        _state.gerando = false; _renderFotos();
+        if (ok) showToast(`${ok} versão(ões) gerada(s)`, 'success');
     }
 
     function _renderPagina() {
@@ -1065,19 +1555,20 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         _icones();
     }
 
-    function _renderPadroes() {
-        const box = document.getElementById('studio-padroes');
-        if (!box) return;
-        const lista = _state.padroes || [];
-        if (!lista.length) {
-            box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
-            return;
-        }
-        box.innerHTML = lista.map(p => `
+    // Quais categorias estão abertas. null = primeira render (tudo recolhido).
+    let _padroesAbertos = null;
+
+    function _catDoPadrao(p) { return (p.nicho || '').trim() || 'Sem categoria'; }
+
+    function _cardPadrao(p) {
+        return `
             <div class="studio-padrao" data-id="${p.id}">
-                ${p.exemploThumb ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy">` : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
+                ${p.exemploThumb
+                    ? `<img src="${_esc(p.exemploThumb)}" alt="" loading="lazy" data-ampliar-padrao="${p.id}" style="cursor:zoom-in" title="Clique para ampliar">`
+                    : '<div class="studio-padrao-sem"><i data-lucide="image" style="width:18px;height:18px"></i></div>'}
                 <div class="studio-padrao-info">
                     <strong>${_esc(p.nome)}</strong>
+                    ${p.nicho ? `<span class="studio-padrao-nicho"><i data-lucide="tag" style="width:11px;height:11px;vertical-align:-1px"></i> ${_esc(p.nicho)}${p.subnicho ? ' — ' + _esc(p.subnicho) : ''}</span>` : ''}
                     <small>${_esc(p.observacao || '')}</small>
                     <span class="studio-padrao-tags">
                         ${(p.marcadores || []).map(m => `<em>${_esc(m.replace(/[{}]/g, ''))}</em>`).join('')}
@@ -1086,16 +1577,81 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 </div>
                 <div class="studio-padrao-acoes">
                     <button class="btn btn-primary btn-sm" data-usar="${p.id}" title="Gerar uma foto deste produto usando este padrão">Aplicar</button>
+                    <button class="btn-icon" data-cat-padrao="${p.id}" title="Definir categoria (nicho)"><i data-lucide="tag" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-ver="${p.id}" title="Ver o prompt gerado"><i data-lucide="file-text" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-del-padrao="${p.id}" title="Excluir padrão"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
                 </div>
-            </div>`).join('');
+            </div>`;
+    }
+
+    function _renderPadroes() {
+        const box = document.getElementById('studio-padroes');
+        if (!box) return;
+        const todos = _state.padroes || [];
+
+        // O filtro antigo virou redundante com os grupos recolhíveis.
+        const filtroBox = document.getElementById('studio-padroes-filtro-nicho')?.closest('.studio-padroes-filtro');
+        if (filtroBox) filtroBox.style.display = 'none';
+
+        if (!todos.length) {
+            box.innerHTML = `<p class="studio-vazio">Nenhum padrão ainda. Suba um criativo que já validou — a IA lê a imagem e escreve o prompt que a gerou, trocando marca e produto por marcadores. Depois é só aplicar esse mesmo enquadramento a qualquer outro produto.</p>`;
+            return;
+        }
+
+        // Agrupa por categoria (nicho); sem tag cai em "Sem categoria".
+        const grupos = new Map();
+        todos.forEach(p => {
+            const cat = _catDoPadrao(p);
+            if (!grupos.has(cat)) grupos.set(cat, []);
+            grupos.get(cat).push(p);
+        });
+        const cats = [...grupos.keys()].sort((a, b) => {
+            if (a === 'Sem categoria') return 1;   // sempre por último
+            if (b === 'Sem categoria') return -1;
+            return a.localeCompare(b);
+        });
+
+        // Primeira render: tudo recolhido (o usuário pediu — "menu, clico e abre").
+        if (_padroesAbertos === null) _padroesAbertos = new Set();
+
+        box.innerHTML = cats.map(cat => {
+            const itens = grupos.get(cat);
+            const aberto = _padroesAbertos.has(cat);
+            return `
+            <div class="studio-padrao-grupo ${aberto ? 'aberto' : ''}" data-cat="${_esc(cat)}">
+                <button type="button" class="studio-padrao-grupo-head" data-toggle-cat="${_esc(cat)}">
+                    <i data-lucide="chevron-right" class="studio-padrao-chevron" style="width:15px;height:15px"></i>
+                    <span class="studio-padrao-grupo-nome">${_esc(cat)}</span>
+                    <span class="studio-padrao-grupo-conta">${itens.length}</span>
+                </button>
+                <div class="studio-padrao-grupo-corpo"${aberto ? '' : ' hidden'}>
+                    ${itens.map(_cardPadrao).join('')}
+                </div>
+            </div>`;
+        }).join('');
         _icones();
+
+        // Abrir/fechar grupo — toggle direto no DOM, sem re-render.
+        box.querySelectorAll('[data-toggle-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const cat = btn.dataset.toggleCat;
+                const grupo = btn.closest('.studio-padrao-grupo');
+                const corpo = grupo.querySelector('.studio-padrao-grupo-corpo');
+                const abrir = corpo.hidden;
+                corpo.hidden = !abrir;
+                grupo.classList.toggle('aberto', abrir);
+                if (abrir) _padroesAbertos.add(cat); else _padroesAbertos.delete(cat);
+            });
+        });
 
         box.querySelectorAll('[data-usar]').forEach(b =>
             b.addEventListener('click', () => gerarComPadrao(b.dataset.usar)));
         box.querySelectorAll('[data-ver]').forEach(b =>
             b.addEventListener('click', () => _verPrompt(b.dataset.ver)));
+        box.querySelectorAll('[data-ampliar-padrao]').forEach(img =>
+            img.addEventListener('click', () => _ampliarPadrao(img.dataset.ampliarPadrao)));
+        box.querySelectorAll('[data-cat-padrao]').forEach(b =>
+            b.addEventListener('click', () => _editarCategoriaPadrao(b.dataset.catPadrao)));
         box.querySelectorAll('[data-del-padrao]').forEach(b =>
             b.addEventListener('click', async () => {
                 const p = (_state.padroes || []).find(x => x.id === b.dataset.delPadrao);
@@ -1104,8 +1660,67 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                     try { await MediaStore.del(p.exemploMediaId); } catch {}
                 }
                 _state.padroes = _state.padroes.filter(x => x.id !== p.id);
-                _save(); _renderPadroes();
+                _save(); _renderPadroes(); _renderCenariosRef();
             }));
+    }
+
+    // Amplia o criativo de referência — a miniatura tem ~90px e não dá pra
+    // conferir os detalhes. Busca o arquivo cheio no MediaStore; cai na
+    // miniatura se não houver.
+    async function _ampliarPadrao(padraoId) {
+        const p = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!p) return;
+        let src = p.exemploThumb || '';
+        try {
+            const blob = await _blobDoPadrao(p);
+            if (blob) src = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onloadend = () => res(String(r.result || ''));
+                r.onerror = () => rej(r.error);
+                r.readAsDataURL(blob);
+            });
+        } catch { /* usa a miniatura */ }
+        if (src && typeof abrirImagemAmpliada === 'function') abrirImagemAmpliada(src, p.nome);
+    }
+
+    // Define/edita a categoria (nicho/subnicho) de um padrão — inclusive dos
+    // criativos antigos que foram subidos sem tag.
+    function _editarCategoriaPadrao(padraoId) {
+        const p = (_state.padroes || []).find(x => x.id === padraoId);
+        if (!p) return;
+        const nichos = [...new Set((_state.padroes || []).map(x => x.nicho).filter(Boolean))].sort();
+
+        const html = `
+            <div id="modal-cat-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center">
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;width:min(420px,92vw);display:flex;flex-direction:column;gap:0.8rem">
+                    <strong style="font-size:1rem">Categoria de "${_esc(p.nome)}"</strong>
+                    <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Nicho</label>
+                    <input id="cat-nicho" class="input input-sm" list="cat-nichos" value="${_esc(p.nicho || '')}" placeholder="ex.: Óculos de Sol">
+                    <datalist id="cat-nichos">${nichos.map(n => `<option value="${_esc(n)}">`).join('')}</datalist>
+                    <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary)">Sub-nicho (opcional)</label>
+                    <input id="cat-subnicho" class="input input-sm" value="${_esc(p.subnicho || '')}" placeholder="ex.: Aviador">
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                        <button id="cat-cancelar" class="btn btn-secondary btn-sm">Cancelar</button>
+                        <button id="cat-salvar" class="btn btn-primary btn-sm">Salvar</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const ov = document.getElementById('modal-cat-overlay');
+        const fechar = () => ov?.remove();
+        ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        document.getElementById('cat-cancelar').addEventListener('click', fechar);
+        document.getElementById('cat-salvar').addEventListener('click', () => {
+            p.nicho = (document.getElementById('cat-nicho').value || '').trim();
+            p.subnicho = (document.getElementById('cat-subnicho').value || '').trim();
+            _save();
+            // Mantém a nova categoria aberta pra o usuário ver onde o item foi parar.
+            if (_padroesAbertos) _padroesAbertos.add(_catDoPadrao(p));
+            fechar();
+            _renderPadroes(); _renderCenariosRef();
+            showToast('Categoria atualizada', 'success');
+        });
+        setTimeout(() => document.getElementById('cat-nicho')?.focus(), 30);
     }
 
     // Mostra o esqueleto e como ele fica preenchido para o produto atual —
@@ -1147,14 +1762,18 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         if (!file) return;
         const status = document.getElementById('studio-padrao-status');
         const nome = (document.getElementById('studio-padrao-nome')?.value || '').trim();
+        const nicho = (document.getElementById('studio-padrao-nicho')?.value || '').trim();
+        const subnicho = (document.getElementById('studio-padrao-subnicho')?.value || '').trim();
         if (status) status.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Analisando o criativo…';
         _icones();
         try {
-            const p = await criarPadraoDeImagem(file, nome);
-            const campo = document.getElementById('studio-padrao-nome');
-            if (campo) campo.value = '';
+            const p = await criarPadraoDeImagem(file, nome, nicho, subnicho);
+            ['studio-padrao-nome', 'studio-padrao-nicho', 'studio-padrao-subnicho'].forEach(id => {
+                const campo = document.getElementById(id);
+                if (campo) campo.value = '';
+            });
             if (status) status.textContent = '';
-            _renderPadroes();
+            _renderPadroes(); _renderCenariosRef();
             showToast(`Padrão "${p.nome}" criado a partir do criativo.`, 'success');
         } catch (err) {
             if (status) status.textContent = '';
@@ -1210,7 +1829,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function _selecionarProduto(pid) {
         _state.productId = pid;
-        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderPadroes();
+        _renderAngulos(); _renderMarca(); _renderFontes(); _renderPresets(); _renderAngulosCamera(); _renderPadroes(); _renderCenariosRef();
         _renderFotos(); _renderPagina(); _renderChat();
     }
 
@@ -1222,17 +1841,20 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function init() {
         _load();
 
-        document.getElementById('studio-produto')?.addEventListener('change', (e) => _selecionarProduto(e.target.value));
-        document.getElementById('studio-novo-produto')?.addEventListener('click', () => {
-            if (window.UXShell?.navigate) UXShell.navigate('products');
-            else document.querySelector('.tab-btn[data-tab="products"]')?.click();
-            window.setTimeout(() => window.ProductsModule?.openForm?.(), 100);
-        });
-
         document.getElementById('studio-gerar-fotos')?.addEventListener('click', () => {
-            const ids = [...document.querySelectorAll('#studio-presets input:checked')].map(i => i.value);
+            // Presets de texto E cenários de referência (containers separados).
+            const ids = [...document.querySelectorAll('#studio-presets input:checked, #studio-cenarios-ref input:checked')]
+                .map(i => i.value);
             const extra = (document.getElementById('studio-foto-extra')?.value || '').trim();
             gerarFotos(ids, extra);
+        });
+
+        document.getElementById('studio-foto-extra-lib')?.addEventListener('click', () => {
+            const campo = document.getElementById('studio-foto-extra');
+            window.PromptTemplates?.open({
+                prefill: campo?.value || '',
+                onUse: (texto) => { if (campo) { campo.value = texto; campo.focus(); } },
+            });
         });
 
         // Upload manual da foto base (quando o produto não tem imagem no app)
@@ -1253,6 +1875,34 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             r.readAsDataURL(f);
         });
 
+        const selProv = document.getElementById('studio-img-provider');
+        const selMod = document.getElementById('studio-img-modelo');
+        // Em Automático não dá pra fixar versão — não se sabe de antemão qual
+        // dos dois provedores vai atender. Some as opções e trava o select
+        // nesse caso; nos demais, mostra só as versões do provedor escolhido
+        // (se o modelo salvo era de outro provedor, volta pro Padrão em vez
+        // de manter algo escondido).
+        const sincronizarModeloImagem = () => {
+            if (!selMod) return;
+            const prov = selProv?.value;
+            const auto = prov === 'auto';
+            selMod.disabled = auto;
+            [...selMod.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== prov; });
+            const opt = selMod.selectedOptions[0];
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) selMod.value = '';
+        };
+        if (selProv) {
+            selProv.value = localStorage.getItem('studio_img_provider') || 'openai';
+            selProv.addEventListener('change', () => {
+                localStorage.setItem('studio_img_provider', selProv.value);
+                sincronizarModeloImagem();
+            });
+        }
+        if (selMod) {
+            selMod.value = localStorage.getItem('studio_img_modelo') || '';
+            selMod.addEventListener('change', () => localStorage.setItem('studio_img_modelo', selMod.value));
+        }
+        sincronizarModeloImagem();
         document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
         document.getElementById('studio-padrao-pick')?.addEventListener('click', () => document.getElementById('studio-padrao-input')?.click());
         document.getElementById('studio-padrao-input')?.addEventListener('change', (e) => {
@@ -1280,6 +1930,47 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             EventBus.on('productsChanged', () => _preencherProdutos());
             EventBus.on('tabChanged', (tab) => { if (tab === 'studio') render(); });
         }
+
+        // Lightbox das fotos geradas — mesmo padrão de fechar do lightbox de Criativos.
+        document.getElementById('studio-lightbox-close')?.addEventListener('click', _fecharLightbox);
+        document.getElementById('studio-media-lightbox')?.addEventListener('click', (e) => {
+            if (e.target.id === 'studio-media-lightbox') _fecharLightbox();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('studio-media-lightbox')?.style.display === 'flex') _fecharLightbox();
+        });
+    }
+
+    let _lightboxUrl = null;
+
+    // Mostra a foto em resolução cheia (a grade só tem a miniatura webp). A
+    // imagem real fica no IndexedDB — busca pelo mediaId na hora do clique.
+    async function _abrirLightbox(fotoId) {
+        const d = _dados(_state.productId);
+        const f = (d.fotos || []).find(x => x.id === fotoId);
+        if (!f) return;
+        const box = document.getElementById('studio-media-lightbox');
+        const body = document.getElementById('studio-lightbox-body');
+        const cap = document.getElementById('studio-lightbox-caption');
+        if (!box || !body) return;
+        if (cap) cap.textContent = f.presetLabel || f.preset || '';
+        body.innerHTML = '<div class="creative-lightbox-loading">' + window.loadingHTML('Carregando…') + '</div>';
+        box.style.display = 'flex';
+
+        if (_lightboxUrl) { try { URL.revokeObjectURL(_lightboxUrl); } catch {} _lightboxUrl = null; }
+        const url = f.mediaId ? await MediaStore.getObjectUrl(f.mediaId) : '';
+        const src = url || f.thumb;
+        if (!src) { body.innerHTML = '<div class="creative-lightbox-loading">Sem imagem salva.</div>'; return; }
+        if (url) _lightboxUrl = url;
+        body.innerHTML = `<img src="${_esc(src)}" alt="${_esc(f.presetLabel || '')}" style="max-width:100%;max-height:80vh;border-radius:10px">`;
+    }
+
+    function _fecharLightbox() {
+        const box = document.getElementById('studio-media-lightbox');
+        const body = document.getElementById('studio-lightbox-body');
+        if (body) body.innerHTML = '';
+        if (box) box.style.display = 'none';
+        if (_lightboxUrl) { try { URL.revokeObjectURL(_lightboxUrl); } catch {} _lightboxUrl = null; }
     }
 
     return {
@@ -1289,7 +1980,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         gerarFotos, gerarMarca, gerarPagina, enviarChat, exportarCsv, _contextoDeMarca,
         _dados, _save, _load, _miniatura, _urlParaBlobPng, _editarImagem,
         _claude, _extrairJson, _corpoHtml, _handle,
-        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderMarca, _selecionarProduto,
+        _renderFotos, _renderPagina, _renderChat, _renderAngulos, _renderAngulosCamera, _renderMarca, _selecionarProduto,
         criarPadraoDeImagem, montarPromptDoPadrao, gerarComPadrao, _renderPadroes, MARCADORES,
     };
 })();

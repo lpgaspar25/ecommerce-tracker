@@ -12,6 +12,23 @@ const ShopifyModule = (() => {
     // Cloudflare Worker that handles OAuth + GraphQL proxy
     const DEFAULT_PROXY_URL = 'https://shopify-proxy.lucasmedia.workers.dev';
 
+    // Escopos que o app pede na conexão. Passados na URL do /oauth/start
+    // porque o parâmetro tem prioridade sobre a env SCOPES do servidor — é a
+    // única forma de garantir a lista certa sem mexer em variável de ambiente.
+    //  reads: pedidos/produtos/idiomas/traduções/temas (só leitura, pro
+    //  seletor de tema/template do Agente de Loja) · writes: produtos
+    //  (imagem), arquivos, traduções, idiomas.
+    //  read_reports: exigido pelo campo shopifyqlQuery da Admin API — é o que
+    //  alimenta VISITAS (denominador da Conversão Real) e o funil da loja.
+    //  Sem ele a query é recusada na autorização. Ficou anos despercebido
+    //  porque o app pedia um campo inexistente (`rowData`) e a query morria
+    //  na VALIDAÇÃO do documento, antes de o escopo chegar a ser testado.
+    //  ATENÇÃO: esta é a lista que vale de verdade — beginInstall manda
+    //  ?scopes= na URL e tanto a Pages Function quanto o Worker fazem
+    //  `searchParams.get('scopes') || env.SCOPES`, ou seja o query param
+    //  SEMPRE ganha de wrangler.toml/env. Mexer só no worker não muda nada.
+    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes,read_reports';
+
     let _config = null;
     let _productLinks = {};
     let _shopifyProducts = [];
@@ -23,10 +40,42 @@ const ShopifyModule = (() => {
         };
     }
 
-    function _loadConfig() {
+    // Conexão da Shopify é SEPARADA POR LOJA (cada loja tem seu próprio token,
+    // domínio e vínculos de produto). storeId lido DIRETO do localStorage, não
+    // de AppState — porque ShopifyModule.init() roda antes de ensureStoreSetup
+    // popular AppState. '__ALL__' ou vazio caem na 1ª loja salva (não existe
+    // uma conexão única pra "todas as lojas").
+    function _lojaAtualId() {
+        let sid = '';
+        try { sid = localStorage.getItem('currentStoreId') || ''; } catch {}
+        if (!sid || sid === '__ALL__') {
+            try { sid = (JSON.parse(localStorage.getItem('etracker_stores') || '[]')[0] || {}).id || ''; } catch {}
+        }
+        return sid || '_default';
+    }
+    function _configKey() { return CONFIG_KEY + '__' + _lojaAtualId(); }
+    function _linksKey() { return LINKS_KEY + '__' + _lojaAtualId(); }
+
+    // Migração idempotente: a config GLOBAL antiga (chave sem sufixo de loja,
+    // de antes deste recurso) é adotada pela loja ativa, pra quem já estava
+    // conectado NÃO perder o token de sessão. Copia primeiro, só então apaga
+    // a global — se algo falhar no meio, a global continua lá.
+    function _migrarConfigGlobalLegada() {
         try {
-            _config = JSON.parse(localStorage.getItem(CONFIG_KEY)) || _defaultConfig();
-            _productLinks = JSON.parse(localStorage.getItem(LINKS_KEY)) || {};
+            const cfgLegada = localStorage.getItem(CONFIG_KEY);   // chave exata, sem '__'
+            if (cfgLegada && !localStorage.getItem(_configKey())) localStorage.setItem(_configKey(), cfgLegada);
+            if (cfgLegada && localStorage.getItem(_configKey())) localStorage.removeItem(CONFIG_KEY);
+            const linksLegado = localStorage.getItem(LINKS_KEY);
+            if (linksLegado && !localStorage.getItem(_linksKey())) localStorage.setItem(_linksKey(), linksLegado);
+            if (linksLegado && localStorage.getItem(_linksKey())) localStorage.removeItem(LINKS_KEY);
+        } catch {}
+    }
+
+    function _loadConfig() {
+        _migrarConfigGlobalLegada();
+        try {
+            _config = JSON.parse(localStorage.getItem(_configKey())) || _defaultConfig();
+            _productLinks = JSON.parse(localStorage.getItem(_linksKey())) || {};
         } catch {
             _config = _defaultConfig();
             _productLinks = {};
@@ -35,8 +84,34 @@ const ShopifyModule = (() => {
         if (!_config.proxyUrl) _config.proxyUrl = DEFAULT_PROXY_URL;
     }
 
-    function _saveConfig() { localStorage.setItem(CONFIG_KEY, JSON.stringify(_config)); }
-    function _saveLinks() { localStorage.setItem(LINKS_KEY, JSON.stringify(_productLinks)); }
+    function _saveConfig() {
+        const write = () => localStorage.setItem(_configKey(), JSON.stringify(_config));
+        if (typeof StorageManager !== 'undefined' && StorageManager.withReclaim) {
+            if (!StorageManager.withReclaim(write, 'shopify_config')) {
+                throw new Error('Armazenamento cheio — libere espaço (Diário/testes antigos) e tente de novo.');
+            }
+        } else { write(); }
+    }
+    function _saveLinks() {
+        const write = () => localStorage.setItem(_linksKey(), JSON.stringify(_productLinks));
+        if (typeof StorageManager !== 'undefined' && StorageManager.withReclaim) {
+            StorageManager.withReclaim(write, 'shopify_links');
+        } else { write(); }
+    }
+
+    // Chamado ao TROCAR de loja: recarrega a conexão da nova loja e joga fora
+    // o estado/caches em memória da anterior (senão _shopifyProducts,
+    // _productLinks e os pedidos em cache ficariam da loja errada).
+    function reloadConfig() {
+        _loadConfig();
+        _shopifyProducts = [];
+        // Caches de pedidos são globais (keyed por período/dia, sem loja);
+        // limpar ao trocar de loja evita servir pedidos da loja anterior. São
+        // regeneráveis, TTL curto — descartar é seguro.
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+        try { if (typeof KVStore !== 'undefined') KVStore.del('etracker_shopify_orders_day_cache'); } catch {}
+        try { renderDashboardWidget(); } catch {}
+    }
 
     function getConfig() { return { ..._config }; }
     function isConfigured() { return !!(_config && _config.session && _config.shop && _config.connected); }
@@ -48,6 +123,9 @@ const ShopifyModule = (() => {
         // so that redirect_uri host matches the App URL configured in Shopify Partners.
         const returnUrl = window.location.origin + window.location.pathname;
         const params = new URLSearchParams({ shop, return: returnUrl });
+        // Passa os escopos explicitamente — tem prioridade sobre a env SCOPES
+        // do servidor (que estava presa em só-leitura e ignorava o código).
+        params.set('scopes', OAUTH_SCOPES);
         // Pass custom credentials if user provided them — otherwise server falls back to env secrets
         if (_config.clientId)     params.set('client_id',     _config.clientId);
         if (_config.clientSecret) params.set('client_secret', _config.clientSecret);
@@ -244,20 +322,36 @@ const ShopifyModule = (() => {
     // sozinha em vez de exigir intervenção manual.
     const DAY_TTL_OLD_EMPTY = 3 * 24 * 60 * 60 * 1000;
 
-    function _loadDayCache() {
+    // Cache por dia (até 365 entradas, cada uma com os pedidos daquele dia)
+    // vive no IndexedDB via KVStore — é o que mais engordava o localStorage,
+    // já que é alimentado toda vez que algo pede vendas por período (Diário,
+    // Diagnóstico, resultado Shopify do Laboratório etc.).
+    async function _loadDayCache() {
         try {
-            const raw = localStorage.getItem(DAY_CACHE_KEY);
-            if (!raw) return {};
-            const parsed = JSON.parse(raw);
-            if (parsed.__v !== ORDERS_CACHE_VERSION) return {}; // version mismatch → reset
+            let parsed = (typeof KVStore !== 'undefined') ? await KVStore.get(DAY_CACHE_KEY) : null;
+            if (parsed === null) parsed = await _migrarDayCacheDeLocalStorage();
+            if (!parsed || parsed.__v !== ORDERS_CACHE_VERSION) return {}; // sem dado ou versão mudou → reset
             return parsed.days || {};
         } catch { return {}; }
     }
-    function _saveDayCache(days) {
+    // Migração única do dado antigo em localStorage pro IndexedDB.
+    async function _migrarDayCacheDeLocalStorage() {
+        let parsed = null;
+        try {
+            const raw = localStorage.getItem(DAY_CACHE_KEY);
+            if (raw) {
+                parsed = JSON.parse(raw);
+                if (typeof KVStore !== 'undefined') await KVStore.set(DAY_CACHE_KEY, parsed);
+            }
+        } catch (e) { console.warn('[Shopify] migração do day cache falhou:', e); }
+        try { localStorage.removeItem(DAY_CACHE_KEY); } catch {}
+        return parsed;
+    }
+    async function _saveDayCache(days) {
         try {
             // Race-condition safe: merge with the latest on-disk cache so concurrent
             // fetchOrders calls don't overwrite each other's days.
-            const onDisk = _loadDayCache();
+            const onDisk = await _loadDayCache();
             const merged = { ...onDisk, ...days };
             // For overlapping keys, keep whichever has the most recent ts (i.e., freshest data wins)
             for (const k of Object.keys(days)) {
@@ -269,7 +363,7 @@ const ShopifyModule = (() => {
                 const k = keys.shift();
                 delete merged[k];
             }
-            localStorage.setItem(DAY_CACHE_KEY, JSON.stringify({ __v: ORDERS_CACHE_VERSION, days: merged }));
+            await KVStore.set(DAY_CACHE_KEY, { __v: ORDERS_CACHE_VERSION, days: merged });
         } catch (e) { console.warn('[Shopify] day cache save failed:', e); }
     }
     function _ttlForDay(dateStr, cacheEntry) {
@@ -358,7 +452,7 @@ const ShopifyModule = (() => {
         if (!dateFrom || !dateTo) return [];
 
         const days = _eachDayInRange(dateFrom, dateTo);
-        const cache = _loadDayCache();
+        const cache = await _loadDayCache();
         const now = Date.now();
 
         // Identify which days need fetching (missing OR expired by TTL)
@@ -397,7 +491,7 @@ const ShopifyModule = (() => {
                 }
             }
         }
-        if (toFetch.length) _saveDayCache(cache);
+        if (toFetch.length) await _saveDayCache(cache);
 
         // Combine all days in chronological order
         const all = [];
@@ -644,35 +738,20 @@ const ShopifyModule = (() => {
 
         // ShopifyQL: sessões/visualizações agrupadas por produto.
         // Datasets variam por versão da API; tentamos algumas formas em ordem.
+        // Mesma correção de sintaxe de fetchProductViewsByDate: dataset é
+        // `sessions` (não existe `FROM products`) e as colunas de produto
+        // podem simplesmente não existir nesta loja.
         const queries = [
-            `FROM products SHOW view_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY view_sessions DESC LIMIT 250`,
-            `FROM sessions SHOW total_sessions GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY total_sessions DESC LIMIT 250`,
-            `FROM products SHOW online_store_product_views GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY online_store_product_views DESC LIMIT 250`,
+            `FROM sessions SHOW product_views GROUP BY product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY product_views DESC LIMIT 250`,
+            `FROM sessions SHOW product_views GROUP BY product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY product_views DESC LIMIT 250`,
+            `FROM sessions SHOW sessions GROUP BY product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY sessions DESC LIMIT 250`,
         ];
-
-        const gql = `query SQL($q: String!) {
-            shopifyqlQuery(query: $q) {
-                tableData {
-                    columns { name }
-                    rowData
-                }
-                parseErrors
-            }
-        }`;
 
         let lastErr = null;
         for (const q of queries) {
             try {
-                const data = await _graphql(gql, { q });
-                const resp = data?.shopifyqlQuery;
-                if (!resp) continue;
-                // parseErrors is a String in this API version
-                if (resp.parseErrors && String(resp.parseErrors).trim()) {
-                    lastErr = new Error(String(resp.parseErrors));
-                    continue;
-                }
-                const table = resp.tableData;
-                if (!table || !Array.isArray(table.rowData)) continue;
+                const table = await _shopifyql(q);
+                if (!table) continue;
 
                 // Identify column indices
                 const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
@@ -684,7 +763,7 @@ const ShopifyModule = (() => {
                 const byShopifyProductId = {};
                 const byTitle = {};
                 let total = 0;
-                for (const row of table.rowData) {
+                for (const row of table.rows) {
                     const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
                     const title = titleIdx >= 0 ? String(row[titleIdx] || '') : '';
                     const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
@@ -731,52 +810,271 @@ const ShopifyModule = (() => {
         const cacheKey = `${dateFrom}|${dateTo}`;
         if (_viewsByDateCache[cacheKey]) return _viewsByDateCache[cacheKey];
 
-        const queries = [
-            `FROM products SHOW view_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
-            `FROM sessions SHOW total_sessions GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
-            `FROM products SHOW online_store_product_views GROUP BY day, product_id, product_title SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY day LIMIT 2000`,
-        ];
-        const gql = `query SQL($q: String!) {
-            shopifyqlQuery(query: $q) {
-                tableData { columns { name } rowData }
-                parseErrors
+        // CAMINHO PRINCIPAL: sessões por página de ENTRADA (landing_page_path).
+        // As colunas de produto (product_views/product_title/product_id) não
+        // existem no dataset `sessions` desta loja — nem a query de exemplo da
+        // doc oficial passa. Já landing_page_path existe e traz /products/
+        // <handle>, que casa com o handle do produto.
+        //
+        // Semântica honesta: isto é "sessões que ENTRARAM pela página do
+        // produto", não "todas as visualizações do produto" — quem entra pela
+        // home e navega até o produto não é contado. Pra tráfego pago (o caso
+        // deste app) a landing page É o anúncio, então cobre bem; mas o número
+        // é um piso, não o total.
+        try {
+            const porEntrada = await _viewsPorLandingPage(dateFrom, dateTo);
+            if (porEntrada && Object.keys(porEntrada).length) {
+                _viewsByDateCache[cacheKey] = porEntrada;
+                return porEntrada;
             }
-        }`;
+        } catch (e) {
+            console.warn('[Shopify] visitas por landing page falharam:', e.message);
+        }
+
+        // Fallback: lojas/planos onde as colunas de produto existem de fato.
+        const queries = [
+            `FROM sessions SHOW product_views GROUP BY product_id, product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
+            `FROM sessions SHOW product_views GROUP BY product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
+            `FROM sessions SHOW sessions GROUP BY product_title TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 2000`,
+        ];
 
         let lastErr = null;
         for (const q of queries) {
             try {
-                const data = await _graphql(gql, { q });
-                const resp = data?.shopifyqlQuery;
-                if (!resp) continue;
-                if (resp.parseErrors && String(resp.parseErrors).trim()) { lastErr = new Error(String(resp.parseErrors)); continue; }
-                const table = resp.tableData;
-                if (!table || !Array.isArray(table.rowData)) continue;
+                const table = await _shopifyql(q);
+                if (!table) continue;
                 const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
                 const dayIdx = cols.findIndex(c => c === 'day' || c.includes('date') || c.includes('dia'));
                 const pidIdx = cols.findIndex(c => c.includes('product_id'));
                 const titleIdx = cols.findIndex(c => c.includes('product_title') || c.includes('title'));
                 const viewIdx = cols.findIndex((c, i) => i !== dayIdx && i !== pidIdx && i !== titleIdx);
+                if (dayIdx < 0 || viewIdx < 0 || (pidIdx < 0 && titleIdx < 0)) continue;
+
+                // Sem product_id, casa por TÍTULO — resolve pro id numérico da
+                // Shopify usando o catálogo já em cache, pra a chave sair no
+                // mesmo formato "dia|idShopify" que o resto do app espera.
+                const idPorTitulo = {};
+                if (pidIdx < 0 && titleIdx >= 0) {
+                    (getShopifyProducts() || []).forEach(p => {
+                        if (p.title) idPorTitulo[String(p.title).trim().toLowerCase()] = String(p.id);
+                    });
+                }
                 const out = {};
-                for (const row of table.rowData) {
-                    const day = dayIdx >= 0 ? String(row[dayIdx] || '').slice(0, 10) : '';
-                    const pid = pidIdx >= 0 ? String(row[pidIdx] || '').replace(/\D/g, '') : '';
+                for (const row of table.rows) {
+                    const day = String(row[dayIdx] || '').slice(0, 10);
+                    const pid = pidIdx >= 0
+                        ? String(row[pidIdx] || '').replace(/\D/g, '')
+                        : (idPorTitulo[String(row[titleIdx] || '').trim().toLowerCase()] || '');
                     const views = parseInt(String(row[viewIdx] ?? '0').replace(/\D/g, ''), 10) || 0;
                     if (day && pid) out[`${day}|${pid}`] = (out[`${day}|${pid}`] || 0) + views;
                 }
+                if (!Object.keys(out).length) continue;   // veio tabela, mas nada casou
                 _viewsByDateCache[cacheKey] = out;
                 return out;
             } catch (e) {
                 lastErr = e;
                 const msg = (e.message || '').toLowerCase();
                 if (msg.includes('access denied') || msg.includes('read_reports') || msg.includes('not approved')) {
-                    throw new Error('Visitas indisponíveis: falta read_reports OU a loja precisa reconectar após adicionar o escopo.');
+                    throw new Error('Visitas indisponíveis: falta o escopo read_reports — reconecte a loja em Configurações → Integrações depois de atualizar os escopos.');
                 }
-                // otherwise keep trying next query form
+                // senão, tenta a próxima forma de query
             }
         }
-        // Surface the RAW error (e.g. "Cannot query field X on type Y") for debugging
-        throw lastErr || new Error('ShopifyQL não retornou visitas por dia.');
+        throw new Error('Esta loja não expõe visitas POR PRODUTO no ShopifyQL'
+            + (lastErr ? ` (${String(lastErr.message).slice(0, 120)})` : '')
+            + '. As visitas totais da loja continuam disponíveis.');
+    }
+
+    // Normaliza uma landing page pro handle do produto.
+    // Trata os 4 formatos reais que aparecem nos dados desta loja:
+    //   /products/gt-line-sunglasses          → gt-line-sunglasses
+    //   /products/gt-line-sunglasses/         → (barra final)
+    //   /de/products/mb-amg-line-brille-3     → (prefixo de idioma)
+    //   /products/ry-bn%C2%AE-ferrari-...     → (percent-encoding)
+    function _handleDaLandingPage(path) {
+        let p = String(path || '').split('?')[0].trim();
+        try { p = decodeURIComponent(p); } catch {}
+        p = p.replace(/^\/[a-z]{2}(-[a-z]{2})?\//i, '/');   // /de/... , /pt-br/...
+        const m = p.match(/^\/products\/([^/]+)\/?$/i);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    async function _viewsPorLandingPage(dateFrom, dateTo) {
+        const q = `FROM sessions SHOW sessions GROUP BY landing_page_path TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 5000`;
+        const table = await _shopifyql(q);
+        if (!table) return null;
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const iDia = cols.indexOf('day');
+        const iPath = cols.indexOf('landing_page_path');
+        const iSess = cols.indexOf('sessions');
+        if (iDia < 0 || iPath < 0 || iSess < 0) return null;
+
+        // handle → id numérico da Shopify (a chave que o resto do app usa).
+        // O catálogo pode ainda não ter sido buscado nesta sessão — sem ele
+        // NADA casaria e a conversão real cairia em "sem dados" por um motivo
+        // que não tem nada a ver com a API.
+        let catalogo = getShopifyProducts() || [];
+        if (!catalogo.length) {
+            try { catalogo = await fetchShopifyProducts(); } catch (e) { console.warn('[Shopify] catálogo indisponível pro casamento por handle:', e.message); }
+        }
+        const idPorHandle = {};
+        (catalogo || []).forEach(p => {
+            if (p.handle) idPorHandle[String(p.handle).toLowerCase()] = String(p.id);
+        });
+        if (!Object.keys(idPorHandle).length) return null;
+
+        const out = {};
+        let casadas = 0, orfas = 0;
+        const handlesOrfaos = new Set();
+        for (const row of table.rows) {
+            const handle = _handleDaLandingPage(row[iPath]);
+            if (!handle) continue;   // não é página de produto
+            const sess = parseInt(String(row[iSess] ?? '0').replace(/\D/g, ''), 10) || 0;
+            const pid = idPorHandle[handle];
+            // Handle traduzido (ex.: /de/products/...-sonnenbrille) não casa com
+            // o handle do idioma primário — essas sessões ficam de fora em vez
+            // de serem chutadas pro produto errado.
+            if (!pid) { orfas += sess; if (handlesOrfaos.size < 8) handlesOrfaos.add(handle); continue; }
+            const dia = String(row[iDia] || '').slice(0, 10);
+            if (dia && sess) { out[`${dia}|${pid}`] = (out[`${dia}|${pid}`] || 0) + sess; casadas += sess; }
+        }
+        // Descartar sessão órfã evita atribuir ao produto errado, mas encolhe o
+        // DENOMINADOR — ou seja, infla a conversão. Guarda a cobertura pra UI
+        // poder avisar em vez de mostrar um número otimista em silêncio.
+        _coberturaViews = {
+            casadas, orfas,
+            pct: (casadas + orfas) > 0 ? (casadas / (casadas + orfas)) * 100 : 100,
+            exemplos: [...handlesOrfaos],
+        };
+        return out;
+    }
+
+    let _coberturaViews = null;
+    function getCoberturaViews() { return _coberturaViews; }
+
+    // Código ISO ('DE') → nomes que o ShopifyQL usa em session_country
+    // ('Germany'). session_country vem por NOME, não código, então convertemos
+    // o alvo via Intl.DisplayNames (nomes em inglês = os que a Shopify usa) +
+    // alguns overrides pra tags que não são ISO exato (UK→GB).
+    function _paisCodigoParaNomes(code) {
+        const c = String(code || '').toUpperCase();
+        const nomes = new Set();
+        const overrides = { UK: 'United Kingdom', GB: 'United Kingdom', US: 'United States', UAE: 'United Arab Emirates' };
+        if (overrides[c]) nomes.add(overrides[c]);
+        try {
+            const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+            const n = dn.of(c);
+            if (n && n.toUpperCase() !== c) nomes.add(n);
+        } catch {}
+        return [...nomes].map(n => n.toLowerCase());
+    }
+
+    // Visitas por PAÍS por produto por dia — o denominador que faltava pra
+    // Conversão Real por país. Mesmo casamento landing_page → handle → id da
+    // _viewsPorLandingPage, mas quebrado por session_country. Confirmado que o
+    // ShopifyQL desta loja aceita cruzar session_country + landing_page_path +
+    // TIMESERIES day. Retorna { "YYYY-MM-DD|shopifyProductId": sessions }.
+    async function getViewsMapPorPais(dateFrom, dateTo, countryCode) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo || !countryCode) return {};
+        const nomesAlvo = _paisCodigoParaNomes(countryCode);
+        if (!nomesAlvo.length) return {};
+        const q = `FROM sessions SHOW sessions GROUP BY session_country, landing_page_path TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo} LIMIT 5000`;
+        const table = await _shopifyql(q);
+        if (!table) return {};
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const iDia = cols.indexOf('day');
+        const iPais = cols.indexOf('session_country');
+        const iPath = cols.indexOf('landing_page_path');
+        const iSess = cols.indexOf('sessions');
+        if (iDia < 0 || iPais < 0 || iPath < 0 || iSess < 0) return {};
+
+        let catalogo = getShopifyProducts() || [];
+        if (!catalogo.length) { try { catalogo = await fetchShopifyProducts(); } catch (e) { console.warn('[Shopify] catálogo indisponível (views por país):', e.message); } }
+        const idPorHandle = {};
+        (catalogo || []).forEach(p => { if (p.handle) idPorHandle[String(p.handle).toLowerCase()] = String(p.id); });
+        if (!Object.keys(idPorHandle).length) return {};
+
+        const out = {};
+        for (const row of table.rows) {
+            const pais = String(row[iPais] || '').toLowerCase();
+            if (!nomesAlvo.includes(pais)) continue;
+            const handle = _handleDaLandingPage(row[iPath]);
+            if (!handle) continue;
+            const pid = idPorHandle[handle];
+            if (!pid) continue;   // handle traduzido não casa — fica de fora
+            const sess = parseInt(String(row[iSess] ?? '0').replace(/\D/g, ''), 10) || 0;
+            const dia = String(row[iDia] || '').slice(0, 10);
+            if (dia && sess) out[`${dia}|${pid}`] = (out[`${dia}|${pid}`] || 0) + sess;
+        }
+        return out;
+    }
+
+    // O token guardado na sessão carrega os escopos que existiam NA HORA da
+    // conexão. Adicionar read_reports ao OAUTH_SCOPES não muda um token já
+    // emitido — só uma reconexão emite outro. Sem checar isso, o usuário fica
+    // vendo "visitas indisponíveis" sem saber que a ação é reconectar.
+    // null = não deu pra saber (offline/sessão inválida) — não afirma nada.
+    async function tokenTemEscopoDeVisitas() {
+        try {
+            const info = await _fetchShopInfo();
+            const scope = info?.scope || info?.info?.scope || '';
+            if (!scope) return null;
+            return String(scope).split(',').map(s => s.trim()).includes('read_reports');
+        } catch { return null; }
+    }
+
+    // Executa uma query ShopifyQL e devolve { columns, rows } já validado.
+    // Centraliza o contrato do campo porque ele estava ERRADO em dois lugares:
+    // pedia `tableData { ... rowData }`, e `rowData` não existe no schema (é
+    // `rows`). Campo inexistente = erro de VALIDAÇÃO do documento, que o
+    // servidor rejeita antes até de checar escopo — por isso toda chamada
+    // ShopifyQL do app falhava, e o Dashboard só mostrava "Sem dados".
+    // `parseErrors` também é [String!]!, não String.
+    async function _shopifyql(q) {
+        const gql = `query SQL($q: String!) {
+            shopifyqlQuery(query: $q) {
+                tableData { columns { name dataType } rows }
+                parseErrors
+            }
+        }`;
+        const data = await _graphql(gql, { q });
+        const resp = data?.shopifyqlQuery;
+        if (!resp) return null;
+        const erros = Array.isArray(resp.parseErrors) ? resp.parseErrors.filter(Boolean) : [];
+        if (erros.length) throw new Error(erros.join('; '));
+        const table = resp.tableData;
+        if (!table || !Array.isArray(table.rows)) return null;
+        return table;
+    }
+
+    // Funil REAL da loja, direto do ShopifyQL (não é pixel do Facebook):
+    // sessões → carrinho → checkout → compra. Opcionalmente quebrado por país
+    // de sessão. Confirmado funcionando nesta loja.
+    async function fetchFunilLoja(dateFrom, dateTo, { porPais = false } = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!dateFrom || !dateTo) return [];
+        const metricas = 'sessions, sessions_with_cart_additions, sessions_that_reached_checkout, sessions_that_completed_checkout';
+        const q = porPais
+            ? `FROM sessions SHOW ${metricas} GROUP BY session_country SINCE ${dateFrom} UNTIL ${dateTo} ORDER BY sessions DESC LIMIT 30`
+            : `FROM sessions SHOW ${metricas} TIMESERIES day SINCE ${dateFrom} UNTIL ${dateTo}`;
+        const table = await _shopifyql(q);
+        if (!table) return [];
+        const cols = (table.columns || []).map(c => (c.name || '').toLowerCase());
+        const idx = (nome) => cols.indexOf(nome);
+        const iChave = porPais ? idx('session_country') : idx('day');
+        const iSess = idx('sessions');
+        const iCart = idx('sessions_with_cart_additions');
+        const iCheck = idx('sessions_that_reached_checkout');
+        const iComp = idx('sessions_that_completed_checkout');
+        const num = (v) => parseInt(String(v ?? '0').replace(/\D/g, ''), 10) || 0;
+        return table.rows.map(r => ({
+            chave: iChave >= 0 ? String(r[iChave] || '') : '',
+            sessoes: num(r[iSess]),
+            carrinho: num(r[iCart]),
+            checkout: num(r[iCheck]),
+            compras: num(r[iComp]),
+        })).filter(l => l.chave);
     }
 
     // ── Aggregation ──
@@ -851,10 +1149,41 @@ const ShopifyModule = (() => {
         return agg;
     }
 
+    // Vendas reais agregadas por PAÍS DE ENTREGA do pedido.
+    // Dimensão diferente da tag de região da campanha (que é segmentação de
+    // anúncio, no Diário): aqui é o país real pra onde o pedido foi. Pedido
+    // sem shipping_address (ex.: produto digital) cai em '??' em vez de
+    // sumir da conta — some do ranking mas o total continua batendo.
+    async function getRealSalesPorPais(dateFrom, dateTo) {
+        const orders = await fetchOrders(dateFrom, dateTo);
+        const agg = {};
+        for (const order of orders) {
+            const cc = order.shipping_address?.country_code || '??';
+            const nome = order.shipping_address?.country || '';
+            if (!agg[cc]) agg[cc] = { countryCode: cc, country: nome, sales: 0, revenue: 0, orderCount: 0, currency: order.currency || 'BRL' };
+            if (nome && !agg[cc].country) agg[cc].country = nome;
+            let itens = 0;
+            for (const item of (order.line_items || [])) {
+                const qty = item.quantity || 0;
+                itens += qty;
+                agg[cc].sales += qty;
+                agg[cc].revenue += parseFloat(item.discounted_price ?? item.price ?? '0') * qty;
+            }
+            if (itens > 0) agg[cc].orderCount += 1;
+        }
+        return agg;
+    }
+
     // Fetch + cache shopify sales map keyed by "date|localProductId" for the given range.
     // Returns: { "YYYY-MM-DD|localProductId": { sales, revenue, currency } }
+    // opts.countryCode (opcional, DASH-02): filtra os pedidos pelo país de
+    // entrega (shipping_address.country_code, ISO-2) ANTES de agregar —
+    // usado só pra Conversão Real por país no Calendário de Métricas.
     async function getRealSalesMapByDate(dateFrom, dateTo, opts = {}) {
-        const orders = await fetchOrders(dateFrom, dateTo, opts);
+        let orders = await fetchOrders(dateFrom, dateTo, opts);
+        if (opts.countryCode) {
+            orders = orders.filter(o => (o.shipping_address?.country_code || '') === opts.countryCode);
+        }
         const perProductDate = aggregateByProductAndDate(orders);
         const result = {};
         const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);
@@ -1212,10 +1541,9 @@ const ShopifyModule = (() => {
                 if (status) status.innerHTML = '<span style="color:var(--red)">Client ID inválido (esperado 32 caracteres hex).</span>';
                 return;
             }
-            if (!clientSecret.startsWith('shpss_')) {
-                if (status) status.innerHTML = '<span style="color:var(--red)">Client Secret deve começar com <code>shpss_</code>.</span>';
-                return;
-            }
+            // Nota: NÃO exigimos mais o prefixo `shpss_`. A Shopify mudou o
+            // formato do Client Secret (apps novos não usam mais esse prefixo),
+            // e a exigência antiga bloqueava o install em silêncio.
 
             const normalized = shop.replace(/^https?:\/\//, '').replace(/\/$/, '');
             if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(normalized)) {
@@ -1223,13 +1551,19 @@ const ShopifyModule = (() => {
                 return;
             }
 
-            _config.clientId = clientId;
-            _config.clientSecret = clientSecret;
-            _config.proxyUrl = proxyUrl;
-            _saveConfig();
-
-            if (status) status.innerHTML = '<span style="color:var(--text-muted)">Redirecionando para Shopify...</span>';
-            setTimeout(() => beginInstall(normalized), 300);
+            // try/catch: se _saveConfig ou beginInstall falharem, o usuário VÊ o
+            // erro em vez do botão parecer "morto" (antes um throw aqui deixava a
+            // tela sem reação nenhuma).
+            try {
+                _config.clientId = clientId;
+                _config.clientSecret = clientSecret;
+                _config.proxyUrl = proxyUrl;
+                _saveConfig();
+                if (status) status.innerHTML = '<span style="color:var(--text-muted)">Redirecionando para Shopify...</span>';
+                setTimeout(() => beginInstall(normalized), 300);
+            } catch (e) {
+                if (status) status.innerHTML = '<span style="color:var(--red)">Erro ao iniciar a instalação: ' + ((e && e.message) || e) + '</span>';
+            }
         });
 
         document.getElementById('btn-shopify-disconnect')?.addEventListener('click', async () => {
@@ -1393,7 +1727,7 @@ const ShopifyModule = (() => {
                     <button class="btn-close" id="shopify-link-close">&times;</button>
                 </div>
                 <div style="padding:1rem" id="shopify-link-body">
-                    <p style="color:var(--text-muted)">Carregando produtos Shopify...</p>
+                    <p style="color:var(--text-muted)">${window.loadingHTML('Carregando produtos Shopify...')}</p>
                 </div>
             </div>
         `;
@@ -1547,6 +1881,33 @@ const ShopifyModule = (() => {
         return { start: today, end: today, isToday: true };
     }
 
+    // Cabeçalho reduzido (DASH-01) — loja/timezone/período iam sempre visíveis
+    // numa linha inteira própria; viraram tooltip num ícone só, deixando as
+    // métricas (não o cabeçalho) o que chama mais atenção no bloco.
+    // O nome da loja é dado sensível (já era borrado/ocultado no modo
+    // privacidade) — o tooltip usa um <span class="shopify-widget-shop">
+    // de verdade, não atributo title, senão o modo privacidade (feito pra
+    // gravação de tela) perderia esse dado ao passar o mouse.
+    function _widgetHeaderHtml(rangeLabel, botoesExtrasHtml) {
+        return `
+            <div class="shopify-widget-header">
+                <div class="shopify-widget-titulo-row">
+                    <h4>Vendas Reais</h4>
+                    <span class="shopify-widget-info-wrap" tabindex="0">
+                        <i data-lucide="info" class="shopify-widget-info-icon"></i>
+                        <span class="shopify-widget-shop shopify-widget-info-tooltip">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''} · ${_esc(rangeLabel)}</span>
+                    </span>
+                </div>
+                <div style="display:flex;gap:0.4rem">
+                    <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
+                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+                    </button>
+                    ${botoesExtrasHtml || ''}
+                </div>
+            </div>
+        `;
+    }
+
     async function renderDashboardWidget(explicitStart, explicitEnd) {
         const container = document.getElementById('shopify-widget');
         if (!container) return;
@@ -1580,7 +1941,7 @@ const ShopifyModule = (() => {
             ? (isTodayLabel ? `Hoje (${period.start})` : period.start)
             : `${period.start} → ${period.end}`;
 
-        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">Carregando dados Shopify...</p>';
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem">' + window.loadingHTML('Carregando dados Shopify...') + '</p>';
 
         // Follow the dashboard currency selector when available; fall back to shop currency.
         const displayCurrency = (typeof DashboardModule !== 'undefined' && DashboardModule._currency)
@@ -1655,18 +2016,7 @@ const ShopifyModule = (() => {
                     }).join('');
 
                 container.innerHTML = `
-                    <div class="shopify-widget-header">
-                        <div>
-                            <h4>Shopify — Vendas Reais · ${_esc(rangeLabel)}</h4>
-                            <span class="shopify-widget-shop">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''}</span>
-                        </div>
-                        <div style="display:flex;gap:0.4rem">
-                            <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
-                                <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                            </button>
-                            <button class="btn btn-secondary btn-sm" onclick="ShopifyModule.openLinkModal()">Vincular</button>
-                        </div>
-                    </div>
+                    ${_widgetHeaderHtml(rangeLabel, '<button class="btn btn-secondary btn-sm" onclick="ShopifyModule.openLinkModal()">Vincular</button>')}
 
                     <div class="shopify-widget-summary">
                         <div class="shopify-metric">
@@ -1733,19 +2083,15 @@ const ShopifyModule = (() => {
             const fbCPA = totalFb > 0 ? totalBudget / totalFb : null;
 
             container.innerHTML = `
-                <div class="shopify-widget-header">
-                    <div>
-                        <h4>Shopify — Vendas Reais · ${_esc(rangeLabel)}</h4>
-                        <span class="shopify-widget-shop">${_esc(_config.shopName || _config.shop)}${_config.shopTimezone ? ' · ' + _esc(_config.shopTimezone) : ''}</span>
-                    </div>
-                    <button class="btn btn-secondary btn-sm" id="btn-shopify-refresh">
-                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                    </button>
-                </div>
+                ${_widgetHeaderHtml(rangeLabel)}
+
+                <p class="shopify-widget-escopo">
+                    ${totalShopifyOrders} pedido${totalShopifyOrders === 1 ? '' : 's'} Shopify no período · ${totalShopify} venda${totalShopify === 1 ? '' : 's'} já conciliada${totalShopify === 1 ? '' : 's'} com o diário (produto vinculado + Facebook preenchido)
+                </p>
 
                 <div class="shopify-widget-summary">
-                    <div class="shopify-metric">
-                        <span class="shopify-metric-label">Vendas Shopify</span>
+                    <div class="shopify-metric" title="Só conta vendas de produtos vinculados que já têm o diário do Facebook preenchido — não é o total de pedidos da Shopify.">
+                        <span class="shopify-metric-label">Vendas conciliadas</span>
                         <span class="shopify-metric-value">${totalShopify}</span>
                     </div>
                     <div class="shopify-metric">
@@ -1859,21 +2205,504 @@ const ShopifyModule = (() => {
                 if (tab === 'dashboard') setTimeout(() => renderDashboardWidget(), 100);
             });
             EventBus.on('dataLoaded', () => renderDashboardWidget());
+            // Trocar de loja recarrega a conexão da nova loja (cada loja tem a
+            // sua). Sem isso, o token/domínio/vínculos ficariam presos na loja
+            // do boot.
+            EventBus.on('storeChanged', () => reloadConfig());
         }
 
         setTimeout(() => renderDashboardWidget(), 500);
     }
 
+    // ══════════════════════════════════════════════════════════════
+    //  ENVIO DE IMAGEM PARA A LOJA  (única escrita que o app faz)
+    //
+    //  Fluxo oficial em 3 passos, porque o app só tem os BYTES da imagem
+    //  (base64 no navegador), não uma URL pública:
+    //    1. stagedUploadsCreate  → devolve um alvo no Google Cloud Storage
+    //    2. POST multipart direto do browser para esse alvo
+    //    3. productUpdate(media:) → anexa a imagem ao produto
+    //
+    //  productCreateMedia existe mas está DEPRECADO ("Use productUpdate or
+    //  productSet instead"), por isso o passo 3 usa productUpdate.
+    // ══════════════════════════════════════════════════════════════
+
+    // Limites publicados pela Shopify para mídia de produto.
+    const IMG_MAX_BYTES = 20 * 1024 * 1024;
+    const IMG_MAX_LADO = 4472;
+
+    async function _criarAlvoDeUpload(nomeArquivo, mimeType, tamanho) {
+        const q = `
+            mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
+                stagedUploadsCreate(input: $input) {
+                    stagedTargets { url resourceUrl parameters { name value } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, {
+            input: [{
+                filename: nomeArquivo,
+                mimeType,
+                // O enum é IMAGE. "PRODUCT_IMAGE" aparece em exemplos antigos
+                // mas não existe mais no schema.
+                resource: 'IMAGE',
+                httpMethod: 'POST',
+                fileSize: String(tamanho),
+            }],
+        });
+        const err = d?.stagedUploadsCreate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        const alvo = d?.stagedUploadsCreate?.stagedTargets?.[0];
+        if (!alvo?.url) throw new Error('A Shopify não devolveu um destino de upload.');
+        return alvo;
+    }
+
+    async function _enviarBytes(alvo, blob, nomeArquivo) {
+        const form = new FormData();
+        // Regra do Google Cloud Storage: os parâmetros vêm ANTES e o arquivo
+        // é obrigatoriamente o ÚLTIMO campo — qualquer campo depois dele é
+        // ignorado em silêncio e o upload falha de forma confusa depois.
+        (alvo.parameters || []).forEach(p => form.append(p.name, p.value));
+        form.append('file', blob, nomeArquivo);
+
+        // Sem Content-Type manual: o browser precisa gerar o boundary sozinho.
+        const r = await fetch(alvo.url, { method: 'POST', body: form, mode: 'cors' });
+        if (!r.ok) {
+            const t = await r.text().catch(() => '');
+            throw new Error(`Falha no upload (HTTP ${r.status}). ${t.slice(0, 160)}`);
+        }
+    }
+
+    // productUpdate devolve a lista INTEIRA de mídia do produto, não só a que
+    // acabou de entrar — sem saber o que já existia antes, não dá pra saber
+    // com segurança qual node é o novo (a ordem devolvida não é garantida).
+    async function _idsDeMidiaAtual(produtoGid) {
+        const q = `query MidiaAtual($id: ID!) { product(id: $id) { media(first: 60) { nodes { id } } } }`;
+        const d = await _graphql(q, { id: produtoGid });
+        return new Set((d?.product?.media?.nodes || []).map(n => n.id));
+    }
+
+    async function _anexarAoProduto(produtoGid, resourceUrl, alt) {
+        const q = `
+            mutation ProductUpdateAddMedia($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+                productUpdate(product: $product, media: $media) {
+                    product { id media(first: 30) { nodes { id status mediaContentType } } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, {
+            product: { id: produtoGid },
+            media: [{ originalSource: resourceUrl, mediaContentType: 'IMAGE', alt: alt || '' }],
+        });
+        const err = d?.productUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.productUpdate?.product?.media?.nodes || [];
+    }
+
+    // Sobe UMA imagem. `origem` pode ser dataUrl (base64) ou URL. `idsConhecidos`
+    // é o Set devolvido por _idsDeMidiaAtual ANTES do upload — usado pra achar
+    // com segurança qual media id é o novo; quando enviar várias em sequência,
+    // o chamador deve ir somando o novo id ao mesmo Set entre as chamadas.
+    async function enviarImagemDoProduto(produtoGid, origem, { nome, alt, idsConhecidos } = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!produtoGid) throw new Error('Produto sem vínculo na Shopify.');
+
+        const blob = await bytesDaImagem(origem);
+        if (blob.size > IMG_MAX_BYTES) {
+            throw new Error(`Imagem de ${(blob.size / 1024 / 1024).toFixed(1)} MB — a Shopify aceita no máximo 20 MB.`);
+        }
+        const dim = await dimensoesDaImagem(blob).catch(() => null);
+        if (dim && (dim.largura > IMG_MAX_LADO || dim.altura > IMG_MAX_LADO)) {
+            throw new Error(`Imagem ${dim.largura}×${dim.altura} — a Shopify aceita no máximo ${IMG_MAX_LADO}px por lado.`);
+        }
+
+        // A extensão do filename precisa casar com o mimeType — divergência é
+        // causa comum de FAILED no processamento do lado da Shopify.
+        const ext = (blob.type.split('/')[1] || 'webp').replace('jpeg', 'jpg');
+        const base = String(nome || 'imagem').replace(/\.[^.]+$/, '') || 'imagem';
+        const nomeArquivo = `${base}.${ext}`;
+
+        const alvo = await _criarAlvoDeUpload(nomeArquivo, blob.type || 'image/webp', blob.size);
+        await _enviarBytes(alvo, blob, nomeArquivo);
+        const nodes = await _anexarAoProduto(produtoGid, alvo.resourceUrl, alt || base);
+
+        const novo = idsConhecidos ? nodes.find(n => !idsConhecidos.has(n.id)) : nodes[nodes.length - 1];
+        return novo || nodes[nodes.length - 1] || null;
+    }
+
+    // Query pública — o chamador (products.js) precisa dela pra montar
+    // idsConhecidos antes de mandar vários uploads em sequência.
+    const idsDeMidiaAtual = _idsDeMidiaAtual;
+
+    // Define qual mídia é a capa (posição 0). Assíncrono do lado da Shopify:
+    // devolve um Job, não o resultado.
+    async function reordenarMidia(produtoGid, movimentos) {
+        const q = `
+            mutation ProductReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+                productReorderMedia(id: $id, moves: $moves) {
+                    job { id done }
+                    mediaUserErrors { field message code }
+                }
+            }`;
+        const d = await _graphql(q, {
+            id: produtoGid,
+            // newPosition é UnsignedInt64 → vai como STRING, e é zero-based.
+            moves: movimentos.map(m => ({ id: m.id, newPosition: String(m.posicao) })),
+        });
+        const err = d?.productReorderMedia?.mediaUserErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.productReorderMedia?.job || null;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  TRADUÇÕES  (translatableResource → translationsRegister)
+    //
+    //  Fluxo oficial validado contra o schema, sempre 2 passos por recurso:
+    //    1. LER translatableContent → pega key + digest (hash do valor de
+    //       ORIGEM). O digest muda quando a origem muda; por isso é lido na
+    //       hora, nunca cacheado.
+    //    2. GRAVAR translationsRegister com {locale, key, value, digest}.
+    //
+    //  Keys de Product: title, body_html (descrição), handle. Opção e valor
+    //  de variante são recursos SEPARADOS (ProductOption / ProductOptionValue,
+    //  key "name", GID e digest próprios).
+    // ══════════════════════════════════════════════════════════════
+
+    async function _shopLocales() {
+        const q = `query GetShopLocales { shopLocales { locale name primary published } }`;
+        const d = await _graphql(q, {});
+        return d?.shopLocales || [];
+    }
+
+    async function _habilitarLocale(locale) {
+        const q = `
+            mutation EnableLocale($locale: String!) {
+                shopLocaleEnable(locale: $locale) {
+                    shopLocale { locale name published }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, { locale });
+        const err = d?.shopLocaleEnable?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.shopLocaleEnable?.shopLocale || null;
+    }
+
+    // Lê os campos traduzíveis + digests de um recurso (produto, opção, valor).
+    async function _conteudoTraduzivel(gid) {
+        const q = `
+            query GetTranslatable($id: ID!) {
+                translatableResource(resourceId: $id) {
+                    resourceId
+                    translatableContent { key value digest locale type }
+                }
+            }`;
+        const d = await _graphql(q, { id: gid });
+        const map = {};
+        (d?.translatableResource?.translatableContent || []).forEach(c => { map[c.key] = c; });
+        return map;
+    }
+
+    // Opções e valores de variante do produto (cada um com GID + digest).
+    async function _nestedTraduzivel(gid) {
+        const q = `
+            query GetNested($id: ID!) {
+                translatableResource(resourceId: $id) {
+                    nestedTranslatableResources(first: 100) {
+                        edges { node { resourceId translatableContent { key value digest } } }
+                    }
+                }
+            }`;
+        const d = await _graphql(q, { id: gid });
+        return (d?.translatableResource?.nestedTranslatableResources?.edges || [])
+            .map(e => e.node)
+            .map(n => ({
+                resourceId: n.resourceId,
+                conteudo: (n.translatableContent || []).reduce((a, c) => (a[c.key] = c, a), {}),
+            }));
+    }
+
+    async function _registrarTraducoes(resourceId, translations) {
+        if (!translations.length) return [];
+        const q = `
+            mutation RegisterTranslations($resourceId: ID!, $translations: [TranslationInput!]!) {
+                translationsRegister(resourceId: $resourceId, translations: $translations) {
+                    translations { locale key }
+                    userErrors { field message code }
+                }
+            }`;
+        const d = await _graphql(q, { resourceId, translations });
+        const err = d?.translationsRegister?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return d?.translationsRegister?.translations || [];
+    }
+
+    // Envia as traduções de UM produto para vários idiomas. `porIdioma` é
+    // { [locale]: { title, descriptionHtml, handle, variants:[{name,values}] } }.
+    // `origem` = { variants:[{name,values}] } do idioma de origem, pra casar
+    // os valores traduzidos com os GIDs certos das opções.
+    async function enviarTraducoesDoProduto(produtoGid, porIdioma, opcoes = {}) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        if (!produtoGid) throw new Error('Produto sem vínculo na Shopify.');
+        const aviso = typeof opcoes.onProgress === 'function' ? opcoes.onProgress : () => {};
+
+        // Idiomas já habilitados na loja (só dá pra registrar em locale enabled).
+        // Se a leitura falhar (ex.: falta read_locales), NÃO trava o envio — os
+        // idiomas costumam já estar habilitados; segue pro registro e a própria
+        // Shopify recusa se algum locale não estiver enabled.
+        aviso('Verificando idiomas da loja…');
+        let locales = [];
+        let podeHabilitar = true;
+        try {
+            locales = await _shopLocales();
+        } catch (e) {
+            console.warn('[Shopify] não consegui ler shopLocales:', e.message);
+            podeHabilitar = false;   // sem a lista, não tenta habilitar às cegas
+        }
+        const habilitados = new Set(locales.map(l => l.locale));
+        const primario = (locales.find(l => l.primary) || {}).locale;
+
+        const resultado = { ok: [], falhas: [] };
+        const alvos = Object.keys(porIdioma);
+
+        for (const locale of alvos) {
+            if (!locale || locale === primario) continue;   // não traduz para a própria origem
+            const t = porIdioma[locale];
+            try {
+                if (podeHabilitar && !habilitados.has(locale)) {
+                    aviso(`Habilitando idioma ${locale}…`);
+                    await _habilitarLocale(locale);
+                    habilitados.add(locale);
+                }
+
+                // 1) Produto: title, body_html, handle. Digest lido AGORA.
+                aviso(`Enviando ${locale}: texto…`);
+                let bodyHtml = t.descriptionHtml || '';
+                // Imagens traduzidas viram base64 na descrição — a loja não
+                // renderiza data: em body_html. Hospeda como arquivo e troca.
+                bodyHtml = await _hospedarImagensData(bodyHtml, (m) => aviso(`Enviando ${locale}: ${m}`));
+
+                const cont = await _conteudoTraduzivel(produtoGid);
+                const traducoesProduto = [];
+                const add = (key, value) => {
+                    const c = cont[key];
+                    if (c && value != null && String(value).trim()) {
+                        traducoesProduto.push({ locale, key, value: String(value), translatableContentDigest: c.digest });
+                    }
+                };
+                add('title', t.title);
+                add('body_html', bodyHtml);
+                add('handle', t.handle);
+                await _registrarTraducoes(produtoGid, traducoesProduto);
+
+                // 2) Opções/valores de variante (recursos separados).
+                if ((t.variants || []).length) {
+                    aviso(`Enviando ${locale}: variantes…`);
+                    await _traduzirVariantes(produtoGid, t.variants, opcoes.variantesOrigem || [], locale);
+                }
+
+                resultado.ok.push(locale);
+            } catch (e) {
+                console.warn('[Shopify] falha ao traduzir', locale, e.message);
+                resultado.falhas.push({ locale, erro: e.message });
+            }
+        }
+        return resultado;
+    }
+
+    // Casa cada opção/valor traduzido com o GID certo pelo VALOR de origem.
+    async function _traduzirVariantes(produtoGid, variantesTraduzidas, variantesOrigem, locale) {
+        const nested = await _nestedTraduzivel(produtoGid);
+        // Índice: valor de origem (lowercase) → { resourceId, digest } do "name".
+        const porValor = new Map();
+        nested.forEach(n => {
+            const c = n.conteudo?.name;
+            if (c && c.value) porValor.set(String(c.value).toLowerCase().trim(), { resourceId: n.resourceId, digest: c.digest });
+        });
+
+        for (let oi = 0; oi < variantesTraduzidas.length; oi++) {
+            const optT = variantesTraduzidas[oi];
+            const optO = variantesOrigem[oi];
+            if (!optO) continue;
+            // Nome da opção (Color → Farbe)
+            const alvoNome = porValor.get(String(optO.name).toLowerCase().trim());
+            if (alvoNome && optT.name) {
+                try { await _registrarTraducoes(alvoNome.resourceId, [{ locale, key: 'name', value: optT.name, translatableContentDigest: alvoNome.digest }]); } catch (e) { console.warn('[Shopify] opção', e.message); }
+            }
+            // Valores (Black → Schwarz), casados por posição via valor de origem.
+            // for-of com await (forEach(async) não aguardaria nem trataria erro).
+            const valores = optO.values || [];
+            for (let vi = 0; vi < valores.length; vi++) {
+                const alvo = porValor.get(String(valores[vi]).toLowerCase().trim());
+                const valTrad = (optT.values || [])[vi];
+                if (alvo && valTrad) {
+                    try { await _registrarTraducoes(alvo.resourceId, [{ locale, key: 'name', value: valTrad, translatableContentDigest: alvo.digest }]); } catch (e) { console.warn('[Shopify] valor', e.message); }
+                }
+            }
+        }
+    }
+
+    // Troca imagens data: (base64) da descrição por arquivos hospedados na
+    // Shopify, senão a loja não renderiza e o body_html fica gigante.
+    async function _hospedarImagensData(html, aviso = () => {}) {
+        if (!html || !html.includes('data:image')) return html;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const imgs = [...tmp.querySelectorAll('img')].filter(im => (im.getAttribute('src') || '').startsWith('data:'));
+        for (let i = 0; i < imgs.length; i++) {
+            aviso(`hospedando imagem ${i + 1}/${imgs.length}`);
+            try {
+                const url = await _hospedarArquivoImagem(imgs[i].getAttribute('src'), `desc-${Date.now()}-${i}`);
+                if (url) imgs[i].setAttribute('src', url);
+            } catch (e) { console.warn('[Shopify] hospedar imagem descrição:', e.message); }
+        }
+        return tmp.innerHTML;
+    }
+
+    // Sobe um BLOB pra Files da loja e devolve a URL pública (poll) — núcleo
+    // compartilhado por _hospedarArquivoImagem (recebe data:URL, usada na
+    // descrição do produto) e hospedarBlobImagem (API pública, usada pelo
+    // botão "Inserir imagem" do Loja/Código — LAUNCH-04).
+    async function _hospedarBlobImagem(blob, nome) {
+        const ext = (blob.type.split('/')[1] || 'webp').replace('jpeg', 'jpg');
+        const arquivo = `${nome}.${ext}`;
+        const alvo = await _criarAlvoDeUpload(arquivo, blob.type || 'image/webp', blob.size);
+        await _enviarBytes(alvo, blob, arquivo);
+
+        const q = `
+            mutation FileCreate($files: [FileCreateInput!]!) {
+                fileCreate(files: $files) {
+                    files { id fileStatus ... on MediaImage { image { url } } }
+                    userErrors { field message }
+                }
+            }`;
+        const d = await _graphql(q, { files: [{ originalSource: alvo.resourceUrl, contentType: 'IMAGE' }] });
+        const err = d?.fileCreate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        const fileId = d?.fileCreate?.files?.[0]?.id;
+        let url = d?.fileCreate?.files?.[0]?.image?.url;
+        // fileCreate processa async — faz poll até a URL aparecer.
+        for (let i = 0; i < 10 && !url && fileId; i++) {
+            await new Promise(r => setTimeout(r, 900));
+            const pq = `query FileUrl($id: ID!) { node(id: $id) { ... on MediaImage { image { url } fileStatus } } }`;
+            const pd = await _graphql(pq, { id: fileId });
+            url = pd?.node?.image?.url;
+        }
+        return url || '';
+    }
+
+    // Sobe um data:URL para a Files da loja e devolve a URL pública (poll).
+    async function _hospedarArquivoImagem(dataUrl, nome) {
+        return _hospedarBlobImagem(await bytesDaImagem(dataUrl), nome);
+    }
+
+    // Versão pública de _hospedarBlobImagem — usada fora deste módulo (ex.:
+    // "Inserir imagem" no Loja/Código) pra hospedar uma imagem qualquer nos
+    // Arquivos da loja sem precisar vinculá-la a um produto.
+    async function hospedarBlobImagem(blob, nome) {
+        if (!isConfigured()) throw new Error('Shopify não conectado.');
+        return _hospedarBlobImagem(blob, nome || `imagem-${Date.now()}`);
+    }
+
+    // ── Agente de Loja (Fase 1: campos de produto + atribuição de template) ──
+
+    // Lista os temas da loja (precisa do escopo read_themes — se a sessão
+    // ainda não tem esse escopo, a Shopify recusa com um erro de permissão
+    // que o chamador deve tratar mostrando "reautorize a loja").
+    async function fetchThemes() {
+        const gql = `{ themes(first: 20) { nodes { id name role } } }`;
+        const data = await _graphql(gql);
+        return (data?.themes?.nodes || []).map(t => ({ id: t.id, name: t.name, role: t.role }));
+    }
+
+    // Lista TODOS os arquivos de um tema — a API não filtra por prefixo,
+    // então pagina e devolve tudo; quem chama filtra no cliente. Tema
+    // costuma ter poucas centenas de arquivos — 250×6 páginas cobre a
+    // esmagadora maioria das lojas.
+    async function fetchThemeFiles(themeId) {
+        const gql = `query ThemeFiles($id: ID!, $after: String) {
+            theme(id: $id) {
+                files(first: 250, after: $after) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes { filename }
+                }
+            }
+        }`;
+        const arquivos = [];
+        let after = null;
+        for (let pagina = 0; pagina < 6; pagina++) {
+            const data = await _graphql(gql, { id: themeId, after });
+            const conn = data?.theme?.files;
+            for (const f of (conn?.nodes || [])) arquivos.push(f.filename);
+            if (!conn?.pageInfo?.hasNextPage) break;
+            after = conn.pageInfo.endCursor;
+        }
+        return arquivos;
+    }
+
+    // Templates de PRODUTO de um tema (templates/product.*.json — Online Store 2.0).
+    async function fetchProductTemplates(themeId) {
+        const arquivos = await fetchThemeFiles(themeId);
+        const templates = [];
+        for (const filename of arquivos) {
+            const m = /^templates\/product(?:\.([a-z0-9-]+))?\.(?:json|liquid)$/i.exec(filename || '');
+            if (m) templates.push({ filename, suffix: m[1] || null });
+        }
+        return templates;
+    }
+
+    // Aplica campos simples de produto (título, status, template) — tudo
+    // via productUpdate, já liberado no allowlist do Worker. Preço NÃO
+    // entra aqui: mora na variante, não no produto (ver updateVariantPrice).
+    async function updateProductFields(gid, campos) {
+        const input = { id: gid };
+        if ('title' in campos) input.title = campos.title;
+        if ('status' in campos) input.status = campos.status;
+        if ('templateSuffix' in campos) input.templateSuffix = campos.templateSuffix || null;
+        const gql = `mutation ProdUpdate($input: ProductUpdateInput!) {
+            productUpdate(product: $input) {
+                product { id title status templateSuffix }
+                userErrors { field message }
+            }
+        }`;
+        const data = await _graphql(gql, { input });
+        const err = data?.productUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return data?.productUpdate?.product;
+    }
+
+    // Preço mora na variante — productVariantsBulkUpdate, também já
+    // liberado no allowlist.
+    async function updateVariantPrice(productGid, variantGid, price, compareAtPrice) {
+        const variant = { id: variantGid, price: String(price) };
+        if (compareAtPrice !== undefined) variant.compareAtPrice = compareAtPrice === null ? null : String(compareAtPrice);
+        const gql = `mutation VarUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants { id price compareAtPrice }
+                userErrors { field message }
+            }
+        }`;
+        const data = await _graphql(gql, { productId: productGid, variants: [variant] });
+        const err = data?.productVariantsBulkUpdate?.userErrors?.[0];
+        if (err) throw new Error(err.message);
+        return data?.productVariantsBulkUpdate?.productVariants?.[0];
+    }
+
     return {
         init, getConfig, isConfigured,
+        enviarImagemDoProduto, reordenarMidia, idsDeMidiaAtual,
+        enviarTraducoesDoProduto, localesDaLoja: _shopLocales,
         beginInstall, testConnection, disconnect, diagnose,
         fetchOrders, fetchShopifyProducts, getShopifyProducts,
         linkProduct, getLink, autoLinkByName, syncAllLinkedPrices,
         aggregateByProduct, aggregateByProductAndDate, aggregateByDate,
         getRealSalesForProduct, getRealSalesMap,
-        getRealSalesMapByDate, getSalesMapByDate, fetchProductViews, fetchProductViewsByDate,
+        getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
+        fetchFunilLoja, getCoberturaViews, getViewsMapPorPais, tokenTemEscopoDeVisitas,
         fetchProductDetails,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
+        fetchThemes, fetchThemeFiles, fetchProductTemplates, updateProductFields, updateVariantPrice,
+        hospedarBlobImagem, reloadConfig,
     };
 })();
