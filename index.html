@@ -769,7 +769,8 @@
                                     <div class="form-group" style="margin:0">
                                         <div class="prod-rich-label">
                                             <label>Descrição</label>
-                                            <span style="display:flex;gap:0.35rem">
+                                            <span style="display:flex;gap:0.35rem;align-items:center">
+                                                <span id="prod-desc-provider-slot"></span>
                                                 <button type="button" id="btn-prod-ai-desc-imgs" class="btn btn-secondary btn-sm prod-ai-btn" title="Melhorar a qualidade das imagens dentro da descrição, mantendo as mesmas dimensões">
                                                     <i data-lucide="wand-2" style="width:13px;height:13px;vertical-align:-2px"></i> Melhorar imagens
                                                 </button>
@@ -4236,6 +4237,7 @@
                         <button id="aiad-generate" class="btn btn-primary"><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar</button>
                     </div>
                     <div class="aiad-extras">
+                        <span id="aiad-copy-provider-slot"></span>
                         <button id="aiad-gen-copy" class="btn btn-secondary btn-sm"><i data-lucide="type" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar copy (headline + descrição)</button>
                         <button id="aiad-prompt-templates" class="btn btn-secondary btn-sm"><i data-lucide="layout-template" style="width:14px;height:14px;vertical-align:-2px"></i> Templates de prompt</button>
                     </div>
@@ -4565,6 +4567,10 @@
                                 <option value="it">Italiano</option>
                                 <option value="nl">Holandês</option>
                             </select>
+                        </div>
+                        <div class="studio-provider-row" id="lanc-desc-provider-row" style="display:none">
+                            <label for="lanc-desc-provider" title="Só vale pra 'Copiar o molde e trocar o conteúdo' (reescrita de texto). 'Gerar com IA' analisa suas fotos e sempre usa OpenAI (é o único provedor com essa visão aqui).">Provedor de IA (reescrita do molde)</label>
+                            <span id="lanc-desc-provider-slot"></span>
                         </div>
                         <label for="lanc-desc-instrucoes" style="display:block;font-size:0.78rem;color:var(--text-muted);margin-top:0.5rem">Instruções extras pra IA (opcional)</label>
                         <div class="prompt-lib-row">
@@ -5388,6 +5394,7 @@
                 <div class="modal-content" style="max-width:640px">
                     <div class="modal-header">
                         <h3><i data-lucide="sparkles" style="width:18px;height:18px;color:var(--accent)"></i> <span id="copy-variations-title">Variações IA</span></h3>
+                        <span id="copy-var-provider-slot" style="margin-left:auto;margin-right:0.5rem"></span>
                         <button class="modal-close" data-close-modal="copy-variations-modal">&times;</button>
                     </div>
                     <div class="modal-body" style="padding:0">

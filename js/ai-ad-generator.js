@@ -17,6 +17,14 @@ const AIAdGenerator = {
     _setup() {
         document.getElementById('aiad-generate')?.addEventListener('click', () => this.generateImages());
         document.getElementById('aiad-gen-copy')?.addEventListener('click', () => this.generateCopy());
+        // Seletor de provedor de IA pra copy (openai/google/grok/anthropic) —
+        // slot próprio pra não confundir com o seletor de provedor de IMAGEM
+        // (#aiad-provider) que já existe nesta mesma tela.
+        const copyProviderSlot = document.getElementById('aiad-copy-provider-slot');
+        if (copyProviderSlot) {
+            copyProviderSlot.innerHTML = this.htmlSeletorTextoProvider('aiad-copy-provider', 'etracker_text_provider_copy');
+            this.wireSeletorTextoProvider('aiad-copy-provider');
+        }
         document.getElementById('aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
         document.getElementById('btn-aiad-config')?.addEventListener('click', () => this.openApiKeysModal());
         document.getElementById('aiad-prompt-templates')?.addEventListener('click', () => this.showTemplates());
@@ -160,6 +168,127 @@ const AIAdGenerator = {
     _setGrokKey(key) { this._setKey('grok', key); },
     _getAnthropicKey() { return this._getKey('anthropic'); },
     _setAnthropicKey(key) { this._setKey('anthropic', key); },
+
+    // ── Texto multi-provedor (descrição de produto, copy de anúncio, etc) ──
+    // Um só helper pra falar com os 4 provedores de _PROVIDERS. Cada tela que
+    // gera texto (descrição, copy, variações) chama isto em vez de ter seu
+    // próprio fetch hardcoded num provedor só. As 4 chamadas HTTP abaixo são
+    // as mesmas já validadas em js/loja.js (Código do agente da loja) —
+    // portadas aqui pra usar _getKey() (pool global + override por loja) em
+    // vez da chave própria e sem override que loja.js usava.
+    _TEXT_MODELS: {
+        openai: 'gpt-4o-mini',
+        google: 'gemini-2.5-flash',
+        grok: 'grok-2-latest',
+        anthropic: 'claude-sonnet-4-5',
+    },
+
+    async _textoOpenAI(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature,
+                ...(json ? { response_format: { type: 'json_object' } } : {}),
+                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async _textoAnthropic(modelo, chave, system, prompt, { maxTokens, temperature }) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json', 'x-api-key': chave,
+                'anthropic-version': '2023-06-01',
+                // Sem isso a Anthropic recusa CORS de chamada direta do navegador.
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: modelo, max_tokens: maxTokens, temperature, system, messages: [{ role: 'user', content: prompt }] }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Anthropic HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.content?.[0]?.text || '';
+    },
+
+    async _textoGrok(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        // API da xAI é compatível com o formato da OpenAI (mesmo endpoint shape).
+        const res = await fetch('https://api.x.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + chave },
+            body: JSON.stringify({
+                model: modelo, max_tokens: maxTokens, temperature,
+                ...(json ? { response_format: { type: 'json_object' } } : {}),
+                messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `xAI HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || '';
+    },
+
+    async _textoGemini(modelo, chave, system, prompt, { json, maxTokens, temperature }) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent?key=${encodeURIComponent(chave)}`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: system }] },
+                generationConfig: { maxOutputTokens: maxTokens, temperature, ...(json ? { responseMimeType: 'application/json' } : {}) },
+            }),
+        });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `Gemini HTTP ${res.status}`); }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    },
+
+    // gerarTexto({ provider, system, prompt, json, maxTokens, temperature, model })
+    // provider: 'openai' | 'google' | 'grok' | 'anthropic' (mesmos ids de _PROVIDERS).
+    // json: pede resposta em JSON puro (suportado nativamente por openai/grok/gemini;
+    // na Anthropic não existe modo JSON forçado — inclua a instrução no `system`).
+    // Retorna a string de texto gerada (chame JSON.parse você mesmo se json:true).
+    async gerarTexto({ provider, system = '', prompt, json = false, maxTokens = 1200, temperature = 0.7, model } = {}) {
+        const p = this._PROVIDERS.find(x => x.id === provider);
+        if (!p) throw new Error('Provedor de IA desconhecido: ' + provider);
+        const chave = this._getKey(provider);
+        if (!chave) throw new Error(`Configure a chave de API do provedor (${p.nome}) em Configurar chaves de API.`);
+        const modelo = model || this._TEXT_MODELS[provider];
+        const opts = { json, maxTokens, temperature };
+        if (provider === 'openai') return this._textoOpenAI(modelo, chave, system, prompt, opts);
+        if (provider === 'anthropic') return this._textoAnthropic(modelo, chave, system, prompt, opts);
+        if (provider === 'grok') return this._textoGrok(modelo, chave, system, prompt, opts);
+        if (provider === 'google') return this._textoGemini(modelo, chave, system, prompt, opts);
+        throw new Error('Provedor de IA sem implementação de texto: ' + provider);
+    },
+
+    // <select> reutilizável de provedor de TEXTO (openai/google/grok/anthropic),
+    // pra descrição/copy/variações. `storageKey` guarda a escolha (ex.:
+    // 'etracker_text_provider_desc'); cada tela pode ter a sua própria, ou
+    // compartilhar 'etracker_text_provider' se quiser uma escolha só pro app
+    // todo. Só lista provedor que já geram texto (todos os 4 hoje).
+    htmlSeletorTextoProvider(selectId, storageKeyEscolha) {
+        const salvo = localStorage.getItem(storageKeyEscolha) || 'openai';
+        return `<select id="${selectId}" class="input input-sm" data-text-provider-key="${this._esc(storageKeyEscolha)}" title="Provedor de IA para gerar o texto">
+            ${this._PROVIDERS.map(p => `<option value="${p.id}" ${p.id === salvo ? 'selected' : ''}>${this._esc(p.nome)}</option>`).join('')}
+        </select>`;
+    },
+    // Liga o <select> criado por htmlSeletorTextoProvider pra persistir a escolha.
+    wireSeletorTextoProvider(selectId) {
+        const sel = document.getElementById(selectId);
+        if (!sel || sel.dataset.textProviderWired) return;
+        sel.dataset.textProviderWired = '1';
+        const storageKey = sel.dataset.textProviderKey;
+        sel.addEventListener('change', () => { if (storageKey) localStorage.setItem(storageKey, sel.value); });
+    },
+    // Lê o provedor escolhido no <select> (ou o salvo, se o select não estiver montado).
+    lerTextoProvider(selectId, storageKeyEscolha) {
+        const sel = document.getElementById(selectId);
+        return (sel ? sel.value : null) || localStorage.getItem(storageKeyEscolha) || 'openai';
+    },
 
     // Mantido por retrocompatibilidade — quem chamava openConfig() foca no
     // provedor selecionado, mas agora todos aparecem na mesma tela.
@@ -693,7 +822,7 @@ const AIAdGenerator = {
         }
     },
 
-    // ── Generate copy (always OpenAI) ─────────────────────────────────
+    // ── Generate copy (provedor escolhido em #aiad-copy-provider) ──────
     async generateCopy() {
         const prompt = document.getElementById('aiad-prompt')?.value.trim();
         if (!prompt) {
@@ -701,10 +830,11 @@ const AIAdGenerator = {
             return;
         }
 
-        const key = this._getOpenAIKey();
-        if (!key) {
-            if (typeof showToast === 'function') showToast('Gerar copy requer chave OpenAI', 'error');
-            this._configOpenAI();
+        const provider = this.lerTextoProvider('aiad-copy-provider', 'etracker_text_provider_copy');
+        if (!this._getKey(provider)) {
+            const nome = this._PROVIDERS.find(p => p.id === provider)?.nome || provider;
+            if (typeof showToast === 'function') showToast(`Gerar copy requer chave de ${nome}`, 'error');
+            this.openApiKeysModal();
             return;
         }
 
@@ -716,30 +846,21 @@ const AIAdGenerator = {
         try {
             const sysPrompt = `Você é um copywriter de e-commerce. Receba a descrição do produto/anúncio e gere copy em português brasileiro: 3 headlines curtas (até 40 chars), 3 descrições (até 125 chars) e 3 CTAs (até 20 chars). Responda APENAS em JSON válido com a estrutura: {"headlines":[],"descriptions":[],"ctas":[]}`;
 
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${key}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        { role: 'system', content: sysPrompt },
-                        { role: 'user', content: prompt }
-                    ],
-                    response_format: { type: 'json_object' },
-                    temperature: 0.8
-                })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error.message);
-            const content = data.choices?.[0]?.message?.content || '{}';
-            const parsed = JSON.parse(content);
+            const content = await this.gerarTexto({ provider, system: sysPrompt, prompt, json: true, maxTokens: 600, temperature: 0.8 });
+            const parsed = JSON.parse(this._extrairJsonTexto(content) || '{}');
             this._renderCopy(parsed);
         } catch (err) {
             if (body) body.innerHTML = `<p style="color:#dc2626">Erro: ${this._esc(err.message)}</p>`;
         }
+    },
+
+    // Anthropic não tem modo JSON nativo — às vezes devolve o objeto cercado de
+    // texto/```json apesar da instrução no prompt. Extrai o primeiro bloco {...}.
+    _extrairJsonTexto(texto) {
+        const s = String(texto || '').trim();
+        if (s.startsWith('{') || s.startsWith('[')) return s;
+        const m = s.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        return m ? m[0] : s;
     },
 
     _renderCopy(parsed) {

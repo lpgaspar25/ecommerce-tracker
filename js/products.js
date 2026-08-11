@@ -130,6 +130,12 @@ const ProductsModule = {
         // AI description button
         document.getElementById('btn-prod-ai-desc')?.addEventListener('click', () => this.generateDescription());
         document.getElementById('btn-prod-ai-desc-imgs')?.addEventListener('click', () => this.melhorarImagensDescricao());
+        // Seletor de provedor de IA pra descrição (openai/google/grok/anthropic)
+        const descProviderSlot = document.getElementById('prod-desc-provider-slot');
+        if (descProviderSlot && typeof AIAdGenerator !== 'undefined') {
+            descProviderSlot.innerHTML = AIAdGenerator.htmlSeletorTextoProvider('prod-desc-provider', 'etracker_text_provider_desc');
+            AIAdGenerator.wireSeletorTextoProvider('prod-desc-provider');
+        }
 
         // IA nas imagens do produto
         document.getElementById('btn-prod-gen-gallery')?.addEventListener('click', () => this.abrirGerarGaleria());
@@ -916,8 +922,9 @@ const ProductsModule = {
             'Dinamarques': 'Danish', 'Sueco': 'Swedish', 'Noruegues': 'Norwegian'
         };
         const lang = langMap[language] || 'English';
-        const openAIKey = window.AIAdGenerator?._getKey?.('openai') || localStorage.getItem('openai_api_key') || '';
-        const googleKey = window.AIAdGenerator?._getKey?.('google') || localStorage.getItem('google_ai_api_key') || '';
+        const provider = (typeof AIAdGenerator !== 'undefined')
+            ? AIAdGenerator.lerTextoProvider('prod-desc-provider', 'etracker_text_provider_desc')
+            : 'openai';
 
         const statusEl = document.getElementById('prod-ai-desc-status');
         const btn = document.getElementById('btn-prod-ai-desc');
@@ -925,41 +932,12 @@ const ProductsModule = {
         if (btn) btn.disabled = true;
 
         try {
+            if (typeof AIAdGenerator === 'undefined') throw new Error('Módulo de IA não carregado — recarregue a página.');
             const sysPrompt = `You are a professional e-commerce copywriter. Write a compelling product description in ${lang}. 2–3 paragraphs, highlight key benefits, persuasive tone. Format as simple HTML using only <p> and <strong> tags. Do NOT include a title or heading — only the body text.`;
-            let html = '';
-
-            if (openAIKey) {
-                const res = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIKey}` },
-                    body: JSON.stringify({
-                        model: 'gpt-4o-mini',
-                        messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: `Product name: ${name}` }],
-                        temperature: 0.8
-                    })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message);
-                html = data.choices?.[0]?.message?.content || '';
-            } else if (googleKey) {
-                const res = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${googleKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            system_instruction: { parts: [{ text: sysPrompt }] },
-                            contents: [{ parts: [{ text: `Product name: ${name}` }] }],
-                            generationConfig: { temperature: 0.8 }
-                        })
-                    }
-                );
-                const data = await res.json();
-                if (data.error) throw new Error(data.error.message || 'Google AI error');
-                html = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            } else {
-                throw new Error('Configure uma chave OpenAI ou Google AI (AI Ad Generator → Configurar IA)');
-            }
+            const html = await AIAdGenerator.gerarTexto({
+                provider, system: sysPrompt, prompt: `Product name: ${name}`,
+                maxTokens: 700, temperature: 0.8,
+            });
 
             if (!html) throw new Error('Resposta vazia da IA');
             const descEl = document.getElementById('product-description');

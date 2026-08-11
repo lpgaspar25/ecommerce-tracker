@@ -142,10 +142,14 @@
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
         },
 
-        // ===== AI Variations via Claude =====
-        async generateVariations(type, current, count = 3) {
-            const key = window.AIAdGenerator?._getKey?.('anthropic') || localStorage.getItem('anthropic_api_key') || '';
-            if (!key) throw new Error('Configure a chave Anthropic em localStorage.anthropic_api_key');
+        // ===== AI Variations — provedor escolhido em #copy-var-provider =====
+        async generateVariations(type, current, count = 3, provider) {
+            if (typeof AIAdGenerator === 'undefined') throw new Error('Módulo de IA não carregado — recarregue a página.');
+            provider = provider || AIAdGenerator.lerTextoProvider('copy-var-provider', 'etracker_text_provider_copyvar');
+            if (!AIAdGenerator._getKey(provider)) {
+                const nome = AIAdGenerator._PROVIDERS.find(p => p.id === provider)?.nome || provider;
+                throw new Error(`Configure a chave de ${nome} (Configurar chaves de API)`);
+            }
             const labelMap = {
                 primary_text: 'primary text (ad body, 1-3 sentences, conversational)',
                 headline: 'headline (max 40 chars, punchy, benefit-driven)',
@@ -153,27 +157,13 @@
             };
             const label = labelMap[type] || 'ad copy';
             const systemPrompt = `You are an expert direct-response copywriter for Meta/Facebook ads. Generate exactly ${count} alternative variations of the given ${label}. Each should test a different angle (urgency, social proof, benefit, FOMO, etc.). Output ONLY a JSON array of strings, no markdown, no preamble. Example: ["Variation 1", "Variation 2", "Variation 3"]. Match the source language.`;
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'content-type': 'application/json',
-                    'x-api-key': key,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true',
-                },
-                body: JSON.stringify({
-                    model: 'claude-sonnet-4-5',
-                    max_tokens: 800,
-                    system: systemPrompt,
-                    messages: [{ role: 'user', content: `Source ${label}:\n"""\n${current}\n"""` }],
-                }),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error?.message || `HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            const text = (data.content?.[0]?.text || '').trim();
+            // json:true NÃO entra aqui: o modo JSON nativo da OpenAI/xAI exige um
+            // OBJETO no topo ({...}) e o formato pedido é um ARRAY ([...]) — a
+            // instrução no prompt + o parser tolerante abaixo já dão conta.
+            const text = (await AIAdGenerator.gerarTexto({
+                provider, system: systemPrompt, prompt: `Source ${label}:\n"""\n${current}\n"""`,
+                maxTokens: 800, temperature: 0.7,
+            })).trim();
             // Tenta parsear JSON array
             try {
                 const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
@@ -193,6 +183,22 @@
             if (title) title.textContent = `${labels[type] || 'Cópia'} — Variações IA`;
             list.innerHTML = '<div class="copy-lib-empty"><i data-lucide="loader-2" style="width:24px;height:24px;animation:spin 1s linear infinite"></i><p>Gerando 3 variações…</p></div>';
             modal.style.display = 'flex';
+
+            // Seletor de provedor de IA. Trocar o provedor regera as variações
+            // (é a única ação nesta tela — não tem botão "gerar" separado).
+            this._currentSource = current;
+            const providerSlot = document.getElementById('copy-var-provider-slot');
+            if (providerSlot && typeof AIAdGenerator !== 'undefined') {
+                providerSlot.innerHTML = AIAdGenerator.htmlSeletorTextoProvider('copy-var-provider', 'etracker_text_provider_copyvar');
+                const sel = document.getElementById('copy-var-provider');
+                if (sel && !sel.dataset.regenWired) {
+                    sel.dataset.regenWired = '1';
+                    sel.addEventListener('change', () => {
+                        localStorage.setItem('etracker_text_provider_copyvar', sel.value);
+                        this.openVariationsModal(this._currentVariationType || type, this._currentSource);
+                    });
+                }
+            }
             if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
 
             // Bind close once

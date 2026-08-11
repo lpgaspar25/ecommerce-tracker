@@ -694,6 +694,11 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
     function _bindPasso3() {
         document.getElementById('lanc-desc-modo-ia')?.addEventListener('click', () => { _marcarDescModo('ia'); _gerarBlocosDoZero(); });
         document.getElementById('lanc-desc-modo-molde')?.addEventListener('click', () => { _marcarDescModo('molde'); _gerarBlocosDoMolde(); });
+        const descProviderSlot = document.getElementById('lanc-desc-provider-slot');
+        if (descProviderSlot && typeof AIAdGenerator !== 'undefined') {
+            descProviderSlot.innerHTML = AIAdGenerator.htmlSeletorTextoProvider('lanc-desc-provider', 'etracker_text_provider_lancdesc');
+            AIAdGenerator.wireSeletorTextoProvider('lanc-desc-provider');
+        }
         document.getElementById('lanc-blocos-add-texto')?.addEventListener('click', () => _adicionarBlocoManual('texto'));
         document.getElementById('lanc-blocos-add-imagem')?.addEventListener('click', () => _adicionarBlocoManual('imagem'));
         // Marca que o usuário escolheu à mão — a detecção automática não
@@ -745,6 +750,10 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
     function _marcarDescModo(modo) {
         document.getElementById('lanc-desc-modo-ia')?.classList.toggle('is-active', modo === 'ia');
         document.getElementById('lanc-desc-modo-molde')?.classList.toggle('is-active', modo === 'molde');
+        // O seletor de provedor só vale pra reescrita de texto (molde) — "do
+        // zero" analisa fotos por visão e isso hoje só a OpenAI faz aqui.
+        const row = document.getElementById('lanc-desc-provider-row');
+        if (row) row.style.display = modo === 'molde' ? '' : 'none';
     }
 
     function _setDescStatus(msg, tipo) {
@@ -850,7 +859,13 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
                 const lista = blocosTexto.map(b => `{"indice": ${b._i}, "html": ${JSON.stringify(b.html)}}`).join(',\n');
                 const extras = _instrucoesExtras();
                 const prompt = `Produto-molde: "${_state.moldeDetalhes.title}". Produto novo: "${_state.titulo}".\nIdioma: ${_instrucaoIdioma()}${extras ? `\nInstruções extras do usuário: ${extras}` : ''}\nBlocos originais:\n[${lista}]`;
-                const txt = await _openaiJson(SISTEMA_BLOCOS_MOLDE, [{ role: 'user', content: prompt }]);
+                if (typeof AIAdGenerator === 'undefined') throw new Error('Módulo de IA não carregado — recarregue a página.');
+                const provider = AIAdGenerator.lerTextoProvider('lanc-desc-provider', 'etracker_text_provider_lancdesc');
+                if (!AIAdGenerator._getKey(provider)) {
+                    const nome = AIAdGenerator._PROVIDERS.find(p => p.id === provider)?.nome || provider;
+                    throw new Error(`Configure a chave de ${nome} (Configurar chaves de API)`);
+                }
+                const txt = await AIAdGenerator.gerarTexto({ provider, system: SISTEMA_BLOCOS_MOLDE, prompt, json: true, maxTokens: 3000, temperature: 0.8 });
                 const parsed = _extrairJson(txt);
                 (parsed.blocos || []).forEach(b => { reescritos[b.indice] = b.html; });
             }
