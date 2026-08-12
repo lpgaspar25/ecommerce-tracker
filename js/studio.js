@@ -2129,6 +2129,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 selMod.value = prov === 'higgsfield' ? 'nano_banana_2' : '';
                 localStorage.setItem('studio_img_modelo', selMod.value);
             }
+            if (prov === 'higgsfield' && !selMod.value) {
+                selMod.value = 'nano_banana_2';
+                localStorage.setItem('studio_img_modelo', selMod.value);
+            }
             if (hfFlow) hfFlow.hidden = prov !== 'higgsfield';
             const conectado = !!window.HiggsfieldConnection?.state?.connected;
             if (hfStatus) {
