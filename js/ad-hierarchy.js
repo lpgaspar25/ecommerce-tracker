@@ -1047,6 +1047,22 @@
             return -1;
         },
 
+        // Detecta colunas de vídeo (CONTAGENS) evitando colisão de substring:
+        // "reproduções de vídeo" casaria com "…de 3 segundos" e "…até 75%".
+        // Play/Body/75% Rate são derivados (contagem ÷ impressões) no Analisador.
+        _findVideoCols(headers) {
+            const H = (headers || []).map(h => this._norm(h));
+            const rate = i => ['taxa', 'rate', 'custo', 'por impress', 'percent'].some(t => H[i].includes(t));
+            const has = (i, ...toks) => toks.some(t => H[i].includes(t));
+            const acha = pred => { for (let i = 0; i < H.length; i++) { if (H[i] && pred(i)) return i; } return -1; };
+            const base = i => has(i, 'reproduc') && has(i, 'video') && !rate(i);
+            const idxP3s = acha(i => base(i) && has(i, '3 segundo', 'no minimo 3', '3-second', '3 sec'));
+            const idxP75 = acha(i => base(i) && has(i, '75'));
+            const idxPlays = acha(i => base(i)
+                && !has(i, '3 segundo', 'no minimo 3', '3-second', '3 sec', 'thruplay', 'thru play', ' 25', ' 50', ' 75', ' 95', ' 100'));
+            return { idxP3s, idxPlays, idxP75 };
+        },
+
         _importRows(rows, forcedProductId) {
             const headers = rows[0] || [];
             const idxCampaign = this._findCol(headers, ['campaign name', 'nome da campanha', 'campanha']);
@@ -1064,6 +1080,9 @@
             const idxAtc = this._findCol(headers, ['adicoes ao carrinho', 'adds to cart']);
             const idxIc  = this._findCol(headers, ['finalizacoes de compra iniciadas', 'checkouts iniciados']);
             const idxPur = this._findCol(headers, ['compras', 'purchases']);
+            // Vídeo (contagens) — opcional; só popula se o relatório trouxer as colunas.
+            const vid = this._findVideoCols(headers);
+            const temVideoCols = vid.idxP3s >= 0 || vid.idxPlays >= 0 || vid.idxP75 >= 0;
 
             if (idxCampaign < 0) throw new Error('Coluna "Nome da campanha" não encontrada');
 
@@ -1114,7 +1133,7 @@
                 // Accumulate metrics per ad
                 if (adName && adsetName) {
                     const k = adName + '||' + adsetName + '||' + campName;
-                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0, first: '', last: '', daily: {} };
+                    if (!metricsByAd[k]) metricsByAd[k] = { impressions: 0, clicks: 0, spend: 0, lpv: 0, atc: 0, ic: 0, purchases: 0, p3s: 0, plays: 0, p75: 0, first: '', last: '', daily: {}, dailyVideo: {} };
                     const imp = parseFloat(String(row[idxImpr] || '').replace(/[^0-9.-]/g, '')) || 0;
                     const spd = parseFloat(String(row[idxSpend] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let clk = parseFloat(String(row[idxClicks] || '').replace(/[^0-9.-]/g, '')) || 0;
@@ -1131,6 +1150,8 @@
                     metricsByAd[k].atc += numCol(idxAtc);
                     metricsByAd[k].ic  += numCol(idxIc);
                     metricsByAd[k].purchases += numCol(idxPur);
+                    const v3 = numCol(vid.idxP3s), vpl = numCol(vid.idxPlays), v75 = numCol(vid.idxP75);
+                    metricsByAd[k].p3s += v3; metricsByAd[k].plays += vpl; metricsByAd[k].p75 += v75;
                     // Janela em que o criativo apareceu no relatório (pra "X dias no ar")
                     if (day) {
                         const m = metricsByAd[k];
@@ -1143,6 +1164,12 @@
                         cur[3]+=numCol(idxLpv); cur[4]+=numCol(idxAtc);
                         cur[5]+=numCol(idxIc);  cur[6]+=numCol(idxPur);
                         m.daily[day] = cur;
+                        // Vídeo separado (tupla [p3s, plays, p75]) — não mexe na core de 7.
+                        if (temVideoCols) {
+                            const cv = m.dailyVideo[day] || [0, 0, 0];
+                            cv[0] += v3; cv[1] += vpl; cv[2] += v75;
+                            m.dailyVideo[day] = cv;
+                        }
                     }
                 }
 
@@ -1233,6 +1260,18 @@
                                        Math.round(v[3]), Math.round(v[4]), Math.round(v[5]), Math.round(v[6])];
                         });
                         ad.daily = comp;
+                    }
+                    // Métricas de vídeo (só quando o relatório trouxe as colunas)
+                    if (m.p3s || m.plays || m.p75 || Object.keys(m.dailyVideo || {}).length) {
+                        ad.plays3s = Math.round(m.p3s);
+                        ad.plays = Math.round(m.plays);
+                        ad.plays75 = Math.round(m.p75);
+                        const diasV = Object.keys(m.dailyVideo || {}).sort().slice(-120);
+                        if (diasV.length) {
+                            const compV = {};
+                            diasV.forEach(d => { const v = m.dailyVideo[d]; compV[d] = [Math.round(v[0]), Math.round(v[1]), Math.round(v[2])]; });
+                            ad.dailyVideo = compV;
+                        }
                     }
                 }
             });

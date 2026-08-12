@@ -84,6 +84,13 @@ const UXShell = {
             icon: 'bookmark',
             description: 'Boards e referências para alimentar novos testes.'
         },
+        'analisador-criativos': {
+            label: 'Analisador de Criativos',
+            shortLabel: 'Analisador',
+            group: 'Mídia paga',
+            icon: 'scan-search',
+            description: 'Escale os criativos certos: ROAS, CPA, países e métricas de vídeo por criativo.'
+        },
         'ad-launcher': {
             label: 'Lançar anúncios',
             group: 'Mídia paga',
@@ -179,7 +186,7 @@ const UXShell = {
     sections: [
         { id: 'commercial', label: 'Comercial', icon: 'shopping-bag', tabs: ['vendas', 'products', 'importador'] },
         { id: 'creative', label: 'Marketing & criação', icon: 'sparkles', tabs: ['ad-library', 'ai-generations', 'studio', 'creatives', 'creative-insights', 'brands', 'recent-edits', 'saved-inspirations'] },
-        { id: 'paid-media', label: 'Mídia paga', icon: 'megaphone', tabs: ['ad-launcher', 'ads-manager', 'ad-hierarchy'] },
+        { id: 'paid-media', label: 'Mídia paga', icon: 'megaphone', tabs: ['analisador-criativos', 'ad-launcher', 'ads-manager', 'ad-hierarchy'] },
         { id: 'performance', label: 'Performance', icon: 'gauge', tabs: ['goals', 'diary', 'diagnostico', 'calculator', 'scale-sim'] },
         { id: 'operations', label: 'Operação', icon: 'workflow', tabs: ['pipeline', 'laboratorio', 'projects', 'mineracao'] },
         { id: 'finance', label: 'Financeiro', icon: 'circle-dollar-sign', tabs: ['fiscal', 'reconciliation', 'captures'] }
@@ -253,7 +260,7 @@ const UXShell = {
         calculator: 'simulacao', 'scale-sim': 'simulacao',
         'ad-library': 'creative', 'ai-generations': 'creative', studio: 'creative',
         creatives: 'creative', 'recent-edits': 'creative', 'saved-inspirations': 'creative',
-        'ad-launcher': 'launch', 'ads-manager': 'launch', 'ad-hierarchy': 'launch', pipeline: 'launch',
+        'analisador-criativos': 'launch', 'ad-launcher': 'launch', 'ads-manager': 'launch', 'ad-hierarchy': 'launch', pipeline: 'launch',
         laboratorio: 'execucao', projects: 'execucao', mineracao: 'execucao',
         'loja-codigo': 'loja', 'loja-empresa': 'loja',
     },
