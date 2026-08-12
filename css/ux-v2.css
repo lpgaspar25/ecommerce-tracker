@@ -771,7 +771,7 @@ body.ux-v2-ready {
 /* ---------- Executive dashboard ---------- */
 
 .ux-dashboard-intro {
-    margin: 2px 0 18px;
+    margin: 2px 0 12px;
 }
 
 .ux-dashboard-title-row {
@@ -779,7 +779,7 @@ body.ux-v2-ready {
     align-items: flex-end;
     justify-content: space-between;
     gap: 28px;
-    margin-bottom: 22px;
+    margin-bottom: 14px;
 }
 
 .ux-eyebrow {
@@ -802,7 +802,7 @@ body.ux-v2-ready {
 .ux-dashboard-title-row h1 {
     margin: 0;
     color: var(--text-primary);
-    font-size: clamp(1.75rem, 3vw, 2.65rem);
+    font-size: clamp(1.55rem, 2.35vw, 2.15rem);
     font-weight: 650;
     line-height: 1.08;
     letter-spacing: -0.06em;
@@ -816,7 +816,7 @@ body.ux-v2-ready {
 
 .ux-dashboard-title-row p {
     max-width: 650px;
-    margin: 12px 0 0;
+    margin: 8px 0 0;
     color: var(--text-secondary);
     font-size: 0.82rem;
 }
@@ -854,11 +854,11 @@ body.ux-v2-ready {
 
 .ux-operations-hero {
     position: relative;
-    min-height: 224px;
+    min-height: 158px;
     display: grid;
     grid-template-columns: minmax(280px, 0.82fr) minmax(500px, 1.55fr);
-    gap: 26px;
-    padding: 24px;
+    gap: 18px;
+    padding: 17px 18px;
     overflow: hidden;
     color: #f6f8fc;
     background:
@@ -895,7 +895,7 @@ body.ux-v2-ready {
 }
 
 .ux-operations-message > span {
-    margin-bottom: 12px;
+    margin-bottom: 7px;
     color: var(--ux-acid);
     font-size: 0.59rem;
     font-weight: 800;
@@ -907,7 +907,7 @@ body.ux-v2-ready {
     max-width: 410px;
     color: #fff;
     font-family: 'Sora', sans-serif;
-    font-size: clamp(1.35rem, 2.3vw, 2.05rem);
+    font-size: clamp(1.15rem, 1.7vw, 1.55rem);
     font-weight: 550;
     line-height: 1.14;
     letter-spacing: -0.055em;
@@ -919,7 +919,7 @@ body.ux-v2-ready {
 
 .ux-operations-message > p {
     max-width: 430px;
-    margin: 10px 0 18px;
+    margin: 7px 0 11px;
     color: #a2a69e;
     font-size: 0.72rem;
     line-height: 1.55;
@@ -963,13 +963,13 @@ body.ux-v2-ready {
 
 .ux-operations-summary > button {
     position: relative;
-    min-height: 82px;
+    min-height: 62px;
     display: grid;
     grid-template-columns: 1fr auto 12px;
     grid-template-rows: auto auto;
     align-items: center;
     gap: 3px 12px;
-    padding: 14px 15px;
+    padding: 10px 12px;
     color: #fff;
     background: rgba(255, 255, 255, 0.035);
     border: 1px solid rgba(255, 255, 255, 0.10);
@@ -2285,9 +2285,8 @@ body.ux-overlay-open {
     box-shadow: 0 0 0 1px rgba(215,255,37,.18), 0 6px 18px rgba(145,180,0,.15);
 }
 
-/* Product studio: restore the full scenario library without turning it into
-   an undifferentiated wall of checkboxes. */
-.ux-v2-ready .studio-presets {
+/* Product studio: organize the existing scenario library without changing it. */
+.ux-v2-ready #studio-presets {
     display: grid;
     grid-template-columns: 1fr;
     gap: 14px;
@@ -2306,6 +2305,19 @@ body.ux-overlay-open {
     text-transform: uppercase;
 }
 
+.ux-v2-ready .studio-preset-group h4 span {
+    display: inline-grid;
+    place-items: center;
+    min-width: 19px;
+    height: 19px;
+    margin-left: 5px;
+    border-radius: 999px;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    font-size: .61rem;
+    letter-spacing: 0;
+}
+
 .ux-v2-ready .studio-preset-group-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2316,6 +2328,13 @@ body.ux-overlay-open {
     min-width: 0;
     min-height: 42px;
     align-items: center;
+}
+
+.ux-v2-ready .studio-preset span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ux-v2-ready .studio-preset:has(input:checked) {

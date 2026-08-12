@@ -1240,11 +1240,24 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     function _renderPresets() {
         const box = document.getElementById('studio-presets');
         if (!box || box.dataset.pronto) return;
-        box.innerHTML = PRESETS_FOTO.map(p => `
-            <label class="studio-preset">
-                <input type="checkbox" value="${p.id}"${p.id === 'estudio' || p.id === 'lifestyle' ? ' checked' : ''}>
-                <i data-lucide="${p.icone}" style="width:14px;height:14px"></i> ${_esc(p.label)}
-            </label>`).join('');
+        // Apenas organiza os presets existentes. Os 6 cenários originais e
+        // os presets de anúncio continuam exatamente os mesmos.
+        const grupos = [
+            { id: 'produto', label: 'Cenas do produto', itens: PRESETS_FOTO.filter(p => !p.grupo) },
+            { id: 'anuncio', label: 'Presets de anúncio', itens: PRESETS_FOTO.filter(p => p.grupo === 'anuncio') },
+        ].filter(grupo => grupo.itens.length);
+        box.innerHTML = grupos.map(grupo => `
+            <section class="studio-preset-group" aria-labelledby="studio-preset-${grupo.id}">
+                <h4 id="studio-preset-${grupo.id}">${grupo.label} <span>${grupo.itens.length}</span></h4>
+                <div class="studio-preset-group-grid">
+                    ${grupo.itens.map(p => `
+                        <label class="studio-preset">
+                            <input type="checkbox" value="${p.id}"${p.id === 'estudio' || p.id === 'lifestyle' ? ' checked' : ''}>
+                            <i data-lucide="${p.icone}" style="width:14px;height:14px" aria-hidden="true"></i>
+                            <span>${_esc(p.label)}</span>
+                        </label>`).join('')}
+                </div>
+            </section>`).join('');
         box.dataset.pronto = '1';
         _icones();
     }
@@ -1835,6 +1848,12 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
     function render() {
         _preencherProdutos();
+        // Os controles de criação são parte do Estúdio, não do produto
+        // selecionado. Mantê-los visíveis evita que a tela pareça incompleta
+        // enquanto a loja ainda está carregando ou não possui um produto ativo.
+        _renderPresets();
+        _renderAngulosCamera();
+        _renderCenariosRef();
         if (_state.productId) _selecionarProduto(_state.productId);
     }
 

@@ -919,11 +919,20 @@ const UXShell = {
     navigate(tab) {
         const legacyButton = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
         if (legacyButton) legacyButton.click();
-        else {
+
+        // The visual shell must not depend exclusively on the legacy click
+        // listener. If another module fails during boot, that listener may not
+        // be registered and the new navigation would otherwise look clickable
+        // while doing nothing. Fall back to the same state transition here.
+        const targetPanel = document.getElementById(`tab-${tab}`);
+        if (targetPanel && !targetPanel.classList.contains('active')) {
+            document.querySelectorAll('.tab-btn').forEach(button => button.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
-            document.getElementById(`tab-${tab}`)?.classList.add('active');
-            this._setPage(tab);
+            legacyButton?.classList.add('active');
+            targetPanel.classList.add('active');
+            if (typeof EventBus !== 'undefined') EventBus.emit('tabChanged', tab);
         }
+        this._setPage(tab);
     },
 
     openCommand(query = '', mode = 'all') {
