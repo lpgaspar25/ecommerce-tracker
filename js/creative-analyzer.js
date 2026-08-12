@@ -344,6 +344,7 @@ const CreativeAnalyzerModule = {
                 <p class="section-subtitle" style="margin:.25rem 0 0">Quais criativos escalar, quais têm ROAS alto e quais estão com CPA fora — com países e métricas de vídeo.</p>
             </div>
             <div style="display:flex;gap:.4rem;align-items:center">
+                <button class="btn btn-primary btn-sm" id="ca-fb"><i data-lucide="facebook" style="width:14px;height:14px"></i> Puxar do Facebook</button>
                 <button class="btn btn-secondary btn-sm" id="ca-import"><i data-lucide="upload" style="width:14px;height:14px"></i> Importar CSV (com vídeo)</button>
                 <button class="btn btn-secondary btn-sm" id="ca-cfg" title="Regras de classificação"><i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i></button>
                 <button class="btn btn-secondary btn-sm" id="ca-refresh" title="Atualizar"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i></button>
@@ -583,6 +584,37 @@ const CreativeAnalyzerModule = {
         setTimeout(() => { try { AH.importCsv(); } catch {} }, 300);
     },
 
+    // ---- Path B: puxar AO VIVO da Meta API (nível anúncio + país + vídeo) ----
+    async _importFb() {
+        const FB = (typeof FacebookAds !== 'undefined') ? FacebookAds : null;
+        const AH = window.AdHierarchyModule;
+        if (!FB || typeof FB.isConnected !== 'function' || !FB.isConnected()) {
+            if (typeof showToast === 'function') showToast('Conecte o Facebook primeiro (cole o Access Token).', 'warning');
+            try { FB && FB._openConfigModal && FB._openConfigModal(); } catch {}
+            return;
+        }
+        if (!AH || typeof AH.importFromFacebook !== 'function') {
+            if (typeof showToast === 'function') showToast('Mapa de Ads indisponível.', 'error');
+            return;
+        }
+        const dias = this._period || 90;
+        const until = new Date().toISOString().slice(0, 10);
+        const d = new Date(); d.setDate(d.getDate() - (dias - 1));
+        const since = d.toISOString().slice(0, 10);
+        const btn = document.getElementById('ca-fb');
+        const restore = () => { if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="facebook" style="width:14px;height:14px"></i> Puxar do Facebook'; if (window.lucide) try { lucide.createIcons(); } catch {} } };
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="app-spinner"></span> Puxando…'; }
+        try {
+            const r = await AH.importFromFacebook({ since, until });
+            if (typeof showToast === 'function') showToast(`Facebook: ${r.rows} linhas · ${r.ads} anúncio(s) novos.`, 'success');
+            this.render();
+        } catch (e) {
+            console.error('[Analisador] importFromFacebook falhou:', e);
+            if (typeof showToast === 'function') showToast('Falha ao puxar do Facebook: ' + (e.message || e), 'error');
+            restore();
+        }
+    },
+
     // ---- wiring ----------------------------------------------------------
     _wire(root) {
         root.querySelector('#ca-product')?.addEventListener('change', e => { this._productFilter = e.target.value; this.render(); });
@@ -593,6 +625,7 @@ const CreativeAnalyzerModule = {
         root.querySelector('#ca-refresh')?.addEventListener('click', () => this.render());
         root.querySelector('#ca-cfg')?.addEventListener('click', () => this._openCfg());
         root.querySelector('#ca-import')?.addEventListener('click', () => this._importCsv());
+        root.querySelector('#ca-fb')?.addEventListener('click', () => this._importFb());
         root.querySelectorAll('.ca-row, .ca-open').forEach(el => el.addEventListener('click', (e) => {
             const id = el.dataset.id || e.currentTarget.dataset.id;
             if (id) this._openDrill(id);

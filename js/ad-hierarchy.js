@@ -1284,6 +1284,124 @@
             return result;
         },
 
+        // ---- Import AO VIVO da Meta API (Analisador de Criativos, Path B) ----
+        // Puxa insights nível anúncio + país + vídeo e alimenta o MESMO modelo.
+        async importFromFacebook(dateRange) {
+            const FB = (typeof FacebookAds !== 'undefined') ? FacebookAds : null;
+            if (!FB || typeof FB.isConnected !== 'function' || !FB.isConnected()) {
+                throw new Error('Facebook não conectado — cole o Access Token nas configurações do Facebook.');
+            }
+            const rows = await FB.fetchAdInsightsByCountry(dateRange);
+            if (FB.activeAccountCurrency) {
+                const cur = FB.activeAccountCurrency();
+                if (cur) this._state.currency = cur;
+            }
+            const res = this._ingestFbRows(rows);
+            this._rollUpMetrics();
+            this._persist();
+            try { window.CreativesModule?.syncFromAdMap?.({ silent: true }); }
+            catch (e) { console.warn('[AdHierarchy] sync pós-FB falhou:', e); }
+            return res;
+        },
+
+        // Parte PURA (sem rede) — mapeia as linhas da Meta API para o _state.
+        // Cada linha = (anúncio × país × dia). O país entra na IDENTIDADE do ad,
+        // então um mesmo criativo em N países vira N instâncias — e o Analisador
+        // agrega por nome coletando todos os países reais (g.paises).
+        _ingestFbRows(rows) {
+            this._state.campaigns = this._state.campaigns || [];
+            this._state.adsets = this._state.adsets || [];
+            this._state.ads = this._state.ads || [];
+
+            // campaign_id -> productId (via mapa da conta ativa do Facebook)
+            const campToProduct = {};
+            try {
+                const accMap = ((typeof FacebookAds !== 'undefined' && FacebookAds._accountMap) ? FacebookAds._accountMap() : null) || {};
+                Object.entries(accMap).forEach(([pid, ids]) =>
+                    (ids || []).forEach(cid => { campToProduct[String(cid)] = pid; }));
+            } catch {}
+
+            const sumField = (arr) => (arr || []).reduce((s, a) => s + (parseFloat(a.value) || 0), 0);
+            const sumAction = (arr, type) => (arr || [])
+                .filter(a => a.action_type === type).reduce((s, a) => s + (parseFloat(a.value) || 0), 0);
+
+            let novos = 0;
+            (rows || []).forEach(row => {
+                const campName = String(row.campaign_name || '').trim();
+                const adsetName = String(row.adset_name || '').trim();
+                const adName = String(row.ad_name || '').trim();
+                const country = String(row.country || '').trim().toUpperCase();
+                const day = String(row.date_start || '').trim();
+                if (!campName || !adName || !day) return;
+                const pid = campToProduct[String(row.campaign_id)] || null;
+
+                let camp = this._state.campaigns.find(c => c.source === 'fb' && c.name === campName);
+                if (!camp) {
+                    camp = { id: this._genId('camp'), name: campName, status: 'ACTIVE', productId: pid, source: 'fb', region: '' };
+                    this._state.campaigns.push(camp);
+                } else if (pid && !camp.productId) camp.productId = pid;
+
+                let adset = this._state.adsets.find(a => a.source === 'fb' && a.campaignId === camp.id && a.name === (adsetName || '(conjunto)'));
+                if (!adset) {
+                    adset = { id: this._genId('as'), name: adsetName || '(conjunto)', status: 'ACTIVE', campaignId: camp.id, daily_budget: null, source: 'fb', region: '' };
+                    this._state.adsets.push(adset);
+                }
+
+                // País faz parte da identidade do ad (multi-país real + drill-down por país)
+                let ad = this._state.ads.find(x => x.source === 'fb' && x.adsetId === adset.id && x.name === adName && x.region === country);
+                if (!ad) {
+                    ad = { id: this._genId('ad'), name: adName, status: 'ACTIVE', adsetId: adset.id,
+                           thumbnail: '', source: 'fb', region: country, daily: {}, dailyVideo: {} };
+                    this._state.ads.push(ad);
+                    novos++;
+                }
+                ad.daily = ad.daily || {}; ad.dailyVideo = ad.dailyVideo || {};
+
+                const imp = parseInt(row.impressions) || 0;
+                const linkC = parseInt(row.inline_link_clicks) || 0;
+                const allC = parseInt(row.clicks) || 0;
+                const clk = linkC > 0 ? linkC : allC;
+                const spend = parseFloat(row.spend) || 0;
+                const lpv = sumAction(row.actions, 'landing_page_view');
+                const atc = sumAction(row.actions, 'offsite_conversion.fb_pixel_add_to_cart');
+                const ic = sumAction(row.actions, 'offsite_conversion.fb_pixel_initiate_checkout');
+                const pur = sumAction(row.actions, 'offsite_conversion.fb_pixel_purchase');
+                const p3s = sumField(row.video_play_actions);
+                const p75 = sumField(row.video_p75_watched_actions);
+
+                const cur = ad.daily[day] || [0, 0, 0, 0, 0, 0, 0];
+                cur[0] += imp; cur[1] += clk; cur[2] += spend; cur[3] += lpv; cur[4] += atc; cur[5] += ic; cur[6] += pur;
+                ad.daily[day] = cur;
+                if (p3s || p75) {
+                    // [3s, plays(=3s na API — Meta fundiu), 75%]
+                    const cv = ad.dailyVideo[day] || [0, 0, 0];
+                    cv[0] += p3s; cv[1] += p3s; cv[2] += p75;
+                    ad.dailyVideo[day] = cv;
+                }
+                if (!ad.firstSeen || day < ad.firstSeen) ad.firstSeen = day;
+                if (!ad.lastSeen || day > ad.lastSeen) ad.lastSeen = day;
+            });
+
+            // Totais por ad (a partir do diário) + poda de 120 dias
+            (this._state.ads || []).filter(a => a.source === 'fb').forEach(ad => {
+                let imp = 0, clk = 0, sp = 0, lpv = 0, atc = 0, ic = 0, pur = 0;
+                const dias = Object.keys(ad.daily || {}).sort();
+                const keep = dias.slice(-120);
+                if (keep.length < dias.length) {
+                    const nd = {}, nv = {};
+                    keep.forEach(d => { nd[d] = ad.daily[d]; if (ad.dailyVideo[d]) nv[d] = ad.dailyVideo[d]; });
+                    ad.daily = nd; ad.dailyVideo = nv;
+                }
+                Object.values(ad.daily || {}).forEach(v => { imp += v[0]; clk += v[1]; sp += v[2]; lpv += v[3]; atc += v[4]; ic += v[5]; pur += v[6]; });
+                ad.impressions = Math.round(imp); ad.clicks = Math.round(clk); ad.spend = Math.round(sp * 100) / 100;
+                ad.lpv = Math.round(lpv); ad.atc = Math.round(atc); ad.ic = Math.round(ic); ad.purchases = Math.round(pur);
+                const tv = Object.values(ad.dailyVideo || {}).reduce((s, v) => { s[0] += v[0]; s[1] += v[1]; s[2] += v[2]; return s; }, [0, 0, 0]);
+                if (tv[0] || tv[2]) { ad.plays3s = Math.round(tv[0]); ad.plays = Math.round(tv[1]); ad.plays75 = Math.round(tv[2]); }
+            });
+
+            return { ads: novos, rows: (rows || []).length };
+        },
+
         // Soma as métricas dos criativos nos conjuntos, e dos conjuntos nas campanhas,
         // pra que TODO nível do board mostre o funil.
         _rollUpMetrics() {

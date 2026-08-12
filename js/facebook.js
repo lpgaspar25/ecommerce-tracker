@@ -612,6 +612,47 @@ const FacebookAds = {
         } catch { return []; }
     },
 
+    // ---- Insights NÍVEL ANÚNCIO + breakdown por PAÍS + métricas de vídeo ----
+    // Alimenta o Analisador de Criativos (via AdHierarchyModule.importFromFacebook)
+    // com dados AO VIVO: uma linha por (anúncio × país × dia). País é REAL
+    // (breakdowns=country), não inferido do nome. Compras/receita vêm de actions.
+    async fetchAdInsightsByCountry(dateRange) {
+        if (!this.isConnected()) throw new Error('Facebook não configurado');
+        const accountId = this.config.activeAdAccountId;
+        const since = dateRange?.since || todayISO();
+        const until = dateRange?.until || todayISO();
+        const fields = [
+            'date_start', 'campaign_id', 'campaign_name', 'adset_name', 'ad_name',
+            'spend', 'impressions', 'inline_link_clicks', 'clicks',
+            'actions', 'action_values',
+            // Vídeo: video_play_actions = "video plays" (herda a métrica de 3s);
+            // p75 = assistiu 75%; thruplay = completou/15s (bônus).
+            'video_play_actions', 'video_p75_watched_actions', 'video_thruplay_watched_actions',
+        ].join(',');
+        const params = new URLSearchParams({
+            access_token: this.config.accessToken,
+            fields,
+            level: 'ad',
+            breakdowns: 'country',
+            time_increment: '1',
+            time_range: JSON.stringify({ since, until }),
+            limit: '500',
+        });
+        const firstUrl = `${this.BASE_URL}/${this.API_VERSION}/act_${accountId}/insights?${params}`;
+        const allRows = [];
+        let nextUrl = firstUrl;
+        let safety = 0;
+        while (nextUrl && safety < 200) {
+            const res = await fetch(nextUrl);
+            const data = await res.json();
+            if (data.error) { this._handleApiError(data.error); throw new Error(data.error.message); }
+            if (Array.isArray(data.data)) allRows.push(...data.data);
+            nextUrl = data.paging?.next || null;
+            safety++;
+        }
+        return allRows;
+    },
+
     // ---- Agregar dados de múltiplas campanhas ----
     _aggregateInsights(rows) {
         const totals = {
