@@ -1338,6 +1338,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 <img src="${_esc(f.thumb)}" alt="${_esc(f.presetLabel || '')}" loading="lazy" data-expandir="${f.id}">
                 <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}${f.dim && f.dim !== '1x1' ? ` · ${_esc((DIMENSOES.find(x => x.id === f.dim) || {}).label || f.dim)}` : ''}</span>
                 <div class="studio-foto-acoes">
+                    <button class="studio-foto-editar-acao" data-acao="editar" data-id="${f.id}" title="Adicionar, remover ou trocar elementos desta imagem"><i data-lucide="square-pen" style="width:13px;height:13px"></i><span>Editar</span></button>
                     <button class="btn-icon" data-acao="versoes" data-id="${f.id}" title="Gerar este criativo em outros formatos (story, 16:9, 4:3…)"><i data-lucide="ratio" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="capa" data-id="${f.id}" title="Definir como capa do produto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="baixar" data-id="${f.id}" title="Baixar em resolução cheia"><i data-lucide="download" style="width:13px;height:13px"></i></button>
@@ -1356,12 +1357,139 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         });
     }
 
+    // Editor pontual para uma foto já gerada. Por padrão cria uma nova versão
+    // para que uma imagem aprovada nunca seja perdida por acidente.
+    function _abrirEditorElementos(f) {
+        document.getElementById('studio-editor-overlay')?.remove();
+        const provedor = _provedorImagem();
+        const nomeProvedor = provedor === 'gemini' ? 'Google Gemini' : provedor === 'auto' ? 'Automático' : 'OpenAI';
+        const html = `
+            <div id="studio-editor-overlay" class="studio-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="studio-editor-titulo">
+                <div class="studio-editor-modal">
+                    <div class="studio-editor-head">
+                        <div>
+                            <span class="studio-editor-kicker">EDIÇÃO LOCALIZADA · ${nomeProvedor}</span>
+                            <h3 id="studio-editor-titulo">O que você quer mudar?</h3>
+                            <p>Descreva só a alteração. O restante da composição e o produto serão preservados.</p>
+                        </div>
+                        <button type="button" class="btn-icon" data-editor-fechar aria-label="Fechar editor"><i data-lucide="x" style="width:16px;height:16px" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="studio-editor-body">
+                        <figure class="studio-editor-preview">
+                            <img src="${_esc(f.thumb)}" alt="Imagem que será editada">
+                            <figcaption>${_esc(f.presetLabel || f.preset || 'Foto gerada')}</figcaption>
+                        </figure>
+                        <div class="studio-editor-controls">
+                            <div class="studio-editor-atalhos" aria-label="Tipos de alteração">
+                                <button type="button" data-editor-prompt="Adicione "><i data-lucide="plus" aria-hidden="true"></i> Adicionar</button>
+                                <button type="button" data-editor-prompt="Remova "><i data-lucide="eraser" aria-hidden="true"></i> Remover</button>
+                                <button type="button" data-editor-prompt="Substitua "><i data-lucide="replace" aria-hidden="true"></i> Trocar</button>
+                                <button type="button" data-editor-prompt="Altere apenas o fundo para "><i data-lucide="panels-top-left" aria-hidden="true"></i> Fundo</button>
+                            </div>
+                            <label class="studio-editor-label" for="studio-editor-prompt">Instrução para a imagem</label>
+                            <textarea id="studio-editor-prompt" class="input" rows="5" placeholder="Ex.: adicione gotas de água nas lentes; remova a caixa ao fundo; troque a superfície por mármore preto"></textarea>
+                            <div class="studio-editor-exemplos">
+                                <span>Exemplos:</span>
+                                <button type="button" data-editor-exemplo="Remova a caixa e todos os objetos ao fundo. Mantenha somente o produto e sua sombra.">Limpar o fundo</button>
+                                <button type="button" data-editor-exemplo="Adicione gotas de água realistas sobre o produto, sem alterar sua forma, cor ou marca.">Adicionar gotas</button>
+                                <button type="button" data-editor-exemplo="Troque somente a superfície por mármore preto fosco, preservando luz, enquadramento e produto.">Trocar superfície</button>
+                            </div>
+                            <label class="studio-editor-substituir">
+                                <input type="checkbox" id="studio-editor-substituir">
+                                <span><strong>Substituir a imagem atual</strong><small>Desmarcado cria uma nova versão e mantém a original.</small></span>
+                            </label>
+                            <div id="studio-editor-status" class="studio-editor-status" aria-live="polite"></div>
+                        </div>
+                    </div>
+                    <div class="studio-editor-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-editor-fechar>Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="studio-editor-gerar"><i data-lucide="wand-sparkles" style="width:14px;height:14px" aria-hidden="true"></i> Gerar edição</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        _icones();
+
+        const ov = document.getElementById('studio-editor-overlay');
+        const campo = document.getElementById('studio-editor-prompt');
+        const gerar = document.getElementById('studio-editor-gerar');
+        const status = document.getElementById('studio-editor-status');
+        const aoTeclado = e => { if (e.key === 'Escape') fechar(); };
+        const fechar = () => {
+            document.removeEventListener('keydown', aoTeclado);
+            ov?.remove();
+        };
+        document.addEventListener('keydown', aoTeclado);
+        ov.querySelectorAll('[data-editor-fechar]').forEach(btn => btn.addEventListener('click', fechar));
+        ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+        ov.querySelectorAll('[data-editor-prompt]').forEach(btn => btn.addEventListener('click', () => {
+            campo.value = btn.dataset.editorPrompt;
+            campo.focus();
+            campo.setSelectionRange(campo.value.length, campo.value.length);
+        }));
+        ov.querySelectorAll('[data-editor-exemplo]').forEach(btn => btn.addEventListener('click', () => {
+            campo.value = btn.dataset.editorExemplo;
+            campo.focus();
+        }));
+        campo.focus();
+
+        gerar.addEventListener('click', async () => {
+            const instrucao = campo.value.trim();
+            if (instrucao.length < 4) {
+                status.textContent = 'Descreva o elemento que deseja adicionar, remover ou trocar.';
+                campo.focus();
+                return;
+            }
+            const chave = _chaveParaProvedor(provedor);
+            if (!chave) {
+                status.textContent = 'Configure uma chave de imagem em AI Generations → API Keys.';
+                return;
+            }
+            gerar.disabled = true;
+            campo.disabled = true;
+            status.innerHTML = window.loadingHTML('Aplicando somente a alteração pedida…');
+            try {
+                const rec = await MediaStore.get(f.mediaId);
+                if (!rec?.blob) throw new Error('Arquivo original não encontrado.');
+                const prompt = `Edit this image with one precise, localized change: ${instrucao}. Preserve every element that was not explicitly requested to change. Keep the exact product identity, shape, proportions, materials, colours, logos, labels and readable text. Keep the same framing, perspective, lighting and image dimensions unless the instruction explicitly asks otherwise. Do not add promotional text, badges, watermarks or extra products.`;
+                const blob = await _editarImagem(rec.blob, prompt, provedor);
+                const substituir = document.getElementById('studio-editor-substituir')?.checked;
+                const d = _dados(_state.productId);
+                if (substituir) {
+                    await MediaStore.put(f.mediaId, blob, { type: blob.type, name: `${_handle(f.presetLabel || 'editada')}.png` });
+                    f.thumb = await _miniatura(blob);
+                    f.promptEdicao = instrucao;
+                    f.editadoEm = new Date().toISOString();
+                    if (window.RecentEdits?.add) {
+                        const produto = (AppState.allProducts || []).find(x => x.id === _state.productId)?.name || '';
+                        RecentEdits.add({ prompt: instrucao, thumb: f.thumb, origem: 'Estúdio', tipo: 'Imagem substituída', produto });
+                    }
+                } else {
+                    await _guardarFoto(d, blob, f.preset, `${f.presetLabel || 'Foto'} · Edição`, prompt, f.dim);
+                }
+                _save();
+                _renderFotos();
+                _renderPagina();
+                fechar();
+                showToast(substituir ? 'Imagem atualizada com sucesso' : 'Nova versão criada — a original foi mantida', 'success');
+            } catch (err) {
+                console.error('[Studio] edição localizada falhou:', err);
+                status.textContent = 'Não foi possível editar: ' + String(err.message || err).slice(0, 150);
+                gerar.disabled = false;
+                campo.disabled = false;
+            }
+        });
+    }
+
     async function _acaoFoto(acao, id) {
         const d = _dados(_state.productId);
         const f = d.fotos.find(x => x.id === id);
         if (!f) return;
 
-        if (acao === 'baixar') {
+        if (acao === 'editar') {
+            _abrirEditorElementos(f);
+
+        } else if (acao === 'baixar') {
             const url = await MediaStore.getObjectUrl(f.mediaId);
             if (!url) { showToast('Arquivo não encontrado', 'error'); return; }
             const a = document.createElement('a');
