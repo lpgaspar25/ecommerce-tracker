@@ -2508,3 +2508,70 @@ body.ux-overlay-open {
     .ux-v2-ready .mcal-prod-dd { order: 3; }
     .ux-v2-ready #mcal-region { order: 4; }
 }
+
+/* Higgsfield OAuth/MCP connection — deliberately reads as an account link,
+   distinct from the API-key rows that follow it. */
+.higgsfield-card-host { padding: 0 20px 14px; }
+.higgsfield-connect-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 13px;
+    padding: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    background:
+        radial-gradient(circle at 92% 10%, rgba(215,255,37,.12), transparent 34%),
+        var(--bg-card);
+}
+.higgsfield-connect-card::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--text-muted);
+}
+.higgsfield-connect-card.is-connected::before { background: var(--ux-acid, #d7ff25); }
+.higgsfield-connect-mark {
+    width: 48px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    color: #11150d;
+    background: var(--ux-acid, #d7ff25);
+    box-shadow: 0 9px 28px rgba(155,190,0,.22);
+}
+.higgsfield-connect-mark svg { width: 30px; height: 30px; }
+.higgsfield-connect-copy { min-width: 0; }
+.higgsfield-connect-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.higgsfield-connect-title strong { font-size: .9rem; }
+.higgsfield-connect-title span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: var(--bg-input);
+    font-size: .59rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.higgsfield-connect-card.is-connected .higgsfield-connect-title span { color: var(--ux-acid, #d7ff25); }
+.higgsfield-connect-title svg { width: 11px; height: 11px; }
+.higgsfield-connect-copy p { margin: 5px 0 0; color: var(--text-muted); font-size: .69rem; line-height: 1.45; }
+.higgsfield-connect-copy small { display: block; margin-top: 4px; color: #eab308; font-size: .62rem; }
+.higgsfield-connect-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.higgsfield-connect-actions .btn { white-space: nowrap; }
+.higgsfield-connect-actions svg { width: 13px; height: 13px; }
+
+@media (max-width: 650px) {
+    .higgsfield-connect-card { grid-template-columns: 42px minmax(0, 1fr); }
+    .higgsfield-connect-mark { width: 42px; height: 42px; }
+    .higgsfield-connect-actions { grid-column: 1 / -1; justify-content: stretch; }
+    .higgsfield-connect-actions .btn { flex: 1; }
+}

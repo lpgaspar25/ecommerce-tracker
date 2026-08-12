@@ -25,8 +25,8 @@
             } catch (e) {}
         })();
     </script>
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/ux-v2.css?v=20260811e">
+    <link rel="stylesheet" href="css/styles.css?v=20260812a">
+    <link rel="stylesheet" href="css/ux-v2.css?v=20260812a">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
          refresh do dashboard, Supabase no SupabaseSync.init, lucide no
          createIcons — todos rodam em DOMContentLoaded). Sem defer elas
@@ -6697,7 +6697,8 @@
                 <h3><i data-lucide="key-round" style="width:18px;height:18px;vertical-align:-3px"></i> Chaves de API</h3>
                 <button class="btn-close" id="api-keys-modal-close">&times;</button>
             </div>
-            <p class="section-subtitle" style="padding:0 20px;margin-top:-4px">Cole a chave de cada provedor que você usa. Fica só neste navegador — nunca sai daqui.</p>
+            <p class="section-subtitle" style="padding:0 20px;margin-top:-4px">Configure provedores de IA por chave ou conexão segura.</p>
+            <div data-higgsfield-card class="higgsfield-card-host"></div>
             <div id="api-keys-list" class="apikeys-list"><!-- renderizado por AIAdGenerator.renderApiKeysModal() --></div>
         </div>
     </div>
@@ -6770,6 +6771,7 @@
     <script src="js/dash-customize.js"></script>
     <script src="js/sidebar.js"></script>
     <script src="js/image-ai.js"></script>
+    <script src="js/higgsfield.js?v=20260812a"></script>
     <script src="js/ux-shell.js?v=20260811c"></script>
     <script src="js/ai-ad-generator.js?v=20260811d"></script>
     <script src="js/ai-generations.js"></script>
