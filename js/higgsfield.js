@@ -4,7 +4,7 @@
 const HiggsfieldConnection = (() => {
     const SESSION_KEY = 'etracker_higgsfield_session';
     const CLOUD_ORIGIN = 'https://app-calculadora-lucas.pages.dev';
-    const state = { connected: false, loading: false, identity: null, tools: [], error: '' };
+    const state = { connected: false, loading: false, identity: null, tools: [], error: '', justConnected: false };
 
     function backendOrigin() {
         return (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
@@ -19,13 +19,16 @@ const HiggsfieldConnection = (() => {
         const session = url.searchParams.get('higgsfield_session');
         const connected = url.searchParams.get('higgsfield_connected');
         const error = url.searchParams.get('higgsfield_error');
-        if (session) localStorage.setItem(SESSION_KEY, session);
+        if (session) {
+            localStorage.setItem(SESSION_KEY, session);
+            state.justConnected = true;
+        }
         if (session || connected || error) {
             ['higgsfield_session', 'higgsfield_connected', 'higgsfield_error'].forEach(key => url.searchParams.delete(key));
             history.replaceState({}, '', url.pathname + url.search + url.hash);
         }
         if (connected && typeof showToast === 'function') showToast('Higgsfield conectada com sucesso', 'success');
-        if (error && typeof showToast === 'function') showToast('Não foi possível conectar a Higgsfield. Tente novamente.', 'error');
+        if (error && typeof showToast === 'function') showToast(_oauthErrorMessage(error), 'error');
     }
 
     function connect() {
@@ -56,12 +59,11 @@ const HiggsfieldConnection = (() => {
             render(); return state;
         }
         try {
-            const response = await fetch(`${backendOrigin()}/higgsfield/status`, {
-                headers: { 'X-Higgsfield-Session': current },
-            });
+            const response = await _fetchStatusWithPropagationRetry(current);
             if (!response.ok) throw new Error('Sessão expirada');
             const data = await response.json();
             state.connected = !!data.connected;
+            state.justConnected = false;
             state.identity = data.identity || null;
             state.loading = false;
             render();
@@ -73,6 +75,30 @@ const HiggsfieldConnection = (() => {
             render();
         }
         return state;
+    }
+
+    async function _fetchStatusWithPropagationRetry(current) {
+        const tentativas = state.justConnected ? [0, 350, 800, 1600] : [0];
+        let response;
+        for (const espera of tentativas) {
+            if (espera) await new Promise(resolve => setTimeout(resolve, espera));
+            response = await fetch(`${backendOrigin()}/higgsfield/status`, {
+                headers: { 'X-Higgsfield-Session': current },
+            });
+            if (response.ok || response.status !== 401) return response;
+        }
+        return response;
+    }
+
+    function _oauthErrorMessage(code) {
+        const mensagens = {
+            provider_access_denied: 'A autorização da Higgsfield foi cancelada.',
+            expired_oauth_state: 'A autorização expirou antes de concluir. Tente conectar novamente.',
+            missing_oauth_code: 'A Higgsfield não devolveu a autorização. Tente novamente.',
+            token_invalid_grant: 'A Higgsfield recusou o código de autorização. Inicie uma nova conexão.',
+            token_exchange_failed: 'A Higgsfield recusou a autorização. Tente novamente.',
+        };
+        return mensagens[code] || 'Não foi possível conectar a Higgsfield. Tente novamente.';
     }
 
     async function refreshTools() {

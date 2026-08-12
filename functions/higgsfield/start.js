@@ -16,6 +16,9 @@ export async function onRequestGet({ request, env }) {
   authorize.searchParams.set('client_id', clientId(env));
   authorize.searchParams.set('redirect_uri', callbackUrl());
   authorize.searchParams.set('scope', 'openid email offline_access');
+  // OIDC exige consentimento explícito quando offline_access é solicitado.
+  // O cliente MCP oficial segue a mesma regra.
+  authorize.searchParams.set('prompt', 'consent');
   authorize.searchParams.set('state', state);
   authorize.searchParams.set('code_challenge', challenge);
   authorize.searchParams.set('code_challenge_method', 'S256');

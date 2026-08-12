@@ -4,12 +4,19 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  if (!code || !state || !env.SHOPIFY_TOKENS) return errorRedirect('missing_oauth_parameters');
+  const oauthError = url.searchParams.get('error');
+  if (!state || !env.SHOPIFY_TOKENS) return errorRedirect('missing_oauth_parameters');
 
-  const raw = await env.SHOPIFY_TOKENS.get(`higgsfield:state:${state}`);
+  // KV replica entre regiões pode levar alguns instantes para enxergar o state
+  // salvo no início do OAuth. Tentar novamente evita falso "state expirado".
+  const raw = await getStateWithRetry(env, state);
   if (!raw) return errorRedirect('expired_oauth_state');
-  await env.SHOPIFY_TOKENS.delete(`higgsfield:state:${state}`);
   const stateData = JSON.parse(raw);
+  if (oauthError) {
+    await env.SHOPIFY_TOKENS.delete(`higgsfield:state:${state}`);
+    return errorRedirect(`provider_${safeErrorCode(oauthError)}`, stateData.returnUrl);
+  }
+  if (!code) return errorRedirect('missing_oauth_code', stateData.returnUrl);
   const form = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -24,11 +31,15 @@ export async function onRequestGet({ request, env }) {
     body: form,
   });
   if (!response.ok) {
-    console.error('[Higgsfield OAuth] token exchange failed', response.status, (await response.text()).slice(0, 300));
-    return errorRedirect('token_exchange_failed', stateData.returnUrl);
+    const failure = await response.text();
+    let providerCode = 'exchange_failed';
+    try { providerCode = safeErrorCode(JSON.parse(failure).error || providerCode); } catch {}
+    console.error('[Higgsfield OAuth] token exchange failed', response.status, providerCode);
+    return errorRedirect(`token_${providerCode}`, stateData.returnUrl);
   }
   const token = await response.json();
   if (!token.access_token) return errorRedirect('missing_access_token', stateData.returnUrl);
+  await env.SHOPIFY_TOKENS.delete(`higgsfield:state:${state}`);
   const sessionId = `${crypto.randomUUID()}-${Date.now().toString(36)}`;
   await saveSession(env, sessionId, {
     accessToken: token.access_token,
@@ -42,6 +53,20 @@ export async function onRequestGet({ request, env }) {
   target.searchParams.set('higgsfield_session', sessionId);
   target.searchParams.set('higgsfield_connected', '1');
   return Response.redirect(target.toString(), 302);
+}
+
+async function getStateWithRetry(env, state) {
+  const key = `higgsfield:state:${state}`;
+  for (const delay of [0, 250, 700, 1400]) {
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const raw = await env.SHOPIFY_TOKENS.get(key);
+    if (raw) return raw;
+  }
+  return null;
+}
+
+function safeErrorCode(value) {
+  return String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 60) || 'unknown';
 }
 
 function errorRedirect(code, returnUrl = 'https://app-calculadora-lucas.pages.dev/') {
