@@ -2569,6 +2569,57 @@ body.ux-overlay-open {
 .higgsfield-connect-actions .btn { white-space: nowrap; }
 .higgsfield-connect-actions svg { width: 13px; height: 13px; }
 
+/* Estúdio · pipeline de frame Higgsfield para Seedance. */
+.studio-hf-flow {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--ux-acid, #d7ff25) 36%, var(--border));
+    border-radius: 13px;
+    background:
+        radial-gradient(circle at 100% 0, rgba(215,255,37,.12), transparent 40%),
+        var(--bg-input);
+}
+.studio-hf-flow[hidden] { display: none; }
+.studio-hf-flow-head { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 9px; }
+.studio-hf-logo {
+    width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px;
+    color: #0c1008; background: var(--ux-acid, #d7ff25);
+}
+.studio-hf-logo svg { width: 16px; height: 16px; }
+.studio-hf-flow-head strong { display: block; font-size: .76rem; }
+.studio-hf-flow-head small { display: block; margin-top: 2px; color: var(--text-muted); font-size: .62rem; line-height: 1.35; }
+.studio-hf-connected {
+    padding: 3px 7px; border-radius: 999px; color: #fca5a5; background: rgba(239,68,68,.1);
+    font-size: .55rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+}
+.studio-hf-connected.is-on { color: var(--ux-acid, #d7ff25); background: rgba(215,255,37,.09); }
+.studio-hf-settings { display: grid; grid-template-columns: 1fr 1.35fr; gap: 7px; margin-top: 10px; }
+.studio-hf-settings label { color: var(--text-muted); font-size: .59rem; }
+.studio-hf-settings select { width: 100%; margin-top: 4px; font-size: .67rem; }
+.studio-hf-seedance {
+    display: flex; align-items: center; justify-content: space-between; gap: 7px; flex-wrap: wrap;
+    margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); font-size: .61rem;
+}
+.studio-hf-seedance span { display: inline-flex; align-items: center; gap: 4px; }
+.studio-hf-seedance svg { width: 12px; height: 12px; }
+.studio-hf-unlim { color: var(--ux-acid, #d7ff25); font-weight: 800; }
+.studio-hf-flow > p { margin: 8px 0 0; color: var(--text-muted); font-size: .6rem; line-height: 1.45; }
+.studio-seedance-modal { width: min(760px, 94vw); }
+.studio-seedance-body { display: grid; grid-template-columns: minmax(180px,.72fr) minmax(0,1.28fr); gap: 16px; padding: 18px; }
+.studio-seedance-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.studio-seedance-options label { color: var(--text-muted); font-size: .61rem; }
+.studio-seedance-options select { width: 100%; margin-top: 4px; }
+.studio-seedance-options .studio-seedance-audio { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; color: var(--text-primary); }
+.studio-seedance-video { display: block; width: 100%; max-height: 390px; margin: 9px 0; border-radius: 12px; background: #000; }
+#studio-seedance-result .btn svg, #studio-seedance-generate svg { width: 13px; height: 13px; }
+
+@media (max-width: 650px) {
+    .studio-hf-flow-head { grid-template-columns: 34px minmax(0,1fr); }
+    .studio-hf-connected { grid-column: 1 / -1; justify-self: start; }
+    .studio-hf-settings { grid-template-columns: 1fr; }
+    .studio-seedance-body { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 650px) {
     .higgsfield-connect-card { grid-template-columns: 42px minmax(0, 1fr); }
     .higgsfield-connect-mark { width: 42px; height: 42px; }

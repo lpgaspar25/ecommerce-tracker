@@ -118,6 +118,107 @@ const HiggsfieldConnection = (() => {
         return state.tools;
     }
 
+    async function callTool(tool, args = {}) {
+        const current = sessionId();
+        if (!current || !state.connected) throw new Error('Conecte sua conta Higgsfield primeiro');
+        const response = await fetch(`${backendOrigin()}/higgsfield/call`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Higgsfield-Session': current },
+            body: JSON.stringify({ tool, args }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error) throw new Error(data.error || `Higgsfield respondeu ${response.status}`);
+        return data.result;
+    }
+
+    async function uploadImage(blob, filename = 'tracker-reference.webp') {
+        const current = sessionId();
+        if (!current || !state.connected) throw new Error('Conecte sua conta Higgsfield primeiro');
+        const fd = new FormData();
+        fd.append('file', blob, filename);
+        const response = await fetch(`${backendOrigin()}/higgsfield/media`, {
+            method: 'POST', headers: { 'X-Higgsfield-Session': current }, body: fd,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error || !data.mediaId) throw new Error(data.error || 'Falha ao enviar a imagem');
+        return data.mediaId;
+    }
+
+    function _resultText(result) {
+        return (result?.content || []).filter(x => x?.type === 'text').map(x => x.text || '').join('\n');
+    }
+
+    function _assertGeneration(result) {
+        const message = _resultText(result);
+        if (result?.isError || /not supported|not available|rejected|failed|error/i.test(message)) {
+            if (/unlimited|unlim/i.test(message)) {
+                throw new Error('O Unlimited 2.5 está ativo no site, mas a Higgsfield ainda não o disponibilizou nesta conexão MCP. Nenhum crédito foi usado.');
+            }
+            throw new Error(message || 'A Higgsfield recusou a geração');
+        }
+        return result;
+    }
+
+    function _findJob(value) {
+        if (!value || typeof value !== 'object') return '';
+        for (const [key, item] of Object.entries(value)) {
+            if (/^(job_id|jobId|id)$/i.test(key) && typeof item === 'string'
+                && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(item)) return item;
+        }
+        for (const item of Object.values(value)) {
+            const found = Array.isArray(item) ? item.map(_findJob).find(Boolean) : _findJob(item);
+            if (found) return found;
+        }
+        return '';
+    }
+
+    function _findUrl(value) {
+        if (!value) return '';
+        if (typeof value === 'string') return value.match(/https?:\/\/[^\s'"<>]+/i)?.[0]?.replace(/[),.;]+$/, '') || '';
+        if (typeof value !== 'object') return '';
+        for (const key of ['output_url', 'asset_url', 'download_url', 'media_url', 'url']) {
+            if (typeof value[key] === 'string' && /^https?:\/\//i.test(value[key])) return value[key];
+        }
+        for (const item of Object.values(value)) {
+            const found = Array.isArray(item) ? item.map(_findUrl).find(Boolean) : _findUrl(item);
+            if (found) return found;
+        }
+        return '';
+    }
+
+    async function _waitForAsset(jobId) {
+        for (let attempt = 0; attempt < 40; attempt++) {
+            const result = _assertGeneration(await callTool('jobs_wait', {
+                jobs: [{ index: 0, job_id: jobId }], timeout_seconds: 15,
+            }));
+            const url = _findUrl(result?.structuredContent || result);
+            if (url) return url;
+        }
+        throw new Error('O vídeo demorou mais que o esperado. Ele continua salvo na sua conta Higgsfield.');
+    }
+
+    async function generateSeedance(blob, options = {}) {
+        if (!state.connected) throw new Error('Conecte sua conta Higgsfield primeiro');
+        const mediaId = await uploadImage(blob, 'tracker-seedance-start.webp');
+        const params = {
+            model: 'seedance_2_5',
+            prompt: options.prompt || 'Cinematic product video. Preserve the exact product identity, shape, colours, logos and text. Natural camera motion and realistic lighting.',
+            count: 1,
+            mode: 'omni_reference',
+            medias: [{ value: mediaId, role: 'start_image' }],
+            duration: Math.min(30, Math.max(4, Number(options.duration) || 5)),
+            resolution: '720p',
+            aspect_ratio: options.aspectRatio || '1:1',
+            generate_audio: options.generateAudio !== false,
+            bitrate_mode: 'high',
+            use_unlim: true,
+        };
+        const submitted = _assertGeneration(await callTool('generate_video', { params }));
+        const jobId = _findJob(submitted?.structuredContent || submitted);
+        if (!jobId) throw new Error(_resultText(submitted) || 'A Higgsfield não devolveu o código do vídeo');
+        return { jobId, url: await _waitForAsset(jobId) };
+    }
+
     function cardHtml() {
         const pessoa = state.identity?.name || state.identity?.email || 'Conta Higgsfield';
         const detalhe = state.loading
@@ -155,6 +256,7 @@ const HiggsfieldConnection = (() => {
             host.querySelector('[data-higgsfield-action="refresh"]')?.addEventListener('click', refresh);
         });
         if (typeof lucide !== 'undefined' && lucide.createIcons) try { lucide.createIcons(); } catch {}
+        window.dispatchEvent(new CustomEvent('higgsfield:state', { detail: { connected: state.connected } }));
     }
 
     function _esc(value) {
@@ -168,7 +270,7 @@ const HiggsfieldConnection = (() => {
         if (typeof EventBus !== 'undefined') EventBus.on('tabChanged', tab => { if (tab === 'studio') render(); });
     }
 
-    return { init, connect, disconnect, refresh, refreshTools, render, state, sessionId, backendOrigin };
+    return { init, connect, disconnect, refresh, refreshTools, callTool, uploadImage, generateSeedance, render, state, sessionId, backendOrigin };
 })();
 
 window.HiggsfieldConnection = HiggsfieldConnection;

@@ -186,3 +186,27 @@ export async function listMcpTools(accessToken) {
   if (listed.data?.error) throw new Error(listed.data.error.message || 'Falha ao listar ferramentas');
   return listed.data?.result?.tools || [];
 }
+
+// Executa uma ferramenta em uma sessão MCP curta. Cada chamada HTTP do
+// Tracker é independente, portanto inicializamos a sessão aqui em vez de
+// expor o access token (ou o Mcp-Session-Id) ao navegador.
+export async function callMcpTool(accessToken, name, args = {}) {
+  const init = await mcpPost(accessToken, {
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'Tracker Commerce OS', version: '1.0.0' },
+    },
+  });
+  const sid = init.sessionId;
+  await mcpPost(accessToken, {
+    jsonrpc: '2.0', method: 'notifications/initialized', params: {},
+  }, sid);
+  const called = await mcpPost(accessToken, {
+    jsonrpc: '2.0', id: 2, method: 'tools/call',
+    params: { name, arguments: args || {} },
+  }, sid);
+  if (called.data?.error) throw new Error(called.data.error.message || 'Falha na Higgsfield');
+  return called.data?.result || null;
+}

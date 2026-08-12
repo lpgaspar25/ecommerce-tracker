@@ -4346,6 +4346,7 @@
                                 <option value="auto">Automático (Gemini → OpenAI)</option>
                                 <option value="gemini">Google · Gemini Image</option>
                                 <option value="openai">OpenAI · GPT Image</option>
+                                <option value="higgsfield">Higgsfield · conta conectada</option>
                             </select>
                         </div>
                         <div class="studio-provider-row">
@@ -4362,7 +4363,45 @@
                                     <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
                                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (desliga 02/10/2026)</option>
                                 </optgroup>
+                                <optgroup label="Higgsfield · modelos de imagem" data-provedor="higgsfield">
+                                    <option value="nano_banana_2">Nano Banana 2 · recomendado para produto</option>
+                                    <option value="nano_banana_pro">Nano Banana Pro</option>
+                                    <option value="gpt_image_2">GPT Image 2 · via Higgsfield</option>
+                                    <option value="seedream_v5_lite">Seedream 5 Lite</option>
+                                    <option value="seedream_v5_pro">Seedream 5 Pro</option>
+                                    <option value="seedream_v4_5">Seedream 4.5</option>
+                                </optgroup>
                             </select>
+                        </div>
+                        <div id="studio-hf-flow" class="studio-hf-flow" hidden>
+                            <div class="studio-hf-flow-head">
+                                <span class="studio-hf-logo" aria-hidden="true"><i data-lucide="sparkles"></i></span>
+                                <div>
+                                    <strong>Frame → Seedance 2.5</strong>
+                                    <small>Crie a imagem-base agora e anime qualquer resultado depois.</small>
+                                </div>
+                                <span class="studio-hf-connected" id="studio-hf-connected">Verificando</span>
+                            </div>
+                            <div class="studio-hf-settings">
+                                <label>Qualidade do frame
+                                    <select id="studio-hf-resolution" class="input input-sm">
+                                        <option value="1k">1K · rápido</option>
+                                        <option value="2k" selected>2K · recomendado</option>
+                                        <option value="4k">4K · máxima</option>
+                                    </select>
+                                </label>
+                                <label>Pagamento da imagem
+                                    <select id="studio-hf-payment" class="input input-sm">
+                                        <option value="ask">Mostrar custo e perguntar</option>
+                                        <option value="unlim">Somente Unlimited</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="studio-hf-seedance">
+                                <span><i data-lucide="clapperboard"></i><b>Vídeo:</b> Seedance 2.5 · 720p · 5s · áudio</span>
+                                <span class="studio-hf-unlim"><i data-lucide="shield-check"></i> Somente Unlimited</span>
+                            </div>
+                            <p>O Unlimited 2.5 está ativo no site. Pela conexão, o Tracker nunca troca para créditos sem sua confirmação.</p>
                         </div>
                         <button id="studio-gerar-fotos" class="btn btn-primary btn-sm" style="margin-top:0.6rem;width:100%"><i data-lucide="wand-2" style="width:14px;height:14px;vertical-align:-2px"></i> Gerar fotos</button>
                     </div>
@@ -6770,8 +6809,8 @@
     <script src="js/dashboard.js"></script>
     <script src="js/dash-customize.js"></script>
     <script src="js/sidebar.js"></script>
-    <script src="js/image-ai.js"></script>
-    <script src="js/higgsfield.js?v=20260812b"></script>
+    <script src="js/image-ai.js?v=20260812c"></script>
+    <script src="js/higgsfield.js?v=20260812c"></script>
     <script src="js/ux-shell.js?v=20260811c"></script>
     <script src="js/ai-ad-generator.js?v=20260811d"></script>
     <script src="js/ai-generations.js"></script>
@@ -6793,7 +6832,7 @@
     <script src="js/media-store.js"></script>
     <script src="js/kv-store.js"></script>
     <script src="js/creatives.js"></script>
-    <script src="js/studio.js?v=20260811e"></script>
+    <script src="js/studio.js?v=20260812c"></script>
     <script src="js/lancamento.js?v=20260811d"></script>
     <script src="js/pending-approvals.js"></script>
     <script src="js/ai-consultant.js?v=20260811b"></script>

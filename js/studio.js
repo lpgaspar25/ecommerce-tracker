@@ -325,6 +325,8 @@ const StudioModule = (() => {
         if (!chave) {
             showToast(prov === 'gemini'
                 ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : prov === 'higgsfield'
+                    ? 'Conecte sua conta Higgsfield em AI Generations → API Keys'
                 : prov === 'openai'
                     ? 'Configure a chave OpenAI em AI Generations → API Keys'
                     : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
@@ -759,6 +761,8 @@ Responda APENAS com JSON válido:
         if (!chave) {
             showToast(prov === 'gemini'
                 ? 'Configure a chave Google AI em AI Generations → API Keys'
+                : prov === 'higgsfield'
+                    ? 'Conecte sua conta Higgsfield em AI Generations → API Keys'
                 : prov === 'openai'
                     ? 'Configure a chave OpenAI em AI Generations → API Keys'
                     : 'Configure a chave Google AI ou OpenAI em AI Generations → API Keys', 'error');
@@ -825,6 +829,7 @@ Responda APENAS com JSON válido:
     function _chaveParaProvedor(prov) {
         if (prov === 'gemini') return _chaveGoogle();
         if (prov === 'openai') return _chaveOpenAI();
+        if (prov === 'higgsfield') return window.HiggsfieldConnection?.state?.connected ? 'oauth-connected' : '';
         return _chaveGoogle() || _chaveOpenAI();
     }
 
@@ -1339,6 +1344,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
                 <span class="studio-foto-tag">${_esc(f.presetLabel || f.preset)}${f.dim && f.dim !== '1x1' ? ` · ${_esc((DIMENSOES.find(x => x.id === f.dim) || {}).label || f.dim)}` : ''}</span>
                 <div class="studio-foto-acoes">
                     <button class="studio-foto-editar-acao" data-acao="editar" data-id="${f.id}" title="Adicionar, remover ou trocar elementos desta imagem"><i data-lucide="square-pen" style="width:13px;height:13px"></i><span>Editar</span></button>
+                    <button class="studio-foto-editar-acao" data-acao="seedance" data-id="${f.id}" title="Animar esta imagem no Seedance 2.5 Unlimited"><i data-lucide="clapperboard" style="width:13px;height:13px"></i><span>Animar</span></button>
                     <button class="btn-icon" data-acao="versoes" data-id="${f.id}" title="Gerar este criativo em outros formatos (story, 16:9, 4:3…)"><i data-lucide="ratio" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="capa" data-id="${f.id}" title="Definir como capa do produto"><i data-lucide="image" style="width:13px;height:13px"></i></button>
                     <button class="btn-icon" data-acao="baixar" data-id="${f.id}" title="Baixar em resolução cheia"><i data-lucide="download" style="width:13px;height:13px"></i></button>
@@ -1357,12 +1363,88 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
         });
     }
 
+    function _abrirSeedance(f) {
+        document.getElementById('studio-seedance-overlay')?.remove();
+        const dim = DIMENSOES.find(x => x.id === (f.dim || '1x1'));
+        const proporcao = dim?.ar === '4:5' ? '3:4' : (dim?.ar || '1:1');
+        const html = `
+            <div id="studio-seedance-overlay" class="studio-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="studio-seedance-title">
+                <div class="studio-editor-modal studio-seedance-modal">
+                    <div class="studio-editor-head">
+                        <div>
+                            <span class="studio-editor-kicker">HIGGSFIELD · SEEDANCE 2.5 · UNLIMITED</span>
+                            <h3 id="studio-seedance-title">Animar esta imagem</h3>
+                            <p>O frame permanece como referência inicial. A ação nunca muda para créditos pagos.</p>
+                        </div>
+                        <button type="button" class="btn-icon" data-seedance-fechar aria-label="Fechar"><i data-lucide="x"></i></button>
+                    </div>
+                    <div class="studio-seedance-body">
+                        <figure class="studio-editor-preview">
+                            <img src="${_esc(f.thumb)}" alt="Frame inicial do vídeo">
+                            <figcaption>Frame inicial · ${_esc(dim?.label || '1:1')}</figcaption>
+                        </figure>
+                        <div class="studio-editor-controls">
+                            <label class="studio-editor-label" for="studio-seedance-prompt">Movimento desejado</label>
+                            <textarea id="studio-seedance-prompt" class="input" rows="5">Cinematic ecommerce product video. Slow, premium camera movement with subtle parallax and realistic light motion. Preserve the exact product identity, shape, colours, logos and readable text. Do not deform, replace or add parts to the product.</textarea>
+                            <div class="studio-seedance-options">
+                                <label>Duração<select id="studio-seedance-duration" class="input input-sm"><option value="5">5 segundos</option><option value="10">10 segundos</option><option value="15">15 segundos</option></select></label>
+                                <label>Formato<select id="studio-seedance-ratio" class="input input-sm"><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="16:9">16:9</option><option value="4:3">4:3</option><option value="3:4">3:4</option></select></label>
+                                <label class="studio-seedance-audio"><input id="studio-seedance-audio" type="checkbox" checked> Gerar áudio</label>
+                            </div>
+                            <div class="studio-hf-seedance"><span><b>Modelo:</b> Seedance 2.5 · 720p · bitrate alto</span><span class="studio-hf-unlim"><i data-lucide="shield-check"></i> use_unlim: true</span></div>
+                            <div id="studio-seedance-status" class="studio-editor-status" aria-live="polite"></div>
+                            <div id="studio-seedance-result"></div>
+                        </div>
+                    </div>
+                    <div class="studio-editor-footer">
+                        <a class="btn btn-secondary btn-sm" href="https://higgsfield.ai/ai/video" target="_blank" rel="noopener">Abrir Higgsfield</a>
+                        <button type="button" class="btn btn-secondary btn-sm" data-seedance-fechar>Cancelar</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="studio-seedance-generate"><i data-lucide="clapperboard"></i> Gerar Unlimited</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+        const overlay = document.getElementById('studio-seedance-overlay');
+        const fechar = () => overlay?.remove();
+        overlay.querySelector('#studio-seedance-ratio').value = proporcao;
+        overlay.querySelectorAll('[data-seedance-fechar]').forEach(x => x.addEventListener('click', fechar));
+        overlay.addEventListener('click', e => { if (e.target === overlay) fechar(); });
+        _icones();
+
+        overlay.querySelector('#studio-seedance-generate').addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            const status = overlay.querySelector('#studio-seedance-status');
+            const result = overlay.querySelector('#studio-seedance-result');
+            button.disabled = true;
+            result.innerHTML = '';
+            status.innerHTML = window.loadingHTML('Enviando o frame e iniciando no Seedance 2.5…');
+            try {
+                const rec = await MediaStore.get(f.mediaId);
+                if (!rec?.blob) throw new Error('Arquivo original não encontrado');
+                const generated = await HiggsfieldConnection.generateSeedance(rec.blob, {
+                    prompt: overlay.querySelector('#studio-seedance-prompt').value.trim(),
+                    duration: overlay.querySelector('#studio-seedance-duration').value,
+                    aspectRatio: overlay.querySelector('#studio-seedance-ratio').value,
+                    generateAudio: overlay.querySelector('#studio-seedance-audio').checked,
+                });
+                status.textContent = 'Vídeo concluído e salvo na sua conta Higgsfield.';
+                result.innerHTML = `<video src="${_esc(generated.url)}" controls playsinline class="studio-seedance-video"></video><a class="btn btn-secondary btn-sm" href="${_esc(generated.url)}" target="_blank" rel="noopener"><i data-lucide="download"></i> Abrir vídeo</a>`;
+                _icones();
+            } catch (error) {
+                status.textContent = String(error.message || error);
+                button.disabled = false;
+            }
+        });
+    }
+
     // Editor pontual para uma foto já gerada. Por padrão cria uma nova versão
     // para que uma imagem aprovada nunca seja perdida por acidente.
     function _abrirEditorElementos(f) {
         document.getElementById('studio-editor-overlay')?.remove();
         const provedor = _provedorImagem();
-        const nomeProvedor = provedor === 'gemini' ? 'Google Gemini' : provedor === 'auto' ? 'Automático' : 'OpenAI';
+        const nomeProvedor = provedor === 'gemini' ? 'Google Gemini'
+            : provedor === 'higgsfield' ? 'Higgsfield'
+            : provedor === 'auto' ? 'Automático' : 'OpenAI';
         const html = `
             <div id="studio-editor-overlay" class="studio-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="studio-editor-titulo">
                 <div class="studio-editor-modal">
@@ -1488,6 +1570,9 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         if (acao === 'editar') {
             _abrirEditorElementos(f);
+
+        } else if (acao === 'seedance') {
+            _abrirSeedance(f);
 
         } else if (acao === 'baixar') {
             const url = await MediaStore.getObjectUrl(f.mediaId);
@@ -2024,6 +2109,10 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
 
         const selProv = document.getElementById('studio-img-provider');
         const selMod = document.getElementById('studio-img-modelo');
+        const hfFlow = document.getElementById('studio-hf-flow');
+        const hfStatus = document.getElementById('studio-hf-connected');
+        const hfResolution = document.getElementById('studio-hf-resolution');
+        const hfPayment = document.getElementById('studio-hf-payment');
         // Em Automático não dá pra fixar versão — não se sabe de antemão qual
         // dos dois provedores vai atender. Some as opções e trava o select
         // nesse caso; nos demais, mostra só as versões do provedor escolhido
@@ -2036,7 +2125,16 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             selMod.disabled = auto;
             [...selMod.querySelectorAll('optgroup')].forEach(g => { g.hidden = auto || g.dataset.provedor !== prov; });
             const opt = selMod.selectedOptions[0];
-            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) selMod.value = '';
+            if (auto || (opt?.parentElement?.tagName === 'OPTGROUP' && opt.parentElement.hidden)) {
+                selMod.value = prov === 'higgsfield' ? 'nano_banana_2' : '';
+                localStorage.setItem('studio_img_modelo', selMod.value);
+            }
+            if (hfFlow) hfFlow.hidden = prov !== 'higgsfield';
+            const conectado = !!window.HiggsfieldConnection?.state?.connected;
+            if (hfStatus) {
+                hfStatus.textContent = conectado ? 'Conectada' : 'Desconectada';
+                hfStatus.classList.toggle('is-on', conectado);
+            }
         };
         if (selProv) {
             selProv.value = localStorage.getItem('studio_img_provider') || 'openai';
@@ -2049,6 +2147,15 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
             selMod.value = localStorage.getItem('studio_img_modelo') || '';
             selMod.addEventListener('change', () => localStorage.setItem('studio_img_modelo', selMod.value));
         }
+        if (hfResolution) {
+            hfResolution.value = localStorage.getItem('studio_hf_image_resolution') || '2k';
+            hfResolution.addEventListener('change', () => localStorage.setItem('studio_hf_image_resolution', hfResolution.value));
+        }
+        if (hfPayment) {
+            hfPayment.value = localStorage.getItem('studio_hf_image_payment') || 'ask';
+            hfPayment.addEventListener('change', () => localStorage.setItem('studio_hf_image_payment', hfPayment.value));
+        }
+        window.addEventListener('higgsfield:state', sincronizarModeloImagem);
         sincronizarModeloImagem();
         document.getElementById('studio-gerar-marca')?.addEventListener('click', () => gerarMarca());
         document.getElementById('studio-padrao-pick')?.addEventListener('click', () => document.getElementById('studio-padrao-input')?.click());

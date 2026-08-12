@@ -49,6 +49,10 @@ const ImageAI = (() => {
     // Ordem de tentativa no Google. O 2.5-flash-image tem desligamento
     // anunciado para 02/10/2026, então fica só como último recurso.
     const MODELOS_GEMINI = ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
+    const MODELOS_HIGGSFIELD = [
+        'nano_banana_2', 'nano_banana_pro', 'gpt_image_2',
+        'seedream_v5_lite', 'seedream_v5_pro', 'seedream_v4_5',
+    ];
 
     // Rótulos pra UI escolher uma versão específica em vez da cascata
     // automática. A 1ª de cada lista é sempre a recomendada/mais recente.
@@ -59,6 +63,12 @@ const ImageAI = (() => {
         'gemini-3-pro-image': 'Gemini 3 Pro Image (mais recente)',
         'gemini-3.1-flash-image': 'Gemini 3.1 Flash Image',
         'gemini-2.5-flash-image': 'Gemini 2.5 Flash Image (desliga 02/10/2026)',
+        'nano_banana_2': 'Nano Banana 2 · recomendado para produto',
+        'nano_banana_pro': 'Nano Banana Pro',
+        'gpt_image_2': 'GPT Image 2 · via Higgsfield',
+        'seedream_v5_lite': 'Seedream 5 Lite',
+        'seedream_v5_pro': 'Seedream 5 Pro',
+        'seedream_v4_5': 'Seedream 4.5',
     };
 
     function _chaveOpenAI() {
@@ -279,6 +289,115 @@ const ImageAI = (() => {
         throw new Error('Gemini: nenhum modelo de imagem disponível para esta chave. ' + ultimoErro);
     }
 
+    // ── Higgsfield MCP ────────────────────────────────────────────────
+    function _hfTextoResultado(result) {
+        return (result?.content || []).filter(x => x?.type === 'text').map(x => x.text || '').join('\n');
+    }
+
+    function _hfValidarResultado(result) {
+        const texto = _hfTextoResultado(result);
+        if (result?.isError || /not supported|not available|rejected|failed|error/i.test(texto)) {
+            if (/unlimited|unlim/i.test(texto)) {
+                throw new Error('Seu Unlimited está ativo no site da Higgsfield, mas ainda não foi liberado para esta conexão MCP. Nenhum crédito foi usado.');
+            }
+            throw new Error(texto || 'A Higgsfield recusou a geração');
+        }
+        return result;
+    }
+
+    function _hfEncontrarJob(value) {
+        if (!value || typeof value !== 'object') return '';
+        for (const [key, item] of Object.entries(value)) {
+            if (/^(job_id|jobId|id)$/i.test(key) && typeof item === 'string'
+                && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(item)) return item;
+        }
+        for (const item of Object.values(value)) {
+            const achado = Array.isArray(item)
+                ? item.map(_hfEncontrarJob).find(Boolean)
+                : _hfEncontrarJob(item);
+            if (achado) return achado;
+        }
+        return '';
+    }
+
+    function _hfEncontrarUrl(value) {
+        if (!value) return '';
+        if (typeof value === 'string') {
+            const match = value.match(/https?:\/\/[^\s'"<>]+/i);
+            return match ? match[0].replace(/[),.;]+$/, '') : '';
+        }
+        if (typeof value !== 'object') return '';
+        const preferidas = ['output_url', 'asset_url', 'download_url', 'media_url', 'url'];
+        for (const key of preferidas) {
+            if (typeof value[key] === 'string' && /^https?:\/\//i.test(value[key])) return value[key];
+        }
+        for (const item of Object.values(value)) {
+            const achado = Array.isArray(item)
+                ? item.map(_hfEncontrarUrl).find(Boolean)
+                : _hfEncontrarUrl(item);
+            if (achado) return achado;
+        }
+        return '';
+    }
+
+    async function _hfEsperarImagem(jobId) {
+        for (let tentativa = 0; tentativa < 32; tentativa++) {
+            const result = _hfValidarResultado(await HiggsfieldConnection.callTool('jobs_wait', {
+                jobs: [{ index: 0, job_id: jobId }], timeout_seconds: 15,
+            }));
+            const url = _hfEncontrarUrl(result?.structuredContent || result);
+            if (url) {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`A imagem ficou pronta, mas o download falhou (${response.status})`);
+                return response.blob();
+            }
+            const texto = _hfTextoResultado(result);
+            if (/failed|cancelled|rejected/i.test(texto)) throw new Error(texto);
+        }
+        throw new Error('A Higgsfield demorou mais que o esperado. A geração continua salva na sua conta.');
+    }
+
+    async function _editarHiggsfield(blobs, prompt, opcoes = {}) {
+        if (!window.HiggsfieldConnection?.state?.connected) {
+            throw new Error('Conecte a Higgsfield em Configurações → Chaves de API');
+        }
+        const lista = Array.isArray(blobs) ? blobs.filter(Boolean) : [blobs];
+        if (!lista.length) throw new Error('Nenhuma imagem de entrada');
+        const modelo = MODELOS_HIGGSFIELD.includes(opcoes.modelo) ? opcoes.modelo : MODELOS_HIGGSFIELD[0];
+        const pagamento = localStorage.getItem('studio_hf_image_payment') || 'ask';
+        let useUnlim = pagamento === 'unlim';
+
+        // No modo seguro, consulta o custo e pede uma confirmação explícita.
+        // Fechar/cancelar nunca cai silenciosamente para uma cobrança.
+        if (!useUnlim) {
+            const preflight = _hfValidarResultado(await HiggsfieldConnection.callTool('generate_image', {
+                params: { model: modelo, prompt, aspect_ratio: opcoes.aspectRatio || undefined, get_cost: true },
+            }));
+            const custo = preflight?.structuredContent?.cost?.credits_exact
+                ?? preflight?.structuredContent?.cost?.credits;
+            const aceitou = window.confirm(`Este frame usará ${custo ?? 'alguns'} crédito(s) da Higgsfield. Deseja continuar?`);
+            if (!aceitou) throw new Error('Geração cancelada — nenhum crédito foi usado');
+        }
+
+        const medias = [];
+        for (let i = 0; i < lista.length; i++) {
+            const blob = lista[i];
+            const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+            const mediaId = await HiggsfieldConnection.uploadImage(blob, `tracker-reference-${i + 1}.${ext}`);
+            medias.push({ value: mediaId, role: 'image' });
+        }
+        const params = {
+            model: modelo, prompt, count: 1, medias,
+            aspect_ratio: opcoes.aspectRatio || undefined,
+            resolution: localStorage.getItem('studio_hf_image_resolution') || '2k',
+            use_unlim: useUnlim,
+        };
+        const submitted = _hfValidarResultado(await HiggsfieldConnection.callTool('generate_image', { params }));
+        const jobId = _hfEncontrarJob(submitted?.structuredContent || submitted);
+        if (!jobId) throw new Error(_hfTextoResultado(submitted) || 'A Higgsfield não devolveu o código da geração');
+        return _hfEsperarImagem(jobId);
+    }
+
     function provedorPadrao() {
         return localStorage.getItem('studio_img_provider') || 'auto';
     }
@@ -298,6 +417,7 @@ const ImageAI = (() => {
         const escolhido = opcoes.provedor || provedorPadrao();
 
         if (escolhido !== 'auto') {
+            if (escolhido === 'higgsfield') return _editarHiggsfield(blobs, prompt, opcoes);
             return escolhido === 'gemini'
                 ? _editarGemini(blobs, prompt, opcoes)
                 : _editarOpenAI(blobs, prompt, opcoes);
@@ -466,7 +586,7 @@ const ImageAI = (() => {
         promptMelhoria, promptCenario, promptCenaImagem, promptTraducaoImagem, promptReframe,
         promptRecorte, promptFundoSolido, temChave: _temChave,
         _blobParaBase64, _b64ParaBlob, _tamanhoFixoMaisProximo,
-        MODELOS_OPENAI, MODELOS_GEMINI, NOMES_MODELO, OA_SEM_TRANSPARENCIA,
+        MODELOS_OPENAI, MODELOS_GEMINI, MODELOS_HIGGSFIELD, NOMES_MODELO, OA_SEM_TRANSPARENCIA,
     };
 })();
 
