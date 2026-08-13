@@ -104,6 +104,37 @@ rsync -a \
   --exclude='.DS_Store' \
   "$PROJECT_DIR/" "$DEPLOY_TMP/"
 
+# ── 4b. Cache-bust automático de TODO js/css do index.html ──
+# Sem isso, alguns arquivos tinham "?v=data-na-mao" e a maioria não tinha
+# nada — dependendo do navegador/proxy do usuário, o JS antigo (já
+# carregado numa aba aberta, ou preso num cache que não respeitou o
+# Cache-Control) só sumia com hard refresh. Carimbando TODO script/css
+# com o mesmo timestamp a cada deploy, a URL muda sempre — não depende de
+# ninguém "obedecer" cabeçalho de cache, e não precisa lembrar de
+# versionar arquivo por arquivo.
+STAMP="$(date +%Y%m%d%H%M%S)"
+log "Carimbando cache-bust (?v=$STAMP) em js/*.js e css/*.css..."
+python3 - "$DEPLOY_TMP/index.html" "$STAMP" <<'PYEOF'
+import re, sys
+path, stamp = sys.argv[1], sys.argv[2]
+with open(path, encoding='utf-8') as f:
+    html = f.read()
+
+def bump(pattern):
+    global html
+    # Remove um ?v=... existente (se houver) e recoloca com o stamp novo.
+    html = re.sub(pattern, lambda m: m.group(1) + '?v=' + stamp + m.group(2),
+                   html)
+
+# src="js/algo.js" ou src="js/algo.js?v=antigo"  →  src="js/algo.js?v=STAMP"
+html = re.sub(r'(src="js/[^"?]+)(?:\?v=[^"]*)?(")', r'\1?v=' + stamp + r'\2', html)
+html = re.sub(r'(href="css/[^"?]+)(?:\?v=[^"]*)?(")', r'\1?v=' + stamp + r'\2', html)
+
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(html)
+print(f"  {stamp} aplicado")
+PYEOF
+
 log "Fazendo deploy no Cloudflare..."
 cd "$DEPLOY_TMP"
 
