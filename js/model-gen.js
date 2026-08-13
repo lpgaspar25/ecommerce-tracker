@@ -615,7 +615,7 @@ const ModelGenModule = (() => {
     }
 
     function _opcoesHtml() {
-        const provs = [['openai', 'OpenAI'], ['gemini', 'Google Gemini'], ['higgsfield', 'Higgsfield']];
+        const provs = [['openai', 'OpenAI'], ['gemini', 'Google Gemini'], ['higgsfield', 'Higgsfield'], ['codex', 'Codex (local · ChatGPT)']];
         const provAtual = (window.ImageAI?.provedorPadrao?.() || 'openai');
         return `
         <div class="mg-card">
@@ -906,6 +906,7 @@ const ModelGenModule = (() => {
         if (!sel || !window.ImageAI) return;
         const lista = prov === 'gemini' ? (ImageAI.MODELOS_GEMINI || [])
             : prov === 'higgsfield' ? (ImageAI.MODELOS_HIGGSFIELD || [])
+            : prov === 'codex' ? []   // versão é decidida no servidor local
             : (ImageAI.MODELOS_OPENAI || []);
         sel.innerHTML = '<option value="">Padrão (mais recente)</option>'
             + lista.map(m => `<option value="${m}">${_esc((ImageAI.NOMES_MODELO || {})[m] || m)}</option>`).join('');

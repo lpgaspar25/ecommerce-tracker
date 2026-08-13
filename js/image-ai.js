@@ -398,11 +398,43 @@ const ImageAI = (() => {
         return _hfEsperarImagem(jobId);
     }
 
+    function _urlCodex() {
+        return (localStorage.getItem('codex_img_server') || 'http://localhost:8791').replace(/\/+$/, '');
+    }
+
+    // Codex local: manda prompt + referências pro servidor Node
+    // (tools/codex-image-server) que gera com a SUA conta ChatGPT e devolve a
+    // imagem. Retorna um Blob, igual aos outros provedores.
+    async function _editarCodex(blobs, prompt, opcoes = {}) {
+        const lista = (Array.isArray(blobs) ? blobs : [blobs]).filter(Boolean);
+        const images = [];
+        for (const b of lista) images.push({ b64: await _blobParaBase64(b), mime: b.type || 'image/png' });
+        const size = (opcoes.largura && opcoes.altura)
+            ? tamanhoValidoOpenAI(opcoes.largura, opcoes.altura).texto : undefined;
+        const format = String(opcoes.formato || 'image/png').replace('image/', '') || 'png';
+        let r;
+        try {
+            r = await fetch(_urlCodex() + '/gerar', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, images, size, format }),
+            });
+        } catch {
+            throw new Error('Servidor Codex local não respondeu em ' + _urlCodex()
+                + '. Rode "node server.js" em tools/codex-image-server (veja o README).');
+        }
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.ok || !data.b64) {
+            throw new Error('Codex: ' + String(data.error || ('HTTP ' + r.status)).slice(0, 220));
+        }
+        return _b64ParaBlob(data.b64, data.mime || 'image/png');
+    }
+
     function provedorPadrao() {
         return localStorage.getItem('studio_img_provider') || 'auto';
     }
 
     function _temChave(prov) {
+        if (prov === 'codex') return true;   // depende do servidor local, checado na chamada
         return prov === 'gemini' ? !!_chaveGoogle() : !!_chaveOpenAI();
     }
 
@@ -417,6 +449,7 @@ const ImageAI = (() => {
         const escolhido = opcoes.provedor || provedorPadrao();
 
         if (escolhido !== 'auto') {
+            if (escolhido === 'codex') return _editarCodex(blobs, prompt, opcoes);
             if (escolhido === 'higgsfield') return _editarHiggsfield(blobs, prompt, opcoes);
             return escolhido === 'gemini'
                 ? _editarGemini(blobs, prompt, opcoes)

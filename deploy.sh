@@ -57,6 +57,7 @@ if [ -d "$HOME/Documents/Claude/Projects" ]; then
   rsync -a --delete \
     --exclude='node_modules' \
     --exclude='.tools' \
+    --exclude='saidas' \
     --exclude='.wrangler' \
     --exclude='.claude' \
     --exclude='._*' \
@@ -72,6 +73,7 @@ for MIRROR in "${LEGACY_MIRRORS[@]}"; do
     rsync -a --delete \
       --exclude='node_modules' \
       --exclude='.tools' \
+    --exclude='saidas' \
       --exclude='.wrangler' \
       --exclude='.git' \
       --exclude='.claude' \
@@ -91,6 +93,7 @@ rm -rf "$DEPLOY_TMP"
 rsync -a \
   --exclude='node_modules' \
   --exclude='.tools' \
+  --exclude='saidas' \
   --exclude='.wrangler' \
   --exclude='.git' \
   --exclude='.claude' \
