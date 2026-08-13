@@ -1285,9 +1285,26 @@ const ShopifyModule = (() => {
     // estoque/localizações — adicionar o escopo no código não atualiza um
     // token já emitido; a loja precisa autorizar novamente uma única vez.
     async function getGrantedScopes() {
-        const data = await _fetchShopInfo();
-        const raw = data?.scope || '';
-        return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+        // O `scope` guardado junto da sessão é só um snapshot do OAuth e pode
+        // ficar defasado depois que a instalação recebe novas permissões. A
+        // instalação atual é a fonte de verdade da Shopify.
+        try {
+            const data = await _graphql(`query GrantedAccessScopes {
+                currentAppInstallation {
+                    accessScopes { handle }
+                }
+            }`);
+            const handles = (data?.currentAppInstallation?.accessScopes || [])
+                .map(scope => scope?.handle).filter(Boolean);
+            if (handles.length) return handles;
+        } catch (error) {
+            console.warn('[Shopify] Não foi possível consultar os escopos atuais; usando o snapshot da sessão.', error);
+        }
+
+        const sessionData = await _fetchShopInfo();
+        const raw = sessionData?.scope || '';
+        return (Array.isArray(raw) ? raw : String(raw).split(','))
+            .map(scope => String(scope).trim()).filter(Boolean);
     }
 
     // Resolve uma URL/handle de coleção pela Admin API. A URL é apenas um

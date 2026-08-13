@@ -44,6 +44,7 @@ const ProductMerger = (() => {
             jobId: _uuid(),
             mergeTag: '',
             result: null,
+            localProductId: '',
             resultWarnings: [],
             executionError: '',
         };
@@ -521,6 +522,7 @@ const ProductMerger = (() => {
             { id: 'plan', title: 'Plano validado', subtitle: 'Cores, SKUs, fotos e estoque conferidos.', icon: 'list-checks', state: 'done' },
             { id: 'create', title: 'Produto, variantes e fotos', subtitle: 'Criando o novo rascunho em uma operação segura.', icon: 'combine', state: 'running' },
             { id: 'collections', title: 'Coleções e verificação', subtitle: 'Relacionando o produto e relendo o resultado.', icon: 'folder-check', state: 'pending' },
+            { id: 'local', title: 'Produto na ferramenta', subtitle: 'Salvando o cadastro e vinculando à Shopify.', icon: 'database', state: 'pending' },
         ];
         _renderProgress(progress);
 
@@ -543,11 +545,9 @@ const ProductMerger = (() => {
             const result = await ShopifyModule.createMergedProduct({ input, mergeTag: state.mergeTag, collectionIds });
             progress[1].state = 'done';
             progress[2].state = 'done';
+            progress[3].state = 'running';
             _renderProgress(progress);
 
-            state.result = result.product;
-            state.resultWarnings = result.warnings || [];
-            state.creating = false;
             job.status = result.warnings?.length ? 'created_with_warnings' : 'created';
             job.targetProductId = result.product.id;
             job.targetHandle = result.product.handle;
@@ -555,20 +555,68 @@ const ProductMerger = (() => {
             try { await KVStore.set(jobKey, job); } catch {}
 
             const firstVariant = result.product.variants?.nodes?.[0];
-            const local = ProductsModule?.upsertFromShopify?.(result.product, {
-                title: result.product.title,
-                price: Number(firstVariant?.price || 0),
-                currency: ShopifyModule.getConfig()?.shopCurrency || 'USD',
-                image: result.product.featuredMedia?.image?.url || '',
-                status: 'rascunho',
-            });
-            if (local?.id) ShopifyModule.linkProduct?.(local.id, String(result.product.id).split('/').pop());
+            const includedImages = state.mappings.flatMap(mapping => mapping.images
+                .filter(image => image.include)
+                .map(image => ({ url: image.url, alt: image.alt, name: image.filename })));
+            const localVariants = (result.product.variants?.nodes || []).map(variant => ({
+                id: String(variant.id || '').split('/').pop(),
+                title: variant.title || variant.selectedOptions?.map(option => option.value).join(' / ') || '',
+                sku: variant.sku || '',
+                price: Number(variant.price || 0),
+                inventory: Number(variant.inventoryQuantity || 0),
+                availableForSale: Number(variant.inventoryQuantity || 0) > 0,
+                options: variant.selectedOptions || [],
+            }));
+            const sourceStoreIds = new Set((AppState.allProducts || [])
+                .filter(product => {
+                    const linkedId = product.shopifyId || ShopifyModule.getLink?.(product.id) || '';
+                    return state.selectedIds.has(String(linkedId));
+                })
+                .map(product => product.storeId).filter(Boolean));
+            const inferredStoreId = sourceStoreIds.size === 1 ? [...sourceStoreIds][0] : null;
+
+            if (!ProductsModule?.upsertFromShopify) {
+                throw new Error('O produto foi criado na Shopify, mas o módulo Produtos da ferramenta não está disponível. Tente novamente para concluir o vínculo sem duplicar.');
+            }
+            let local;
+            try {
+                local = await ProductsModule.upsertFromShopify(result.product, {
+                    title: result.product.title,
+                    price: Number(firstVariant?.price || 0),
+                    currency: ShopifyModule.getConfig()?.shopCurrency || 'USD',
+                    image: result.product.featuredMedia?.image?.url || '',
+                    status: 'rascunho',
+                    storeId: inferredStoreId,
+                    description: base?.descriptionHtml || '',
+                    vendor: base?.vendor || '',
+                    tags: [...new Set([...(base?.tags || []), 'etracker-unified'])],
+                    images: includedImages,
+                    variants: localVariants,
+                    options: [{ name: state.optionName.trim(), values: state.mappings.map(mapping => mapping.color.trim()) }],
+                    sku: firstVariant?.sku || '',
+                });
+            } catch (error) {
+                throw new Error(`O produto foi criado na Shopify, mas não foi salvo na ferramenta: ${error.message || error}. Tente novamente para reparar sem duplicar.`);
+            }
+            if (!local?.id) throw new Error('O produto foi criado na Shopify, mas não foi salvo na ferramenta. Tente novamente para reparar sem duplicar.');
+            ShopifyModule.linkProduct?.(local.id, String(result.product.id).split('/').pop());
+
+            progress[3].state = 'done';
+            _renderProgress(progress);
+            state.result = result.product;
+            state.localProductId = local.id;
+            state.resultWarnings = result.warnings || [];
+            state.creating = false;
+            job.status = result.warnings?.length ? 'completed_with_warnings' : 'completed';
+            job.localProductId = local.id;
+            job.updatedAt = new Date().toISOString();
+            try { await KVStore.set(jobKey, job); } catch {}
             _render();
-            _toast(result.reused ? 'Rascunho recuperado sem duplicar.' : 'Produto unificado criado em rascunho.', 'success');
+            _toast(result.reused ? 'Produto recuperado e salvo na ferramenta sem duplicar.' : 'Produto criado na Shopify e na ferramenta.', 'success');
         } catch (e) {
             state.creating = false;
             state.executionError = e.message || String(e);
-            job.status = 'failed';
+            job.status = job.targetProductId ? 'local_sync_failed' : 'failed';
             job.error = state.executionError;
             job.updatedAt = new Date().toISOString();
             try { await KVStore.set(jobKey, job); } catch {}
@@ -589,13 +637,19 @@ const ProductMerger = (() => {
         body.innerHTML = `<section class="pm-view"><div class="pm-success">
             <div class="pm-success-icon"><i data-lucide="badge-check"></i></div>
             <h4>${_esc(product.title)} foi criado</h4>
-            <p>O novo produto está em rascunho com ${product.variants?.nodes?.length || state.mappings.length} variantes e ${product.media?.nodes?.length || _includedImages().length} fotos. Os produtos originais continuam ativos e sem alterações.</p>
+            <p>O novo produto foi salvo na Shopify e na ferramenta, em rascunho, com ${product.variants?.nodes?.length || state.mappings.length} variantes e ${product.media?.nodes?.length || _includedImages().length} fotos. Os produtos originais continuam ativos e sem alterações.</p>
             <div class="pm-success-actions">
-                <a class="btn btn-primary" href="${_attr(adminUrl)}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Abrir na Shopify</a>
+                <button type="button" class="btn btn-primary" id="pm-view-local"><i data-lucide="package-check"></i> Ver na ferramenta</button>
+                <a class="btn btn-secondary" href="${_attr(adminUrl)}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Abrir na Shopify</a>
                 <button type="button" class="btn btn-secondary" id="pm-new-merge"><i data-lucide="combine"></i> Nova unificação</button>
                 <button type="button" class="btn btn-secondary" id="pm-finish">Fechar</button>
             </div>${warning}
         </div></section>`;
+        document.getElementById('pm-view-local')?.addEventListener('click', () => {
+            close();
+            ProductsModule?.render?.();
+            document.getElementById('tab-products')?.scrollTo?.({ top: 0, behavior: 'smooth' });
+        });
         document.getElementById('pm-new-merge')?.addEventListener('click', async () => {
             try { await KVStore.del(_jobKey()); } catch {}
             open();

@@ -3019,17 +3019,34 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             shopifyId,
             shopifyHandle: shopifyProduct.handle || existente?.shopifyHandle || '',
             shopifyImage: opts.image || existente?.shopifyImage || '',
+            description: opts.description ?? existente?.description ?? '',
+            vendor: opts.vendor ?? existente?.vendor ?? '',
+            tags: Array.isArray(opts.tags) ? opts.tags : (existente?.tags || []),
+            images: Array.isArray(opts.images) ? opts.images : (existente?.images || []),
+            shopifyVariants: Array.isArray(opts.variants) ? opts.variants : (existente?.shopifyVariants || []),
+            shopifyOptions: Array.isArray(opts.options) ? opts.options : (existente?.shopifyOptions || []),
+            sku: opts.sku ?? existente?.sku ?? '',
             shopifyImportedAt: new Date().toISOString(),
         };
 
         if (existente) {
             Object.assign(existente, registro);
+            if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
+                try { SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, registro.id, SheetsAPI.productToRow(registro)); } catch {}
+            }
         } else {
             AppState.allProducts.push(registro);
             if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
                 try { SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(registro)); } catch {}
             }
         }
+
+        // Persistência local é obrigatória: sem ela o produto aparecia apenas
+        // durante a sessão atual e sumia da ferramenta após recarregar.
+        if (typeof LocalStore === 'undefined' || typeof LocalStore.save !== 'function') {
+            throw new Error('Armazenamento local da ferramenta indisponível.');
+        }
+        LocalStore.save('products', AppState.allProducts);
 
         if (typeof filterDataByStore === 'function') filterDataByStore();
         if (typeof populateProductDropdowns === 'function') populateProductDropdowns();
