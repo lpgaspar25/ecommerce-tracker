@@ -54,6 +54,13 @@ const UXShell = {
             icon: 'palette',
             description: 'Produza e refine imagens de produto em um único fluxo.'
         },
+        'gerar-modelo': {
+            label: 'Gerar Modelo',
+            shortLabel: 'Modelos',
+            group: 'Marketing & criação',
+            icon: 'user-round-search',
+            description: 'Envie fotos de um modelo e gere a mesma pessoa em vários ângulos e zooms.'
+        },
         creatives: {
             label: 'Meus criativos',
             group: 'Marketing & criação',
@@ -185,7 +192,7 @@ const UXShell = {
 
     sections: [
         { id: 'commercial', label: 'Comercial', icon: 'shopping-bag', tabs: ['vendas', 'products', 'importador'] },
-        { id: 'creative', label: 'Marketing & criação', icon: 'sparkles', tabs: ['ad-library', 'ai-generations', 'studio', 'creatives', 'creative-insights', 'brands', 'recent-edits', 'saved-inspirations'] },
+        { id: 'creative', label: 'Marketing & criação', icon: 'sparkles', tabs: ['ad-library', 'ai-generations', 'studio', 'gerar-modelo', 'creatives', 'creative-insights', 'brands', 'recent-edits', 'saved-inspirations'] },
         { id: 'paid-media', label: 'Mídia paga', icon: 'megaphone', tabs: ['analisador-criativos', 'ad-launcher', 'ads-manager', 'ad-hierarchy'] },
         { id: 'performance', label: 'Performance', icon: 'gauge', tabs: ['goals', 'diary', 'diagnostico', 'calculator', 'scale-sim'] },
         { id: 'operations', label: 'Operação', icon: 'workflow', tabs: ['pipeline', 'laboratorio', 'projects', 'mineracao'] },
@@ -258,7 +265,7 @@ const UXShell = {
         products: 'produtos', importador: 'produtos',
         goals: 'performance', diary: 'performance', diagnostico: 'performance',
         calculator: 'simulacao', 'scale-sim': 'simulacao',
-        'ad-library': 'creative', 'ai-generations': 'creative', studio: 'creative',
+        'ad-library': 'creative', 'ai-generations': 'creative', studio: 'creative', 'gerar-modelo': 'creative',
         creatives: 'creative', 'recent-edits': 'creative', 'saved-inspirations': 'creative',
         'analisador-criativos': 'launch', 'ad-launcher': 'launch', 'ads-manager': 'launch', 'ad-hierarchy': 'launch', pipeline: 'launch',
         laboratorio: 'execucao', projects: 'execucao', mineracao: 'execucao',

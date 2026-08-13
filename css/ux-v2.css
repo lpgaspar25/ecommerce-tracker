@@ -2707,3 +2707,97 @@ body.ux-overlay-open {
 .ca-cfg-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 0.7rem 0; }
 .ca-cfg-row > span { color: var(--text-secondary); font-size: 0.85rem; }
 .ca-cfg-row small { display: block; color: var(--text-muted); font-size: 0.72rem; margin-top: 0.15rem; }
+
+/* ============================================================
+   Gerar Modelo
+   ============================================================ */
+#gerar-modelo-root { padding: 0.25rem 0 2rem; }
+.mg-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.mg-header-acoes { display: flex; gap: .4rem; align-items: center; }
+.mg-grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: .8rem; margin-top: .9rem; align-items: start; }
+@media (max-width: 900px) { .mg-grid { grid-template-columns: 1fr; } }
+.mg-col-esq, .mg-col-dir { display: flex; flex-direction: column; gap: .8rem; }
+
+.mg-card { background: var(--ux-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: .9rem 1rem 1rem; }
+.mg-card + .mg-card { margin-top: 0; }
+.mg-resultados, .mg-card:last-child { margin-top: .8rem; }
+.mg-card-head { display: flex; justify-content: space-between; align-items: center; gap: .8rem; margin-bottom: .5rem; flex-wrap: wrap; }
+.mg-card-title { color: var(--text-primary); font-weight: 700; font-size: .88rem; }
+.mg-card-hint { color: var(--text-muted); font-size: .74rem; font-variant-numeric: tabular-nums; }
+.mg-help { color: var(--text-muted); font-size: .76rem; margin: 0 0 .6rem; line-height: 1.4; }
+
+/* Referências */
+.mg-refs { display: flex; flex-wrap: wrap; gap: .45rem; }
+.mg-ref { position: relative; width: 72px; height: 90px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-secondary); }
+.mg-ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mg-ref-x { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(0,0,0,.62); color: #fff; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.mg-ref-x:hover { background: var(--red); }
+.mg-ref-add { width: 72px; height: 90px; border-radius: 8px; border: 1px dashed var(--border-strong); background: transparent; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; color: var(--text-muted); font-size: .68rem; transition: all .14s; }
+.mg-ref-add:hover { border-color: var(--accent); color: var(--ux-acid); background: var(--ux-acid-soft); }
+
+/* Campos */
+.mg-campos { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.mg-campo { display: flex; flex-direction: column; gap: .22rem; }
+.mg-campo > span { color: var(--text-muted); font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+
+/* Chips de seleção */
+.mg-grupo-lbl { color: var(--text-muted); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin: .75rem 0 .4rem; }
+.mg-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.mg-chip { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; text-align: left;
+  border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+  padding: .42rem .7rem; border-radius: 9px; font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .14s; }
+.mg-chip small { color: var(--text-muted); font-size: .65rem; font-weight: 500; }
+.mg-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.mg-chip-on { background: var(--ux-acid-soft); color: var(--ux-acid); border-color: var(--accent); }
+.mg-chip-on small { color: var(--ux-acid); opacity: .75; }
+.mg-packs { display: inline-flex; gap: .3rem; flex-wrap: wrap; }
+.mg-pack { border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: .7rem; font-weight: 600;
+  padding: .22rem .55rem; border-radius: 999px; cursor: pointer; transition: all .14s; }
+.mg-pack:hover { border-color: var(--accent); color: var(--ux-acid); }
+
+/* Barra de gerar */
+.mg-gerar-barra { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+  margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--border); }
+.mg-contagem { color: var(--text-secondary); font-size: .82rem; display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+.mg-contagem b { color: var(--text-primary); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.mg-dim { color: var(--text-muted); font-size: .74rem; }
+.mg-aviso { color: var(--yellow); background: var(--yellow-bg); font-size: .7rem; font-weight: 600; padding: .15rem .45rem; border-radius: 6px; }
+
+.mg-prog { margin-top: .7rem; }
+.mg-prog-bar { height: 5px; background: var(--bg-input); border-radius: 999px; overflow: hidden; }
+.mg-prog-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .25s ease; }
+.mg-prog-txt { color: var(--text-muted); font-size: .72rem; margin-top: .3rem; font-variant-numeric: tabular-nums; }
+
+/* Resultados */
+.mg-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: .6rem; }
+.mg-foto { position: relative; margin: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-secondary); }
+.mg-foto img { width: 100%; aspect-ratio: 4/5; object-fit: cover; display: block; }
+.mg-foto figcaption { padding: .35rem .5rem; font-size: .7rem; color: var(--text-secondary); background: var(--ux-card-solid); }
+.mg-foto-acoes { position: absolute; top: .35rem; right: .35rem; display: flex; gap: .2rem; opacity: 0; transition: opacity .15s; }
+.mg-foto:hover .mg-foto-acoes { opacity: 1; }
+.mg-foto-acoes button { width: 24px; height: 24px; border-radius: 6px; border: none; cursor: pointer; padding: 0;
+  background: rgba(0,0,0,.62); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.mg-foto-acoes button:hover { background: var(--accent); color: var(--ux-acid-ink); }
+
+/* Meus modelos */
+.mg-modelos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .5rem; }
+.mg-modelo { position: relative; display: flex; align-items: center; gap: .55rem; padding: .45rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); transition: all .14s; }
+.mg-modelo:hover { border-color: var(--border-strong); }
+.mg-modelo-on { border-color: var(--accent); background: var(--ux-acid-soft); }
+.mg-modelo img { width: 38px; height: 46px; border-radius: 6px; object-fit: cover; background: var(--bg-input); flex-shrink: 0; }
+.mg-modelo-info { display: flex; flex-direction: column; min-width: 0; }
+.mg-modelo-info b { color: var(--text-primary); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mg-modelo-info small { color: var(--text-muted); font-size: .68rem; }
+.mg-modelo-x { position: absolute; top: .3rem; right: .3rem; width: 20px; height: 20px; border: none; background: transparent;
+  color: var(--text-muted); cursor: pointer; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; opacity: 0; }
+.mg-modelo:hover .mg-modelo-x { opacity: 1; }
+.mg-modelo-x:hover { color: var(--red); background: var(--red-bg); }
+
+/* Lightbox */
+.mg-lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 10000; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: .7rem; padding: 2rem; cursor: zoom-out; }
+.mg-lightbox img { max-width: 100%; max-height: 86vh; object-fit: contain; border-radius: 10px; }
+.mg-lightbox-cap { color: #e9eae4; font-size: .82rem; }
