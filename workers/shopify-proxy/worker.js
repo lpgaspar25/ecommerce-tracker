@@ -21,7 +21,7 @@
 
 const DEFAULTS = {
   API_VERSION: '2026-01',
-  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes',
+  SCOPES: 'read_orders,read_products,read_all_orders,write_products,write_files,read_inventory,write_inventory,read_locations,read_translations,write_translations,read_locales,write_locales,read_themes',
   APP_URL: 'https://app-calculadora-lucas.pages.dev',
 };
 
@@ -238,9 +238,11 @@ async function shopSession(request, env) {
 const CAMPOS_MUTATION_PERMITIDOS = new Set([
   'stagedUploadsCreate',
   'productCreate',
+  'productSet',
   'productUpdate',
   'productVariantsBulkUpdate',
   'productReorderMedia',
+  'collectionAddProducts',
   'translationsRegister',
   'shopLocaleEnable',
   'fileCreate',

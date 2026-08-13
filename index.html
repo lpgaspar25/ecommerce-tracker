@@ -27,6 +27,7 @@
     </script>
     <link rel="stylesheet" href="css/styles.css?v=20260812a">
     <link rel="stylesheet" href="css/ux-v2.css?v=20260812a">
+    <link rel="stylesheet" href="css/product-merger.css?v=20260813a">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
          refresh do dashboard, Supabase no SupabaseSync.init, lucide no
          createIcons — todos rodam em DOMContentLoaded). Sem defer elas
@@ -691,6 +692,7 @@
                 <h2>Produtos</h2>
                 <button id="btn-import-shopify" class="btn btn-secondary" title="Importar produtos da Shopify"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Importar da Shopify</button>
                 <button id="btn-import-shopify-details-bulk" class="btn btn-secondary" title="Trazer descrição, fotos e variantes da Shopify para todos os produtos vinculados"><i data-lucide="download-cloud" style="width:14px;height:14px"></i> Importar descrições e fotos</button>
+                <button id="btn-product-merge" class="btn btn-secondary product-merge-trigger" title="Transformar produtos separados por cor em um produto com variantes"><i data-lucide="combine" style="width:14px;height:14px"></i> Unificar por cor</button>
                 <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
             </div>
 
@@ -712,6 +714,9 @@
             <div id="products-bulk-bar" class="products-bulk-bar" style="display:none">
                 <span id="products-bulk-count">0 selecionados</span>
                 <button class="btn btn-sm btn-secondary" id="products-bulk-clear">Cancelar</button>
+                <button class="btn btn-sm btn-secondary" id="products-bulk-merge" style="display:none">
+                    <i data-lucide="combine" style="width:13px;height:13px"></i> Unificar por cor
+                </button>
                 <button class="btn btn-sm btn-danger" id="products-bulk-delete">
                     <i data-lucide="trash-2" style="width:13px;height:13px"></i> Excluir selecionados
                 </button>
@@ -1104,6 +1109,49 @@
                         <button type="button" class="btn btn-secondary" onclick="closeModal('shopify-import-modal')">Cancelar</button>
                         <button type="button" id="btn-shopify-import-confirm" class="btn btn-primary" disabled>Importar selecionados</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- Product Merger Wizard -->
+            <div id="product-merge-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="product-merge-title">
+                <div class="modal-overlay"></div>
+                <div class="modal-content product-merge-modal-content">
+                    <header class="product-merge-header">
+                        <div class="product-merge-mark" aria-hidden="true">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="product-merge-heading">
+                            <div class="product-merge-eyebrow">ORGANIZAÇÃO DE CATÁLOGO</div>
+                            <h3 id="product-merge-title">Unificar produtos por cor</h3>
+                            <p>Crie um produto com variantes e fotos que mudam junto com a cor.</p>
+                        </div>
+                        <button type="button" class="btn-close" id="product-merge-close" aria-label="Fechar">&times;</button>
+                    </header>
+
+                    <div class="product-merge-shell">
+                        <aside class="product-merge-rail" aria-label="Etapas da unificação">
+                            <ol id="product-merge-steps" class="product-merge-steps">
+                                <li class="active" data-step="1"><span>1</span><div><strong>Produtos</strong><small>Escolha as cores</small></div></li>
+                                <li data-step="2"><span>2</span><div><strong>Mapeamento</strong><small>Revise variantes</small></div></li>
+                                <li data-step="3"><span>3</span><div><strong>Fotos</strong><small>Confirme os grupos</small></div></li>
+                                <li data-step="4"><span>4</span><div><strong>Revisão</strong><small>Crie o rascunho</small></div></li>
+                            </ol>
+                            <div class="product-merge-safety">
+                                <i data-lucide="shield-check"></i>
+                                <div><strong>Operação segura</strong><span>Os produtos originais não serão alterados.</span></div>
+                            </div>
+                        </aside>
+
+                        <main id="product-merge-body" class="product-merge-body" aria-live="polite"></main>
+                    </div>
+
+                    <footer id="product-merge-footer" class="product-merge-footer">
+                        <div id="product-merge-footer-note" class="product-merge-footer-note"></div>
+                        <div class="product-merge-footer-actions">
+                            <button type="button" id="product-merge-back" class="btn btn-secondary" style="display:none"><i data-lucide="arrow-left"></i> Voltar</button>
+                            <button type="button" id="product-merge-next" class="btn btn-primary">Continuar <i data-lucide="arrow-right"></i></button>
+                        </div>
+                    </footer>
                 </div>
             </div>
         </section>
@@ -6860,6 +6908,7 @@
     <script src="js/team.js"></script>
     <script src="js/onboarding.js"></script>
     <script src="js/shopify.js"></script>
+    <script src="js/product-merger.js?v=20260813a"></script>
     <script src="js/page-comparison.js"></script>
     <script src="js/projects.js"></script>
     <script src="js/importer.js"></script>

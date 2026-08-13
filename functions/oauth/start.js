@@ -33,7 +33,7 @@ export async function onRequestGet({ request, env }) {
   //  read_translations/write_translations → ler digests e registrar traduções
   //  read_locales/write_locales → ler shopLocales e habilitar idioma
   const scopes = url.searchParams.get('scopes') || env.SCOPES
-    || 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales';
+    || 'read_orders,read_products,read_all_orders,write_products,write_files,read_inventory,write_inventory,read_locations,read_translations,write_translations,read_locales,write_locales';
   const nonce = crypto.randomUUID();
 
   // Encode the minimal state client<->Shopify sees

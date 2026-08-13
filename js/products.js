@@ -2883,11 +2883,17 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
     _renderBulkBar() {
         const bar = document.getElementById('products-bulk-bar');
         const count = document.getElementById('products-bulk-count');
+        const mergeBtn = document.getElementById('products-bulk-merge');
         if (!bar) return;
         const n = (this._selectedIds || new Set()).size;
-        if (n === 0) { bar.style.display = 'none'; return; }
+        if (n === 0) {
+            bar.style.display = 'none';
+            if (mergeBtn) mergeBtn.style.display = 'none';
+            return;
+        }
         bar.style.display = '';
         if (count) count.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
+        if (mergeBtn) mergeBtn.style.display = n >= 2 ? '' : 'none';
     },
 
     // ── Shopify Import ────────────────────────────────────────────
@@ -2997,7 +3003,7 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             cpa: existente?.cpa || 0,
             cpaCurrency: existente?.cpaCurrency || 'USD',
             countryPrices: existente?.countryPrices || [],
-            status: existente?.status || 'ativo',
+            status: opts.status || existente?.status || 'ativo',
             storeId,
             shopifyId,
             shopifyHandle: shopifyProduct.handle || existente?.shopifyHandle || '',

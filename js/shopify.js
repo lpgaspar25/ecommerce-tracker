@@ -27,7 +27,7 @@ const ShopifyModule = (() => {
     //  ?scopes= na URL e tanto a Pages Function quanto o Worker fazem
     //  `searchParams.get('scopes') || env.SCOPES`, ou seja o query param
     //  SEMPRE ganha de wrangler.toml/env. Mexer só no worker não muda nada.
-    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_translations,write_translations,read_locales,write_locales,read_themes,read_reports';
+    const OAUTH_SCOPES = 'read_orders,read_products,read_all_orders,write_products,write_files,read_inventory,write_inventory,read_locations,read_translations,write_translations,read_locales,write_locales,read_themes,read_reports';
 
     let _config = null;
     let _productLinks = {};
@@ -1278,6 +1278,168 @@ const ShopifyModule = (() => {
             });
         }
         return out;
+    }
+
+    // Escopos efetivamente concedidos ao token atual. Usado pelo Unificador
+    // para avisar quando uma conexão antiga ainda não recebeu acesso a
+    // estoque/localizações — adicionar o escopo no código não atualiza um
+    // token já emitido; a loja precisa autorizar novamente uma única vez.
+    async function getGrantedScopes() {
+        const data = await _fetchShopInfo();
+        const raw = data?.scope || '';
+        return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    // Resolve uma URL/handle de coleção pela Admin API. A URL é apenas um
+    // atalho de seleção: produto, preço e estoque continuam vindo da conexão
+    // autenticada, nunca de scraping da vitrine.
+    async function fetchCollectionForMerge(handle) {
+        const cleanHandle = String(handle || '').trim().replace(/^\/+|\/+$/g, '');
+        if (!cleanHandle) throw new Error('Informe o identificador da coleção.');
+
+        const gql = `
+            query CollectionForMerge($handle: String!, $cursor: String) {
+              collectionByIdentifier(identifier: { handle: $handle }) {
+                id title handle
+                products(first: 100, after: $cursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    id title handle status
+                    featuredMedia { ... on MediaImage { image { url } } }
+                    variants(first: 2) {
+                      nodes { id title sku price inventoryQuantity }
+                    }
+                    media(first: 2) {
+                      nodes { alt ... on MediaImage { image { url } } }
+                    }
+                  }
+                }
+              }
+            }`;
+
+        let cursor = null;
+        let collection = null;
+        const products = [];
+        let pages = 0;
+        do {
+            const data = await _graphql(gql, { handle: cleanHandle, cursor });
+            const c = data?.collectionByIdentifier;
+            if (!c) throw new Error(`Coleção "${cleanHandle}" não encontrada na loja conectada.`);
+            if (!collection) collection = { id: c.id, title: c.title, handle: c.handle };
+            const conn = c.products;
+            (conn?.nodes || []).forEach(p => products.push({
+                id: _gidToNumeric(p.id),
+                gid: p.id,
+                title: p.title,
+                handle: p.handle,
+                status: p.status,
+                image: p.featuredMedia?.image?.url || p.media?.nodes?.find(m => m.image?.url)?.image?.url || null,
+                priceMin: parseFloat(p.variants?.nodes?.[0]?.price || '0'),
+                currency: _config.shopCurrency || 'BRL',
+                variants: (p.variants?.nodes || []).map(v => ({
+                    id: _gidToNumeric(v.id), title: v.title, sku: v.sku || '',
+                    price: parseFloat(v.price || '0'), inventory: v.inventoryQuantity,
+                })),
+            }));
+            cursor = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
+            pages++;
+        } while (cursor && pages < 20);
+
+        return { ...collection, products };
+    }
+
+    // Leitura dedicada ao Unificador. Fica separada de fetchProductDetails
+    // porque traz coleções, SEO e estoque por localização — dados pesados
+    // que não devem entrar no fluxo comum de listagem/importação.
+    async function fetchProductsForMerge(shopifyIds, { includeInventory = true } = {}) {
+        const ids = (Array.isArray(shopifyIds) ? shopifyIds : [shopifyIds])
+            .map(String).filter(Boolean)
+            .map(id => id.startsWith('gid://') ? id : `gid://shopify/Product/${id}`);
+        if (!ids.length) return [];
+
+        const inventoryFragment = includeInventory ? `
+            inventoryItem {
+              id tracked requiresShipping
+              inventoryLevels(first: 20) {
+                nodes {
+                  location { id name }
+                  quantities(names: ["available"]) { name quantity }
+                }
+              }
+            }` : '';
+
+        const gql = `
+            query ProductsForMerge($ids: [ID!]!) {
+              nodes(ids: $ids) {
+                ... on Product {
+                  id title handle status vendor productType tags descriptionHtml templateSuffix
+                  seo { title description }
+                  collections(first: 20) { nodes { id title handle } }
+                  media(first: 100) {
+                    nodes {
+                      id mediaContentType alt status
+                      ... on MediaImage { image { url width height } }
+                    }
+                  }
+                  variants(first: 100) {
+                    nodes {
+                      id title sku barcode price compareAtPrice taxable inventoryPolicy
+                      availableForSale inventoryQuantity
+                      selectedOptions { name value }
+                      media(first: 1) {
+                        nodes { id alt ... on MediaImage { image { url } } }
+                      }
+                      ${inventoryFragment}
+                    }
+                  }
+                }
+              }
+            }`;
+
+        const data = await _graphql(gql, { ids });
+        return (data?.nodes || []).filter(Boolean).map(p => ({
+            id: _gidToNumeric(p.id),
+            gid: p.id,
+            title: p.title,
+            handle: p.handle,
+            status: p.status,
+            vendor: p.vendor || '',
+            productType: p.productType || '',
+            tags: p.tags || [],
+            descriptionHtml: p.descriptionHtml || '',
+            templateSuffix: p.templateSuffix || '',
+            seo: p.seo || { title: '', description: '' },
+            collections: (p.collections?.nodes || []).map(c => ({ id: c.id, title: c.title, handle: c.handle })),
+            images: (p.media?.nodes || [])
+                .filter(m => m.mediaContentType === 'IMAGE' && m.image?.url)
+                .map(m => ({
+                    id: m.id, url: m.image.url, alt: m.alt || '', status: m.status,
+                    width: m.image.width, height: m.image.height,
+                })),
+            variants: (p.variants?.nodes || []).map(v => ({
+                id: _gidToNumeric(v.id),
+                gid: v.id,
+                title: v.title,
+                sku: v.sku || '',
+                barcode: v.barcode || '',
+                price: parseFloat(v.price || '0'),
+                compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
+                taxable: v.taxable !== false,
+                inventoryPolicy: v.inventoryPolicy || 'DENY',
+                availableForSale: !!v.availableForSale,
+                inventory: Number.isFinite(v.inventoryQuantity) ? v.inventoryQuantity : null,
+                tracked: !!v.inventoryItem?.tracked,
+                requiresShipping: v.inventoryItem?.requiresShipping !== false,
+                inventoryItemId: v.inventoryItem?.id || null,
+                inventoryLevels: (v.inventoryItem?.inventoryLevels?.nodes || []).map(level => ({
+                    locationId: level.location?.id,
+                    locationName: level.location?.name || '',
+                    available: level.quantities?.find(q => q.name === 'available')?.quantity ?? 0,
+                })).filter(level => level.locationId),
+                options: (v.selectedOptions || []).map(o => ({ name: o.name, value: o.value })),
+                image: v.media?.nodes?.[0]?.image?.url || '',
+            })),
+        }));
     }
 
     // Per-date totals (all products): { "YYYY-MM-DD": { sales, revenue, currency, orderCount } }
@@ -2688,6 +2850,104 @@ const ShopifyModule = (() => {
         return data?.productVariantsBulkUpdate?.productVariants?.[0];
     }
 
+    async function _findMergedProductByTag(mergeTag) {
+        if (!mergeTag) return null;
+        const gql = `query ExistingMerge($query: String!) {
+            products(first: 1, query: $query) {
+                nodes { id title handle status featuredMedia { ... on MediaImage { image { url } } } }
+            }
+        }`;
+        const escaped = String(mergeTag).replace(/["\\]/g, '');
+        const data = await _graphql(gql, { query: `tag:"${escaped}"` });
+        return data?.products?.nodes?.[0] || null;
+    }
+
+    async function fetchMergedProductResult(productGid) {
+        const gid = String(productGid || '').startsWith('gid://')
+            ? String(productGid)
+            : `gid://shopify/Product/${productGid}`;
+        const gql = `query MergeResult($id: ID!) {
+            product(id: $id) {
+                id title handle status
+                featuredMedia { ... on MediaImage { image { url } } }
+                options { name optionValues { name } }
+                variants(first: 100) {
+                    nodes {
+                        id title sku price inventoryQuantity
+                        selectedOptions { name value }
+                        media(first: 1) { nodes { id alt } }
+                    }
+                }
+                media(first: 100) { nodes { id alt status } }
+            }
+        }`;
+        const data = await _graphql(gql, { id: gid });
+        return data?.product || null;
+    }
+
+    // Cria o produto unificado inteiro em uma operação productSet: opções,
+    // variantes, arquivos/alt text e estoque por localização. `mergeTag`
+    // funciona como chave de idempotência da aplicação: se a resposta de
+    // rede se perder depois da criação, a repetição encontra o rascunho já
+    // criado em vez de gerar uma cópia.
+    async function createMergedProduct({ input, mergeTag, collectionIds = [] }) {
+        if (!input?.title) throw new Error('O produto unificado precisa de um título.');
+
+        const existing = await _findMergedProductByTag(mergeTag);
+        if (existing) {
+            const verified = await fetchMergedProductResult(existing.id).catch(() => existing);
+            return { product: verified || existing, reused: true, warnings: [] };
+        }
+
+        const gql = `mutation CreateMergedProduct($input: ProductSetInput!) {
+            productSet(synchronous: true, input: $input) {
+                product {
+                    id title handle status
+                    featuredMedia { ... on MediaImage { image { url } } }
+                    options { name optionValues { name } }
+                    variants(first: 100) {
+                        nodes {
+                            id title sku price inventoryQuantity
+                            selectedOptions { name value }
+                            media(first: 1) { nodes { id alt } }
+                        }
+                    }
+                    media(first: 100) { nodes { id alt status } }
+                }
+                userErrors { field message }
+            }
+        }`;
+        const data = await _graphql(gql, { input });
+        const errors = data?.productSet?.userErrors || [];
+        if (errors.length) {
+            throw new Error(errors.map(e => `${e.field?.join?.('.') || e.field || 'produto'}: ${e.message}`).join('; '));
+        }
+
+        const product = data?.productSet?.product;
+        if (!product?.id) throw new Error('A Shopify não devolveu o produto criado.');
+
+        const warnings = [];
+        const uniqueCollections = [...new Set((collectionIds || []).filter(Boolean))];
+        const addToCollection = `mutation AddMergedToCollection($id: ID!, $productIds: [ID!]!) {
+            collectionAddProducts(id: $id, productIds: $productIds) {
+                collection { id title }
+                userErrors { field message }
+            }
+        }`;
+        for (const collectionId of uniqueCollections) {
+            try {
+                const cdata = await _graphql(addToCollection, { id: collectionId, productIds: [product.id] });
+                const cerr = cdata?.collectionAddProducts?.userErrors || [];
+                if (cerr.length) warnings.push(cerr.map(e => e.message).join('; '));
+            } catch (e) {
+                warnings.push(`Coleção: ${e.message}`);
+            }
+        }
+
+        const verified = await fetchMergedProductResult(product.id).catch(() => null);
+        return { product: verified || product, reused: false, warnings };
+    }
+
     return {
         init, getConfig, isConfigured,
         enviarImagemDoProduto, reordenarMidia, idsDeMidiaAtual,
@@ -2699,7 +2959,8 @@ const ShopifyModule = (() => {
         getRealSalesForProduct, getRealSalesMap,
         getRealSalesMapByDate, getSalesMapByDate, getRealSalesPorPais, fetchProductViews, fetchProductViewsByDate,
         fetchFunilLoja, getCoberturaViews, getViewsMapPorPais, tokenTemEscopoDeVisitas,
-        fetchProductDetails,
+        fetchProductDetails, getGrantedScopes, fetchCollectionForMerge, fetchProductsForMerge,
+        createMergedProduct, fetchMergedProductResult,
         compareWithDiary, compareWithDiaryRange,
         openConfigModal, openLinkModal, renderDashboardWidget,
         fetchThemes, fetchThemeFiles, fetchProductTemplates, updateProductFields, updateVariantPrice,

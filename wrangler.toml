@@ -7,7 +7,7 @@ compatibility_date = "2024-10-01"
 pages_build_output_dir = "."
 
 [vars]
-SCOPES = "read_orders,read_products,read_all_orders,read_reports"
+SCOPES = "read_orders,read_products,read_all_orders,write_products,write_files,read_inventory,write_inventory,read_locations,read_translations,write_translations,read_locales,write_locales,read_themes,read_reports"
 HIGGSFIELD_CLIENT_ID = "6csAgskUhQRlFByK"
 
 [[kv_namespaces]]
