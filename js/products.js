@@ -63,6 +63,17 @@ const ProductsModule = {
             document.querySelectorAll('#shopify-import-list .shopify-import-cb:not(:disabled)').forEach(cb => { cb.checked = e.target.checked; });
             this._updateShopifyImportUI();
         });
+        // "Importar todos": marca tudo (inclusive o checkbox mestre, pra ficar
+        // consistente visualmente) e dispara a importação, sem precisar de um
+        // segundo clique em "Importar selecionados".
+        document.getElementById('btn-shopify-import-all')?.addEventListener('click', () => {
+            const boxes = document.querySelectorAll('#shopify-import-list .shopify-import-cb:not(:disabled)');
+            if (!boxes.length) { if (typeof showToast === 'function') showToast('Nada para importar — todos os produtos já foram importados.', 'info'); return; }
+            boxes.forEach(cb => { cb.checked = true; });
+            if (selectAll) selectAll.checked = true;
+            this._updateShopifyImportUI();
+            this._importSelectedShopifyProducts();
+        });
         const searchInput = document.getElementById('shopify-import-search');
         if (searchInput) searchInput.addEventListener('input', (e) => {
             const q = e.target.value.toLowerCase();
