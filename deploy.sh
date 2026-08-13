@@ -94,6 +94,7 @@ rsync -a \
   --exclude='node_modules' \
   --exclude='.tools' \
   --exclude='saidas' \
+  --exclude='sala-guerra-criativos' \
   --exclude='.wrangler' \
   --exclude='.git' \
   --exclude='.claude' \
