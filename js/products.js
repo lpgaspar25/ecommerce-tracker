@@ -961,7 +961,7 @@ const ProductsModule = {
     async _handleImageFiles(files) {
         for (const file of Array.from(files)) {
             if (!file.type.startsWith('image/')) continue;
-            if (this._images.length >= 5) break;
+            if (this._images.length >= 12) break;
             try {
                 const { blob, width, height } = await comprimirImagem(file, 800, 0.75, { formato: 'image/webp' });
                 const dataUrl = await new Promise((resolve, reject) => {
@@ -986,6 +986,7 @@ const ProductsModule = {
         const zone = document.getElementById('prod-image-zone');
         const thumbs = document.getElementById('prod-image-thumbs');
         if (!thumbs) return;
+        this._renderImgTools();
         if (!this._images.length) {
             if (zone) zone.style.display = '';
             thumbs.style.display = 'none';
@@ -1068,7 +1069,191 @@ const ProductsModule = {
         // O teto de 5 vale só para upload (base64, que pesa no armazenamento).
         // Imagens da Shopify são URLs e não contam para esse limite.
         const enviadas = this._images.filter(im => im.dataUrl).length;
-        if (zone) zone.style.display = enviadas >= 5 ? 'none' : '';
+        if (zone) zone.style.display = enviadas >= 12 ? 'none' : '';
+    },
+
+    _CHIPS_FOTO: ['Frente', 'Costas', 'Lado', 'Detalhe', 'Etiqueta', 'Embalagem', 'Interior', 'Uso', 'Escala'],
+
+    // Barra acima das fotos: puxar as geradas por IA e abrir o renomear em massa.
+    _renderImgTools() {
+        const thumbs = document.getElementById('prod-image-thumbs');
+        if (!thumbs || !thumbs.parentNode) return;
+        let bar = document.getElementById('prod-img-tools');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'prod-img-tools';
+            bar.className = 'prod-img-tools';
+            thumbs.parentNode.insertBefore(bar, thumbs);
+        }
+        const n = this._images.length;
+        bar.innerHTML = `
+            <button type="button" class="btn btn-secondary btn-sm" id="prod-puxar-geradas"><i data-lucide="sparkles" style="width:13px;height:13px"></i> Puxar geradas</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="prod-renomear" ${n ? '' : 'disabled'}><i data-lucide="text-cursor-input" style="width:13px;height:13px"></i> Renomear em massa${n ? ` (${n})` : ''}</button>`;
+        bar.querySelector('#prod-puxar-geradas').addEventListener('click', () => this._abrirPuxarGeradas());
+        bar.querySelector('#prod-renomear').addEventListener('click', () => this._abrirRenomear());
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    _extFmt(f) { return f === 'jpg' ? 'jpg' : f === 'png' ? 'png' : 'webp'; },
+
+    // Reconverte um dataURL para o formato escolhido (JPG achata sobre branco).
+    async _reencodar(dataUrl, fmt) {
+        if (!dataUrl || !/^data:image\//.test(dataUrl)) return dataUrl;
+        const mime = fmt === 'jpg' ? 'image/jpeg' : fmt === 'png' ? 'image/png' : 'image/webp';
+        if (dataUrl.startsWith('data:' + mime)) return dataUrl;
+        try {
+            const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
+            const c = document.createElement('canvas'); c.width = img.naturalWidth || 800; c.height = img.naturalHeight || 800;
+            const ctx = c.getContext('2d');
+            if (mime === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+            ctx.drawImage(img, 0, 0);
+            return c.toDataURL(mime, 0.85);
+        } catch { return dataUrl; }
+    },
+
+    // Renomear em massa: nome base + separador + sufixo por foto, chips de
+    // sugestão e preview ao vivo com a extensão do formato escolhido.
+    _abrirRenomear() {
+        if (!this._images.length) return;
+        const st = this._renState || (this._renState = {
+            base: (document.getElementById('product-name')?.value || '').trim().toLowerCase().replace(/\s+/g, '_'),
+            sep: ' ', fmt: 'webp',
+        });
+        this._images.forEach(im => { if (im._sufixo == null) im._sufixo = ''; });
+
+        let modal = document.getElementById('prod-ren-modal');
+        if (!modal) { modal = document.createElement('div'); modal.id = 'prod-ren-modal'; modal.className = 'ca-modal-overlay'; document.body.appendChild(modal); }
+        modal.classList.remove('hidden');
+
+        const ext = () => this._extFmt(st.fmt);
+        const nomeDe = (im) => `${st.base}${im._sufixo ? st.sep + im._sufixo : ''}.${ext()}`;
+        const linhas = this._images.map((im, i) => `
+            <div class="ren-row">
+                <img src="${im.dataUrl || im.url || ''}" alt="">
+                <input type="text" class="input input-sm ren-suf" data-i="${i}" value="${(im._sufixo || '').replace(/"/g, '&quot;')}" placeholder="sufixo (ex.: Frente)">
+                <span class="ren-prev" data-i="${i}">${nomeDe(im)}</span>
+            </div>`).join('');
+
+        modal.innerHTML = `<div class="ca-modal" style="max-width:560px">
+            <div class="ca-modal-head"><div class="ca-modal-title">Renomear fotos em massa</div>
+                <button class="ca-modal-close" id="ren-x"><i data-lucide="x" style="width:18px;height:18px"></i></button></div>
+            <div class="ren-cfg">
+                <label class="mg-campo"><span>Nome base</span><input type="text" id="ren-base" class="input input-sm" value="${st.base.replace(/"/g, '&quot;')}" placeholder="ex.: black_gold"></label>
+                <label class="mg-campo"><span>Separador</span><select id="ren-sep" class="input input-sm">
+                    <option value=" " ${st.sep === ' ' ? 'selected' : ''}>Espaço</option>
+                    <option value="_" ${st.sep === '_' ? 'selected' : ''}>Underscore _</option>
+                    <option value="-" ${st.sep === '-' ? 'selected' : ''}>Hífen -</option></select></label>
+                <label class="mg-campo"><span>Formato</span><select id="ren-fmt" class="input input-sm">
+                    <option value="webp" ${st.fmt === 'webp' ? 'selected' : ''}>WebP</option>
+                    <option value="jpg" ${st.fmt === 'jpg' ? 'selected' : ''}>JPG</option>
+                    <option value="png" ${st.fmt === 'png' ? 'selected' : ''}>PNG</option></select></label>
+            </div>
+            <div class="ren-chips">${this._CHIPS_FOTO.map(c => `<button type="button" class="mg-chip" data-chip="${c}">${c}</button>`).join('')}</div>
+            <div class="ren-list">${linhas}</div>
+            <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+                <button class="btn btn-secondary btn-sm" id="ren-cancel">Cancelar</button>
+                <button class="btn btn-primary btn-sm" id="ren-ok">Aplicar nomes</button>
+            </div>
+        </div>`;
+
+        const atualizar = () => modal.querySelectorAll('.ren-prev').forEach(sp => { sp.textContent = nomeDe(this._images[+sp.dataset.i]); });
+        const fechar = () => modal.classList.add('hidden');
+        modal.querySelector('#ren-x').addEventListener('click', fechar);
+        modal.querySelector('#ren-cancel').addEventListener('click', fechar);
+        modal.querySelector('#ren-base').addEventListener('input', e => { st.base = e.target.value.trim(); atualizar(); });
+        modal.querySelector('#ren-sep').addEventListener('change', e => { st.sep = e.target.value; atualizar(); });
+        modal.querySelector('#ren-fmt').addEventListener('change', e => { st.fmt = e.target.value; atualizar(); });
+        modal.querySelectorAll('.ren-suf').forEach(inp => {
+            inp.addEventListener('focus', () => { this._renFocado = inp; });
+            inp.addEventListener('input', () => {
+                this._images[+inp.dataset.i]._sufixo = inp.value.trim();
+                const p = modal.querySelector(`.ren-prev[data-i="${inp.dataset.i}"]`);
+                if (p) p.textContent = nomeDe(this._images[+inp.dataset.i]);
+            });
+        });
+        // Chip preenche o campo focado, ou o próximo vazio.
+        modal.querySelectorAll('[data-chip]').forEach(ch => ch.addEventListener('click', () => {
+            let alvo = (this._renFocado && modal.contains(this._renFocado)) ? this._renFocado : null;
+            if (!alvo) alvo = [...modal.querySelectorAll('.ren-suf')].find(i => !i.value.trim());
+            if (!alvo) return;
+            alvo.value = ch.dataset.chip;
+            alvo.dispatchEvent(new Event('input', { bubbles: true }));
+            alvo.focus();
+        }));
+        modal.querySelector('#ren-ok').addEventListener('click', async () => {
+            const btn = modal.querySelector('#ren-ok'); btn.disabled = true; btn.textContent = 'Aplicando…';
+            for (const im of this._images) {
+                im.name = nomeDe(im);
+                if (im.dataUrl) { const conv = await this._reencodar(im.dataUrl, st.fmt); if (conv) im.dataUrl = conv; }
+            }
+            fechar();
+            this._renderProductImages();
+            if (typeof showToast === 'function') showToast('Fotos renomeadas.', 'success');
+        });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    },
+
+    // Puxa fotos geradas por IA (Estúdio + Gerar Modelo) pra dentro do produto,
+    // já comprimidas e convertidas.
+    async _abrirPuxarGeradas() {
+        const pid = document.getElementById('product-id')?.value || '';
+        const fontes = [];
+        try {
+            (window.StudioModule?._dados?.(pid)?.fotos || []).forEach(f => {
+                if (f.mediaId) fontes.push({ mediaId: f.mediaId, thumb: f.thumb, label: f.presetLabel || 'Estúdio', origem: 'Estúdio' });
+            });
+        } catch {}
+        try {
+            (window.ModelGenModule?.listModelos?.() || []).forEach(m => (m.fotos || []).forEach(f => {
+                if (f.mediaId) fontes.push({ mediaId: f.mediaId, thumb: f.thumb, label: `${m.nome} · ${f.label || ''}`, origem: 'Modelo' });
+            }));
+        } catch {}
+
+        let modal = document.getElementById('prod-puxar-modal');
+        if (!modal) { modal = document.createElement('div'); modal.id = 'prod-puxar-modal'; modal.className = 'ca-modal-overlay'; document.body.appendChild(modal); }
+        modal.classList.remove('hidden');
+        const fechar = () => modal.classList.add('hidden');
+
+        if (!fontes.length) {
+            modal.innerHTML = `<div class="ca-modal" style="max-width:420px"><div class="ca-modal-head"><div class="ca-modal-title">Puxar fotos geradas</div><button class="ca-modal-close" id="pg-x"><i data-lucide="x" style="width:18px;height:18px"></i></button></div><p class="mg-help" style="color:var(--text-muted);font-size:.85rem">Nenhuma foto gerada ainda. Gere no Estúdio ou no Gerar Modelo e volte aqui.</p></div>`;
+            modal.querySelector('#pg-x').addEventListener('click', fechar);
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+            return;
+        }
+
+        modal.innerHTML = `<div class="ca-modal" style="max-width:660px">
+            <div class="ca-modal-head"><div class="ca-modal-title">Puxar fotos geradas</div>
+                <button class="ca-modal-close" id="pg-x"><i data-lucide="x" style="width:18px;height:18px"></i></button></div>
+            <div class="pg-grid">${fontes.map((f, i) => `
+                <label class="pg-item"><input type="checkbox" data-i="${i}"><img src="${f.thumb || ''}" alt=""><span title="${(f.label || '').replace(/"/g, '&quot;')}">${f.origem}</span></label>`).join('')}</div>
+            <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
+                <button class="btn btn-secondary btn-sm" id="pg-cancel">Cancelar</button>
+                <button class="btn btn-primary btn-sm" id="pg-ok">Adicionar selecionadas</button>
+            </div>
+        </div>`;
+        modal.querySelector('#pg-x').addEventListener('click', fechar);
+        modal.querySelector('#pg-cancel').addEventListener('click', fechar);
+        modal.querySelector('#pg-ok').addEventListener('click', async () => {
+            const sel = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(c => fontes[+c.dataset.i]);
+            if (!sel.length) { fechar(); return; }
+            const btn = modal.querySelector('#pg-ok'); btn.disabled = true; btn.textContent = 'Adicionando…';
+            let add = 0;
+            for (const f of sel) {
+                if (this._images.length >= 12) break;
+                try {
+                    const m = await MediaStore.get(f.mediaId);
+                    if (!m?.blob) continue;
+                    const { blob, width, height } = await comprimirImagem(m.blob, 800, 0.75, { formato: 'image/webp' });
+                    const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+                    this._images.push({ dataUrl, name: (f.label || 'foto') + '.webp', width, height, size: blob.size, gerada: true });
+                    add++;
+                } catch (e) { console.warn('[Produtos] puxar gerada falhou:', e); }
+            }
+            fechar();
+            this._renderProductImages();
+            if (typeof showToast === 'function') showToast(add ? `${add} foto(s) adicionada(s).` : 'Nada adicionado (limite de 12).', add ? 'success' : 'warning');
+        });
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     },
 
     // Seletor de imagem (STUDIO-08) — clicar numa miniatura da galeria abre

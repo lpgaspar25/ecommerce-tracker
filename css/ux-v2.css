@@ -2862,3 +2862,18 @@ body.ux-overlay-open {
 .mg-pack, .mg-chip-add, .mg-ref-add, .mg-grupo-lbl, .ca-chip, .ca-open, .mg-card-hint {
     color: var(--text-secondary);
 }
+
+/* Produtos: ferramentas de foto (puxar geradas + renomear em massa) */
+.prod-img-tools { display: flex; gap: .5rem; flex-wrap: wrap; margin: 0 0 .6rem; }
+.ren-cfg { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: .5rem; margin-bottom: .6rem; }
+.ren-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .7rem; }
+.ren-list { display: flex; flex-direction: column; gap: .4rem; max-height: 46vh; overflow-y: auto; }
+.ren-row { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; gap: .5rem; }
+.ren-row img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.ren-prev { font-size: .78rem; color: var(--text-secondary); font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: .5rem; max-height: 52vh; overflow-y: auto; }
+.pg-item { position: relative; display: block; cursor: pointer; border: 2px solid transparent; border-radius: 9px; overflow: hidden; background: var(--bg-secondary); }
+.pg-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.pg-item span { position: absolute; left: 4px; bottom: 4px; font-size: .6rem; background: rgba(0,0,0,.6); color: #fff; padding: .05rem .3rem; border-radius: 4px; }
+.pg-item input { position: absolute; top: 5px; left: 5px; z-index: 2; accent-color: var(--accent); width: 16px; height: 16px; }
+.pg-item:has(input:checked) { border-color: var(--accent); }
