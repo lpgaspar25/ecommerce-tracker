@@ -1198,16 +1198,37 @@ const ProductsModule = {
     async _abrirPuxarGeradas() {
         const pid = document.getElementById('product-id')?.value || '';
         const fontes = [];
+        // Estúdio: varre TODOS os produtos, não só o atual — reaproveitar uma
+        // foto já gerada pra outro produto (mesma linha, outra variante) é o
+        // caso comum e evita gastar geração de novo.
         try {
-            (window.StudioModule?._dados?.(pid)?.fotos || []).forEach(f => {
-                if (f.mediaId) fontes.push({ mediaId: f.mediaId, thumb: f.thumb, label: f.presetLabel || 'Estúdio', origem: 'Estúdio' });
+            const porProduto = window.StudioModule?._state?.porProduto || {};
+            Object.entries(porProduto).forEach(([ppid, dados]) => {
+                const ehAtual = ppid === pid;
+                const nomeProd = (typeof getProductName === 'function' ? getProductName(ppid) : '') || 'Outro produto';
+                (dados?.fotos || []).forEach(f => {
+                    if (!f.mediaId) return;
+                    fontes.push({
+                        mediaId: f.mediaId, thumb: f.thumb,
+                        label: `${nomeProd} · ${f.presetLabel || 'Estúdio'}`,
+                        origem: ehAtual ? 'Este produto' : nomeProd,
+                        chaveFiltro: ehAtual ? 'atual' : 'prod:' + ppid,
+                    });
+                });
             });
-        } catch {}
+        } catch (e) { console.warn('[Produtos] fotos do Estúdio:', e); }
         try {
             (window.ModelGenModule?.listModelos?.() || []).forEach(m => (m.fotos || []).forEach(f => {
-                if (f.mediaId) fontes.push({ mediaId: f.mediaId, thumb: f.thumb, label: `${m.nome} · ${f.label || ''}`, origem: 'Modelo' });
+                if (f.mediaId) fontes.push({
+                    mediaId: f.mediaId, thumb: f.thumb,
+                    label: `${m.nome} · ${f.label || ''}`,
+                    origem: 'Modelo: ' + m.nome,
+                    chaveFiltro: 'modelo:' + m.id,
+                });
             }));
-        } catch {}
+        } catch (e) { console.warn('[Produtos] fotos do Gerar Modelo:', e); }
+        // Foto do produto atual primeiro — é o que ele quer na maioria das vezes.
+        fontes.sort((a, b) => (a.chaveFiltro === 'atual' ? -1 : 0) - (b.chaveFiltro === 'atual' ? -1 : 0));
 
         let modal = document.getElementById('prod-puxar-modal');
         if (!modal) { modal = document.createElement('div'); modal.id = 'prod-puxar-modal'; modal.className = 'ca-modal-overlay'; document.body.appendChild(modal); }
@@ -1221,20 +1242,52 @@ const ProductsModule = {
             return;
         }
 
+        // Uma opção de filtro por origem (este produto / cada outro produto /
+        // cada modelo), pra não virar uma parede de fotos sem contexto.
+        const origens = [];
+        fontes.forEach(f => { if (!origens.some(o => o.k === f.chaveFiltro)) origens.push({ k: f.chaveFiltro, nome: f.origem }); });
+
+        const gridDe = (filtro) => fontes.map((f, i) => ({ f, i }))
+            .filter(({ f }) => filtro === 'todos' || f.chaveFiltro === filtro)
+            .map(({ f, i }) => `
+                <label class="pg-item"><input type="checkbox" data-i="${i}"><img src="${f.thumb || ''}" alt="" loading="lazy"><span title="${(f.label || '').replace(/"/g, '&quot;')}">${f.origem}</span></label>`).join('');
+
         modal.innerHTML = `<div class="ca-modal" style="max-width:660px">
             <div class="ca-modal-head"><div class="ca-modal-title">Puxar fotos geradas</div>
                 <button class="ca-modal-close" id="pg-x"><i data-lucide="x" style="width:18px;height:18px"></i></button></div>
-            <div class="pg-grid">${fontes.map((f, i) => `
-                <label class="pg-item"><input type="checkbox" data-i="${i}"><img src="${f.thumb || ''}" alt=""><span title="${(f.label || '').replace(/"/g, '&quot;')}">${f.origem}</span></label>`).join('')}</div>
+            <div class="pg-bar">
+                <select id="pg-filtro" class="input input-sm">
+                    <option value="todos">Todas as origens (${fontes.length})</option>
+                    ${origens.map(o => `<option value="${o.k}">${(o.nome || '').replace(/"/g, '&quot;')} (${fontes.filter(f => f.chaveFiltro === o.k).length})</option>`).join('')}
+                </select>
+                <span class="pg-conta" id="pg-conta">0 selecionada(s)</span>
+            </div>
+            <div class="pg-grid" id="pg-grid">${gridDe('todos')}</div>
             <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.9rem">
                 <button class="btn btn-secondary btn-sm" id="pg-cancel">Cancelar</button>
                 <button class="btn btn-primary btn-sm" id="pg-ok">Adicionar selecionadas</button>
             </div>
         </div>`;
+
+        // Marcações sobrevivem à troca de filtro (guardadas por índice).
+        const marcados = new Set();
+        const conta = () => { const el = modal.querySelector('#pg-conta'); if (el) el.textContent = `${marcados.size} selecionada(s)`; };
+        const ligarChecks = () => modal.querySelectorAll('#pg-grid input[type=checkbox]').forEach(cb => {
+            cb.checked = marcados.has(+cb.dataset.i);
+            cb.addEventListener('change', () => {
+                if (cb.checked) marcados.add(+cb.dataset.i); else marcados.delete(+cb.dataset.i);
+                conta();
+            });
+        });
+        ligarChecks();
+        modal.querySelector('#pg-filtro').addEventListener('change', e => {
+            modal.querySelector('#pg-grid').innerHTML = gridDe(e.target.value);
+            ligarChecks();
+        });
         modal.querySelector('#pg-x').addEventListener('click', fechar);
         modal.querySelector('#pg-cancel').addEventListener('click', fechar);
         modal.querySelector('#pg-ok').addEventListener('click', async () => {
-            const sel = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(c => fontes[+c.dataset.i]);
+            const sel = [...marcados].map(i => fontes[i]).filter(Boolean);
             if (!sel.length) { fechar(); return; }
             const btn = modal.querySelector('#pg-ok'); btn.disabled = true; btn.textContent = 'Adicionando…';
             let add = 0;

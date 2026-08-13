@@ -2877,3 +2877,8 @@ body.ux-overlay-open {
 .pg-item span { position: absolute; left: 4px; bottom: 4px; font-size: .6rem; background: rgba(0,0,0,.6); color: #fff; padding: .05rem .3rem; border-radius: 4px; }
 .pg-item input { position: absolute; top: 5px; left: 5px; z-index: 2; accent-color: var(--accent); width: 16px; height: 16px; }
 .pg-item:has(input:checked) { border-color: var(--accent); }
+
+/* Picker de fotos geradas: barra de filtro por origem */
+.pg-bar { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+.pg-bar select { flex: 1; min-width: 0; }
+.pg-conta { color: var(--text-secondary); font-size: .78rem; white-space: nowrap; }
