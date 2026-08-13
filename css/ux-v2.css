@@ -2801,3 +2801,17 @@ body.ux-overlay-open {
   align-items: center; justify-content: center; gap: .7rem; padding: 2rem; cursor: zoom-out; }
 .mg-lightbox img { max-width: 100%; max-height: 86vh; object-fit: contain; border-radius: 10px; }
 .mg-lightbox-cap { color: #e9eae4; font-size: .82rem; }
+
+/* Gerar Modelo — chips de cenário/roupa com foto e botão de adicionar */
+.mg-chip-foto { position: relative; padding-left: .4rem; flex-direction: row; align-items: center; gap: .45rem; }
+.mg-chip-foto img { width: 30px; height: 34px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+.mg-chip-foto > span { display: block; }
+.mg-chip-foto small { display: block; }
+.mg-chip-x { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg-secondary); border: 1px solid var(--border-strong); color: var(--text-muted);
+  display: none; align-items: center; justify-content: center; cursor: pointer; }
+.mg-chip-x svg { width: 10px; height: 10px; }
+.mg-chip-foto:hover .mg-chip-x { display: inline-flex; }
+.mg-chip-x:hover { background: var(--red); color: #fff; border-color: var(--red); }
+.mg-chip-add { flex-direction: row; align-items: center; gap: .35rem; border-style: dashed; color: var(--text-muted); }
+.mg-chip-add:hover { border-color: var(--accent); color: var(--ux-acid); background: var(--ux-acid-soft); }

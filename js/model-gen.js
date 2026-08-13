@@ -22,6 +22,7 @@ const ModelGenModule = (() => {
     const TAB = 'gerar-modelo';
     const INDEX_KEY = 'etracker_modelos';
     const CFG_KEY = 'etracker_modelgen_cfg';
+    const BANCO_KEY = 'etracker_mg_banco';   // cenários e roupas do usuário
     const MAX_REFS = 8;   // OpenAI aceita 16, mas acima de ~8 só encarece
 
     // ── Ângulos de câmera (pessoa, não produto) ──
@@ -58,12 +59,55 @@ const ModelGenModule = (() => {
           instrucao: 'Framing: full-body shot — the entire person visible from head to feet, with a little margin around them.' },
     ];
 
-    const FUNDOS = [
-        { id: 'manter', label: 'Manter o da foto', instrucao: 'Keep a background consistent with the reference photos.' },
-        { id: 'estudio', label: 'Estúdio neutro', instrucao: 'Background: seamless neutral light-grey photography studio backdrop with soft, even studio lighting.' },
-        { id: 'branco', label: 'Fundo branco', instrucao: 'Background: clean seamless pure white studio background with bright, even lighting.' },
-        { id: 'externo', label: 'Externo (natural)', instrucao: 'Background: natural outdoor daylight setting, softly blurred with shallow depth of field.' },
-        { id: 'lifestyle', label: 'Lifestyle (casa/urbano)', instrucao: 'Background: tasteful lifestyle setting (modern interior or urban street), softly blurred so the person stays the focus.' },
+    // ── Cenários / fundos predefinidos ──
+    // "paris" é o street style do print de referência: parede de pedra clara,
+    // calçada estreita, luz natural — o fundo que mais aparece em criativo de
+    // moda/acessório que viraliza.
+    const CENARIOS = [
+        { id: 'manter', label: 'Manter o da foto', dica: 'Não muda o cenário',
+          instrucao: 'Keep a background consistent with the reference photos.' },
+        { id: 'paris', label: 'Rua parisiense', dica: 'Pedra clara, street style',
+          instrucao: 'Location: a narrow European city street (Parisian style) — a pale cream limestone building wall with visible block seams, a white painted door or shutter, and a stone pavement. Candid street-style photograph in soft natural daylight, shot from across the street.' },
+        { id: 'estudio', label: 'Estúdio neutro', dica: 'Cinza liso',
+          instrucao: 'Background: seamless neutral light-grey photography studio backdrop with soft, even studio lighting.' },
+        { id: 'branco', label: 'Fundo branco', dica: 'Catálogo',
+          instrucao: 'Background: clean seamless pure white studio background with bright, even lighting.' },
+        { id: 'loft', label: 'Loft minimalista', dica: 'Interior claro',
+          instrucao: 'Location: a bright minimalist interior with plain off-white walls, warm wooden floor and soft window light falling across the person.' },
+        { id: 'cafe', label: 'Café / bistrô', dica: 'Mesa europeia',
+          instrucao: 'Location: a charming European café terrace with small bistro tables and chairs, warm natural light, softly blurred background.' },
+        { id: 'urbano', label: 'Urbano moderno', dica: 'Vidro e concreto',
+          instrucao: 'Location: a modern city setting with glass and concrete architecture, clean lines, natural daylight, softly blurred background.' },
+        { id: 'natureza', label: 'Natureza / parque', dica: 'Verde desfocado',
+          instrucao: 'Location: an outdoor park with greenery and trees, natural daylight, background softly blurred with shallow depth of field.' },
+        { id: 'praia', label: 'Praia / costa', dica: 'Luz dourada',
+          instrucao: 'Location: a coastal setting with sand and sea, warm golden-hour sunlight, soft natural haze.' },
+        { id: 'quarto', label: 'Quarto aconchegante', dica: 'Luz suave',
+          instrucao: 'Location: a cosy, tastefully decorated bedroom or living room with soft diffused daylight and neutral tones.' },
+        { id: 'noite', label: 'Cidade à noite', dica: 'Luzes desfocadas',
+          instrucao: 'Location: a city street at night, warm bokeh from shop windows and street lights behind the person, cinematic low-light look.' },
+    ];
+
+    // ── Roupas / looks predefinidos ──
+    const ROUPAS = [
+        { id: 'manter', label: 'Manter a da foto', dica: 'Mesma roupa',
+          instrucao: 'Keep exactly the same clothing, outfit and accessories as in the reference photos.' },
+        { id: 'casual-chic', label: 'Casual chic', dica: 'Camisa branca + calça preta',
+          instrucao: 'Outfit: an oversized crisp white shirt or shirt-jacket worn loose, with high-waisted wide-leg black trousers and minimal flat sandals.' },
+        { id: 'basico', label: 'Básico', dica: 'Camiseta + jeans',
+          instrucao: 'Outfit: a plain well-fitted white t-shirt with classic blue jeans and simple white sneakers.' },
+        { id: 'social', label: 'Social / alfaiataria', dica: 'Blazer',
+          instrucao: 'Outfit: a tailored blazer over a simple top with matching tailored trousers, polished and professional.' },
+        { id: 'streetwear', label: 'Streetwear', dica: 'Moletom + jeans',
+          instrucao: 'Outfit: an oversized hoodie or sweatshirt with relaxed denim and chunky sneakers, casual street style.' },
+        { id: 'verao', label: 'Verão', dica: 'Vestido leve',
+          instrucao: 'Outfit: a light flowing summer dress in a neutral tone, with simple sandals.' },
+        { id: 'fitness', label: 'Fitness', dica: 'Legging + top',
+          instrucao: 'Outfit: matching athletic leggings and a fitted sports top, clean modern activewear.' },
+        { id: 'noite', label: 'Noite / festa', dica: 'Elegante',
+          instrucao: 'Outfit: an elegant evening outfit in a dark refined tone, styled for a night out.' },
+        { id: 'inverno', label: 'Inverno', dica: 'Casaco + tricô',
+          instrucao: 'Outfit: a structured wool coat over a knitted sweater, with long trousers and boots.' },
     ];
 
     const FORMATOS = [
@@ -75,9 +119,12 @@ const ModelGenModule = (() => {
 
     // Combos prontos — evita o usuário marcar 40 imagens sem querer.
     const PACKS = {
-        essencial: { angulos: ['frontal', '3-4-esq', '3-4-dir'], zooms: ['busto', 'inteiro'] },
-        catalogo: { angulos: ['frontal', '3-4-esq', '3-4-dir', 'perfil-esq', 'costas'], zooms: ['busto', 'meio', 'inteiro'] },
-        rosto: { angulos: ['frontal', '3-4-esq', '3-4-dir', 'perfil-esq', 'perfil-dir'], zooms: ['close'] },
+        essencial: { angulos: ['frontal', '3-4-esq', '3-4-dir'], zooms: ['busto', 'inteiro'], cenarios: ['estudio'], roupas: ['manter'] },
+        catalogo: { angulos: ['frontal', '3-4-esq', '3-4-dir', 'perfil-esq', 'costas'], zooms: ['busto', 'meio', 'inteiro'], cenarios: ['branco'], roupas: ['manter'] },
+        rosto: { angulos: ['frontal', '3-4-esq', '3-4-dir', 'perfil-esq', 'perfil-dir'], zooms: ['close'], cenarios: ['estudio'], roupas: ['manter'] },
+        // "Street style": o formato do criativo de referência — mesma modelo
+        // andando na rua, corpo inteiro e plano americano, vários looks.
+        street: { angulos: ['perfil-esq', '3-4-esq', 'frontal'], zooms: ['inteiro', 'americano'], cenarios: ['paris'], roupas: ['casual-chic'] },
     };
 
     const _state = {
@@ -86,12 +133,14 @@ const ModelGenModule = (() => {
         fotos: [],           // fotos do modelo atual (do índice)
         angulos: new Set(['frontal', '3-4-esq', '3-4-dir']),
         zooms: new Set(['busto', 'inteiro']),
+        cenarios: new Set(['estudio']),
+        roupas: new Set(['manter']),
         gerando: false,
         progresso: { feito: 0, total: 0, atual: '' },
         inited: false,
     };
 
-    let _cfg = { fundo: 'estudio', formato: '4x5', roupa: 'manter', extra: '' };
+    let _cfg = { formato: '4x5', extra: '' };
 
     // ══════════════════════════════════════════════════════════
     //  Persistência (índice leve no localStorage, blob no IndexedDB)
@@ -135,20 +184,121 @@ const ModelGenModule = (() => {
         try { localStorage.setItem(CFG_KEY, JSON.stringify(_cfg)); } catch {}
     }
 
+    // ── Banco do usuário: cenários e roupas próprios, reutilizáveis entre
+    //    modelos. Mesma regra: thumb no localStorage, blob no IndexedDB.
+    function _banco() {
+        let b;
+        try { b = JSON.parse(localStorage.getItem(BANCO_KEY) || '{}'); } catch { b = {}; }
+        const sid = _storeId();
+        b[sid] = b[sid] || { cenarios: [], roupas: [] };
+        b[sid].cenarios = b[sid].cenarios || [];
+        b[sid].roupas = b[sid].roupas || [];
+        return { todo: b, meu: b[sid] };
+    }
+    function _saveBanco(todo) {
+        const gravar = () => localStorage.setItem(BANCO_KEY, JSON.stringify(todo));
+        try {
+            if (window.StorageManager?.withReclaim) StorageManager.withReclaim(gravar);
+            else gravar();
+        } catch (e) { console.warn('[GerarModelo] banco não salvou:', e.message); }
+    }
+    function cenariosCustom() { return _banco().meu.cenarios; }
+    function roupasCustom() { return _banco().meu.roupas; }
+
+    // Cenário próprio = uma FOTO do lugar. Vai como imagem de referência
+    // extra na geração (o papel dela é explicado no texto do prompt).
+    async function _addCenarioCustom(file, rotulo) {
+        const { blob } = await comprimirImagem(file, 1400, 0.9, { formato: 'image/webp' });
+        const thumb = await comprimirImagemParaDataUrl(blob, 200, 0.6, { formato: 'image/webp' });
+        const id = 'cc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const mediaId = 'mgcen_' + id;
+        await MediaStore.put(mediaId, blob, { type: blob.type || 'image/webp' });
+        const { todo, meu } = _banco();
+        meu.cenarios.unshift({ id, label: rotulo || 'Meu cenário', mediaId, thumb, criadoEm: new Date().toISOString() });
+        _saveBanco(todo);
+        return id;
+    }
+
+    // Roupa própria: descrição em texto e/ou foto da peça (serve pra bolsa,
+    // óculos, qualquer item que a modelo deva usar/carregar).
+    async function _addRoupaCustom({ texto, file, rotulo }) {
+        const id = 'rc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        let mediaId = '', thumb = '';
+        if (file) {
+            const { blob } = await comprimirImagem(file, 1200, 0.9, { formato: 'image/webp' });
+            thumb = await comprimirImagemParaDataUrl(blob, 200, 0.6, { formato: 'image/webp' });
+            mediaId = 'mgrou_' + id;
+            await MediaStore.put(mediaId, blob, { type: blob.type || 'image/webp' });
+        }
+        const { todo, meu } = _banco();
+        meu.roupas.unshift({
+            id, label: rotulo || (texto ? texto.slice(0, 28) : 'Minha roupa'),
+            texto: texto || '', mediaId, thumb, criadoEm: new Date().toISOString(),
+        });
+        _saveBanco(todo);
+        return id;
+    }
+
+    async function _removerCustom(tipo, id) {
+        const { todo, meu } = _banco();
+        const arr = tipo === 'cen' ? meu.cenarios : meu.roupas;
+        const rec = arr.find(x => x.id === id);
+        if (rec?.mediaId) { try { await MediaStore.del(rec.mediaId); } catch {} }
+        if (tipo === 'cen') meu.cenarios = arr.filter(x => x.id !== id);
+        else meu.roupas = arr.filter(x => x.id !== id);
+        _saveBanco(todo);
+        _state.cenarios.delete(id); _state.roupas.delete(id);
+        render();
+    }
+
+    // Resolve um id (predefinido ou custom) para o objeto usado na geração.
+    function _cenarioPorId(id) {
+        const fixo = CENARIOS.find(c => c.id === id);
+        if (fixo) return { ...fixo, custom: false };
+        const c = cenariosCustom().find(x => x.id === id);
+        return c ? { id: c.id, label: c.label, mediaId: c.mediaId, custom: true } : null;
+    }
+    function _roupaPorId(id) {
+        const fixa = ROUPAS.find(r => r.id === id);
+        if (fixa) return { ...fixa, custom: false };
+        const r = roupasCustom().find(x => x.id === id);
+        return r ? { id: r.id, label: r.label, texto: r.texto, mediaId: r.mediaId, custom: true } : null;
+    }
+
     // ══════════════════════════════════════════════════════════
     //  Prompt — a trava de identidade é o coração da feature
     // ══════════════════════════════════════════════════════════
 
-    function _promptDe(angulo, zoom) {
-        const fundo = FUNDOS.find(f => f.id === _cfg.fundo) || FUNDOS[1];
-        const roupa = _cfg.roupa === 'manter'
-            ? 'Keep exactly the same clothing, outfit, accessories and hairstyle as in the reference photos.'
-            : (String(_cfg.roupa || '').trim()
-                ? `Clothing: ${String(_cfg.roupa).trim()}. Keep the person's face and hair unchanged.`
-                : 'Keep the same clothing as in the reference photos.');
+    // Monta o prompt de UM take. `refFundo`/`refRoupa` indicam se há foto de
+    // cenário/roupa junto — nesse caso o TEXTO precisa dizer o papel de cada
+    // imagem, porque nenhuma das duas APIs tem campo pra isso (a doc manda
+    // separar por texto, e no Gemini as imagens vêm na ordem enviada).
+    function _promptDe(angulo, zoom, cenario, roupa, refFundo, refRoupa) {
+        cenario = cenario || CENARIOS[0];
+        roupa = roupa || ROUPAS[0];
+
+        // A ordem aqui TEM que ser a mesma em que os blobs são enviados.
+        const papeis = [];
+        let n = 0;
+        if (refFundo) { n++; papeis.push(`IMAGE ${n} is a LOCATION reference: reproduce this place, its architecture, materials, colours and lighting as the background of the new photo. Do NOT copy any person from it.`); }
+        if (refRoupa) { n++; papeis.push(`IMAGE ${n} is a GARMENT/ITEM reference: the person must wear or carry this exact item, keeping its shape, colour, material, hardware and any branding identical.`); }
+        const refsTxt = n
+            ? `You are given ${n + 1}+ reference images. ${papeis.join(' ')} ALL THE REMAINING IMAGES show the SAME person — that person is the subject of the new photograph.`
+            : 'Using the provided reference photo(s), which all show the SAME person, generate ONE new photorealistic photograph of that exact same person.';
+
+        const roupaTxt = roupa.custom
+            ? (refRoupa
+                ? (roupa.texto ? `Outfit: ${roupa.texto}.` : 'Dress the person in the referenced garment/item.')
+                : `Outfit: ${roupa.texto || roupa.label}.`)
+            : roupa.instrucao;
+        const cenarioTxt = cenario.custom
+            ? 'Place the person naturally in the referenced location, with lighting and perspective that match that place.'
+            : cenario.instrucao;
+        // Trocar a roupa não pode virar licença pra mudar o corpo/rosto.
+        const guardaRoupa = roupa.id === 'manter' ? '' : " Changing the outfit must NOT change the person's face, hair, skin tone or body proportions.";
 
         return [
-            'Using the provided reference photo(s), which all show the SAME person, generate ONE new photorealistic photograph of that exact same person.',
+            refsTxt,
             // Identidade: o modelo "embeleza" por padrão — é preciso proibir explicitamente.
             'IDENTITY LOCK — the person must be instantly recognisable as the same individual:'
             + ' keep the same face shape and bone structure, the same eyes (shape and colour), eyebrows, nose, lips, jawline and ears,'
@@ -156,10 +306,10 @@ const ModelGenModule = (() => {
             + ' the same hair colour, length and hairstyle, the same facial hair, the same body type and build,'
             + ' and the same apparent age, gender and ethnicity.'
             + ' Do NOT beautify, slim down, de-age, smooth the skin or idealise the face. Do NOT invent a different or merely similar-looking person.',
-            roupa,
+            roupaTxt + guardaRoupa,
             angulo.instrucao,
             zoom.instrucao,
-            fundo.instrucao,
+            cenarioTxt,
             'Photorealistic photography with natural skin texture and visible pores, realistic lighting and shadows, sharp focus on the subject, professional camera look.',
             'Output a single clean photograph: no collage, no grid, no split panels, no borders, no text, no captions, no watermark and no logo.',
             String(_cfg.extra || '').trim(),
@@ -195,16 +345,32 @@ const ModelGenModule = (() => {
     //  Geração
     // ══════════════════════════════════════════════════════════
 
+    // Cada take é um cruzamento ângulo × zoom × cenário × roupa.
     function _combos() {
         const angs = ANGULOS.filter(a => _state.angulos.has(a.id));
         const zooms = ENQUADRAMENTOS.filter(z => _state.zooms.has(z.id));
-        if (!angs.length && !zooms.length) return [];
-        // Só ângulo marcado → usa meio corpo; só zoom marcado → usa frontal.
+        const cens = [..._state.cenarios].map(_cenarioPorId).filter(Boolean);
+        const rous = [..._state.roupas].map(_roupaPorId).filter(Boolean);
+        if (!angs.length && !zooms.length && !cens.length && !rous.length) return [];
+        // Eixo vazio vira um padrão sensato em vez de zerar tudo.
         const A = angs.length ? angs : [ANGULOS[0]];
         const Z = zooms.length ? zooms : [ENQUADRAMENTOS[2]];
+        const C = cens.length ? cens : [{ ...CENARIOS[0], custom: false }];
+        const R = rous.length ? rous : [{ ...ROUPAS[0], custom: false }];
         const out = [];
-        A.forEach(a => Z.forEach(z => out.push({ angulo: a, zoom: z })));
+        A.forEach(a => Z.forEach(z => C.forEach(c => R.forEach(r =>
+            out.push({ angulo: a, zoom: z, cenario: c, roupa: r })))));
         return out;
+    }
+
+    // Blobs de cenário/roupa custom, buscados uma vez só por geração.
+    async function _blobDeMedia(mediaId, cache) {
+        if (!mediaId) return null;
+        if (cache.has(mediaId)) return cache.get(mediaId);
+        let b = null;
+        try { b = (await MediaStore.get(mediaId))?.blob || null; } catch {}
+        cache.set(mediaId, b);
+        return b;
     }
 
     async function gerar() {
@@ -233,22 +399,31 @@ const ModelGenModule = (() => {
         render();
 
         let ok = 0;
-        for (const { angulo, zoom } of combos) {
-            _state.progresso.atual = `${angulo.label} · ${zoom.label}`;
+        const cacheMedia = new Map();
+        for (const { angulo, zoom, cenario, roupa } of combos) {
+            const rotulo = [angulo.label, zoom.label, cenario.id !== 'manter' ? cenario.label : null,
+                            roupa.id !== 'manter' ? roupa.label : null].filter(Boolean).join(' · ');
+            _state.progresso.atual = rotulo;
             _renderProgresso();
             try {
-                const prompt = _promptDe(angulo, zoom);
-                const blob = await ImageAI.editar(refBlobs, prompt, {
+                // ORDEM IMPORTA: os blobs vão na mesma sequência que _promptDe
+                // descreve ("IMAGE 1 é o cenário, IMAGE 2 é a peça, o resto é a pessoa").
+                const bFundo = cenario.custom ? await _blobDeMedia(cenario.mediaId, cacheMedia) : null;
+                const bRoupa = roupa.custom ? await _blobDeMedia(roupa.mediaId, cacheMedia) : null;
+                const entrada = [bFundo, bRoupa, ...refBlobs].filter(Boolean);
+
+                const prompt = _promptDe(angulo, zoom, cenario, roupa, !!bFundo, !!bRoupa);
+                const blob = await ImageAI.editar(entrada, prompt, {
                     provedor: prov,
                     modelo: modelo || undefined,
                     largura: fmt.w, altura: fmt.h, aspectRatio: fmt.ar,
                     formato: 'image/webp', compressao: 92,
                 });
-                await _guardarFoto(blob, angulo, zoom, prompt);
+                await _guardarFoto(blob, angulo, zoom, prompt, cenario, roupa, rotulo);
                 ok++;
             } catch (err) {
-                console.error('[GerarModelo] falhou:', angulo.label, zoom.label, err);
-                _toast(`${angulo.label} · ${zoom.label}: ${String(err.message || err).slice(0, 110)}`, 'error');
+                console.error('[GerarModelo] falhou:', rotulo, err);
+                _toast(`${rotulo}: ${String(err.message || err).slice(0, 110)}`, 'error');
             }
             _state.progresso.feito++;
             _renderProgresso();
@@ -260,7 +435,7 @@ const ModelGenModule = (() => {
     }
 
     // Salva no IndexedDB + índice. Cria o modelo na primeira foto que der certo.
-    async function _guardarFoto(blob, angulo, zoom, prompt) {
+    async function _guardarFoto(blob, angulo, zoom, prompt, cenario, roupa, rotulo) {
         if (!_state.modeloId) await _criarModelo();
         const rec = _modelo(_state.modeloId);
         if (!rec) throw new Error('modelo não encontrado no índice');
@@ -274,7 +449,8 @@ const ModelGenModule = (() => {
         rec.fotos.unshift({
             id, mediaId, thumb,
             anguloId: angulo.id, zoomId: zoom.id,
-            label: `${angulo.label} · ${zoom.label}`,
+            cenarioId: cenario?.id || '', roupaId: roupa?.id || '',
+            label: rotulo || `${angulo.label} · ${zoom.label}`,
             prompt, criadoEm: new Date().toISOString(),
         });
         _gravarModelo(rec);
@@ -445,10 +621,6 @@ const ModelGenModule = (() => {
         <div class="mg-card">
             <div class="mg-card-head"><span class="mg-card-title"><i data-lucide="sliders-horizontal" style="width:15px;height:15px;vertical-align:-2px"></i> Opções</span></div>
             <div class="mg-campos">
-                <label class="mg-campo"><span>Cenário / fundo</span>
-                    <select id="mg-fundo" class="input input-sm">
-                        ${FUNDOS.map(f => `<option value="${f.id}" ${_cfg.fundo === f.id ? 'selected' : ''}>${f.label}</option>`).join('')}
-                    </select></label>
                 <label class="mg-campo"><span>Formato</span>
                     <select id="mg-formato" class="input input-sm">
                         ${FORMATOS.map(f => `<option value="${f.id}" ${_cfg.formato === f.id ? 'selected' : ''}>${f.label}</option>`).join('')}
@@ -460,10 +632,7 @@ const ModelGenModule = (() => {
                 <label class="mg-campo"><span>Versão</span>
                     <select id="mg-modelo" class="input input-sm"><option value="">Padrão (mais recente)</option></select></label>
             </div>
-            <label class="mg-campo" style="margin-top:.6rem"><span>Roupa</span>
-                <input type="text" id="mg-roupa" class="input input-sm" placeholder="manter (deixe vazio) ou descreva: camiseta branca lisa"
-                       value="${_cfg.roupa === 'manter' ? '' : _esc(_cfg.roupa)}"></label>
-            <label class="mg-campo" style="margin-top:.5rem"><span>Instrução extra (opcional)</span>
+            <label class="mg-campo" style="margin-top:.6rem"><span>Instrução extra (opcional)</span>
                 <input type="text" id="mg-extra" class="input input-sm" placeholder="ex.: expressão séria, luz de fim de tarde" value="${_esc(_cfg.extra)}"></label>
         </div>`;
     }
@@ -481,6 +650,7 @@ const ModelGenModule = (() => {
                 <span class="mg-packs">
                     <button type="button" class="mg-pack" data-pack="essencial">Essencial</button>
                     <button type="button" class="mg-pack" data-pack="catalogo">Catálogo</button>
+                    <button type="button" class="mg-pack" data-pack="street">Street style</button>
                     <button type="button" class="mg-pack" data-pack="rosto">Só rosto</button>
                     <button type="button" class="mg-pack" data-pack="limpar">Limpar</button>
                 </span>
@@ -492,9 +662,32 @@ const ModelGenModule = (() => {
             <div class="mg-grupo-lbl">Enquadramento (zoom)</div>
             <div class="mg-chips">${ENQUADRAMENTOS.map(z => chip(z, 'zoom', _state.zooms.has(z.id))).join('')}</div>
 
+            <div class="mg-grupo-lbl">Cenário / fundo</div>
+            <div class="mg-chips">
+                ${CENARIOS.map(c => chip(c, 'cen', _state.cenarios.has(c.id))).join('')}
+                ${cenariosCustom().map(c => `
+                    <button type="button" class="mg-chip mg-chip-foto ${_state.cenarios.has(c.id) ? 'mg-chip-on' : ''}" data-tipo="cen" data-id="${c.id}">
+                        ${c.thumb ? `<img src="${c.thumb}" alt="">` : ''}<span>${_esc(c.label)}</span><small>Meu cenário</small>
+                        <i class="mg-chip-x" data-del-custom="cen:${c.id}" data-lucide="x"></i>
+                    </button>`).join('')}
+                <label class="mg-chip mg-chip-add" for="mg-cen-file"><i data-lucide="image-plus" style="width:14px;height:14px"></i><span>Adicionar fundo</span></label>
+            </div>
+            <input type="file" id="mg-cen-file" accept="image/*" hidden>
+
+            <div class="mg-grupo-lbl">Roupa / look</div>
+            <div class="mg-chips">
+                ${ROUPAS.map(r => chip(r, 'rou', _state.roupas.has(r.id))).join('')}
+                ${roupasCustom().map(r => `
+                    <button type="button" class="mg-chip mg-chip-foto ${_state.roupas.has(r.id) ? 'mg-chip-on' : ''}" data-tipo="rou" data-id="${r.id}">
+                        ${r.thumb ? `<img src="${r.thumb}" alt="">` : ''}<span>${_esc(r.label)}</span><small>${r.mediaId ? 'Foto da peça' : 'Minha descrição'}</small>
+                        <i class="mg-chip-x" data-del-custom="rou:${r.id}" data-lucide="x"></i>
+                    </button>`).join('')}
+                <button type="button" class="mg-chip mg-chip-add" id="mg-rou-add"><i data-lucide="shirt" style="width:14px;height:14px"></i><span>Adicionar roupa</span></button>
+            </div>
+
             <div class="mg-gerar-barra">
                 <div class="mg-contagem">
-                    <b>${n}</b> ${n === 1 ? 'imagem' : 'imagens'} ${n ? `<span class="mg-dim">(${(_state.angulos.size || 1)} ângulo${_state.angulos.size === 1 ? '' : 's'} × ${(_state.zooms.size || 1)} zoom${_state.zooms.size === 1 ? '' : 's'})</span>` : ''}
+                    <b>${n}</b> ${n === 1 ? 'imagem' : 'imagens'} ${n ? `<span class="mg-dim">(${(_state.angulos.size || 1)} âng × ${(_state.zooms.size || 1)} zoom × ${(_state.cenarios.size || 1)} cenário${_state.cenarios.size === 1 ? '' : 's'} × ${(_state.roupas.size || 1)} roupa${_state.roupas.size === 1 ? '' : 's'})</span>` : ''}
                     ${n > 12 ? '<span class="mg-aviso"><i data-lucide="alert-triangle" style="width:12px;height:12px;vertical-align:-1px"></i> cada imagem é uma chamada paga</span>' : ''}
                 </div>
                 <button class="btn btn-primary" id="mg-gerar" ${_state.gerando || !n || !_state.refs.length ? 'disabled' : ''}>
@@ -590,27 +783,54 @@ const ModelGenModule = (() => {
             }
         });
 
-        root.querySelectorAll('.mg-chip').forEach(b => b.addEventListener('click', () => {
-            const set = b.dataset.tipo === 'ang' ? _state.angulos : _state.zooms;
+        const SETS = { ang: 'angulos', zoom: 'zooms', cen: 'cenarios', rou: 'roupas' };
+        root.querySelectorAll('.mg-chip[data-tipo]').forEach(b => b.addEventListener('click', e => {
+            if (e.target.closest('[data-del-custom]')) return;   // o X exclui, não seleciona
+            const set = _state[SETS[b.dataset.tipo]];
+            if (!set) return;
             if (set.has(b.dataset.id)) set.delete(b.dataset.id); else set.add(b.dataset.id);
             render();
         }));
+        root.querySelectorAll('[data-del-custom]').forEach(x => x.addEventListener('click', async e => {
+            e.stopPropagation();
+            const [tipo, id] = x.dataset.delCustom.split(':');
+            if (confirm('Excluir este item do seu banco?')) await _removerCustom(tipo, id);
+        }));
+
+        // Cenário próprio (foto do lugar)
+        root.querySelector('#mg-cen-file')?.addEventListener('change', async e => {
+            const f = e.target.files?.[0]; e.target.value = '';
+            if (!f) return;
+            const nome = (prompt('Nome deste cenário:', f.name.replace(/\.[^.]+$/, '')) || '').trim();
+            if (nome === '') return;
+            try {
+                const id = await _addCenarioCustom(f, nome);
+                _state.cenarios.add(id);
+                render(); _toast('Cenário adicionado.', 'success');
+            } catch (err) { _toast('Falha ao adicionar cenário: ' + err.message, 'error'); }
+        });
+
+        // Roupa própria: descrição e/ou foto da peça
+        root.querySelector('#mg-rou-add')?.addEventListener('click', () => _abrirNovaRoupa());
+
         root.querySelectorAll('.mg-pack').forEach(b => b.addEventListener('click', () => {
             const p = b.dataset.pack;
-            if (p === 'limpar') { _state.angulos.clear(); _state.zooms.clear(); }
-            else if (PACKS[p]) { _state.angulos = new Set(PACKS[p].angulos); _state.zooms = new Set(PACKS[p].zooms); }
+            if (p === 'limpar') { _state.angulos.clear(); _state.zooms.clear(); _state.cenarios.clear(); _state.roupas.clear(); }
+            else if (PACKS[p]) {
+                _state.angulos = new Set(PACKS[p].angulos);
+                _state.zooms = new Set(PACKS[p].zooms);
+                _state.cenarios = new Set(PACKS[p].cenarios || ['estudio']);
+                _state.roupas = new Set(PACKS[p].roupas || ['manter']);
+            }
             render();
         }));
 
         const salvarCfg = () => {
-            _cfg.fundo = root.querySelector('#mg-fundo')?.value || _cfg.fundo;
             _cfg.formato = root.querySelector('#mg-formato')?.value || _cfg.formato;
-            const roupa = (root.querySelector('#mg-roupa')?.value || '').trim();
-            _cfg.roupa = roupa || 'manter';
             _cfg.extra = (root.querySelector('#mg-extra')?.value || '').trim();
             _saveCfg();
         };
-        ['#mg-fundo', '#mg-formato', '#mg-roupa', '#mg-extra'].forEach(sel =>
+        ['#mg-formato', '#mg-extra'].forEach(sel =>
             root.querySelector(sel)?.addEventListener('change', salvarCfg));
 
         root.querySelector('#mg-provider')?.addEventListener('change', () => _preencherModelos(root));
@@ -635,6 +855,48 @@ const ModelGenModule = (() => {
         root.querySelectorAll('[data-del-modelo]').forEach(b => b.addEventListener('click', e => {
             e.stopPropagation(); excluirModelo(b.dataset.delModelo);
         }));
+    }
+
+    // Modal de roupa própria: descrição, foto da peça, ou os dois. A foto
+    // serve pra qualquer item que a modelo use ou carregue (bolsa, óculos…).
+    function _abrirNovaRoupa() {
+        let modal = document.getElementById('mg-roupa-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'mg-roupa-modal';
+            modal.className = 'ca-modal-overlay';
+            document.body.appendChild(modal);
+        }
+        modal.classList.remove('hidden');
+        modal.innerHTML = `<div class="ca-modal" style="max-width:460px">
+            <div class="ca-modal-head">
+                <div class="ca-modal-title">Adicionar roupa / peça</div>
+                <button class="ca-modal-close" id="mgr-x"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+            </div>
+            <label class="mg-campo" style="margin-bottom:.7rem"><span>Descrição</span>
+                <input type="text" id="mgr-txt" class="input input-sm" placeholder="ex.: camisa branca oversized com calça preta wide leg"></label>
+            <label class="mg-campo" style="margin-bottom:.7rem"><span>Foto da peça (opcional)</span>
+                <input type="file" id="mgr-file" class="input input-sm" accept="image/*"></label>
+            <p class="mg-help">Com foto, a peça é reproduzida fielmente (serve pra bolsa, óculos, qualquer item). Só com texto, a IA interpreta a descrição.</p>
+            <div style="display:flex;gap:.5rem;justify-content:flex-end">
+                <button class="btn btn-secondary btn-sm" id="mgr-cancel">Cancelar</button>
+                <button class="btn btn-primary btn-sm" id="mgr-ok">Adicionar</button>
+            </div>
+        </div>`;
+        const fechar = () => modal.classList.add('hidden');
+        modal.querySelector('#mgr-x').addEventListener('click', fechar);
+        modal.querySelector('#mgr-cancel').addEventListener('click', fechar);
+        modal.querySelector('#mgr-ok').addEventListener('click', async () => {
+            const texto = (modal.querySelector('#mgr-txt').value || '').trim();
+            const file = modal.querySelector('#mgr-file').files?.[0] || null;
+            if (!texto && !file) { _toast('Escreva uma descrição ou escolha uma foto.', 'error'); return; }
+            try {
+                const id = await _addRoupaCustom({ texto, file, rotulo: texto || (file?.name || '').replace(/\.[^.]+$/, '') });
+                _state.roupas.add(id);
+                fechar(); render(); _toast('Roupa adicionada.', 'success');
+            } catch (err) { _toast('Falha: ' + err.message, 'error'); }
+        });
+        if (window.lucide) { try { lucide.createIcons(); } catch {} }
     }
 
     // Popula as versões do provedor escolhido (mesma lista do ImageAI).
@@ -673,7 +935,8 @@ const ModelGenModule = (() => {
 
     return {
         init, render, gerar, listModelos, carregarModelo, excluirModelo, novoModelo,
-        ANGULOS, ENQUADRAMENTOS, FUNDOS, FORMATOS,
+        ANGULOS, ENQUADRAMENTOS, CENARIOS, ROUPAS, FORMATOS,
+        cenariosCustom, roupasCustom,
         _state, _promptDe, _combos,
     };
 })();
