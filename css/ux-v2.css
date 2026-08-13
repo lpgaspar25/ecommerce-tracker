@@ -10,6 +10,7 @@
     --accent-gradient: linear-gradient(135deg, #efff45, #bfff00);
     --border-focus: #ddff19;
     --ux-acid: #ddff19;
+    --ux-acid-text: #ddff19;   /* acid legível como TEXTO (ver tema claro) */
     --ux-acid-soft: rgba(221, 255, 25, 0.12);
     --ux-acid-ink: #0b0d08;
     --bg-primary: #0d0f0f;
@@ -53,6 +54,7 @@ body[data-theme="light"] {
     --accent-gradient: linear-gradient(135deg, #ddff19, #bde900);
     --border-focus: #94b100;
     --ux-acid: #d8fa18;
+    --ux-acid-text: #5f7500;   /* amarelo fluor some no branco — usa oliva escuro */
     --ux-acid-soft: rgba(166, 199, 0, 0.13);
     --ux-acid-ink: #10120c;
     --bg-primary: #f2f3ed;
@@ -65,7 +67,7 @@ body[data-theme="light"] {
     --border-strong: rgba(28, 39, 60, 0.17);
     --text-primary: #171914;
     --text-secondary: #60645b;
-    --text-muted: #8a8e84;
+    --text-muted: #74786e;
     --green: #16845e;
     --green-bg: rgba(22, 132, 94, 0.08);
     --red: #d64550;
@@ -122,7 +124,7 @@ body.ux-v2-ready {
 .ux-v2-ready .btn-primary {
     color: var(--ux-acid-ink) !important;
     background: var(--ux-acid);
-    border-color: var(--ux-acid);
+    border-color: var(--ux-acid-text);
     box-shadow: 0 8px 22px rgba(199, 235, 0, 0.14);
 }
 
@@ -356,7 +358,7 @@ body.ux-v2-ready {
 }
 
 .ux-nav-link.active > svg:first-child {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
 }
 
 .ux-nav-chevron {
@@ -896,7 +898,7 @@ body.ux-v2-ready {
 
 .ux-operations-message > span {
     margin-bottom: 7px;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     font-size: 0.59rem;
     font-weight: 800;
     letter-spacing: 0.17em;
@@ -914,7 +916,7 @@ body.ux-v2-ready {
 }
 
 .ux-operations-message > strong span {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
 }
 
 .ux-operations-message > p {
@@ -931,7 +933,7 @@ body.ux-v2-ready {
     align-items: center;
     gap: 8px;
     padding: 0;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     background: transparent;
     border: 0;
     font-size: 0.69rem;
@@ -1551,7 +1553,7 @@ body.ux-overlay-open {
 .ux-workspace-name > svg {
     width: 15px;
     height: 15px;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
 }
 
 .ux-workspace-tabs {
@@ -1603,7 +1605,7 @@ body.ux-overlay-open {
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     font-size: 0.59rem;
     font-weight: 800;
     letter-spacing: 0.15em;
@@ -1661,7 +1663,7 @@ body.ux-overlay-open {
 }
 
 .ux-library-hero h2 em {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     font-style: normal;
 }
 
@@ -1738,7 +1740,7 @@ body.ux-overlay-open {
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     font-size: 0.61rem;
     font-weight: 750;
     text-transform: uppercase;
@@ -1757,7 +1759,7 @@ body.ux-overlay-open {
     font-weight: 700;
 }
 
-.ux-orbit-card-small svg { width: 13px; height: 13px; color: var(--ux-acid); }
+.ux-orbit-card-small svg { width: 13px; height: 13px; color: var(--ux-acid-text); }
 .ux-orbit-card-small.top { top: 12px; right: 12px; }
 .ux-orbit-card-small.bottom { right: 2px; bottom: 18px; }
 
@@ -1772,7 +1774,7 @@ body.ux-overlay-open {
 .ux-hub-heading span,
 .ux-hub-card-type,
 .ux-insight-label {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     font-size: 0.56rem;
     font-weight: 800;
     letter-spacing: 0.13em;
@@ -1815,7 +1817,7 @@ body.ux-overlay-open {
 .ux-creative-hub-grid > button.featured {
     color: var(--ux-acid-ink);
     background: var(--ux-acid);
-    border-color: var(--ux-acid);
+    border-color: var(--ux-acid-text);
 }
 
 .ux-hub-card-icon {
@@ -1824,7 +1826,7 @@ body.ux-overlay-open {
     display: grid;
     place-items: center;
     margin-bottom: 22px;
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     background: var(--ux-acid-soft);
     border: 1px solid rgba(221, 255, 25, 0.15);
     border-radius: 9px;
@@ -1867,7 +1869,7 @@ body.ux-overlay-open {
 
 .ux-creative-flow > div { position: relative; display: grid; grid-template-columns: 30px 1fr; gap: 2px 9px; align-items: center; }
 .ux-creative-flow > div > span { position: absolute; top: -4px; right: 0; color: var(--text-muted); font-size: 0.5rem; }
-.ux-creative-flow > div > svg { grid-row: 1 / span 2; width: 18px; height: 18px; color: var(--ux-acid); }
+.ux-creative-flow > div > svg { grid-row: 1 / span 2; width: 18px; height: 18px; color: var(--ux-acid-text); }
 .ux-creative-flow strong { font-size: 0.68rem; }
 .ux-creative-flow small { color: var(--text-muted); font-size: 0.56rem; }
 .ux-creative-flow > svg { width: 14px; height: 14px; color: var(--text-muted); }
@@ -1910,7 +1912,7 @@ body.ux-overlay-open {
     border-radius: 14px;
 }
 
-.ux-insight-frame > span { width: 46px; height: 46px; display: grid; place-items: center; color: var(--ux-acid); background: var(--ux-acid-soft); border-radius: 12px; }
+.ux-insight-frame > span { width: 46px; height: 46px; display: grid; place-items: center; color: var(--ux-acid-text); background: var(--ux-acid-soft); border-radius: 12px; }
 .ux-insight-frame svg { width: 21px; height: 21px; }
 .ux-insight-frame strong { margin-top: 15px; font-size: 0.76rem; }
 .ux-insight-frame small { margin-top: 5px; color: #767b72; font-size: 0.59rem; }
@@ -1929,7 +1931,7 @@ body.ux-overlay-open {
 .ux-insight-rows { display: flex; flex-direction: column; margin: 24px 0 18px; border-top: 1px solid var(--border); }
 .ux-insight-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); }
 .ux-insight-rows span { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 0.67rem; }
-.ux-insight-rows span svg { width: 14px; height: 14px; color: var(--ux-acid); }
+.ux-insight-rows span svg { width: 14px; height: 14px; color: var(--ux-acid-text); }
 .ux-insight-rows em { color: var(--text-muted); font-size: 0.58rem; font-style: normal; }
 .ux-insight-report > .btn { align-self: flex-start; gap: 7px; }
 .ux-insight-report > .btn svg { width: 14px; height: 14px; }
@@ -1942,7 +1944,7 @@ body.ux-overlay-open {
 }
 
 .ux-insight-capabilities article { min-height: 128px; padding: 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 13px; }
-.ux-insight-capabilities article > svg { width: 18px; height: 18px; color: var(--ux-acid); }
+.ux-insight-capabilities article > svg { width: 18px; height: 18px; color: var(--ux-acid-text); }
 .ux-insight-capabilities strong { display: block; margin-top: 16px; font-size: 0.72rem; }
 .ux-insight-capabilities small { display: block; margin-top: 5px; color: var(--text-muted); font-size: 0.61rem; line-height: 1.45; }
 
@@ -1966,7 +1968,7 @@ body.ux-overlay-open {
 .ux-v2-ready .adl-picker-tab-active,
 .ux-v2-ready .adl-mode-tab-active,
 .ux-v2-ready .adm-tab-active {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     background: var(--ux-acid-soft);
 }
 
@@ -1983,7 +1985,7 @@ body.ux-overlay-open {
 }
 
 .ux-v2-ready .adl-card-selected {
-    border-color: var(--ux-acid) !important;
+    border-color: var(--ux-acid-text) !important;
     box-shadow: 0 0 0 2px rgba(221, 255, 25, 0.2), 0 14px 32px rgba(0, 0, 0, 0.18) !important;
 }
 
@@ -2001,7 +2003,7 @@ body.ux-overlay-open {
 }
 
 .ux-v2-ready .adm-bulk-bar {
-    color: var(--ux-acid);
+    color: var(--ux-acid-text);
     background: var(--ux-acid-soft);
     border-color: rgba(221, 255, 25, 0.26);
 }
@@ -2638,7 +2640,7 @@ body.ux-overlay-open {
 .ca-chips { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; margin-left: auto; }
 .ca-chip { border: 1px solid var(--border); background: transparent; color: var(--text-secondary); padding: 0.32rem 0.7rem; border-radius: 999px; font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: all 0.14s; }
 .ca-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
-.ca-chip-on { background: var(--ux-acid-soft); color: var(--ux-acid); border-color: var(--accent); }
+.ca-chip-on { background: var(--ux-acid-soft); color: var(--ux-acid-text); border-color: var(--accent); }
 
 .ca-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.6rem; margin: 0.8rem 0 1rem; }
 .ca-kpi { background: var(--ux-card-solid); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7rem 0.85rem; }
@@ -2660,7 +2662,7 @@ body.ux-overlay-open {
 .ca-thumb { width: 34px; height: 34px; border-radius: 7px; background-size: cover; background-position: center; background-color: var(--bg-secondary); border: 1px solid var(--border); flex-shrink: 0; display: inline-block; }
 .ca-thumb-empty { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .ca-name { color: var(--text-primary); font-weight: 600; line-height: 1.25; }
-.ca-inst { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 700; color: var(--ux-acid); background: var(--ux-acid-soft); padding: 0.05rem 0.35rem; border-radius: 5px; vertical-align: middle; }
+.ca-inst { display: inline-block; margin-left: 0.35rem; font-size: 0.68rem; font-weight: 700; color: var(--ux-acid-text); background: var(--ux-acid-soft); padding: 0.05rem 0.35rem; border-radius: 5px; vertical-align: middle; }
 
 .ca-tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 6px; white-space: nowrap; }
 .ca-tag-good { background: var(--green-bg); color: var(--green); }
@@ -2670,11 +2672,11 @@ body.ux-overlay-open {
 
 .ca-countries { display: flex; flex-wrap: wrap; gap: 0.25rem; max-width: 210px; }
 .ca-country { font-size: 0.67rem; background: var(--bg-input); color: var(--text-secondary); padding: 0.1rem 0.4rem; border-radius: 5px; white-space: nowrap; }
-.ca-country-more { background: var(--ux-acid-soft); color: var(--ux-acid); font-weight: 700; }
+.ca-country-more { background: var(--ux-acid-soft); color: var(--ux-acid-text); font-weight: 700; }
 .ca-country-none { background: transparent; color: var(--text-muted); }
 
 .ca-open { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0.2rem; border-radius: 6px; display: inline-flex; }
-.ca-open:hover { color: var(--ux-acid); background: var(--ux-acid-soft); }
+.ca-open:hover { color: var(--ux-acid-text); background: var(--ux-acid-soft); }
 
 .ca-group { margin-bottom: 1.4rem; }
 .ca-group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0 0.2rem 0.45rem; margin-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }
@@ -2682,7 +2684,7 @@ body.ux-overlay-open {
 .ca-group-spend { color: var(--text-muted); font-size: 0.8rem; font-weight: 500; }
 
 .ca-empty { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; text-align: center; padding: 2.5rem 1rem; margin-top: 1rem; }
-.ca-empty a { color: var(--ux-acid); }
+.ca-empty a { color: var(--ux-acid-text); }
 
 /* Modais (drill-down + regras) */
 .ca-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.62); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 1.2rem; }
@@ -2735,7 +2737,7 @@ body.ux-overlay-open {
 .mg-ref-x:hover { background: var(--red); }
 .mg-ref-add { width: 72px; height: 90px; border-radius: 8px; border: 1px dashed var(--border-strong); background: transparent; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; color: var(--text-muted); font-size: .68rem; transition: all .14s; }
-.mg-ref-add:hover { border-color: var(--accent); color: var(--ux-acid); background: var(--ux-acid-soft); }
+.mg-ref-add:hover { border-color: var(--accent); color: var(--ux-acid-text); background: var(--ux-acid-soft); }
 
 /* Campos */
 .mg-campos { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
@@ -2750,12 +2752,12 @@ body.ux-overlay-open {
   padding: .42rem .7rem; border-radius: 9px; font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .14s; }
 .mg-chip small { color: var(--text-muted); font-size: .65rem; font-weight: 500; }
 .mg-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
-.mg-chip-on { background: var(--ux-acid-soft); color: var(--ux-acid); border-color: var(--accent); }
-.mg-chip-on small { color: var(--ux-acid); opacity: .75; }
+.mg-chip-on { background: var(--ux-acid-soft); color: var(--ux-acid-text); border-color: var(--accent); }
+.mg-chip-on small { color: var(--ux-acid-text); opacity: .75; }
 .mg-packs { display: inline-flex; gap: .3rem; flex-wrap: wrap; }
 .mg-pack { border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: .7rem; font-weight: 600;
   padding: .22rem .55rem; border-radius: 999px; cursor: pointer; transition: all .14s; }
-.mg-pack:hover { border-color: var(--accent); color: var(--ux-acid); }
+.mg-pack:hover { border-color: var(--accent); color: var(--ux-acid-text); }
 
 /* Barra de gerar */
 .mg-gerar-barra { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
@@ -2814,4 +2816,49 @@ body.ux-overlay-open {
 .mg-chip-foto:hover .mg-chip-x { display: inline-flex; }
 .mg-chip-x:hover { background: var(--red); color: #fff; border-color: var(--red); }
 .mg-chip-add { flex-direction: row; align-items: center; gap: .35rem; border-style: dashed; color: var(--text-muted); }
-.mg-chip-add:hover { border-color: var(--accent); color: var(--ux-acid); background: var(--ux-acid-soft); }
+.mg-chip-add:hover { border-color: var(--accent); color: var(--ux-acid-text); background: var(--ux-acid-soft); }
+
+/* ============================================================
+   Correções de tema claro + layout
+   ============================================================ */
+
+/* A sidebar tem gradiente escuro fixo nos DOIS temas — lá o acid neon
+   continua sendo o texto certo (o oliva escuro sumiria no preto). */
+.ux-v2-ready .app-sidebar { --ux-acid-text: var(--ux-acid); }
+
+/* ── Gerar Modelo: card de Opções vazava para fora ──
+   Item de grid nasce com min-width:auto e não encolhe abaixo do conteúdo,
+   então a 2ª coluna ("Gerar com") estourava a largura do card. */
+.mg-campos { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+.mg-campo { min-width: 0; }
+.mg-campo > select,
+.mg-campo > input { width: 100%; min-width: 0; max-width: 100%; }
+.mg-card { overflow: hidden; }
+
+/* ── Chips legíveis nos dois temas ──
+   Com fundo transparente + borda de 10% de opacidade, no tema claro os
+   botões praticamente sumiam. Fundo próprio dá o contorno de volta. */
+.mg-chip, .mg-pack, .ca-chip {
+    background: var(--bg-input);
+    border-color: var(--border-strong);
+}
+.mg-chip:hover, .ca-chip:hover { background: var(--bg-card-hover); border-color: var(--text-muted); }
+.mg-pack:hover { background: var(--bg-card-hover); }
+.mg-chip-on, .ca-chip-on {
+    background: var(--ux-acid-soft);
+    border-color: var(--accent);
+    color: var(--ux-acid-text);
+}
+.mg-chip-on small { color: var(--ux-acid-text); opacity: .8; }
+.mg-chip-add { background: transparent; }
+.mg-ref-add { background: var(--bg-input); }
+
+/* Contraste dos selecionados/realces que usavam o acid neon como texto */
+.ca-country-more, .ca-inst { color: var(--ux-acid-text); }
+.mg-modelo-on { border-color: var(--accent); }
+
+/* Elementos CLICÁVEIS não podem usar --text-muted: no tema claro ele dá
+   ~2.9:1, abaixo do mínimo legível. Passam a usar --text-secondary. */
+.mg-pack, .mg-chip-add, .mg-ref-add, .mg-grupo-lbl, .ca-chip, .ca-open, .mg-card-hint {
+    color: var(--text-secondary);
+}

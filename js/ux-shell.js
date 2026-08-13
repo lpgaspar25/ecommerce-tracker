@@ -774,6 +774,7 @@ const UXShell = {
                     ['ad-library', 'Biblioteca', 'library'],
                     ['ai-generations', 'Gerar', 'wand-sparkles'],
                     ['studio', 'Estúdio', 'palette'],
+                    ['gerar-modelo', 'Modelos', 'user-round-search'],
                     ['creatives', 'Arquivos', 'images'],
                     ['creative-insights', 'Insights', 'scan-eye']
                 ]
