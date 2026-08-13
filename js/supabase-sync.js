@@ -101,6 +101,19 @@ const SupabaseSync = (() => {
             status: r.status, language: r.language,
         };
     }
+    // A nuvem só guarda a ECONOMIA do produto (preço/custo/etc.) — fotos,
+    // descrição, SKU, tags, preços por país, contas de anúncio, vínculo Shopify
+    // e afins NÃO trafegam (base64 não cabe no banco). Ao aplicar o produto da
+    // nuvem, mesclamos: a nuvem manda nos campos dela, mas TUDO que é só-local
+    // é preservado. Sem isso, o sync apagava fotos e descrições (bug relatado).
+    function _mergeProduct(local, remote) {
+        const out = { ...local, ...remote };
+        // Não deixa a nuvem ZERAR um campo que o local tem preenchido.
+        Object.keys(remote).forEach(k => {
+            if ((remote[k] === null || remote[k] === undefined) && local[k] != null) out[k] = local[k];
+        });
+        return out;
+    }
     function _goalToRow(g) {
         return {
             id: g.id, user_id: _user ? _user.id : null,
@@ -426,12 +439,21 @@ const SupabaseSync = (() => {
                     if (typeof LocalStore !== 'undefined') LocalStore.save('stores', AppState.stores);
                 }
                 if (remoteProducts.length > 0) {
-                    AppState.allProducts = remoteProducts.map(_rowToProduct).filter(p => {
-                        if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
-                            return !ProductsModule.isTombstoned(p);
-                        }
-                        return true;
-                    });
+                    const tomb = (p) => (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned)
+                        ? ProductsModule.isTombstoned(p) : false;
+                    const locais = AppState.allProducts || [];
+                    const localPorId = new Map(locais.map(p => [p.id, p]));
+                    // Remotos: mescla preservando fotos/descrição do local (bug fix).
+                    const mesclados = remoteProducts.map(r => {
+                        const base = _rowToProduct(r);
+                        const local = localPorId.get(r.id);
+                        return local ? _mergeProduct(local, base) : base;
+                    }).filter(p => !tomb(p));
+                    // Produtos que só existem LOCAL (ainda não subiram) não podem
+                    // ser apagados pelo sync — mantém até o próximo upload.
+                    const idsRemotos = new Set(remoteProducts.map(r => r.id));
+                    const soLocais = locais.filter(p => !idsRemotos.has(p.id) && !tomb(p));
+                    AppState.allProducts = [...mesclados, ...soLocais];
                     if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
                 }
                 if (remoteGoals.length > 0) {

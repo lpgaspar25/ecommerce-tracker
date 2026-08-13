@@ -342,8 +342,14 @@ const SheetsAPI = {
             ensureStoreSetup();
             const fallbackStoreId = AppState.stores[0]?.id || '';
 
-            // Parse products
-            AppState.allProducts = (ranges[0].values || []).map(row => ({
+            // Parse products — o Sheets guarda só a ECONOMIA (13 colunas). Fotos,
+            // descrição, SKU, tags, preços por país etc. ficam SÓ no local, então
+            // mesclamos em vez de sobrescrever (senão apaga fotos+descrição — bug).
+            const _tombP = (p) => (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned)
+                ? ProductsModule.isTombstoned(p) : false;
+            const _locaisP = AppState.allProducts || [];
+            const _localPorId = new Map(_locaisP.map(p => [p.id, p]));
+            const _remotosP = (ranges[0].values || []).map(row => ({
                 id: row[0] || '',
                 name: row[1] || '',
                 price: parseFloat(row[2]) || 0,
@@ -357,13 +363,15 @@ const SheetsAPI = {
                 status: row[10] || 'ativo',
                 storeId: row[11] || fallbackStoreId,
                 language: row[12] || 'Ingles'
-            })).filter(p => {
-                // Skip products that user has tombstoned (deleted locally)
-                if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
-                    return !ProductsModule.isTombstoned(p);
-                }
-                return true;
-            });
+            }));
+            const _mescladosP = _remotosP.map(base => {
+                const local = _localPorId.get(base.id);
+                // base não tem images/description → o spread preserva os do local.
+                return local ? { ...local, ...base } : base;
+            }).filter(p => !_tombP(p));
+            const _idsRemotosP = new Set(_remotosP.map(r => r.id));
+            const _soLocaisP = _locaisP.filter(p => !_idsRemotosP.has(p.id) && !_tombP(p));
+            AppState.allProducts = [..._mescladosP, ..._soLocaisP];
 
             // Parse goals
             AppState.allGoals = (ranges[1].values || []).map(row => ({
