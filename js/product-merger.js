@@ -477,7 +477,7 @@ const ProductMerger = (() => {
 
         body.innerHTML = `
             <section class="pm-view">
-                <div class="pm-view-head"><div><h4>Revise antes de criar</h4><p>A Shopify receberá um produto novo em rascunho. As origens ficam intactas.</p></div><span class="pm-status-chip ok"><i data-lucide="shield-check"></i> Sem alteração nas origens</span></div>
+                <div class="pm-view-head"><div><h4>Revise antes de criar</h4><p>A Shopify e a ferramenta receberão o novo produto em rascunho. As origens ficam intactas.</p></div><span class="pm-status-chip ok"><i data-lucide="shield-check"></i> Sem alteração nas origens</span></div>
                 ${permissionAlert}${errorAlert}
                 <div class="pm-review-hero">
                     <div><h5>${_esc(state.title)}</h5><p>/products/${_esc(state.handle)} · opção ${_esc(state.optionName)} · status RASCUNHO</p></div>
@@ -817,7 +817,7 @@ const ProductMerger = (() => {
             note = `${_includedImages().length} fotos serão copiadas e renomeadas.`;
         } else {
             label = state.missingScopes.length ? 'Atualizar permissões' : (state.executionError ? 'Tentar novamente' : 'Criar rascunho');
-            note = state.missingScopes.length ? 'A conexão continua ativa; falta autorizar estoque e localizações.' : 'Nenhum produto original será alterado.';
+            note = state.missingScopes.length ? 'A conexão continua ativa; falta autorizar estoque e localizações.' : 'O produto será criado na Shopify e salvo na ferramenta. Nenhum original será alterado.';
         }
         _setFooter(note, { disabled, label, back });
     }
