@@ -465,6 +465,7 @@ const DiaryModule = {
         icRate:        { good: 50, avg: 30 },
         convPage:      { good: 3,  avg: 1.5 },
         convCheckout:  { good: 50, avg: 30 },
+        roas:          { good: 2.0, avg: 1.3 },  // maior é melhor; adimensional
         // lower-is-better (values in BRL)
         cpa:           { good: 30, avg: 60  },
         cpc:           { good: 1.0, avg: 2.0 },

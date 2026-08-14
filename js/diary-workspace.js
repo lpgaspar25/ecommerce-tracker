@@ -71,6 +71,7 @@ const DiaryWorkspacePreview = {
                 </div>
                 <div class="dw-hero-actions">
                     <button type="button" class="dw-btn dw-btn-quiet" data-dw-action="sync"><i data-lucide="refresh-cw"></i> Sincronizar</button>
+                    <button type="button" class="dw-btn dw-btn-quiet" data-dw-action="thresholds" title="Definir as faixas aceitáveis de cada etapa do funil"><i data-lucide="target"></i> Métricas alvo</button>
                     <button type="button" class="dw-btn dw-btn-primary" data-dw-action="new"><i data-lucide="plus"></i> Nova entrada</button>
                     <div class="dw-tools-wrap">
                         <button type="button" class="dw-icon-btn" data-dw-action="tools" aria-label="Abrir ferramentas" title="Ferramentas"><i data-lucide="ellipsis"></i></button>
@@ -124,6 +125,7 @@ const DiaryWorkspacePreview = {
                         <span class="dw-shopify-pill">Shopify + mídia</span>
                     </div>
                     <div class="dw-funnel" id="dw-funnel"></div>
+                    <div class="dw-funnel-alert" id="dw-funnel-alert"></div>
                     <div class="dw-funnel-note" id="dw-funnel-note"></div>
                 </article>
             </section>`;
@@ -178,6 +180,9 @@ const DiaryWorkspacePreview = {
         });
         document.querySelector('[data-dw-action="new"]')?.addEventListener('click', () => document.getElementById('btn-add-entry')?.click());
         document.querySelector('[data-dw-action="sync"]')?.addEventListener('click', () => document.getElementById('btn-diary-sync-shopify')?.click());
+        // "Métricas alvo": dispara o botão antigo (oculto) que abre o modal com
+        // os campos das faixas já pré-preenchidos (o listener vive no DiaryModule).
+        document.querySelector('[data-dw-action="thresholds"]')?.addEventListener('click', () => document.getElementById('btn-diary-thresholds')?.click());
         document.querySelector('[data-dw-action="history-columns"]')?.addEventListener('click', event => {
             event.stopPropagation();
             document.getElementById('dw-history-columns-menu')?.classList.toggle('open');
@@ -426,6 +431,34 @@ const DiaryWorkspacePreview = {
             { label: 'Vendas reais', value: m.sales, rate: m.checkout ? m.sales / m.checkout * 100 : 0, color: '#cfff00' },
         ];
         document.getElementById('dw-funnel').innerHTML = steps.map((step, index) => `<div class="dw-funnel-step"><div class="dw-funnel-bar" style="--step-color:${step.color};--step-width:${Math.max(28, 100 - index * 18)}%"><span></span></div><div><span>${step.label}</span><strong>${this._number(step.value)}</strong><small>${index === 0 ? 'entrada do funil' : `${step.rate.toFixed(1).replace('.', ',')}% da etapa anterior`}</small></div></div>`).join('');
+
+        // Alerta de funil: lista as etapas ABAIXO da faixa aceitável (Métricas
+        // Alvo). Reaproveita o motor de limiares (_hc → DiaryModule) — nada de
+        // moeda aqui, só as 4 taxas % do funil.
+        const _etapas = [
+            { key: 'atcRate',      label: 'Pág. → Carrinho',     value: m.pageViews ? m.atc / m.pageViews * 100 : 0 },
+            { key: 'icRate',       label: 'Carrinho → Checkout', value: m.atc ? m.checkout / m.atc * 100 : 0 },
+            { key: 'convPage',     label: 'Conversão da página', value: Number(m.conversion) || 0 },
+            { key: 'convCheckout', label: 'Checkout → Venda',    value: m.checkout ? m.sales / m.checkout * 100 : 0 },
+        ];
+        const _th = (typeof DiaryModule !== 'undefined' && DiaryModule._loadThresholds) ? DiaryModule._loadThresholds() : {};
+        const _fora = _etapas
+            .map(s => ({ ...s, cls: this._hc(s.value, s.key), alvo: _th[s.key]?.good }))
+            .filter(s => s.cls === 'metric-bad' || s.cls === 'metric-avg')
+            .sort((a, b) => (a.cls === 'metric-bad' ? 0 : 1) - (b.cls === 'metric-bad' ? 0 : 1));
+        const _alertEl = document.getElementById('dw-funnel-alert');
+        if (_alertEl) {
+            const _crit = _fora.filter(s => s.cls === 'metric-bad').length;
+            if (!_fora.length) { _alertEl.className = 'dw-funnel-alert'; _alertEl.innerHTML = ''; }
+            else {
+                _alertEl.className = `dw-funnel-alert ${_crit ? 'danger' : 'warn'}`;
+                _alertEl.innerHTML = `<i data-lucide="triangle-alert"></i><div>
+                    <strong>${_crit ? `${_crit} etapa(s) abaixo do aceitável` : 'Etapas na zona de atenção'}</strong>
+                    <ul>${_fora.map(s => `<li class="${s.cls}">${s.label}: <b>${s.value.toFixed(1).replace('.', ',')}%</b>${s.alvo != null ? ` <small>· alvo ≥ ${String(s.alvo).replace('.', ',')}%</small>` : ''}</li>`).join('')}</ul>
+                </div>`;
+            }
+        }
+
         const d = comparison?.deltas?.conversion;
         document.getElementById('dw-funnel-note').innerHTML = d == null
             ? '<i data-lucide="sparkles"></i><span>Selecione um produto com teste para comparar a eficiência do funil.</span>'
@@ -479,6 +512,8 @@ const DiaryWorkspacePreview = {
             const sales = Number(entry.sales || 0);
             const cpa = sales ? budget / sales : 0;
             const roas = budget ? revenue / budget : 0;
+            // A faixa 'cpa' das Métricas Alvo é em BRL; o cpa da linha está em USD.
+            const cpaBRL = (typeof convertToBRL === 'function') ? convertToBRL(cpa, 'USD') : cpa;
             const baselineCpa = baseline.cpa;
             const baselineRoas = baseline.roas;
             const cpaDelta = baselineCpa ? (cpa - baselineCpa) / baselineCpa * 100 : null;
@@ -510,8 +545,8 @@ const DiaryWorkspacePreview = {
                 <td class="num hist-combined" data-history-col="carts"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
                 <td class="num hist-combined" data-history-col="checkout"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
                 <td class="num hist-combined" data-history-col="sales"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>Shopify</small></div></td>
-                <td class="num" data-history-col="cpa"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
-                <td class="num" data-history-col="roas"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td class="num" data-history-col="cpa"><strong class="${this._hc(cpaBRL, 'cpa', true)}">${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td class="num" data-history-col="roas"><strong class="${this._hc(roas, 'roas')}">${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td data-history-col="reading"><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
                 <td><button class="dw-row-toggle${detailOpen ? ' open' : ''}" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
             </tr>

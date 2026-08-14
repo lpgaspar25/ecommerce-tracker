@@ -179,6 +179,24 @@
 .dw-funnel-step small { grid-column: 1 / -1; color: var(--dw-muted); font-size: 8px; }
 .dw-funnel-note { display: flex; gap: 9px; margin-top: 18px; padding: 11px; color: #4e5546; background: #f5f7eb; border: 1px solid #e4e9cd; border-radius: 11px; font-size: 9px; line-height: 1.45; }
 .dw-funnel-note svg { flex: 0 0 auto; width: 14px; height: 14px; color: var(--dw-lime-deep); }
+/* Alerta de funil (etapas abaixo do aceitável) — espelha o .dw-funnel-note */
+.dw-funnel-alert { display: none; }
+.dw-funnel-alert.warn, .dw-funnel-alert.danger {
+    display: flex; gap: 9px; margin-top: 14px; padding: 11px 12px;
+    border-radius: 11px; line-height: 1.4;
+}
+.dw-funnel-alert svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 1px; }
+.dw-funnel-alert > div { min-width: 0; }
+.dw-funnel-alert strong { display: block; font-size: 11px; margin-bottom: 5px; }
+.dw-funnel-alert ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.dw-funnel-alert li { font-size: 10px; font-weight: 600; }
+.dw-funnel-alert li small { font-weight: 500; opacity: .75; }
+.dw-funnel-alert.danger { color: #b42318; background: #fef3f2; border: 1px solid #fecdca; }
+.dw-funnel-alert.danger svg { color: #e44c56; }
+.dw-funnel-alert.warn { color: #93531a; background: #fffaeb; border: 1px solid #fedf89; }
+.dw-funnel-alert.warn svg { color: #f59e0b; }
+[data-theme="dark"] .dw-funnel-alert.danger { color: #ffb4b4; background: rgba(228,76,86,.10); border-color: rgba(228,76,86,.28); }
+[data-theme="dark"] .dw-funnel-alert.warn { color: #f5c26b; background: rgba(245,158,11,.09); border-color: rgba(245,158,11,.26); }
 .dw-empty-test { display: grid; justify-items: start; gap: 8px; }
 .dw-empty-icon { display: grid; place-items: center; width: 40px; height: 40px; color: var(--dw-violet); background: rgba(118,100,255,.08); border-radius: 12px; }
 .dw-empty-icon svg { width: 18px; }
