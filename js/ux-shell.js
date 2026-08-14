@@ -627,6 +627,54 @@ const UXShell = {
         const date = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date());
         const dateLabel = intro.querySelector('#ux-dashboard-date');
         if (dateLabel) dateLabel.textContent = date.charAt(0).toUpperCase() + date.slice(1);
+        this._setupGlobalFiltersToggle();
+    },
+
+    // Barra de filtros globais (moeda/produto/período) recolhível num ícone
+    // discreto: por padrão fica fechada, mostrando só o ícone + um resumo do que
+    // está selecionado; clicar abre a barra completa. Estado é lembrado.
+    _setupGlobalFiltersToggle() {
+        const controls = document.querySelector('.ux-dashboard-controls');
+        const bar = controls?.querySelector('.dash-date-controls');
+        if (!bar || bar.querySelector('.ux-filters-toggle')) return;
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'ux-filters-toggle';
+        toggle.setAttribute('aria-label', 'Filtros globais');
+        toggle.innerHTML = '<i data-lucide="sliders-horizontal"></i><span class="ux-filters-summary"></span>';
+        bar.insertBefore(toggle, bar.firstChild);
+
+        const updateSummary = () => {
+            const cur = document.getElementById('dash-currency');
+            const prod = document.getElementById('dash-product-filter');
+            const dLabel = document.getElementById('dash-date-label');
+            const curTxt = cur ? (cur.options[cur.selectedIndex]?.text || '') : '';
+            const prodTxt = prod ? (prod.options[prod.selectedIndex]?.text || '') : '';
+            const dateTxt = dLabel?.textContent || '';
+            const span = toggle.querySelector('.ux-filters-summary');
+            if (span) span.textContent = [curTxt, prodTxt, dateTxt].filter(Boolean).join(' · ');
+        };
+
+        // Padrão: recolhido (discreto). Só expande se o usuário já tinha aberto.
+        const collapsed = this._state().filtersCollapsed !== false;
+        controls.classList.toggle('ux-filters-collapsed', collapsed);
+        updateSummary();
+
+        toggle.addEventListener('click', () => {
+            const nowCollapsed = !controls.classList.contains('ux-filters-collapsed');
+            controls.classList.toggle('ux-filters-collapsed', nowCollapsed);
+            this._saveState({ filtersCollapsed: nowCollapsed });
+            if (nowCollapsed) updateSummary();
+        });
+
+        ['dash-currency', 'dash-product-filter'].forEach(id =>
+            document.getElementById(id)?.addEventListener('change', updateSummary));
+        const dLabel = document.getElementById('dash-date-label');
+        if (dLabel && typeof MutationObserver !== 'undefined') {
+            new MutationObserver(updateSummary).observe(dLabel, { childList: true, characterData: true, subtree: true });
+        }
+        this._refreshIcons();
     },
 
     _buildCreativeHub() {

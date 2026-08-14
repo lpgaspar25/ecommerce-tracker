@@ -2187,8 +2187,17 @@ const ShopifyModule = (() => {
                 // Build product breakdown from Shopify data, showing local product name when linked
                 const localProducts = (typeof AppState !== 'undefined') ? (AppState.allProducts || AppState.products || []) : [];
                 const reverseLinks = {}; // shopifyId -> localProduct
+                // Vínculo #1: mapa explícito _productLinks (dropdown do formulário).
                 for (const [localId, shopifyId] of Object.entries(_productLinks)) {
                     reverseLinks[String(shopifyId)] = localProducts.find(p => String(p.id) === String(localId));
+                }
+                // Vínculo #2: shopifyId gravado no próprio produto (via "Conectar por
+                // nome", "Sincronizar Shopify" ou import). Sem isto, produtos
+                // vinculados por esse caminho apareciam como "não vinculado" aqui.
+                for (const p of localProducts) {
+                    if (p && p.shopifyId && !reverseLinks[String(p.shopifyId)]) {
+                        reverseLinks[String(p.shopifyId)] = p;
+                    }
                 }
 
                 // Also grab product titles from line items
