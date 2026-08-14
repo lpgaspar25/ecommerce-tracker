@@ -25,7 +25,7 @@
             } catch (e) {}
         })();
     </script>
-    <link rel="stylesheet" href="css/styles.css?v=20260812a">
+    <link rel="stylesheet" href="css/styles.css?v=20260813-products-workspace">
     <link rel="stylesheet" href="css/ux-v2.css?v=20260812a">
     <link rel="stylesheet" href="css/product-merger.css?v=20260813a">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
@@ -688,12 +688,40 @@
 
         <!-- ==================== PRODUTOS ==================== -->
         <section id="tab-products" class="tab-panel">
-            <div class="section-header">
-                <h2>Produtos</h2>
-                <button id="btn-import-shopify" class="btn btn-secondary" title="Importar produtos da Shopify"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Importar da Shopify</button>
-                <button id="btn-import-shopify-details-bulk" class="btn btn-secondary" title="Trazer descrição, fotos e variantes da Shopify para todos os produtos vinculados"><i data-lucide="download-cloud" style="width:14px;height:14px"></i> Importar descrições e fotos</button>
-                <button id="btn-product-merge" class="btn btn-secondary product-merge-trigger" title="Transformar produtos separados por cor em um produto com variantes"><i data-lucide="combine" style="width:14px;height:14px"></i> Unificar por cor</button>
-                <button id="btn-add-product" class="btn btn-primary">+ Adicionar Produto</button>
+            <div class="products-page-header">
+                <div>
+                    <div class="products-page-eyebrow">CATÁLOGO</div>
+                    <div class="products-page-title-row">
+                        <h2>Produtos</h2>
+                        <span id="products-total-count" class="products-total-pill">0 itens</span>
+                    </div>
+                    <p>Organize, sincronize e prepare cada produto para vender.</p>
+                </div>
+                <div class="products-header-actions">
+                    <button id="btn-import-shopify-details-bulk" class="btn btn-secondary" title="Atualizar descrição, fotos e variantes dos produtos vinculados">
+                        <i data-lucide="refresh-cw" style="width:15px;height:15px"></i> Sincronizar Shopify
+                    </button>
+                    <details class="products-create-menu" id="products-create-menu">
+                        <summary class="btn btn-primary">
+                            <i data-lucide="plus" style="width:16px;height:16px"></i> Novo produto
+                            <i data-lucide="chevron-down" style="width:14px;height:14px"></i>
+                        </summary>
+                        <div class="products-create-popover" role="menu" aria-label="Formas de criar produto">
+                            <button id="btn-add-product" type="button" role="menuitem">
+                                <span class="products-menu-icon"><i data-lucide="file-plus-2"></i></span>
+                                <span><strong>Cadastrar manualmente</strong><small>Comece com um produto vazio</small></span>
+                            </button>
+                            <button id="btn-import-shopify" type="button" role="menuitem">
+                                <span class="products-menu-icon shopify"><i data-lucide="shopping-bag"></i></span>
+                                <span><strong>Importar da Shopify</strong><small>Traga produtos já existentes</small></span>
+                            </button>
+                            <button id="btn-product-merge" type="button" role="menuitem" class="product-merge-trigger">
+                                <span class="products-menu-icon"><i data-lucide="combine"></i></span>
+                                <span><strong>Unificar produtos por cor</strong><small>Crie variantes a partir de páginas separadas</small></span>
+                            </button>
+                        </div>
+                    </details>
+                </div>
             </div>
 
             <div class="products-toolbar">
@@ -708,6 +736,9 @@
                     <option value="rascunho">Rascunho</option>
                     <option value="arquivado">Arquivado</option>
                 </select>
+                <button type="button" class="btn btn-secondary btn-sm products-filter-reset" id="products-filter-reset" title="Limpar busca e filtros">
+                    <i data-lucide="rotate-ccw" style="width:14px;height:14px"></i> Limpar
+                </button>
             </div>
 
             <!-- Bulk action bar -->
@@ -716,6 +747,9 @@
                 <button class="btn btn-sm btn-secondary" id="products-bulk-clear">Cancelar</button>
                 <button class="btn btn-sm btn-secondary" id="products-bulk-merge" style="display:none">
                     <i data-lucide="combine" style="width:13px;height:13px"></i> Unificar por cor
+                </button>
+                <button class="btn btn-sm btn-secondary" id="products-bulk-optimize">
+                    <i data-lucide="shrink" style="width:13px;height:13px"></i> Otimizar imagens
                 </button>
                 <button class="btn btn-sm btn-danger" id="products-bulk-delete">
                     <i data-lucide="trash-2" style="width:13px;height:13px"></i> Excluir selecionados
@@ -728,19 +762,16 @@
                         <th style="width:32px"><input type="checkbox" id="products-select-all" title="Selecionar todos"></th>
                         <th>Nome</th>
                         <th>Status</th>
-                        <th>Plataformas / Idiomas</th>
-                        <th>Preço Final</th>
-                        <th>Custo</th>
-                        <th>Impostos %</th>
-                        <th>Custos Var. %</th>
+                        <th>Mercados</th>
+                        <th>Preço e custos</th>
                         <th>CPA Alvo</th>
                         <th>Lucro/Venda</th>
-                        <th>Ações</th>
+                        <th><span class="sr-only">Ações</span></th>
                     </tr>
                 </thead>
                 <tbody id="products-tbody">
                     <tr class="empty-row">
-                        <td colspan="11">Nenhum produto cadastrado. Clique em "+ Adicionar Produto".</td>
+                        <td colspan="8">Nenhum produto cadastrado. Use “Novo produto” para começar.</td>
                     </tr>
                 </tbody>
             </table>
@@ -749,23 +780,61 @@
             <div id="product-modal" class="modal hidden">
                 <div class="modal-overlay"></div>
                 <div class="modal-content modal-content-xl">
-                    <div class="modal-header">
-                        <h3 id="product-modal-title">Adicionar Produto</h3>
-                        <div style="display:flex;gap:0.5rem;align-items:center">
-                            <button type="button" id="product-cancel" class="btn btn-secondary btn-sm">Cancelar</button>
-                            <button type="submit" form="product-form" class="btn btn-primary btn-sm">Salvar produto</button>
-                            <button class="btn-close" id="product-modal-close">&times;</button>
+                    <div class="modal-header product-workspace-header">
+                        <div class="product-workspace-heading">
+                            <button type="button" id="product-cancel" class="product-workspace-back" aria-label="Voltar para Produtos">
+                                <i data-lucide="arrow-left"></i>
+                            </button>
+                            <div>
+                                <div class="product-workspace-breadcrumb">Produtos <span>/</span> <span id="product-modal-breadcrumb">Novo produto</span></div>
+                                <div class="product-workspace-title-line">
+                                    <h3 id="product-modal-title">Adicionar produto</h3>
+                                    <span id="product-editor-status" class="product-editor-status">Rascunho</span>
+                                    <span id="product-editor-shopify" class="product-editor-shopify hidden"><i data-lucide="link"></i> Shopify vinculado</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="product-workspace-actions">
+                            <span id="product-save-state" class="product-save-state"><i data-lucide="check-circle-2"></i> Sem alterações</span>
+                            <button type="submit" form="product-form" id="product-save" class="btn btn-primary">Salvar alterações</button>
+                            <button type="button" class="btn-close" id="product-modal-close" aria-label="Fechar">&times;</button>
                         </div>
                     </div>
                     <div class="prod-modal-scroll">
                         <form id="product-form" class="prod-modal-layout">
                             <input type="hidden" id="product-id">
 
+                            <aside class="product-workspace-nav" aria-label="Seções do produto">
+                                <div class="product-workspace-nav-label">EDITOR DO PRODUTO</div>
+                                <button type="button" class="product-workspace-tab active" data-product-editor-tab="geral">
+                                    <i data-lucide="file-text"></i><span>Geral</span>
+                                </button>
+                                <button type="button" class="product-workspace-tab" data-product-editor-tab="midia">
+                                    <i data-lucide="images"></i><span>Mídia</span><em id="prod-nav-media-count">0</em>
+                                </button>
+                                <button type="button" class="product-workspace-tab" data-product-editor-tab="variantes">
+                                    <i data-lucide="swatch-book"></i><span>Variantes</span><em id="prod-nav-variant-count">0</em>
+                                </button>
+                                <button type="button" class="product-workspace-tab" data-product-editor-tab="precos">
+                                    <i data-lucide="badge-dollar-sign"></i><span>Preços</span>
+                                </button>
+                                <button type="button" class="product-workspace-tab" data-product-editor-tab="mercados">
+                                    <i data-lucide="languages"></i><span>Mercados</span>
+                                </button>
+                                <button type="button" class="product-workspace-tab" data-product-editor-tab="canais">
+                                    <i data-lucide="waypoints"></i><span>Canais e integrações</span>
+                                </button>
+                                <div class="product-workspace-nav-note">
+                                    <i data-lucide="database"></i>
+                                    <span>Salvar alterações grava primeiro na ferramenta.</span>
+                                </div>
+                            </aside>
+
                             <!-- ── Left column (main) ── -->
                             <div class="prod-col-main">
 
                                 <!-- Title -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="geral">
                                     <div class="form-group" style="margin:0">
                                         <label>Título</label>
                                         <input type="text" id="product-name" class="input prod-title-input" required placeholder="Nome curto e descritivo do produto">
@@ -773,7 +842,7 @@
                                 </div>
 
                                 <!-- Description -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="geral">
                                     <div class="form-group" style="margin:0">
                                         <div class="prod-rich-label">
                                             <label>Descrição</label>
@@ -805,45 +874,63 @@
                                 </div>
 
                                 <!-- Media -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="midia">
                                     <div class="prod-midia-head">
-                                        <label style="margin:0">Mídia</label>
-                                        <div class="prod-img-ai-bar">
-                                            <select id="prod-img-provider" class="input input-sm" title="Qual IA gera/melhora as imagens">
-                                                <option value="auto">Automático (Gemini → OpenAI)</option>
-                                                <option value="gemini">Google · Gemini Image</option>
-                                                <option value="openai">OpenAI · GPT Image</option>
-                                            </select>
-                                            <select id="prod-img-modelo" class="input input-sm" title="Fixar uma versão específica (só vale com um provedor escolhido acima; em Automático usa sempre a mais recente disponível)">
-                                                <option value="">Padrão (recomendado)</option>
-                                                <optgroup label="OpenAI" data-provedor="openai">
-                                                    <option value="gpt-image-2">GPT Image 2 (mais recente)</option>
-                                                    <option value="gpt-image-1.5">GPT Image 1.5</option>
-                                                    <option value="gpt-image-1">GPT Image 1</option>
-                                                </optgroup>
-                                                <optgroup label="Google Gemini" data-provedor="gemini">
-                                                    <option value="gemini-3-pro-image">Gemini 3 Pro Image (mais recente)</option>
-                                                    <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
-                                                    <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (desliga 02/10/2026)</option>
-                                                </optgroup>
-                                            </select>
-                                            <button type="button" id="btn-prod-gen-gallery" class="btn btn-secondary btn-sm" title="Gerar várias imagens do produto de uma vez (cenários + padrões)">
-                                                <i data-lucide="images" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar galeria
+                                        <div>
+                                            <label style="margin:0">Galeria do produto</label>
+                                            <p class="prod-media-subtitle">Adicione, organize e deixe os arquivos prontos para o site.</p>
+                                        </div>
+                                        <div class="prod-media-toolbar" id="prod-img-tools">
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('prod-image-input').click()">
+                                                <i data-lucide="image-plus"></i> Adicionar
                                             </button>
-                                            <button type="button" id="btn-prod-gen-cover" class="btn btn-secondary btn-sm" title="Gerar uma foto de capa a partir de um padrão de criativo">
-                                                <i data-lucide="stamp" style="width:13px;height:13px;vertical-align:-2px"></i> Gerar capa
+                                            <details class="prod-tool-menu">
+                                                <summary class="btn btn-secondary btn-sm"><i data-lucide="sparkles"></i> Criar com IA <i data-lucide="chevron-down"></i></summary>
+                                                <div class="prod-tool-popover">
+                                                    <button type="button" id="btn-prod-gen-gallery"><i data-lucide="images"></i><span><strong>Gerar galeria</strong><small>Crie várias cenas de uma vez</small></span></button>
+                                                    <button type="button" id="btn-prod-gen-cover"><i data-lucide="stamp"></i><span><strong>Gerar capa</strong><small>Use um padrão de criativo</small></span></button>
+                                                    <button type="button" id="btn-prod-gen-scene"><i data-lucide="scan-search"></i><span><strong>Produto em uso</strong><small>Crie uma cena contextual</small></span></button>
+                                                </div>
+                                            </details>
+                                            <details class="prod-tool-menu">
+                                                <summary class="btn btn-secondary btn-sm"><i data-lucide="sliders-horizontal"></i> Organizar <i data-lucide="chevron-down"></i></summary>
+                                                <div class="prod-tool-popover">
+                                                    <button type="button" id="prod-puxar-geradas"><i data-lucide="download"></i><span><strong>Puxar imagens geradas</strong><small>Use arquivos do Estúdio e Modelos</small></span></button>
+                                                    <button type="button" id="prod-renomear"><i data-lucide="text-cursor-input"></i><span><strong>Renomear em massa</strong><small id="prod-renomear-count">Organize nomes e extensões</small></span></button>
+                                                    <button type="button" id="btn-prod-enhance-all"><i data-lucide="wand-2"></i><span><strong>Melhorar todas</strong><small>Refine qualidade com IA</small></span></button>
+                                                    <button type="button" id="btn-prod-auditar"><i data-lucide="shield-check"></i><span><strong>Auditar produto</strong><small>Encontre problemas de mídia e descrição</small></span></button>
+                                                </div>
+                                            </details>
+                                            <button type="button" id="btn-prod-optimize" class="btn btn-secondary btn-sm">
+                                                <i data-lucide="shrink"></i> Otimizar
                                             </button>
-                                            <button type="button" id="btn-prod-gen-scene" class="btn btn-secondary btn-sm" title="Gerar o produto em uso / sobre alguma superfície">
-                                                <i data-lucide="sparkles" style="width:13px;height:13px;vertical-align:-2px"></i> Produto em uso
-                                            </button>
-                                            <button type="button" id="btn-prod-enhance-all" class="btn btn-secondary btn-sm" title="Melhorar a qualidade de todas as imagens">
-                                                <i data-lucide="wand-2" style="width:13px;height:13px;vertical-align:-2px"></i> Melhorar todas
-                                            </button>
-                                            <button type="button" id="btn-prod-auditar" class="btn btn-secondary btn-sm" title="IA analisa fotos + descrição e aponta problemas com prompts prontos pra corrigir">
-                                                <i data-lucide="shield-check" style="width:13px;height:13px;vertical-align:-2px"></i> Auditar produto
-                                            </button>
-                                            <button type="button" id="btn-prod-send-shopify" class="btn btn-primary btn-sm" title="Enviar as imagens novas para a loja na Shopify">
-                                                <i data-lucide="upload-cloud" style="width:13px;height:13px;vertical-align:-2px"></i> Enviar p/ Shopify
+                                            <details class="prod-tool-menu prod-tool-settings">
+                                                <summary class="btn btn-secondary btn-sm btn-icon" title="Configurar geração de imagens"><i data-lucide="settings-2"></i></summary>
+                                                <div class="prod-tool-popover prod-tool-settings-popover">
+                                                    <label>Provedor de imagem</label>
+                                                    <select id="prod-img-provider" class="input input-sm">
+                                                        <option value="auto">Automático (Gemini → OpenAI)</option>
+                                                        <option value="gemini">Google · Gemini Image</option>
+                                                        <option value="openai">OpenAI · GPT Image</option>
+                                                    </select>
+                                                    <label>Modelo</label>
+                                                    <select id="prod-img-modelo" class="input input-sm">
+                                                        <option value="">Padrão (recomendado)</option>
+                                                        <optgroup label="OpenAI" data-provedor="openai">
+                                                            <option value="gpt-image-2">GPT Image 2 (mais recente)</option>
+                                                            <option value="gpt-image-1.5">GPT Image 1.5</option>
+                                                            <option value="gpt-image-1">GPT Image 1</option>
+                                                        </optgroup>
+                                                        <optgroup label="Google Gemini" data-provedor="gemini">
+                                                            <option value="gemini-3-pro-image">Gemini 3 Pro Image (mais recente)</option>
+                                                            <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image</option>
+                                                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (desliga 02/10/2026)</option>
+                                                        </optgroup>
+                                                    </select>
+                                                </div>
+                                            </details>
+                                            <button type="button" id="btn-prod-send-shopify" class="btn btn-primary btn-sm" title="Enviar imagens novas para a Shopify">
+                                                <i data-lucide="upload-cloud"></i> Shopify
                                             </button>
                                         </div>
                                     </div>
@@ -858,7 +945,7 @@
                                 </div>
 
                                 <!-- Traduções -->
-                                <div class="prod-section-card" id="prod-trad-card">
+                                <div class="prod-section-card" id="prod-trad-card" data-product-editor-section="mercados">
                                     <div class="prod-midia-head">
                                         <label style="margin:0"><i data-lucide="languages" style="width:14px;height:14px;vertical-align:-2px"></i> Traduções</label>
                                         <div class="prod-img-ai-bar">
@@ -882,7 +969,7 @@
                             <div class="prod-col-sidebar">
 
                                 <!-- Status -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="geral">
                                     <div class="form-group" style="margin:0">
                                         <label>Status</label>
                                         <select id="product-status" class="input input-sm">
@@ -894,7 +981,7 @@
                                 </div>
 
                                 <!-- Shopify Link -->
-                                <div class="prod-section-card" id="prod-shopify-card">
+                                <div class="prod-section-card" id="prod-shopify-card" data-product-editor-section="canais">
                                     <div class="prod-section-title" style="display:flex;align-items:center;gap:0.5rem">
                                         <i data-lucide="shopping-bag" style="width:14px;height:14px;color:#95bf47"></i>
                                         Conexão Shopify
@@ -908,10 +995,13 @@
                                     <div id="prod-shopify-connected" style="display:none">
                                         <div class="form-group" style="margin:0 0 0.5rem">
                                             <label>Produto vinculado</label>
-                                            <div style="display:flex;gap:0.4rem">
-                                                <select id="prod-shopify-link" class="input input-sm" style="flex:1">
-                                                    <option value="">— Não vinculado —</option>
-                                                </select>
+                                            <div class="prod-shopify-search-row">
+                                                <div class="prod-shopify-search-wrap">
+                                                    <i data-lucide="search"></i>
+                                                    <input type="search" id="prod-shopify-search" class="input input-sm" autocomplete="off" placeholder="Busque pelo nome na Shopify">
+                                                    <input type="hidden" id="prod-shopify-link" value="">
+                                                    <div id="prod-shopify-search-results" class="prod-shopify-search-results hidden"></div>
+                                                </div>
                                                 <button type="button" id="btn-prod-shopify-refresh" class="btn btn-secondary btn-sm" title="Recarregar lista">
                                                     <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>
                                                 </button>
@@ -921,9 +1011,50 @@
                                     </div>
                                 </div>
 
-                                <!-- Organization -->
-                                <div class="prod-section-card">
-                                    <div class="prod-section-title">Organização</div>
+                                <!-- Product identity -->
+                                <div class="prod-section-card" data-product-editor-section="geral">
+                                    <div class="prod-section-title">Identificação</div>
+                                    <div class="form-group">
+                                        <label>Fornecedor / Vendor</label>
+                                        <input type="text" id="product-vendor" class="input input-sm" placeholder="Ex.: fornecedor ou marca">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>SKU</label>
+                                        <input type="text" id="product-sku" class="input input-sm" placeholder="Ex.: SKU-001">
+                                    </div>
+                                    <div class="form-group" style="margin:0">
+                                        <label>Tags <small style="color:var(--text-muted);font-weight:400">(vírgula para separar)</small></label>
+                                        <input type="text" id="product-tags" class="input input-sm" placeholder="verão, acessório, promoção">
+                                    </div>
+                                </div>
+
+                                <!-- Markets -->
+                                <div class="prod-section-card" data-product-editor-section="mercados">
+                                    <div class="prod-section-title">Idiomas e mercados</div>
+                                    <div class="form-group" style="margin:0">
+                                        <label>Idiomas ativos <small style="color:var(--text-muted);font-weight:400">(o primeiro é a origem)</small></label>
+                                        <div id="product-languages" class="prod-multi-chips">
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles"><span>Inglês (EN)</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles Americano"><span>Inglês — EUA</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Portugues"><span>Português</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Espanhol"><span>Espanhol</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Frances"><span>Francês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Alemao"><span>Alemão</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Italiano"><span>Italiano</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Holandes"><span>Holandês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Polones"><span>Polonês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Checol"><span>Tcheco</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Dinamarques"><span>Dinamarquês</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Sueco"><span>Sueco</span></label>
+                                            <label class="prod-multi-chip"><input type="checkbox" value="Noruegues"><span>Norueguês</span></label>
+                                        </div>
+                                        <input type="hidden" id="product-language">
+                                    </div>
+                                </div>
+
+                                <!-- Channels -->
+                                <div class="prod-section-card" data-product-editor-section="canais">
+                                    <div class="prod-section-title">Canais e campanhas</div>
                                     <div class="form-group">
                                         <label>Plataformas <small style="color:var(--text-muted);font-weight:400">(uma ou mais)</small></label>
                                         <div id="product-platforms" class="prod-multi-chips">
@@ -934,26 +1065,6 @@
                                             <label class="prod-multi-chip" data-brand="youtube"><input type="checkbox" value="youtube"><span>YouTube</span></label>
                                             <label class="prod-multi-chip" data-brand="pinterest"><input type="checkbox" value="pinterest"><span>Pinterest</span></label>
                                         </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Idiomas / Mercados <small style="color:var(--text-muted);font-weight:400">(um ou mais)</small></label>
-                                        <div id="product-languages" class="prod-multi-chips">
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles"><span>🇬🇧 Inglês</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Ingles Americano"><span>🇺🇸 EN (EUA)</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Portugues"><span>🇧🇷 Português</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Espanhol"><span>🇪🇸 Espanhol</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Frances"><span>🇫🇷 Francês</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Alemao"><span>🇩🇪 Alemão</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Italiano"><span>🇮🇹 Italiano</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Holandes"><span>🇳🇱 Holandês</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Polones"><span>🇵🇱 Polonês</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Checol"><span>🇨🇿 Tcheco</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Dinamarques"><span>🇩🇰 Dinamarquês</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Sueco"><span>🇸🇪 Sueco</span></label>
-                                            <label class="prod-multi-chip"><input type="checkbox" value="Noruegues"><span>🇳🇴 Norueguês</span></label>
-                                        </div>
-                                        <!-- Hidden compat input: keeps the first selected language for legacy fields -->
-                                        <input type="hidden" id="product-language">
                                     </div>
                                     <div class="form-group">
                                         <label>Contas de Anúncio Facebook <small style="color:var(--text-muted);font-weight:400">(uma ou mais)</small></label>
@@ -979,22 +1090,10 @@
                                         <input type="url" id="product-page-url" class="input input-sm" placeholder="https://sualoja.com/products/...">
                                         <small style="color:var(--text-muted);font-size:0.65rem;display:block;margin-top:0.2rem">A página onde este produto está sendo vendido. Vira um link rápido na lista.</small>
                                     </div>
-                                    <div class="form-group">
-                                        <label>Fornecedor / Vendor</label>
-                                        <input type="text" id="product-vendor" class="input input-sm" placeholder="Ex: AliExpress, CJ Dropshipping">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>SKU</label>
-                                        <input type="text" id="product-sku" class="input input-sm" placeholder="Ex: SKU-001">
-                                    </div>
-                                    <div class="form-group" style="margin:0">
-                                        <label>Tags <small style="color:var(--text-muted);font-weight:400">(vírgula para separar)</small></label>
-                                        <input type="text" id="product-tags" class="input input-sm" placeholder="verão, acessório, promoção">
-                                    </div>
                                 </div>
 
                                 <!-- Pricing -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="precos">
                                     <div class="prod-section-title">Precificação</div>
                                     <div class="form-row">
                                         <div class="form-group">
@@ -1063,10 +1162,10 @@
                                 </div>
 
                                 <!-- Variantes vindas da Shopify (leitura) -->
-                                <div class="prod-section-card" id="prod-shopify-variants" style="display:none"></div>
+                                <div class="prod-section-card" id="prod-shopify-variants" data-product-editor-section="variantes" style="display:none"></div>
 
                                 <!-- Country Prices -->
-                                <div class="prod-section-card">
+                                <div class="prod-section-card" data-product-editor-section="precos">
                                     <div class="prod-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.6rem">
                                         <span>Preços e custos por País</span>
                                         <span style="display:flex;gap:0.4rem">
@@ -1082,6 +1181,178 @@
 
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Image studio: non-destructive edits and new gallery angles -->
+            <div id="product-image-studio-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="product-image-studio-title">
+                <div class="modal-overlay"></div>
+                <div class="modal-content product-image-studio-content">
+                    <header class="product-image-studio-header">
+                        <div>
+                            <div class="products-page-eyebrow">ESTÚDIO DA IMAGEM</div>
+                            <h3 id="product-image-studio-title">Editar e criar fotos</h3>
+                            <p>A original fica intacta. Cada resultado aprovado entra como uma nova foto na galeria.</p>
+                        </div>
+                        <button type="button" class="btn-close" id="product-image-studio-close" aria-label="Fechar">&times;</button>
+                    </header>
+                    <div class="product-image-studio-shell">
+                        <aside class="product-image-studio-preview">
+                            <div class="product-image-studio-source-label"><span>Foto de origem</span><strong id="product-image-studio-source-name">Imagem</strong></div>
+                            <div class="product-image-studio-canvas"><img id="product-image-studio-source" alt="Foto selecionada para edição"></div>
+                            <div class="product-image-studio-safe"><i data-lucide="shield-check"></i><span>Nenhuma ação substitui ou apaga a foto original.</span></div>
+                        </aside>
+                        <main class="product-image-studio-main">
+                            <div class="product-image-studio-action-grid" role="tablist" aria-label="Tipo de edição">
+                                <button type="button" data-image-studio-action="enhance"><i data-lucide="sparkles"></i><span><strong>Melhorar</strong><small>Qualidade e nitidez</small></span></button>
+                                <button type="button" class="active" data-image-studio-action="remove"><i data-lucide="scissors"></i><span><strong>Remover fundo</strong><small>Transparente ou branco</small></span></button>
+                                <button type="button" data-image-studio-action="background"><i data-lucide="image"></i><span><strong>Trocar fundo</strong><small>Cor ou novo cenário</small></span></button>
+                                <button type="button" data-image-studio-action="angles"><i data-lucide="rotate-3d"></i><span><strong>Gerar ângulos</strong><small>Crie várias vistas</small></span></button>
+                                <button type="button" data-image-studio-action="model"><i data-lucide="user-round"></i><span><strong>Trocar modelo</strong><small>Use uma pessoa de referência</small></span></button>
+                                <button type="button" data-image-studio-action="custom"><i data-lucide="wand-sparkles"></i><span><strong>Ajuste livre</strong><small>Descreva a mudança</small></span></button>
+                            </div>
+
+                            <section class="product-image-studio-panel hidden" data-image-studio-panel="enhance">
+                                <div class="product-image-studio-panel-heading"><strong>Melhorar esta foto</strong><span>Reduz ruído e borrão, recupera detalhes e mantém as dimensões da imagem.</span></div>
+                                <div class="product-image-studio-safe"><i data-lucide="scan-eye"></i><span>A imagem será reprocessada por IA. Confira logotipos, textos e detalhes pequenos antes de publicar.</span></div>
+                            </section>
+
+                            <section class="product-image-studio-panel" data-image-studio-panel="remove">
+                                <div class="product-image-studio-panel-heading"><strong>Como deve ficar o fundo?</strong><span>O recorte roda localmente sempre que possível, sem custo de IA.</span></div>
+                                <label class="product-image-studio-choice"><input type="radio" name="product-image-studio-remove" value="transparent" checked><span><i data-lucide="layers"></i><strong>Transparente</strong><small>PNG com fundo vazio</small></span></label>
+                                <label class="product-image-studio-choice"><input type="radio" name="product-image-studio-remove" value="white"><span><i data-lucide="square"></i><strong>Branco puro</strong><small>Pronto para catálogo</small></span></label>
+                            </section>
+
+                            <section class="product-image-studio-panel hidden" data-image-studio-panel="background">
+                                <div class="product-image-studio-panel-heading"><strong>Descreva o novo fundo</strong><span>O produto deve continuar idêntico; só a cena será recriada.</span></div>
+                                <div class="product-image-studio-chips">
+                                    <button type="button" data-image-studio-background="plain light gray studio">Cinza claro</button>
+                                    <button type="button" data-image-studio-background="warm beige studio">Bege</button>
+                                    <button type="button" data-image-studio-background="white marble countertop">Mármore</button>
+                                    <button type="button" data-image-studio-background="luxury dark studio with a soft spotlight">Estúdio escuro</button>
+                                </div>
+                                <textarea id="product-image-studio-background" class="input" rows="3" placeholder="Ex.: fundo bege de estúdio, luz suave e sombra natural"></textarea>
+                            </section>
+
+                            <section class="product-image-studio-panel hidden" data-image-studio-panel="angles">
+                                <div class="product-image-studio-panel-heading"><strong>Quais vistas quer adicionar?</strong><span>Em partes não visíveis, a IA precisará inferir detalhes. Revise antes de usar no site.</span></div>
+                                <div class="product-image-studio-select-row"><button type="button" id="product-image-studio-select-angles">Selecionar recomendados</button><span id="product-image-studio-angle-count">0 selecionados</span></div>
+                                <div id="product-image-studio-angles" class="product-image-studio-angle-grid"></div>
+                            </section>
+
+                            <section class="product-image-studio-panel hidden" data-image-studio-panel="model">
+                                <div class="product-image-studio-panel-heading"><strong>Escolha a referência de modelo</strong><span>A pessoa e a composição guiam a cena; o produto vem da foto original.</span></div>
+                                <input type="file" id="product-image-studio-model-input" accept="image/*" hidden>
+                                <div class="product-image-studio-model-bar">
+                                    <button type="button" id="product-image-studio-model-upload" class="btn btn-secondary btn-sm"><i data-lucide="upload"></i> Enviar referência</button>
+                                    <span id="product-image-studio-model-status">Ou escolha um modelo já salvo abaixo.</span>
+                                </div>
+                                <div id="product-image-studio-models" class="product-image-studio-model-grid"></div>
+                                <textarea id="product-image-studio-model-instruction" class="input" rows="2" placeholder="Opcional: Ex.: modelo usando o produto, pose frontal, luz natural"></textarea>
+                            </section>
+
+                            <section class="product-image-studio-panel hidden" data-image-studio-panel="custom">
+                                <div class="product-image-studio-panel-heading"><strong>O que você quer mudar?</strong><span>Quanto mais específico, mais previsível será o resultado.</span></div>
+                                <textarea id="product-image-studio-custom" class="input" rows="4" placeholder="Ex.: remover a mão, centralizar o produto e deixar a iluminação mais uniforme"></textarea>
+                            </section>
+
+                            <div class="product-image-studio-output">
+                                <label>Formato de saída
+                                    <select id="product-image-studio-format" class="input input-sm">
+                                        <option value="1x1" selected>Quadrado 1:1 · 1080 × 1080</option>
+                                        <option value="original">Manter proporção original</option>
+                                        <option value="4x5">Feed 4:5 · 1080 × 1350</option>
+                                    </select>
+                                </label>
+                                <div id="product-image-studio-progress" class="product-image-studio-progress hidden">
+                                    <div><span id="product-image-studio-progress-label">Preparando…</span><strong id="product-image-studio-progress-count">0%</strong></div>
+                                    <div><span id="product-image-studio-progress-bar"></span></div>
+                                </div>
+                            </div>
+                        </main>
+                    </div>
+                    <footer class="product-image-studio-footer">
+                        <span id="product-image-studio-note">O resultado será adicionado à galeria deste produto.</span>
+                        <div>
+                            <button type="button" class="btn btn-secondary" id="product-image-studio-cancel">Cancelar</button>
+                            <button type="button" class="btn btn-primary" id="product-image-studio-generate"><i data-lucide="sparkles"></i> Criar nova foto</button>
+                        </div>
+                    </footer>
+                </div>
+            </div>
+
+            <!-- Image optimizer (single product or bulk selection) -->
+            <div id="product-image-optimizer-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="product-image-optimizer-title">
+                <div class="modal-overlay"></div>
+                <div class="modal-content product-image-optimizer-content">
+                    <div class="modal-header">
+                        <div>
+                            <div class="products-page-eyebrow">MÍDIA LEVE</div>
+                            <h3 id="product-image-optimizer-title">Otimizar imagens</h3>
+                            <p id="product-image-optimizer-subtitle">Converta e comprima sem alterar o conteúdo do produto.</p>
+                        </div>
+                        <button type="button" class="btn-close" id="product-image-optimizer-close" aria-label="Fechar">&times;</button>
+                    </div>
+                    <div class="product-image-optimizer-body">
+                        <div class="product-image-optimizer-grid">
+                            <section class="product-image-optimizer-card">
+                                <span class="product-image-optimizer-step">1</span>
+                                <div>
+                                    <strong>Onde otimizar</strong>
+                                    <p>Escolha a galeria, as imagens da descrição ou ambas.</p>
+                                </div>
+                                <div class="product-image-optimizer-options" id="product-image-optimizer-scope">
+                                    <label><input type="radio" name="product-image-opt-scope" value="gallery" checked><span>Galeria</span></label>
+                                    <label><input type="radio" name="product-image-opt-scope" value="description"><span>Descrição</span></label>
+                                    <label><input type="radio" name="product-image-opt-scope" value="both"><span>Galeria e descrição</span></label>
+                                </div>
+                            </section>
+                            <section class="product-image-optimizer-card">
+                                <span class="product-image-optimizer-step">2</span>
+                                <div>
+                                    <strong>Formato e tamanho</strong>
+                                    <p>O padrão equilibrado mantém qualidade para catálogo e zoom.</p>
+                                </div>
+                                <div class="product-image-optimizer-fields">
+                                    <label>Formato
+                                        <select id="product-image-opt-format" class="input input-sm">
+                                            <option value="webp">WebP — recomendado</option>
+                                            <option value="jpeg">JPG</option>
+                                            <option value="png">PNG</option>
+                                        </select>
+                                    </label>
+                                    <label>Maior lado
+                                        <select id="product-image-opt-max" class="input input-sm">
+                                            <option value="1200">1200 px — mais leve</option>
+                                            <option value="1600">1600 px</option>
+                                            <option value="2000" selected>2000 px — equilibrado</option>
+                                            <option value="2400">2400 px — alta qualidade</option>
+                                        </select>
+                                    </label>
+                                    <label>Qualidade
+                                        <select id="product-image-opt-quality" class="input input-sm">
+                                            <option value="0.74">Compacta · 74%</option>
+                                            <option value="0.82" selected>Equilibrada · 82%</option>
+                                            <option value="0.9">Alta · 90%</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </section>
+                        </div>
+                        <div id="product-image-optimizer-summary" class="product-image-optimizer-summary">
+                            <i data-lucide="scan-search"></i>
+                            <div><strong>Pronto para analisar</strong><span>Veja o tamanho antes e depois antes de aplicar.</span></div>
+                        </div>
+                        <div id="product-image-optimizer-progress" class="product-image-optimizer-progress hidden">
+                            <div><span id="product-image-optimizer-progress-label">Analisando imagens…</span><strong id="product-image-optimizer-progress-count">0%</strong></div>
+                            <div class="product-image-optimizer-progress-track"><span id="product-image-optimizer-progress-bar"></span></div>
+                        </div>
+                    </div>
+                    <div class="form-actions product-image-optimizer-actions">
+                        <button type="button" class="btn btn-secondary" id="product-image-optimizer-cancel">Cancelar</button>
+                        <button type="button" class="btn btn-secondary" id="product-image-optimizer-analyze"><i data-lucide="scan-search"></i> Analisar</button>
+                        <button type="button" class="btn btn-primary" id="product-image-optimizer-apply" disabled><i data-lucide="shrink"></i> Aplicar otimização</button>
                     </div>
                 </div>
             </div>
@@ -6862,8 +7133,8 @@
          ad-hierarchy.js), nunca no boot. Sem defer ele bloqueava o download de
          todos os scripts abaixo dele. -->
     <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="js/sheets.js"></script>
-    <script src="js/products.js"></script>
+    <script src="js/sheets.js?v=20260813-products-workspace"></script>
+    <script src="js/products.js?v=20260813-products-workspace"></script>
     <script src="js/goals.js"></script>
     <script src="js/store-goal.js"></script>
     <script src="js/diary.js"></script>

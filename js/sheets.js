@@ -1020,7 +1020,11 @@ const LocalStore = {
     // IndexedDB (escala com o disco). O diário acumula uma linha por dia/anúncio
     // vindo do Facebook e chegou a 3.7MB — sozinho estourava a quota e fazia
     // TODA gravação falhar (Shopify não instalava, ordem do menu não persistia).
-    _IDB_KEYS: new Set(['diary']),
+    // Produtos agora também podem carregar galerias e imagens comprimidas da
+    // descrição. Mantê-los no localStorage recriaria o limite de ~5 MB que já
+    // foi resolvido para o Diário; o objeto inteiro vai para o mesmo KVStore
+    // sem perder campos de anúncios, países, variantes ou integrações.
+    _IDB_KEYS: new Set(['diary', 'products']),
     _mem: {},
 
     save(key, data) {
@@ -1139,14 +1143,24 @@ document.addEventListener('DOMContentLoaded', () => {
     populateProductDropdowns();
     EventBus.emit('dataLoaded');
 
-    // Diário → IndexedDB: migra a cópia legada do localStorage (libera o espaço
-    // que estourava a quota) e, nos boots seguintes, recarrega de lá + re-render.
+    // Coleções grandes → IndexedDB: migra a cópia legada do localStorage e,
+    // nos boots seguintes, recarrega de lá + re-renderiza os módulos afetados.
     if (LocalStore && typeof LocalStore.hydrate === 'function') {
         LocalStore.hydrate().then(carregadas => {
             if (carregadas && carregadas.includes('diary')) {
                 AppState.allDiary = LocalStore.load('diary') || [];
                 normalizeAllDataStoreIds();
                 filterDataByStore();
+                EventBus.emit('dataLoaded');
+            }
+            if (carregadas && carregadas.includes('products')) {
+                AppState.allProducts = (LocalStore.load('products') || []).filter(p => {
+                    if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) return !ProductsModule.isTombstoned(p);
+                    return true;
+                });
+                normalizeAllDataStoreIds();
+                filterDataByStore();
+                populateProductDropdowns();
                 EventBus.emit('dataLoaded');
             }
         }).catch(() => {});

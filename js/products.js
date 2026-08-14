@@ -47,14 +47,45 @@ const ProductsModule = {
         { code: 'NZ', label: 'NZ — Nova Zelândia', currency: 'USD' },
     ],
 
+    // O estúdio usa o mesmo vocabulário de câmera do Lançamento, mas fica
+    // independente da ordem em que os módulos carregam.
+    _IMAGE_STUDIO_ANGLES: [
+        { id: 'frontal', label: 'Frontal', icon: 'camera', recommended: true, instruction: 'Camera angle: straight-on frontal view, camera at the product\'s own height.' },
+        { id: '3-4-esq', label: '3/4 esquerdo', icon: 'rotate-ccw', recommended: true, instruction: 'Camera angle: three-quarter view shot from the front-left of the product.' },
+        { id: '3-4-dir', label: '3/4 direito', icon: 'rotate-cw', recommended: true, instruction: 'Camera angle: three-quarter view shot from the front-right of the product.' },
+        { id: 'lateral-esq', label: 'Lateral esquerdo', icon: 'arrow-left', recommended: true, instruction: 'Camera angle: direct left side profile, exactly 90 degrees from the frontal view.' },
+        { id: 'lateral-dir', label: 'Lateral direito', icon: 'arrow-right', recommended: true, instruction: 'Camera angle: direct right side profile, exactly 90 degrees from the frontal view.' },
+        { id: 'traseiro', label: 'Traseiro', icon: 'undo-2', recommended: false, instruction: 'Camera angle: shot from directly behind, showing the back of the product.' },
+        { id: 'superior', label: 'Superior', icon: 'arrow-down', recommended: false, instruction: 'Camera angle: top-down view, camera positioned directly above the product.' },
+        { id: 'macro', label: 'Detalhe / macro', icon: 'search', recommended: false, instruction: 'Camera angle: extreme close-up macro shot focused on the product texture, material, hardware and finish.' },
+        { id: 'em-uso', label: 'Em uso', icon: 'user', recommended: false, instruction: 'Show the product actively being used or worn in a natural, realistic context.' },
+    ],
+
     init() {
-        document.getElementById('btn-add-product').addEventListener('click', () => this.openForm());
+        document.getElementById('btn-add-product').addEventListener('click', () => {
+            document.getElementById('products-create-menu')?.removeAttribute('open');
+            this.openForm();
+        });
         document.getElementById('product-form').addEventListener('submit', (e) => this.handleSubmit(e));
-        document.getElementById('product-cancel').addEventListener('click', () => closeModal('product-modal'));
+        document.getElementById('product-cancel').addEventListener('click', () => this._attemptCloseProductEditor());
+        document.getElementById('product-modal-close')?.addEventListener('click', () => this._attemptCloseProductEditor());
+        document.querySelectorAll('[data-product-editor-tab]').forEach(btn => {
+            btn.addEventListener('click', () => this._setProductEditorSection(btn.dataset.productEditorTab));
+        });
+        const productForm = document.getElementById('product-form');
+        ['input', 'change'].forEach(eventName => productForm?.addEventListener(eventName, () => this._markProductEditorDirty()));
+        document.getElementById('product-name')?.addEventListener('input', () => this._updateProductEditorHeader());
+        document.getElementById('product-status')?.addEventListener('change', (event) => {
+            const status = document.getElementById('product-editor-status');
+            if (status) status.textContent = event.target.value === 'ativo' ? 'Ativo' : event.target.value === 'arquivado' ? 'Arquivado' : 'Rascunho';
+        });
 
         // Shopify import
         const importBtn = document.getElementById('btn-import-shopify');
-        if (importBtn) importBtn.addEventListener('click', () => this.openShopifyImport());
+        if (importBtn) importBtn.addEventListener('click', () => {
+            document.getElementById('products-create-menu')?.removeAttribute('open');
+            this.openShopifyImport();
+        });
         document.getElementById('btn-import-shopify-details-bulk')?.addEventListener('click', () => this.importarDetalhesEmMassa());
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
         if (confirmBtn) confirmBtn.addEventListener('click', () => this._importSelectedShopifyProducts());
@@ -97,6 +128,13 @@ const ProductsModule = {
         // Search + filter
         document.getElementById('products-search')?.addEventListener('input', () => this.render());
         document.getElementById('products-status-filter')?.addEventListener('change', () => this.render());
+        document.getElementById('products-filter-reset')?.addEventListener('click', () => {
+            const search = document.getElementById('products-search');
+            const status = document.getElementById('products-status-filter');
+            if (search) search.value = '';
+            if (status) status.value = '';
+            this.render();
+        });
 
         // Bulk select
         this._selectedIds = new Set();
@@ -120,6 +158,9 @@ const ProductsModule = {
         });
         document.getElementById('products-bulk-delete')?.addEventListener('click', () => {
             this.deleteProductsBulk(Array.from(this._selectedIds));
+        });
+        document.getElementById('products-bulk-optimize')?.addEventListener('click', () => {
+            this.openImageOptimizer({ productIds: Array.from(this._selectedIds) });
         });
 
         // Rich text toolbar (execCommand — simple, no deps)
@@ -161,6 +202,9 @@ const ProductsModule = {
         document.getElementById('btn-prod-gen-scene')?.addEventListener('click', () => this.abrirGerarCenario());
         document.getElementById('btn-prod-enhance-all')?.addEventListener('click', () => this.melhorarTodasImagens());
         document.getElementById('btn-prod-send-shopify')?.addEventListener('click', () => this.abrirEnviarShopify());
+        document.getElementById('prod-puxar-geradas')?.addEventListener('click', () => this._abrirPuxarGeradas());
+        document.getElementById('prod-renomear')?.addEventListener('click', () => this._abrirRenomear());
+        document.getElementById('btn-prod-optimize')?.addEventListener('click', () => this.openImageOptimizer({ useOpenForm: true }));
         const provSel = document.getElementById('prod-img-provider');
         const modSel = document.getElementById('prod-img-modelo');
         // Em "Automático" não dá pra fixar versão — não se sabe de antemão
@@ -206,10 +250,116 @@ const ProductsModule = {
                 this._handleImageFiles(e.dataTransfer.files);
             });
         }
+
+        document.getElementById('product-image-studio-close')?.addEventListener('click', () => this.closeImageStudio());
+        document.getElementById('product-image-studio-cancel')?.addEventListener('click', () => this.closeImageStudio());
+        document.querySelector('#product-image-studio-modal .modal-overlay')?.addEventListener('click', () => this.closeImageStudio());
+        document.querySelectorAll('[data-image-studio-action]').forEach(button => {
+            button.addEventListener('click', () => this._setImageStudioAction(button.dataset.imageStudioAction));
+        });
+        document.querySelectorAll('[data-image-studio-background]').forEach(button => {
+            button.addEventListener('click', () => {
+                const field = document.getElementById('product-image-studio-background');
+                if (field) { field.value = button.dataset.imageStudioBackground || ''; field.focus(); }
+            });
+        });
+        document.getElementById('product-image-studio-select-angles')?.addEventListener('click', () => this._selectRecommendedImageStudioAngles());
+        document.getElementById('product-image-studio-model-upload')?.addEventListener('click', () => document.getElementById('product-image-studio-model-input')?.click());
+        document.getElementById('product-image-studio-model-input')?.addEventListener('change', event => this._loadImageStudioModelFile(event));
+        document.getElementById('product-image-studio-generate')?.addEventListener('click', () => this.generateImageStudioResults());
+
+        document.getElementById('product-image-optimizer-close')?.addEventListener('click', () => this.closeImageOptimizer());
+        document.getElementById('product-image-optimizer-cancel')?.addEventListener('click', () => this.closeImageOptimizer());
+        document.querySelector('#product-image-optimizer-modal .modal-overlay')?.addEventListener('click', () => this.closeImageOptimizer());
+        document.getElementById('product-image-optimizer-analyze')?.addEventListener('click', () => this.analyzeImageOptimization());
+        document.getElementById('product-image-optimizer-apply')?.addEventListener('click', () => this.applyImageOptimization());
+        document.querySelectorAll('#product-image-optimizer-modal input, #product-image-optimizer-modal select').forEach(el => {
+            el.addEventListener('change', () => this._resetImageOptimizationAnalysis());
+        });
+
+        // Menus contextuais não competem entre si na tela.
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.prod-shopify-search-wrap')) {
+                document.getElementById('prod-shopify-search-results')?.classList.add('hidden');
+            }
+            const current = event.target.closest('details');
+            document.querySelectorAll('.products-create-menu[open], .prod-tool-menu[open], .product-row-menu[open]').forEach(details => {
+                if (details !== current && !details.contains(event.target)) details.removeAttribute('open');
+            });
+            if (event.target.closest('.products-create-popover button, .prod-tool-popover button, .product-row-popover button, .product-row-popover a')) {
+                event.target.closest('details')?.removeAttribute('open');
+            }
+        });
+    },
+
+    _productEditorDirty: false,
+    _productEditorSection: 'geral',
+
+    _setProductEditorSection(section = 'geral') {
+        const form = document.getElementById('product-form');
+        if (!form) return;
+        this._productEditorSection = section;
+        form.dataset.productEditorActive = section;
+        document.querySelectorAll('[data-product-editor-tab]').forEach(btn => {
+            const active = btn.dataset.productEditorTab === section;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-current', active ? 'page' : 'false');
+        });
+        document.querySelectorAll('[data-product-editor-section]').forEach(card => {
+            card.classList.toggle('editor-section-hidden', card.dataset.productEditorSection !== section);
+        });
+        document.querySelector('#product-modal .prod-modal-scroll')?.scrollTo({ top: 0, behavior: 'instant' });
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _markProductEditorDirty() {
+        if (document.getElementById('product-modal')?.classList.contains('hidden')) return;
+        this._productEditorDirty = true;
+        const state = document.getElementById('product-save-state');
+        if (state) {
+            state.classList.add('is-dirty');
+            state.innerHTML = '<i data-lucide="circle-dot"></i> Alterações não salvas';
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    _markProductEditorSaved() {
+        this._productEditorDirty = false;
+        const state = document.getElementById('product-save-state');
+        if (state) {
+            state.classList.remove('is-dirty');
+            state.innerHTML = '<i data-lucide="check-circle-2"></i> Salvo na ferramenta';
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    _attemptCloseProductEditor() {
+        if (this._productEditorDirty && !confirm('Há alterações não salvas. Deseja sair mesmo assim?')) return;
+        this._productEditorDirty = false;
+        closeModal('product-modal');
+    },
+
+    _updateProductEditorHeader(product = null) {
+        const currentId = document.getElementById('product-id')?.value || '';
+        const savedProduct = product || (currentId ? (AppState.allProducts || []).find(item => item.id === currentId) : null);
+        const name = document.getElementById('product-name')?.value.trim() || savedProduct?.name || 'Novo produto';
+        const breadcrumb = document.getElementById('product-modal-breadcrumb');
+        const title = document.getElementById('product-modal-title');
+        const status = document.getElementById('product-editor-status');
+        const shopify = document.getElementById('product-editor-shopify');
+        const mediaCount = document.getElementById('prod-nav-media-count');
+        const variantCount = document.getElementById('prod-nav-variant-count');
+        if (breadcrumb) breadcrumb.textContent = name;
+        if (title) title.textContent = savedProduct ? name : 'Adicionar produto';
+        const statusValue = document.getElementById('product-status')?.value || savedProduct?.status || 'rascunho';
+        if (status) status.textContent = statusValue === 'ativo' ? 'Ativo' : statusValue === 'arquivado' ? 'Arquivado' : 'Rascunho';
+        const linked = !!(savedProduct && this._shopifyIdDe(savedProduct));
+        shopify?.classList.toggle('hidden', !linked);
+        if (mediaCount) mediaCount.textContent = String((this._images || []).length);
+        if (variantCount) variantCount.textContent = String((savedProduct?.shopifyVariants || []).length);
     },
 
     openForm(product = null) {
-        const title = document.getElementById('product-modal-title');
         const form = document.getElementById('product-form');
         form.reset();
 
@@ -222,7 +372,6 @@ const ProductsModule = {
         this._injectBrandIconsIntoPlatformChips();
 
         if (product) {
-            title.textContent = 'Editar Produto';
             document.getElementById('product-id').value = product.id;
             document.getElementById('product-name').value = product.name;
             // Languages: support both legacy single (language/country) and new array (languages)
@@ -275,7 +424,6 @@ const ProductsModule = {
             this._translations = JSON.parse(JSON.stringify(product.translations || {}));
             this._renderShopifyVariants(product);
         } else {
-            title.textContent = 'Adicionar Produto';
             document.getElementById('product-id').value = '';
             const descEl = document.getElementById('product-description');
             if (descEl) descEl.innerHTML = '';
@@ -311,8 +459,13 @@ const ProductsModule = {
         this._renderProductImages();
         this._renderTraducoes();
         this.updateProfitPreview();
+        this._updateProductEditorHeader(product);
+        const saveBtn = document.getElementById('product-save');
+        if (saveBtn) saveBtn.textContent = product ? 'Salvar alterações' : 'Criar produto';
         this._renderShopifySection(product);
         openModal('product-modal');
+        this._setProductEditorSection('geral');
+        this._markProductEditorSaved();
     },
 
     async _renderShopifySection(product) {
@@ -320,8 +473,10 @@ const ProductsModule = {
         const notConnected = document.getElementById('prod-shopify-not-connected');
         const connected = document.getElementById('prod-shopify-connected');
         const sel = document.getElementById('prod-shopify-link');
+        const search = document.getElementById('prod-shopify-search');
+        const results = document.getElementById('prod-shopify-search-results');
         const info = document.getElementById('prod-shopify-info');
-        if (!card || !sel) return;
+        if (!card || !sel || !search || !results) return;
 
         const isConfigured = typeof ShopifyModule !== 'undefined' && ShopifyModule.isConfigured && ShopifyModule.isConfigured();
 
@@ -338,26 +493,54 @@ const ProductsModule = {
         try {
             shopifyProducts = (ShopifyModule.getShopifyProducts() || []);
             if (shopifyProducts.length === 0) {
-                sel.innerHTML = '<option value="">Carregando produtos…</option>';
+                search.value = 'Carregando produtos…';
+                search.disabled = true;
                 shopifyProducts = await ShopifyModule.fetchShopifyProducts();
             }
         } catch (e) {
-            sel.innerHTML = `<option value="">Erro: ${e.message}</option>`;
+            search.value = '';
+            search.placeholder = `Erro: ${e.message}`;
+            search.disabled = false;
             return;
         }
+        search.disabled = false;
 
         const currentLink = product?.id ? (ShopifyModule.getLink ? ShopifyModule.getLink(product.id) : null) : null;
-        sel.innerHTML = '<option value="">— Não vinculado —</option>' +
-            shopifyProducts
-                .slice()
+        const currentProduct = shopifyProducts.find(p => String(p.id) === String(currentLink));
+        sel.value = currentLink || '';
+        search.value = currentProduct?.title || '';
+        search.placeholder = 'Busque pelo nome na Shopify';
+
+        const renderResults = (query = '') => {
+            const normalized = String(query || '').trim().toLowerCase();
+            const matches = shopifyProducts
+                .filter(p => !normalized || String(p.title || '').toLowerCase().includes(normalized))
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-                .map(p => `<option value="${p.id}">${this._esc(p.title || '(sem título)')}</option>`)
-                .join('');
-        if (currentLink) sel.value = currentLink;
+                .slice(0, 8);
+            results.innerHTML = `
+                <button type="button" data-shopify-product-id=""><strong>Não vinculado</strong><small>Manter apenas na ferramenta</small></button>
+                ${matches.map(p => `<button type="button" data-shopify-product-id="${this._esc(p.id)}"><strong>${this._esc(p.title || '(sem título)')}</strong><small>${this._esc(p.handle || p.id)}</small></button>`).join('')}
+                ${!matches.length ? '<div style="padding:.65rem;color:var(--text-muted);font-size:.7rem">Nenhum produto encontrado.</div>' : ''}`;
+            results.classList.remove('hidden');
+            results.querySelectorAll('[data-shopify-product-id]').forEach(btn => btn.addEventListener('click', () => {
+                const id = btn.dataset.shopifyProductId || '';
+                const selected = shopifyProducts.find(p => String(p.id) === String(id));
+                sel.value = id;
+                search.value = selected?.title || '';
+                results.classList.add('hidden');
+                this._updateShopifyInfo(id, shopifyProducts);
+                document.getElementById('product-editor-shopify')?.classList.toggle('hidden', !id);
+                this._markProductEditorDirty();
+            }));
+        };
+        search.onfocus = () => renderResults(search.value);
+        search.oninput = () => renderResults(search.value);
+        search.onkeydown = (event) => {
+            if (event.key === 'Escape') results.classList.add('hidden');
+        };
 
         // Mostra info do produto vinculado
         this._updateShopifyInfo(sel.value, shopifyProducts);
-        sel.onchange = () => this._updateShopifyInfo(sel.value, shopifyProducts);
 
         // Refresh
         const refreshBtn = document.getElementById('btn-prod-shopify-refresh');
@@ -795,7 +978,7 @@ const ProductsModule = {
 
     async handleSubmit(e) {
         e.preventDefault();
-        const data = this._getFormData();
+        let data = this._getFormData();
         const existingIdx = AppState.allProducts.findIndex(p => p.id === data.id);
 
         if (!data.storeId && existingIdx < 0) {
@@ -806,8 +989,10 @@ const ProductsModule = {
         if (existingIdx >= 0) {
             const prev = AppState.allProducts[existingIdx];
             data.storeId = prev.storeId || data.storeId || getWritableStoreId();
-            // Preserve fields not present in the form so they aren't wiped on edit
-            if (prev.campaignUrlsByCountry && !data.campaignUrlsByCountry) data.campaignUrlsByCountry = prev.campaignUrlsByCountry;
+            // O editor reorganiza a apresentação, mas não pode apagar campos
+            // especializados que vivem em outros módulos (variantes, vínculos,
+            // campanhas por país, IDs externos ou metadados de sincronização).
+            data = { ...prev, ...data, storeId: data.storeId };
             AppState.allProducts[existingIdx] = data;
             if (AppState.sheetsConnected) {
                 await SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, data.id, SheetsAPI.productToRow(data));
@@ -835,7 +1020,10 @@ const ProductsModule = {
             }
         } catch (e) { console.warn('Shopify link save failed:', e); }
 
+        LocalStore.save('products', AppState.allProducts);
+        this._markProductEditorSaved();
         filterDataByStore();
+        this._productEditorDirty = false;
         closeModal('product-modal');
         populateProductDropdowns();
         this.render();
@@ -883,6 +1071,7 @@ const ProductsModule = {
             if (typeof SupabaseSync !== 'undefined') {
                 SupabaseSync.deleteProductById(id);
             }
+            LocalStore.save('products', AppState.allProducts);
             filterDataByStore();
             populateProductDropdowns();
             this.render();
@@ -910,6 +1099,7 @@ const ProductsModule = {
             }
         }
         this._addTombstones(tombstones);
+        LocalStore.save('products', AppState.allProducts);
         this._selectedIds = new Set();
         filterDataByStore();
         populateProductDropdowns();
@@ -953,6 +1143,7 @@ const ProductsModule = {
             if (!html) throw new Error('Resposta vazia da IA');
             const descEl = document.getElementById('product-description');
             if (descEl) descEl.innerHTML = html;
+            this._markProductEditorDirty();
             if (statusEl) { statusEl.textContent = 'Descrição gerada'; statusEl.style.color = 'var(--green, #059669)'; }
             setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
         } catch (err) {
@@ -974,20 +1165,25 @@ const ProductsModule = {
             if (!file.type.startsWith('image/')) continue;
             if (this._images.length >= 12) break;
             try {
-                const { blob, width, height } = await comprimirImagem(file, 800, 0.75, { formato: 'image/webp' });
+                const { blob, width, height } = await comprimirImagem(file, 2000, 0.82, { formato: 'image/webp' });
                 const dataUrl = await new Promise((resolve, reject) => {
                     const fr = new FileReader();
                     fr.onloadend = () => resolve(fr.result);
                     fr.onerror = () => reject(new Error('Falha ao ler a imagem comprimida'));
                     fr.readAsDataURL(blob);
                 });
-                this._images.push({ dataUrl, name: file.name, width, height, size: blob.size });
+                const name = String(file.name || 'imagem').replace(/\.[^.]+$/, '') + '.webp';
+                this._images.push({
+                    dataUrl, name, width, height, size: blob.size,
+                    optimization: { format: 'webp', maxDim: 2000, quality: 0.82, optimizedAt: new Date().toISOString(), originalSize: file.size || 0 }
+                });
             } catch (e) {
                 console.error('[Produtos] falha ao processar imagem:', e);
                 if (typeof showToast === 'function') showToast(`Falha ao processar "${file.name}": ${e.message}`, 'error');
             }
         }
         this._renderProductImages();
+        this._markProductEditorDirty();
         // reset input so same file can be re-selected
         const inp = document.getElementById('prod-image-input');
         if (inp) inp.value = '';
@@ -998,21 +1194,24 @@ const ProductsModule = {
         const thumbs = document.getElementById('prod-image-thumbs');
         if (!thumbs) return;
         this._renderImgTools();
+        const mediaCount = document.getElementById('prod-nav-media-count');
+        if (mediaCount) mediaCount.textContent = String(this._images.length);
         if (!this._images.length) {
             if (zone) zone.style.display = '';
             thumbs.style.display = 'none';
             thumbs.innerHTML = '';
+            this._markProductEditorDirty();
             return;
         }
         thumbs.style.display = '';
         // Imagem pode vir de upload (dataUrl base64) ou da Shopify (url do CDN).
-        // Guardar a URL em vez de baixar em base64 mantém o localStorage leve.
+        // Guardar a URL em vez de baixar em base64 mantém a persistência local leve.
         thumbs.innerHTML = this._images.map((img, i) => `
             <div class="prod-image-thumb" draggable="true" data-pos="${i}" title="Arraste pra reordenar">
                 <img src="${img.dataUrl || img.url || ''}" alt="${img.name || img.alt || ''}" loading="lazy" data-trocar="${i}" title="Clique pra trocar esta imagem" style="cursor:pointer">
                 <button type="button" class="prod-image-zoom" data-ampliar="${i}" title="Ampliar"><i data-lucide="zoom-in" style="width:12px;height:12px"></i></button>
                 <button type="button" class="prod-image-remove" data-idx="${i}" title="Remover">×</button>
-                <button type="button" class="prod-image-enhance" data-enhance="${i}" title="Melhorar a qualidade desta imagem"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
+                <button type="button" class="prod-image-enhance" data-image-studio="${i}" title="Editar imagem ou criar novas versões"><i data-lucide="wand-2" style="width:12px;height:12px"></i></button>
                 ${i === 0 ? '<span class="prod-image-cover">Capa</span>' : ''}
                 ${img.melhorada ? '<span class="prod-image-ai" title="Versão melhorada por IA">IA</span>' : ''}
                 ${img.url && !img.dataUrl ? '<span class="prod-image-src" title="Imagem hospedada na Shopify">Shopify</span>' : ''}
@@ -1023,10 +1222,11 @@ const ProductsModule = {
             btn.addEventListener('click', () => {
                 this._images.splice(parseInt(btn.dataset.idx), 1);
                 this._renderProductImages();
+                this._markProductEditorDirty();
             });
         });
-        thumbs.querySelectorAll('[data-enhance]').forEach(btn => {
-            btn.addEventListener('click', () => this.melhorarImagem(parseInt(btn.dataset.enhance, 10)));
+        thumbs.querySelectorAll('[data-image-studio]').forEach(btn => {
+            btn.addEventListener('click', () => this.openImageStudio(parseInt(btn.dataset.imageStudio, 10)));
         });
         // Ampliar tem ícone próprio — sem isso não dá pra conferir de verdade
         // se a versão melhorada ficou boa (a miniatura tem ~90px).
@@ -1074,6 +1274,7 @@ const ProductsModule = {
                 const [item] = this._images.splice(_arrastandoDe, 1);
                 this._images.splice(destino, 0, item);
                 this._renderProductImages();
+                this._markProductEditorDirty();
             });
         });
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
@@ -1081,28 +1282,656 @@ const ProductsModule = {
         // Imagens da Shopify são URLs e não contam para esse limite.
         const enviadas = this._images.filter(im => im.dataUrl).length;
         if (zone) zone.style.display = enviadas >= 12 ? 'none' : '';
+        this._markProductEditorDirty();
     },
 
     _CHIPS_FOTO: ['Frente', 'Costas', 'Lado', 'Detalhe', 'Etiqueta', 'Embalagem', 'Interior', 'Uso', 'Escala'],
 
-    // Barra acima das fotos: puxar as geradas por IA e abrir o renomear em massa.
+    // Atualiza os estados da barra estática sem recriar botões nem listeners.
     _renderImgTools() {
-        const thumbs = document.getElementById('prod-image-thumbs');
-        if (!thumbs || !thumbs.parentNode) return;
-        let bar = document.getElementById('prod-img-tools');
-        if (!bar) {
-            bar = document.createElement('div');
-            bar.id = 'prod-img-tools';
-            bar.className = 'prod-img-tools';
-            thumbs.parentNode.insertBefore(bar, thumbs);
-        }
         const n = this._images.length;
-        bar.innerHTML = `
-            <button type="button" class="btn btn-secondary btn-sm" id="prod-puxar-geradas"><i data-lucide="sparkles" style="width:13px;height:13px"></i> Puxar geradas</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="prod-renomear" ${n ? '' : 'disabled'}><i data-lucide="text-cursor-input" style="width:13px;height:13px"></i> Renomear em massa${n ? ` (${n})` : ''}</button>`;
-        bar.querySelector('#prod-puxar-geradas').addEventListener('click', () => this._abrirPuxarGeradas());
-        bar.querySelector('#prod-renomear').addEventListener('click', () => this._abrirRenomear());
-        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+        const rename = document.getElementById('prod-renomear');
+        const count = document.getElementById('prod-renomear-count');
+        const optimize = document.getElementById('btn-prod-optimize');
+        if (rename) rename.disabled = !n;
+        if (count) count.textContent = n ? `${n} imagem(ns) na galeria` : 'Adicione imagens para organizar';
+        if (optimize) optimize.disabled = !n && !/<img/i.test(document.getElementById('product-description')?.innerHTML || '');
+    },
+
+    _imageStudioIndex: -1,
+    _imageStudioAction: 'enhance',
+    _imageStudioBusy: false,
+    _imageStudioCancelled: false,
+    _imageStudioModel: null,
+
+    openImageStudio(index, action = 'enhance') {
+        const image = this._images[index];
+        if (!image) return;
+        this._imageStudioIndex = index;
+        this._imageStudioBusy = false;
+        this._imageStudioCancelled = false;
+        this._imageStudioModel = null;
+        const source = document.getElementById('product-image-studio-source');
+        const name = document.getElementById('product-image-studio-source-name');
+        const progress = document.getElementById('product-image-studio-progress');
+        const modelInput = document.getElementById('product-image-studio-model-input');
+        if (source) source.src = image.dataUrl || image.url || '';
+        if (name) name.textContent = image.name || image.alt || `Imagem ${index + 1}`;
+        if (progress) progress.classList.add('hidden');
+        if (modelInput) modelInput.value = '';
+        const background = document.getElementById('product-image-studio-background');
+        const custom = document.getElementById('product-image-studio-custom');
+        const modelInstruction = document.getElementById('product-image-studio-model-instruction');
+        if (background) background.value = '';
+        if (custom) custom.value = '';
+        if (modelInstruction) modelInstruction.value = '';
+        this._renderImageStudioAngles();
+        this._renderImageStudioModels();
+        this._setImageStudioAction(action);
+        openModal('product-image-studio-modal');
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    closeImageStudio() {
+        if (this._imageStudioBusy) {
+            if (!confirm('Uma imagem ainda está sendo criada. Deseja interromper as próximas gerações?')) return;
+            this._imageStudioCancelled = true;
+        }
+        closeModal('product-image-studio-modal');
+    },
+
+    _setImageStudioAction(action = 'enhance') {
+        this._imageStudioAction = action;
+        if (action === 'angles' && !document.querySelector('#product-image-studio-angles input')) this._renderImageStudioAngles();
+        if (action === 'model' && !document.querySelector('#product-image-studio-models button')) this._renderImageStudioModels();
+        document.querySelectorAll('[data-image-studio-action]').forEach(button => {
+            const active = button.dataset.imageStudioAction === action;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-image-studio-panel]').forEach(panel => {
+            panel.classList.toggle('hidden', panel.dataset.imageStudioPanel !== action);
+        });
+        const generate = document.getElementById('product-image-studio-generate');
+        const note = document.getElementById('product-image-studio-note');
+        const labels = {
+            enhance: 'Melhorar e adicionar', remove: 'Adicionar recorte', background: 'Criar novo fundo',
+            angles: 'Gerar ângulos', model: 'Criar com modelo', custom: 'Aplicar ajuste',
+        };
+        if (generate && !this._imageStudioBusy) generate.innerHTML = `<i data-lucide="sparkles"></i> ${labels[action] || 'Criar nova foto'}`;
+        if (note) note.textContent = action === 'angles'
+            ? 'Cada ângulo selecionado será adicionado como uma foto separada.'
+            : 'O resultado será adicionado à galeria deste produto.';
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _renderImageStudioAngles() {
+        const container = document.getElementById('product-image-studio-angles');
+        if (!container) return;
+        container.innerHTML = this._IMAGE_STUDIO_ANGLES.map(angle => `
+            <label><input type="checkbox" value="${angle.id}"><span><i data-lucide="${angle.icon}"></i>${this._esc(angle.label)}</span></label>
+        `).join('');
+        container.querySelectorAll('input').forEach(input => input.addEventListener('change', () => this._updateImageStudioAngleCount()));
+        this._updateImageStudioAngleCount();
+    },
+
+    _selectRecommendedImageStudioAngles() {
+        const recommended = new Set(this._IMAGE_STUDIO_ANGLES.filter(angle => angle.recommended).map(angle => angle.id));
+        document.querySelectorAll('#product-image-studio-angles input').forEach(input => { input.checked = recommended.has(input.value); });
+        this._updateImageStudioAngleCount();
+    },
+
+    _updateImageStudioAngleCount() {
+        const selected = document.querySelectorAll('#product-image-studio-angles input:checked').length;
+        const counter = document.getElementById('product-image-studio-angle-count');
+        if (counter) counter.textContent = `${selected} selecionado${selected === 1 ? '' : 's'}`;
+    },
+
+    _renderImageStudioModels() {
+        const container = document.getElementById('product-image-studio-models');
+        const status = document.getElementById('product-image-studio-model-status');
+        if (!container) return;
+        const references = [];
+        try {
+            (window.ModelGenModule?.listModelos?.() || []).forEach(model => {
+                (model.fotos || []).forEach((photo, photoIndex) => {
+                    if (!photo.mediaId && !photo.url && !photo.thumb) return;
+                    references.push({
+                        mediaId: photo.mediaId || '', url: photo.url || '', thumb: photo.thumb || photo.url || '',
+                        name: `${model.nome || 'Modelo'}${model.fotos.length > 1 ? ` ${photoIndex + 1}` : ''}`,
+                    });
+                });
+            });
+        } catch (error) {
+            console.warn('[Produtos] modelos para o estúdio:', error);
+        }
+        container.innerHTML = references.slice(0, 18).map((reference, index) => `
+            <button type="button" data-image-studio-model="${index}"><img src="${this._esc(reference.thumb)}" alt=""><span>${this._esc(reference.name)}</span></button>
+        `).join('');
+        container.querySelectorAll('[data-image-studio-model]').forEach(button => button.addEventListener('click', () => {
+            container.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === button));
+            this._imageStudioModel = { ...references[Number(button.dataset.imageStudioModel)] };
+            if (status) status.textContent = `${this._imageStudioModel.name} selecionado.`;
+        }));
+        if (status) status.textContent = references.length ? 'Ou escolha um modelo já salvo abaixo.' : 'Nenhum modelo salvo. Envie uma foto de referência.';
+    },
+
+    _loadImageStudioModelFile(event) {
+        const file = event.target.files?.[0];
+        if (!file || !file.type.startsWith('image/')) return;
+        this._imageStudioModel = { blob: file, name: file.name || 'Referência enviada' };
+        const status = document.getElementById('product-image-studio-model-status');
+        const container = document.getElementById('product-image-studio-models');
+        if (status) status.textContent = `${this._imageStudioModel.name} selecionada.`;
+        if (container) {
+            container.querySelectorAll('button').forEach(item => item.classList.remove('active'));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                container.insertAdjacentHTML('afterbegin', `<button type="button" class="active" data-image-studio-uploaded><img src="${this._esc(String(reader.result || ''))}" alt=""><span>Referência enviada</span></button>`);
+            };
+            reader.readAsDataURL(file);
+        }
+    },
+
+    _imageStudioDimensions() {
+        const format = document.getElementById('product-image-studio-format')?.value || '1x1';
+        if (format === '1x1') return { largura: 1080, altura: 1080, aspectRatio: '1:1' };
+        if (format === '4x5') return { largura: 1080, altura: 1350, aspectRatio: '4:5' };
+        return {};
+    },
+
+    _imageStudioProviderOptions(extra = {}) {
+        return {
+            formato: 'image/webp', compressao: 92,
+            provedor: this._provedorImagem(), modelo: this._modeloImagem() || undefined,
+            ...this._imageStudioDimensions(), ...extra,
+        };
+    },
+
+    async _imageStudioModelBlob() {
+        const model = this._imageStudioModel;
+        if (!model) return null;
+        if (model.blob) return model.blob;
+        if (model.mediaId && window.MediaStore?.get) {
+            const record = await MediaStore.get(model.mediaId);
+            if (record?.blob) return record.blob;
+        }
+        if (model.url || model.thumb) return await bytesDaImagem(model.url || model.thumb);
+        return null;
+    },
+
+    _setImageStudioProgress(current, total, label) {
+        const progress = document.getElementById('product-image-studio-progress');
+        const labelElement = document.getElementById('product-image-studio-progress-label');
+        const count = document.getElementById('product-image-studio-progress-count');
+        const bar = document.getElementById('product-image-studio-progress-bar');
+        const percentage = total ? Math.round((current / total) * 100) : 0;
+        progress?.classList.remove('hidden');
+        if (labelElement) labelElement.textContent = label || 'Criando…';
+        if (count) count.textContent = `${percentage}%`;
+        if (bar) bar.style.width = `${percentage}%`;
+    },
+
+    async _fitImageStudioBlob(blob) {
+        const dimensions = this._imageStudioDimensions();
+        if (!dimensions.largura || !dimensions.altura || typeof createImageBitmap !== 'function') return blob;
+        const bitmap = await createImageBitmap(blob);
+        if (bitmap.width === dimensions.largura && bitmap.height === dimensions.altura) {
+            bitmap.close?.();
+            return blob;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = dimensions.largura;
+        canvas.height = dimensions.altura;
+        const context = canvas.getContext('2d');
+        const transparent = blob.type === 'image/png';
+        if (!transparent) {
+            context.fillStyle = '#FFFFFF';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        const scale = Math.min(canvas.width / bitmap.width, canvas.height / bitmap.height);
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(bitmap, Math.round((canvas.width - width) / 2), Math.round((canvas.height - height) / 2), width, height);
+        bitmap.close?.();
+        return await new Promise((resolve, reject) => canvas.toBlob(result => result ? resolve(result) : reject(new Error('Falha ao ajustar o formato da imagem')), transparent ? 'image/png' : 'image/webp', .92));
+    },
+
+    async _addImageStudioResult(blob, label) {
+        if (!blob) throw new Error('A geração não devolveu uma imagem');
+        if (this._images.length >= 12) throw new Error('A galeria já atingiu o limite de 12 imagens');
+        const fittedBlob = await this._fitImageStudioBlob(blob);
+        const transparent = fittedBlob.type === 'image/png';
+        const encoded = await comprimirImagem(fittedBlob, 2000, 0.9, { formato: transparent ? 'image/png' : 'image/webp' });
+        const dataUrl = await this._blobToDataUrl(encoded.blob);
+        const productName = (document.getElementById('product-name')?.value || 'produto')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'produto';
+        const safeLabel = String(label || 'editada').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'editada';
+        const extension = transparent ? 'png' : 'webp';
+        this._images.push({
+            dataUrl, name: `${productName}-${safeLabel}.${extension}`, width: encoded.width, height: encoded.height, size: encoded.blob.size,
+            geradaPorIA: this._imageStudioAction !== 'remove', imageStudioAction: this._imageStudioAction,
+            imageStudioSourceIndex: this._imageStudioIndex, generatedAt: new Date().toISOString(),
+        });
+    },
+
+    async generateImageStudioResults() {
+        if (this._imageStudioBusy) return;
+        const sourceImage = this._images[this._imageStudioIndex];
+        if (!sourceImage) return;
+        const action = this._imageStudioAction;
+        const productName = document.getElementById('product-name')?.value.trim() || 'produto';
+        const generate = document.getElementById('product-image-studio-generate');
+        const initialLabel = generate?.innerHTML || '';
+        let tasks = [];
+
+        if (action === 'angles') {
+            const selected = new Set([...document.querySelectorAll('#product-image-studio-angles input:checked')].map(input => input.value));
+            tasks = this._IMAGE_STUDIO_ANGLES.filter(angle => selected.has(angle.id)).map(angle => ({ type: 'angle', label: angle.label, angle }));
+            if (!tasks.length) { showToast('Selecione ao menos um ângulo.', 'error'); return; }
+        } else if (action === 'background') {
+            const description = document.getElementById('product-image-studio-background')?.value.trim() || '';
+            if (!description) { showToast('Descreva o novo fundo.', 'error'); return; }
+            tasks = [{ type: 'background', label: 'novo-fundo', description }];
+        } else if (action === 'model') {
+            if (!this._imageStudioModel) { showToast('Escolha ou envie uma referência de modelo.', 'error'); return; }
+            tasks = [{ type: 'model', label: 'com-modelo' }];
+        } else if (action === 'custom') {
+            const instruction = document.getElementById('product-image-studio-custom')?.value.trim() || '';
+            if (!instruction) { showToast('Descreva o ajuste desejado.', 'error'); return; }
+            tasks = [{ type: 'custom', label: 'ajuste', instruction }];
+        } else {
+            tasks = [{ type: action, label: action === 'enhance' ? 'melhorada' : 'sem-fundo' }];
+        }
+
+        const available = Math.max(0, 12 - this._images.length);
+        if (!available) { showToast('A galeria já atingiu o limite de 12 imagens.', 'error'); return; }
+        if (tasks.length > available) {
+            showToast(`Há espaço para ${available} nova(s) imagem(ns). Reduza a seleção.`, 'error');
+            return;
+        }
+
+        this._imageStudioBusy = true;
+        this._imageStudioCancelled = false;
+        if (generate) { generate.disabled = true; generate.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Criando…'; }
+        this._setImageStudioProgress(0, tasks.length, 'Preparando foto de origem…');
+        let created = 0;
+        try {
+            const sourceBlob = await bytesDaImagem(sourceImage.dataUrl || sourceImage.url);
+            for (let index = 0; index < tasks.length; index++) {
+                if (this._imageStudioCancelled) break;
+                const task = tasks[index];
+                this._setImageStudioProgress(index, tasks.length, `${task.label} · ${index + 1}/${tasks.length}`);
+                let output;
+                if (task.type === 'enhance') {
+                    const dimensions = await dimensoesDaImagem(sourceBlob);
+                    const restored = await this._melhorarBlob(sourceBlob, { largura: dimensions.largura, altura: dimensions.altura });
+                    output = await bytesDaImagem(restored);
+                } else if (task.type === 'remove') {
+                    const mode = document.querySelector('input[name="product-image-studio-remove"]:checked')?.value || 'transparent';
+                    try {
+                        const cutout = await ImageAI.removerFundoLocal(sourceBlob);
+                        output = mode === 'white' ? await ImageAI.achatarSobreCor(cutout, '#FFFFFF') : cutout;
+                    } catch (localError) {
+                        console.warn('[Produtos] recorte local falhou, usando alternativa:', localError.message);
+                        if (mode === 'transparent') {
+                            output = await ImageAI.editar(sourceBlob, ImageAI.promptRecorte(productName), this._imageStudioProviderOptions({ provedor: 'openai', background: 'transparent', formato: 'image/png' }));
+                        } else {
+                            output = await ImageAI.editar(sourceBlob, ImageAI.promptFundoSolido('pure white (#FFFFFF)', productName), this._imageStudioProviderOptions());
+                        }
+                    }
+                    task.label = mode === 'white' ? 'fundo-branco' : 'fundo-transparente';
+                } else if (task.type === 'background') {
+                    output = await ImageAI.editar(sourceBlob, ImageAI.promptCenario(`on a ${task.description} background`, productName), this._imageStudioProviderOptions());
+                } else if (task.type === 'angle') {
+                    const prompt = `Create a new photorealistic catalogue photograph of the exact product shown in the reference image. ${task.angle.instruction}`
+                        + ` Preserve the exact product identity: identical shape, proportions, frame geometry, colour, materials, lenses, hardware, hinges, branding, logos, text and markings.`
+                        + ` Do not redesign, simplify or invent decorative details. Use a clean neutral studio background, realistic lighting and a soft contact shadow.`
+                        + ` Show only one product, fully inside the frame, with no packaging, hands, text or extra objects. The product is: ${productName}.`;
+                    output = await ImageAI.editar(sourceBlob, prompt, this._imageStudioProviderOptions());
+                } else if (task.type === 'model') {
+                    const modelBlob = await this._imageStudioModelBlob();
+                    if (!modelBlob) throw new Error('Não foi possível ler a referência de modelo');
+                    const instruction = document.getElementById('product-image-studio-model-instruction')?.value.trim() || 'natural commercial pose, realistic fit and lighting';
+                    const prompt = `Use the two provided images. THE FIRST IMAGE is the person/model and pose reference. THE SECOND IMAGE is the real product.`
+                        + ` Create a photorealistic commercial photograph of the person from the first image naturally wearing or using the product from the second image: ${instruction}.`
+                        + ` Keep the product completely unchanged — identical shape, proportions, colour, materials, branding, logos, text and markings from the second image.`
+                        + ` Keep the person recognizable and realistic. Remove any different product originally present on the person. Do not add text, watermark or packaging.`;
+                    output = await ImageAI.editar([modelBlob, sourceBlob], prompt, this._imageStudioProviderOptions());
+                } else if (task.type === 'custom') {
+                    const prompt = `Using the provided product photograph, apply only this requested change: ${task.instruction}.`
+                        + ` Keep everything else exactly the same. The product must remain identical in shape, proportions, colour, materials, branding, logos, text and markings.`
+                        + ` Do not add any unrelated object, text, logo or watermark. The product is: ${productName}.`;
+                    output = await ImageAI.editar(sourceBlob, prompt, this._imageStudioProviderOptions());
+                }
+                await this._addImageStudioResult(output, task.label);
+                created++;
+                this._setImageStudioProgress(index + 1, tasks.length, `${created} nova(s) foto(s) pronta(s)`);
+            }
+            if (created) {
+                this._renderProductImages();
+                this._markProductEditorDirty();
+                if (typeof RecentEdits !== 'undefined') {
+                    try { RecentEdits.add({ prompt: `Estúdio da imagem · ${action}`, thumb: this._images.at(-1)?.dataUrl || '', origem: 'Produtos', tipo: action, produto: productName }); } catch {}
+                }
+                showToast(`${created} nova(s) foto(s) adicionada(s) à galeria. Salve o produto para confirmar.`, 'success');
+                closeModal('product-image-studio-modal');
+            }
+        } catch (error) {
+            console.error('[Produtos] estúdio da imagem:', error);
+            showToast('Não foi possível criar a imagem: ' + String(error.message || error).slice(0, 180), 'error');
+        } finally {
+            this._imageStudioBusy = false;
+            if (generate) { generate.disabled = false; generate.innerHTML = initialLabel || '<i data-lucide="sparkles"></i> Criar nova foto'; }
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    _imageOptimizationContext: null,
+    _imageOptimizationPlan: null,
+    _imageOptimizationBusy: false,
+    _imageOptimizationCancelled: false,
+
+    openImageOptimizer({ productIds = [], useOpenForm = false } = {}) {
+        const validIds = productIds.filter(id => (AppState.allProducts || []).some(product => product.id === id));
+        if (!useOpenForm && !validIds.length) {
+            showToast('Selecione ao menos um produto para otimizar.', 'warning');
+            return;
+        }
+        const openId = document.getElementById('product-id')?.value || '';
+        this._imageOptimizationContext = { useOpenForm, productIds: validIds, openId };
+        this._imageOptimizationCancelled = false;
+        this._resetImageOptimizationAnalysis();
+
+        const subtitle = document.getElementById('product-image-optimizer-subtitle');
+        if (subtitle) {
+            const name = useOpenForm ? (document.getElementById('product-name')?.value.trim() || 'produto atual') : '';
+            subtitle.textContent = useOpenForm
+                ? `Converta a galeria e a descrição de “${name}” antes de salvar.`
+                : `Converta e comprima imagens de ${validIds.length} produto(s) selecionado(s).`;
+        }
+
+        const galleryCount = useOpenForm
+            ? (this._images || []).length
+            : validIds.reduce((total, id) => total + (((AppState.allProducts || []).find(product => product.id === id)?.images || []).length), 0);
+        const descriptions = useOpenForm
+            ? [document.getElementById('product-description')?.innerHTML || '']
+            : validIds.map(id => (AppState.allProducts || []).find(product => product.id === id)?.description || '');
+        const descriptionCount = descriptions.reduce((total, html) => {
+            const holder = document.createElement('div');
+            holder.innerHTML = html;
+            return total + holder.querySelectorAll('img').length;
+        }, 0);
+        const scopeValue = galleryCount ? (descriptionCount ? 'both' : 'gallery') : 'description';
+        const scope = document.querySelector(`input[name="product-image-opt-scope"][value="${scopeValue}"]`);
+        if (scope) scope.checked = true;
+        document.querySelector('input[name="product-image-opt-scope"][value="gallery"]')?.toggleAttribute('disabled', !galleryCount);
+        document.querySelector('input[name="product-image-opt-scope"][value="description"]')?.toggleAttribute('disabled', !descriptionCount);
+        document.querySelector('input[name="product-image-opt-scope"][value="both"]')?.toggleAttribute('disabled', !galleryCount || !descriptionCount);
+
+        openModal('product-image-optimizer-modal');
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    closeImageOptimizer() {
+        if (this._imageOptimizationBusy) this._imageOptimizationCancelled = true;
+        closeModal('product-image-optimizer-modal');
+    },
+
+    _resetImageOptimizationAnalysis() {
+        if (this._imageOptimizationBusy) return;
+        this._imageOptimizationPlan = null;
+        const apply = document.getElementById('product-image-optimizer-apply');
+        const summary = document.getElementById('product-image-optimizer-summary');
+        const progress = document.getElementById('product-image-optimizer-progress');
+        if (apply) apply.disabled = true;
+        if (summary) {
+            summary.classList.remove('is-success');
+            summary.innerHTML = '<i data-lucide="scan-search"></i><div><strong>Pronto para analisar</strong><span>Veja o tamanho antes e depois antes de aplicar.</span></div>';
+        }
+        progress?.classList.add('hidden');
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _imageOptimizationOptions() {
+        const scope = document.querySelector('input[name="product-image-opt-scope"]:checked')?.value || 'gallery';
+        const format = document.getElementById('product-image-opt-format')?.value || 'webp';
+        const maxDim = Number(document.getElementById('product-image-opt-max')?.value || 2000);
+        const quality = Number(document.getElementById('product-image-opt-quality')?.value || 0.82);
+        const mime = format === 'jpeg' ? 'image/jpeg' : format === 'png' ? 'image/png' : 'image/webp';
+        const extension = format === 'jpeg' ? 'jpg' : format;
+        return { scope, format, maxDim, quality, mime, extension, key: `${format}-${maxDim}-${Math.round(quality * 100)}` };
+    },
+
+    _formatImageBytes(bytes = 0) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    },
+
+    _setImageOptimizationProgress(current, total, label) {
+        const progress = document.getElementById('product-image-optimizer-progress');
+        const labelEl = document.getElementById('product-image-optimizer-progress-label');
+        const count = document.getElementById('product-image-optimizer-progress-count');
+        const bar = document.getElementById('product-image-optimizer-progress-bar');
+        const percentage = total ? Math.round((current / total) * 100) : 0;
+        progress?.classList.remove('hidden');
+        if (labelEl) labelEl.textContent = label || 'Analisando imagens…';
+        if (count) count.textContent = `${percentage}%`;
+        if (bar) bar.style.width = `${percentage}%`;
+    },
+
+    _blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Falha ao ler a imagem otimizada'));
+            reader.readAsDataURL(blob);
+        });
+    },
+
+    _countOptimizationTargets(snapshot, options) {
+        let total = 0;
+        if (options.scope === 'gallery' || options.scope === 'both') total += (snapshot.images || []).length;
+        if (options.scope === 'description' || options.scope === 'both') {
+            const holder = document.createElement('div');
+            holder.innerHTML = snapshot.description || '';
+            total += holder.querySelectorAll('img').length;
+        }
+        return total;
+    },
+
+    async _optimizeProductSnapshot(snapshot, options, progressState) {
+        const images = (snapshot.images || []).map(image => ({ ...image, optimization: image.optimization ? { ...image.optimization } : undefined }));
+        let description = snapshot.description || '';
+        const stats = { originalBytes: 0, optimizedBytes: 0, processed: 0, skipped: 0, failed: 0 };
+        const processSource = async (source, previousOptimization = null) => {
+            if (this._imageOptimizationCancelled) throw new Error('PROCESSAMENTO_CANCELADO');
+            if (!source) return { skipped: true };
+            if (previousOptimization?.key === options.key) return { skipped: true };
+            const original = await bytesDaImagem(source);
+            if (original.type === 'image/gif' || original.type === 'image/svg+xml') return { skipped: true };
+            const result = await comprimirImagem(original, options.maxDim, options.quality, { formato: options.mime });
+            if (!result?.blob) throw new Error('Conversão não gerou arquivo');
+            // Se o arquivo já está no formato pedido e a conversão ficou maior,
+            // mantém o original para evitar uma "otimização" regressiva.
+            if (original.type === options.mime && result.blob.size >= original.size) return { skipped: true };
+            return { original, ...result, dataUrl: await this._blobToDataUrl(result.blob) };
+        };
+        const tick = (label) => {
+            progressState.current++;
+            this._setImageOptimizationProgress(progressState.current, progressState.total, label);
+        };
+
+        if (options.scope === 'gallery' || options.scope === 'both') {
+            for (let index = 0; index < images.length; index++) {
+                const image = images[index];
+                try {
+                    const result = await processSource(image.dataUrl || image.url, image.optimization);
+                    if (result.skipped) {
+                        stats.skipped++;
+                    } else {
+                        const baseName = String(image.name || image.alt || `imagem-${index + 1}`).replace(/\.[^.]+$/, '');
+                        stats.originalBytes += result.original.size || 0;
+                        stats.optimizedBytes += result.blob.size || 0;
+                        stats.processed++;
+                        images[index] = {
+                            ...image,
+                            dataUrl: result.dataUrl,
+                            url: '',
+                            name: `${baseName}.${options.extension}`,
+                            width: result.width,
+                            height: result.height,
+                            size: result.blob.size,
+                            optimization: {
+                                key: options.key,
+                                format: options.format,
+                                maxDim: options.maxDim,
+                                quality: options.quality,
+                                originalSize: result.original.size || 0,
+                                optimizedAt: new Date().toISOString(),
+                            },
+                        };
+                    }
+                } catch (error) {
+                    if (error.message === 'PROCESSAMENTO_CANCELADO') throw error;
+                    stats.failed++;
+                }
+                tick(`Galeria de ${snapshot.name || 'produto'} · ${index + 1}/${images.length}`);
+            }
+        }
+
+        if (options.scope === 'description' || options.scope === 'both') {
+            const holder = document.createElement('div');
+            holder.innerHTML = description;
+            const descriptionImages = Array.from(holder.querySelectorAll('img'));
+            for (let index = 0; index < descriptionImages.length; index++) {
+                const element = descriptionImages[index];
+                try {
+                    const previousKey = element.getAttribute('data-etracker-optimized') || '';
+                    const result = await processSource(element.getAttribute('src'), { key: previousKey });
+                    if (result.skipped) {
+                        stats.skipped++;
+                    } else {
+                        stats.originalBytes += result.original.size || 0;
+                        stats.optimizedBytes += result.blob.size || 0;
+                        stats.processed++;
+                        element.setAttribute('src', result.dataUrl);
+                        element.setAttribute('data-etracker-optimized', options.key);
+                        element.setAttribute('data-etracker-size', String(result.blob.size || 0));
+                    }
+                } catch (error) {
+                    if (error.message === 'PROCESSAMENTO_CANCELADO') throw error;
+                    stats.failed++;
+                }
+                tick(`Descrição de ${snapshot.name || 'produto'} · ${index + 1}/${descriptionImages.length}`);
+            }
+            description = holder.innerHTML;
+        }
+
+        return { ...snapshot, images, description, stats };
+    },
+
+    async analyzeImageOptimization() {
+        if (this._imageOptimizationBusy || !this._imageOptimizationContext) return;
+        const options = this._imageOptimizationOptions();
+        const context = this._imageOptimizationContext;
+        const analyzeButton = document.getElementById('product-image-optimizer-analyze');
+        const applyButton = document.getElementById('product-image-optimizer-apply');
+        const summary = document.getElementById('product-image-optimizer-summary');
+        const snapshots = context.useOpenForm
+            ? [{
+                id: context.openId || 'produto-aberto',
+                name: document.getElementById('product-name')?.value.trim() || 'Produto atual',
+                images: (this._images || []).map(image => ({ ...image })),
+                description: document.getElementById('product-description')?.innerHTML || '',
+                useOpenForm: true,
+            }]
+            : context.productIds.map(id => {
+                const product = (AppState.allProducts || []).find(item => item.id === id);
+                return product ? { id, name: product.name, images: product.images || [], description: product.description || '' } : null;
+            }).filter(Boolean);
+        const total = snapshots.reduce((sum, snapshot) => sum + this._countOptimizationTargets(snapshot, options), 0);
+        if (!total) {
+            if (summary) summary.innerHTML = '<i data-lucide="image-off"></i><div><strong>Nenhuma imagem encontrada</strong><span>Escolha outro escopo ou adicione imagens ao produto.</span></div>';
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+            return;
+        }
+
+        this._imageOptimizationBusy = true;
+        this._imageOptimizationCancelled = false;
+        if (analyzeButton) analyzeButton.disabled = true;
+        if (applyButton) applyButton.disabled = true;
+        const progressState = { current: 0, total };
+        this._setImageOptimizationProgress(0, total, 'Preparando imagens…');
+        try {
+            const results = [];
+            for (const snapshot of snapshots) {
+                results.push(await this._optimizeProductSnapshot(snapshot, options, progressState));
+            }
+            const totals = results.reduce((acc, result) => {
+                Object.keys(acc).forEach(key => { acc[key] += result.stats[key] || 0; });
+                return acc;
+            }, { originalBytes: 0, optimizedBytes: 0, processed: 0, skipped: 0, failed: 0 });
+            this._imageOptimizationPlan = { options, results, totals };
+            const saved = totals.originalBytes - totals.optimizedBytes;
+            const percentage = totals.originalBytes ? Math.round((saved / totals.originalBytes) * 100) : 0;
+            if (summary) {
+                summary.classList.add('is-success');
+                summary.innerHTML = `<i data-lucide="badge-check"></i><div><strong>${totals.processed} imagem(ns): ${this._formatImageBytes(totals.originalBytes)} → ${this._formatImageBytes(totals.optimizedBytes)}</strong><span>${percentage >= 0 ? `${percentage}% menor · ` : `${Math.abs(percentage)}% maior no formato escolhido · `}${totals.skipped} ignorada(s) · ${totals.failed} falha(s)</span></div>`;
+            }
+            if (applyButton) applyButton.disabled = totals.processed === 0;
+            this._setImageOptimizationProgress(total, total, 'Análise concluída');
+        } catch (error) {
+            if (error.message !== 'PROCESSAMENTO_CANCELADO') showToast('Falha ao analisar imagens: ' + (error.message || error), 'error');
+        } finally {
+            this._imageOptimizationBusy = false;
+            if (analyzeButton) analyzeButton.disabled = false;
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
+    },
+
+    async applyImageOptimization() {
+        const plan = this._imageOptimizationPlan;
+        const context = this._imageOptimizationContext;
+        if (!plan || !context || this._imageOptimizationBusy) return;
+        this._imageOptimizationBusy = true;
+        const applyButton = document.getElementById('product-image-optimizer-apply');
+        if (applyButton) { applyButton.disabled = true; applyButton.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Aplicando…'; }
+        try {
+            if (context.useOpenForm) {
+                const result = plan.results[0];
+                this._images = result.images;
+                const editor = document.getElementById('product-description');
+                if (editor) editor.innerHTML = result.description;
+                this._renderProductImages();
+                this._markProductEditorDirty();
+                showToast('Imagens otimizadas no editor. Salve o produto para confirmar.', 'success');
+            } else {
+                for (const result of plan.results) {
+                    const product = (AppState.allProducts || []).find(item => item.id === result.id);
+                    if (!product) continue;
+                    product.images = result.images;
+                    product.description = result.description;
+                    product.imagesOptimizedAt = new Date().toISOString();
+                    product.imageOptimization = plan.options;
+                    if (AppState.sheetsConnected) {
+                        try { await SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, product.id, SheetsAPI.productToRow(product)); } catch {}
+                    }
+                }
+                LocalStore.save('products', AppState.allProducts);
+                filterDataByStore();
+                this.render();
+                EventBus.emit('productsChanged');
+                showToast(`${plan.results.length} produto(s) atualizado(s) na ferramenta.`, 'success');
+            }
+            this.closeImageOptimizer();
+        } finally {
+            this._imageOptimizationBusy = false;
+            if (applyButton) applyButton.innerHTML = '<i data-lucide="shrink"></i> Aplicar otimização';
+            if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+        }
     },
 
     _extFmt(f) { return f === 'jpg' ? 'jpg' : f === 'png' ? 'png' : 'webp'; },
@@ -2629,7 +3458,22 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
         const box = document.getElementById('prod-shopify-variants');
         if (!box) return;
         const vars = product?.shopifyVariants || [];
-        if (!vars.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        const count = document.getElementById('prod-nav-variant-count');
+        if (count) count.textContent = String(vars.length);
+        if (!vars.length) {
+            box.style.display = '';
+            box.innerHTML = `
+                <div class="prod-section-title"><i data-lucide="swatch-book" style="width:14px;height:14px;vertical-align:-2px"></i> Variantes</div>
+                <div class="product-editor-empty">
+                    <i data-lucide="layers-3"></i>
+                    <strong>Nenhuma variante importada</strong>
+                    <span>Vincule ou sincronize o produto com a Shopify para trazer cores, tamanhos e estoque. Os dados continuam somente leitura.</span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-open-product-channel>Ir para Canais e integrações</button>
+                </div>`;
+            box.querySelector('[data-open-product-channel]')?.addEventListener('click', () => this._setProductEditorSection('canais'));
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+            return;
+        }
         box.style.display = '';
         const opts = (product.shopifyOptions || []).map(o => `${o.name}: ${o.values.join(', ')}`).join(' · ');
         box.innerHTML = `
@@ -2777,6 +3621,7 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
 
     render() {
         const tbody = document.getElementById('products-tbody');
+        if (!tbody) return;
         let products = AppState.products.filter(p => !p.status || p.status !== 'arquivado');
 
         // Filter por status
@@ -2797,17 +3642,20 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             });
         }
 
-        // Update count
+        // Contadores do catálogo e do resultado filtrado.
         const countEl = document.getElementById('products-search-count');
+        const totalAll = AppState.products.length;
+        const totalActive = AppState.products.filter(p => !p.status || p.status !== 'arquivado').length;
+        const totalPill = document.getElementById('products-total-count');
+        if (totalPill) totalPill.textContent = `${totalAll} ${totalAll === 1 ? 'item' : 'itens'}`;
         if (countEl) {
-            const total = AppState.products.filter(p => !p.status || p.status !== 'arquivado').length;
             countEl.textContent = (q || statusFilter)
-                ? `${products.length} de ${total}`
+                ? `${products.length} de ${statusFilter === 'arquivado' ? totalAll : totalActive}`
                 : '';
         }
 
         if (products.length === 0) {
-            tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${q || statusFilter ? 'Nenhum produto encontrado para os filtros aplicados.' : 'Nenhum produto cadastrado. Clique em "+ Adicionar Produto".'}</td></tr>`;
+            tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${q || statusFilter ? 'Nenhum produto encontrado para os filtros aplicados.' : 'Nenhum produto cadastrado. Use “Novo produto” para começar.'}</td></tr>`;
             this._renderBulkBar();
             return;
         }
@@ -2824,7 +3672,9 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             const profitClass = profitUSD >= 0 ? 'color: var(--green)' : 'color: var(--red)';
             const statusBadge = p.status === 'rascunho'
                 ? '<span class="prod-status-badge prod-status-rascunho">Rascunho</span>'
-                : '<span class="prod-status-badge prod-status-ativo">Ativo</span>';
+                : p.status === 'arquivado'
+                    ? '<span class="prod-status-badge">Arquivado</span>'
+                    : '<span class="prod-status-badge prod-status-ativo">Ativo</span>';
 
             // Pipeline stage badge
             const pipeCard = pipelineCards.find(c => c.productId === p.id);
@@ -2832,46 +3682,48 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                 ? `<span class="pipeline-stage-badge stage-${pipeCard.columnId}">${pipelineCols[pipeCard.columnId] || pipeCard.columnId}</span>`
                 : '<span class="pipeline-stage-badge stage-none">—</span>';
 
-            // Country prices badges — show all tiers per country
-            const countryBadges = (p.countryPrices && p.countryPrices.length > 0)
-                ? `<div class="country-prices-badges">${p.countryPrices.map(rawCp => {
-                    const cp = this._normalizeCountryPrice(rawCp);
-                    if (!cp || !cp.tiers.length) return '';
-                    const tiersStr = cp.tiers.map(t => `${t.qty}pc${t.qty > 1 ? 's' : ''} ${cp.currency} ${Number(t.price).toFixed(2)}`).join(' / ');
-                    const tierBadges = cp.tiers.map(t => `<span class="cp-tier-pill">${t.qty}pc ${Number(t.price).toFixed(2)}</span>`).join('');
-                    return `<span class="country-price-badge" title="${cp.country}: ${tiersStr}"><strong>${cp.country}</strong> ${cp.currency} ${tierBadges}</span>`;
-                  }).join('')}</div>`
-                : '';
-
-            // Shopify links (only if product is linked to Shopify)
-            let shopifyLinks = '';
-            if (shopifyShop && p.shopifyId) {
-                const adminUrl = `https://${shopifyShop}/admin/products/${p.shopifyId}`;
-                shopifyLinks += `<a href="${adminUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-icon btn-sm" title="Editar na Shopify"><i data-lucide="wrench" style="width:14px;height:14px"></i></a>`;
-                if (p.shopifyHandle) {
-                    const publicUrl = `https://${shopifyShop.replace(/\.myshopify\.com$/, '.myshopify.com')}/products/${p.shopifyHandle}`;
-                    shopifyLinks += `<a href="${publicUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-icon btn-sm" title="Ver página pública"><i data-lucide="globe" style="width:14px;height:14px"></i></a>`;
-                }
-            }
+            const shopifyId = this._shopifyIdDe(p);
+            const adminUrl = shopifyShop && shopifyId ? `https://${shopifyShop}/admin/products/${shopifyId}` : '';
+            const publicUrl = p.pageUrl || (shopifyShop && p.shopifyHandle ? `https://${shopifyShop}/products/${p.shopifyHandle}` : '');
+            const cover = (p.images || [])[0];
+            const coverUrl = cover?.dataUrl || cover?.url || '';
+            const countries = (p.countryPrices || []).filter(cp => cp?.country).length;
+            const identityMeta = [p.sku, p.vendor, countries ? `${countries} ${countries === 1 ? 'país' : 'países'}` : ''].filter(Boolean).join(' · ') || 'Sem SKU ou fornecedor';
+            const archiveLabel = p.status === 'arquivado' ? 'Reativar produto' : 'Arquivar produto';
+            const archiveIcon = p.status === 'arquivado' ? 'archive-restore' : 'archive';
 
             const isSelected = this._selectedIds.has(p.id);
             return `<tr class="${isSelected ? 'row-selected' : ''}" data-product-id="${p.id}">
                 <td><input type="checkbox" class="products-row-cb" data-id="${p.id}" ${isSelected ? 'checked' : ''}></td>
-                <td><strong>${this._escapeHtml(p.name)}</strong>${typeof renderProductMetaBadges === 'function' ? renderProductMetaBadges(p) : ''}${p.pageUrl ? ` <a class="prod-page-link" href="${this._escapeHtml(p.pageUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir a página que roda este produto"><i data-lucide="external-link" style="width:12px;height:12px;vertical-align:-2px"></i> Página</a>` : ''}<br>${stageBadge}${countryBadges}</td>
+                <td><div class="product-cell">
+                    ${coverUrl ? `<img class="product-cell-thumb" src="${this._escapeHtml(coverUrl)}" alt="" loading="lazy">` : '<span class="product-cell-thumb product-cell-thumb-empty"><i data-lucide="image"></i></span>'}
+                    <div class="product-cell-copy">
+                        <button type="button" class="product-cell-title" data-product-action="edit" data-id="${p.id}">${this._escapeHtml(p.name)}</button>
+                        <span class="product-cell-meta">${this._escapeHtml(identityMeta)}</span>
+                        <span>${stageBadge}</span>
+                    </div>
+                </div></td>
                 <td>${statusBadge}</td>
-                <td>${typeof renderProductMetaBadges === 'function' && (Array.isArray(p.languages) || Array.isArray(p.platforms)) ? renderProductMetaBadges(p) : this._escapeHtml(p.language || p.country || 'Ingles')}</td>
-                <td>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</td>
-                <td>${formatDualCurrencyHTML(p.cost, p.costCurrency)}</td>
-                <td>${p.tax}%</td>
-                <td>${p.variableCosts}%</td>
+                <td class="product-market-cell">${typeof renderProductMetaBadges === 'function' && (Array.isArray(p.languages) || Array.isArray(p.platforms)) ? renderProductMetaBadges(p) : this._escapeHtml(p.language || p.country || 'Inglês')}</td>
+                <td class="product-money-cell"><strong>${formatDualCurrencyHTML(p.price, p.priceCurrency)}</strong><small>Custo ${this._escapeHtml(p.costCurrency || p.priceCurrency || 'USD')} ${Number(p.cost || 0).toFixed(2)} · ${Number(p.tax || 0)}% impostos · ${Number(p.variableCosts || 0)}% variável</small></td>
                 <td>${formatDualCurrencyHTML(p.cpa, p.cpaCurrency)}</td>
                 <td style="${profitClass}; font-weight:700">
                     ${formatDualCurrencyHTML(profitUSD, 'USD')}
                 </td>
                 <td class="products-actions-cell">
-                    ${shopifyLinks}
-                    <button class="btn btn-secondary btn-sm" onclick="ProductsModule.openForm(AppState.products.find(p=>p.id==='${p.id}'))">Editar</button>
-                    <button class="btn btn-danger btn-sm" onclick="ProductsModule.deleteProduct('${p.id}')">Excluir</button>
+                    <details class="product-row-menu">
+                        <summary title="Ações do produto" aria-label="Ações de ${this._escapeHtml(p.name)}"><i data-lucide="more-horizontal"></i></summary>
+                        <div class="product-row-popover">
+                            <button type="button" data-product-action="edit" data-id="${p.id}"><i data-lucide="pencil"></i> Editar produto</button>
+                            ${publicUrl ? `<a href="${this._escapeHtml(publicUrl)}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Abrir página da loja</a>` : ''}
+                            ${adminUrl ? `<a href="${this._escapeHtml(adminUrl)}" target="_blank" rel="noopener"><i data-lucide="shopping-bag"></i> Abrir na Shopify</a>` : ''}
+                            ${shopifyId ? `<button type="button" data-product-action="sync" data-id="${p.id}"><i data-lucide="refresh-cw"></i> Sincronizar da Shopify</button>` : ''}
+                            <button type="button" data-product-action="duplicate" data-id="${p.id}"><i data-lucide="copy"></i> Duplicar</button>
+                            <hr>
+                            <button type="button" data-product-action="archive" data-id="${p.id}"><i data-lucide="${archiveIcon}"></i> ${archiveLabel}</button>
+                            <button type="button" class="danger" data-product-action="delete" data-id="${p.id}"><i data-lucide="trash-2"></i> Excluir</button>
+                        </div>
+                    </details>
                 </td>
             </tr>`;
         }).join('');
@@ -2886,9 +3738,101 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                 this._renderBulkBar();
             });
         });
+        tbody.querySelectorAll('[data-product-action]').forEach(control => {
+            control.addEventListener('click', () => {
+                const id = control.dataset.id;
+                const action = control.dataset.productAction;
+                control.closest('details')?.removeAttribute('open');
+                if (action === 'edit') this.openProductEditor(id);
+                if (action === 'sync') this.syncProductFromShopify(id);
+                if (action === 'duplicate') this.duplicateProduct(id);
+                if (action === 'archive') this.toggleArchiveProduct(id);
+                if (action === 'delete') this.deleteProduct(id);
+            });
+        });
 
         this._renderBulkBar();
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    openProductEditor(id) {
+        const product = (AppState.allProducts || []).find(item => item.id === id);
+        if (!product) {
+            showToast('Produto não encontrado.', 'error');
+            return;
+        }
+        this.openForm(product);
+    },
+
+    async syncProductFromShopify(id) {
+        const product = (AppState.allProducts || []).find(item => item.id === id);
+        if (!product) return;
+        const shopifyId = this._shopifyIdDe(product);
+        if (!shopifyId) {
+            showToast('Vincule este produto à Shopify antes de sincronizar.', 'warning');
+            return;
+        }
+        try {
+            showToast(`Sincronizando “${product.name}”…`, 'info');
+            const detailsMap = await ShopifyModule.fetchProductDetails([shopifyId]);
+            const details = detailsMap[shopifyId];
+            if (!details) throw new Error('Produto não encontrado na Shopify');
+            const result = this._aplicarDetalhesShopify(product, details, { sobrescrever: false });
+            LocalStore.save('products', AppState.allProducts);
+            if (AppState.sheetsConnected) {
+                try { await SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, product.id, SheetsAPI.productToRow(product)); } catch {}
+            }
+            filterDataByStore();
+            this.render();
+            EventBus.emit('productsChanged');
+            showToast(`Sincronizado: ${result.fotos} foto(s) e ${result.variantes} variante(s).`, 'success');
+        } catch (error) {
+            showToast('Falha ao sincronizar: ' + (error.message || error), 'error');
+        }
+    },
+
+    async duplicateProduct(id) {
+        const source = (AppState.allProducts || []).find(item => item.id === id);
+        if (!source) return;
+        const duplicate = JSON.parse(JSON.stringify(source));
+        duplicate.id = generateId('prod');
+        duplicate.name = `${source.name} — cópia`;
+        duplicate.status = 'rascunho';
+        duplicate.createdAt = new Date().toISOString();
+        delete duplicate.shopifyId;
+        delete duplicate.shopifyHandle;
+        delete duplicate.shopifyVariants;
+        delete duplicate.shopifyOptions;
+        delete duplicate.shopifyDetailsAt;
+        (duplicate.images || []).forEach(image => {
+            delete image.enviadaShopify;
+        });
+        AppState.allProducts.push(duplicate);
+        LocalStore.save('products', AppState.allProducts);
+        if (AppState.sheetsConnected) {
+            try { await SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(duplicate)); } catch {}
+        }
+        filterDataByStore();
+        populateProductDropdowns();
+        this.render();
+        EventBus.emit('productsChanged');
+        showToast('Produto duplicado como rascunho.', 'success');
+    },
+
+    async toggleArchiveProduct(id) {
+        const product = (AppState.allProducts || []).find(item => item.id === id);
+        if (!product) return;
+        product.status = product.status === 'arquivado' ? 'rascunho' : 'arquivado';
+        LocalStore.save('products', AppState.allProducts);
+        if (AppState.sheetsConnected) {
+            try { await SheetsAPI.updateRowById(SheetsAPI.TABS.PRODUCTS, product.id, SheetsAPI.productToRow(product)); } catch {}
+        }
+        this._selectedIds?.delete(id);
+        filterDataByStore();
+        populateProductDropdowns();
+        this.render();
+        EventBus.emit('productsChanged');
+        showToast(product.status === 'arquivado' ? 'Produto arquivado.' : 'Produto reativado como rascunho.', 'success');
     },
 
     _renderBulkBar() {
