@@ -436,36 +436,33 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Botão "Painel" na mesma linha dos filtros globais -->
+                    <div class="dash-tools-wrap">
+                        <button type="button" id="btn-dash-tools" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">
+                            <i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i>
+                            Painel
+                            <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
+                        </button>
+                        <div id="dash-tools-menu" class="dash-tools-menu" role="menu" hidden>
+                            <button type="button" id="btn-page-comparison" class="dash-tools-item" role="menuitem">
+                                <i data-lucide="git-compare"></i>
+                                <span><strong>Comparar Páginas</strong><small>Confronte períodos lado a lado</small></span>
+                            </button>
+                            <button type="button" id="btn-dash-customize" class="dash-tools-item" role="menuitem">
+                                <i data-lucide="layout-grid"></i>
+                                <span><strong>Personalizar</strong><small>Mostrar, ocultar e reordenar blocos</small></span>
+                            </button>
+                            <button type="button" id="btn-dash-edit-mode" class="dash-tools-item" role="menuitem">
+                                <i data-lucide="move"></i>
+                                <span><strong>Reorganizar</strong><small>Arrastar blocos direto no painel</small></span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Row 1: KPIs -->
             <div class="dash-kpi-bar" id="dash-kpis"></div>
-
-            <!-- Quick Actions Row: um único botão "Painel" abre as 3 opções -->
-            <div class="dash-quick-actions">
-                <div class="dash-tools-wrap">
-                    <button type="button" id="btn-dash-tools" class="btn btn-secondary btn-sm" aria-haspopup="true" aria-expanded="false">
-                        <i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i>
-                        Painel
-                        <i data-lucide="chevron-down" style="width:12px;height:12px"></i>
-                    </button>
-                    <div id="dash-tools-menu" class="dash-tools-menu" role="menu" hidden>
-                        <button type="button" id="btn-page-comparison" class="dash-tools-item" role="menuitem">
-                            <i data-lucide="git-compare"></i>
-                            <span><strong>Comparar Páginas</strong><small>Confronte períodos lado a lado</small></span>
-                        </button>
-                        <button type="button" id="btn-dash-customize" class="dash-tools-item" role="menuitem">
-                            <i data-lucide="layout-grid"></i>
-                            <span><strong>Personalizar</strong><small>Mostrar, ocultar e reordenar blocos</small></span>
-                        </button>
-                        <button type="button" id="btn-dash-edit-mode" class="dash-tools-item" role="menuitem">
-                            <i data-lucide="move"></i>
-                            <span><strong>Reorganizar</strong><small>Arrastar blocos direto no painel</small></span>
-                        </button>
-                    </div>
-                </div>
-            </div>
 
             <!-- Shopify Integration Widget -->
             <div class="dash-card shopify-widget dash-block" id="shopify-widget" data-block-id="shopify" data-block-name="Shopify (conexão)">

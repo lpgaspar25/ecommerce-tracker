@@ -86,7 +86,10 @@ body[data-theme="light"] {
 html {
     scroll-behavior: smooth;
     max-width: 100%;
-    overflow-x: hidden;
+    /* clip (não hidden): previne scroll horizontal sem criar container de
+       scroll — overflow-x:hidden no html é a causa nº 1 de position: sticky não
+       funcionar (a barra de filtros globais não grudava por causa disto). */
+    overflow-x: clip;
 }
 
 body.ux-v2-ready {
@@ -94,7 +97,10 @@ body.ux-v2-ready {
     background: var(--bg-primary);
     letter-spacing: -0.012em;
     max-width: 100%;
-    overflow-x: hidden;
+    /* clip (não hidden): previne o scroll horizontal SEM tornar o body um
+       container de scroll — hidden aqui quebrava o position: sticky dos filtros
+       (o body virava o "scrollport" mas quem rola é a janela). */
+    overflow-x: clip;
 }
 
 /* A largura declarada passa a incluir padding e borda. Sem isso, cada painel
@@ -511,8 +517,10 @@ body.ux-v2-ready {
     min-width: 0;
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
-    overflow-x: clip;
+    /* Sem overflow-x aqui: overflow num ANCESTRAL da barra de filtros prende o
+       position: sticky (o sticky passa a se referir a este container, que não
+       rola). O corte horizontal foi movido pro próprio container de scroll
+       (body), cujo overflow NÃO prende o sticky dos descendentes. */
     background:
         radial-gradient(circle at 82% 5%, rgba(221, 255, 25, 0.025), transparent 24%),
         var(--bg-primary);
@@ -1106,6 +1114,7 @@ body.ux-v2-ready {
 
 .ux-v2-ready .dash-date-picker-btn,
 .ux-v2-ready .dash-compare-toggle-btn,
+.ux-v2-ready #btn-dash-tools,
 .ux-v2-ready .dash-date-controls > select {
     min-height: 34px;
     color: var(--text-secondary);
@@ -1113,6 +1122,8 @@ body.ux-v2-ready {
     border-color: var(--border);
     border-radius: 8px;
 }
+/* O botão "Painel" fica colado no canto direito da barra de filtros. */
+.ux-v2-ready .dash-date-controls .dash-tools-wrap { margin-left: 2px; }
 
 .ux-v2-ready .dash-date-picker-btn:hover,
 .ux-v2-ready .dash-compare-toggle-btn:hover,
