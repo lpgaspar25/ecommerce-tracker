@@ -10470,7 +10470,10 @@ thead:hover .diary-check-col input[type="checkbox"],
 .mcal-prod-dd-cur { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; overflow: hidden; flex: 1; min-width: 0; }
 .mcal-prod-dd-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
 .mcal-prod-dd-panel {
-    position: absolute; top: calc(100% + 4px); right: 0; z-index: 90;
+    /* Ancorado à ESQUERDA do botão (cresce pra direita): o botão fica no lado
+       esquerdo do calendário, então right:0 fazia o painel de 420px vazar pra
+       fora da tela à esquerda (e ser cortado pelo overflow do container). */
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 90;
     width: min(420px, 88vw); max-height: 380px; overflow-y: auto;
     background: var(--bg-secondary, #fff); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,0.18); padding: 0.4rem;
