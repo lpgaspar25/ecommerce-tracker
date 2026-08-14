@@ -1096,46 +1096,12 @@ body.ux-v2-ready {
     text-transform: uppercase;
 }
 
-/* ---- Filtros globais recolhíveis num ícone discreto ---- */
-.ux-filters-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 34px;
-    padding: 0 11px;
-    color: var(--text-secondary);
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    font-weight: 600;
-    transition: background .15s, border-color .15s, color .15s;
-}
-.ux-filters-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
-.ux-filters-toggle i { width: 15px; height: 15px; flex: none; }
-.ux-filters-toggle .ux-filters-summary {
-    color: var(--text-muted);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 260px;
-}
-
-/* Quando recolhido: some o rótulo "Filtros globais" e todos os controles,
-   deixando só o botão-ícone com o resumo. A barra encolhe pro tamanho do botão. */
-.ux-dashboard-controls.ux-filters-collapsed { justify-content: flex-end; }
-.ux-dashboard-controls.ux-filters-collapsed .dash-date-controls::before { display: none; }
-.ux-dashboard-controls.ux-filters-collapsed .dash-date-controls > *:not(.ux-filters-toggle) {
-    display: none !important;
-}
-/* Quando aberto, o botão-ícone mostra só o ícone (sem o resumo, que já está
-   redundante com os controles visíveis). */
-.ux-dashboard-controls:not(.ux-filters-collapsed) .ux-filters-summary { display: none; }
-
-@media (max-width: 640px) {
-    .ux-filters-toggle .ux-filters-summary { max-width: 150px; }
+/* Barra de filtros globais acompanha a rolagem: fica grudada logo ABAIXO do
+   topbar (70px) pra o usuário mexer no filtro sem voltar pro início da página. */
+.ux-v2-ready .ux-dashboard-controls {
+    position: sticky;
+    top: 70px;
+    z-index: 40;
 }
 
 .ux-v2-ready .dash-date-picker-btn,
