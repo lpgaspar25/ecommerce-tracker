@@ -4170,7 +4170,11 @@
         <!-- ==================== VENDAS & PADRÕES ==================== -->
         <section id="tab-vendas" class="tab-panel">
             <div class="section-header sales-section-header">
-                <h2><i data-lucide="line-chart" style="width:14px;height:14px;vertical-align:-2px"></i> Vendas &amp; Padrões</h2>
+                <div class="sales-page-heading">
+                    <span class="sales-page-eyebrow">Decisões comerciais</span>
+                    <h2><i data-lucide="line-chart" style="width:18px;height:18px;vertical-align:-3px"></i> Vendas</h2>
+                    <p>Entenda o que cresceu, o que sustenta cada mercado e onde existe espaço para expandir.</p>
+                </div>
                 <!-- Inline filters -->
                     <div class="sales-filters-inline">
                         <div class="sales-filter-item">
@@ -4263,63 +4267,26 @@
                 </div>
             </div>
 
-            <!-- Break-even / Target Calculator -->
-            <div class="sales-calc-card">
-                <div class="sales-calc-head">
-                    <div>
-                        <strong><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Calculadora de Metas (período)</strong>
-                        <span class="sales-calc-sub" id="sales-calc-period-label"></span>
-                    </div>
-                    <button id="sales-calc-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
-                </div>
-                <div class="sales-calc-body" id="sales-calc-body">
-                    <div class="sales-calc-actions-row">
-                        <button id="btn-sales-calc-autofill" class="btn btn-secondary btn-sm" type="button" title="Puxar gasto + visitantes do Diário (relatório do Facebook)"><i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> Auto-preencher do Diário</button>
-                        <span id="sales-calc-source" class="sales-calc-source"></span>
-                    </div>
-                    <div class="sales-calc-inputs">
-                        <div class="form-group">
-                            <label>Gasto em ads (período)</label>
-                            <div style="display:flex;gap:0.3rem">
-                                <input type="text" id="sales-calc-spend" class="input input-sm" inputmode="decimal" placeholder="0,00">
-                                <select id="sales-calc-spend-currency" class="input input-sm" style="width:auto">
-                                    <option value="BRL">BRL</option>
-                                    <option value="USD">USD</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="GBP">GBP</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Visitantes / sessões</label>
-                            <input type="text" id="sales-calc-visitors" class="input input-sm" inputmode="numeric" placeholder="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Lucro alvo (% receita)</label>
-                            <input type="number" id="sales-calc-target-profit" class="input input-sm" min="0" step="1" value="30">
-                        </div>
-                        <div class="form-group">
-                            <label>Conversão alvo (%)</label>
-                            <input type="number" id="sales-calc-target-conv" class="input input-sm" min="0" step="0.1" value="2">
-                        </div>
-                        <div class="form-group">
-                            <label>Margem unitária (override)</label>
-                            <input type="text" id="sales-calc-margin-override" class="input input-sm" inputmode="decimal" placeholder="auto">
-                        </div>
-                    </div>
-                    <div class="sales-calc-meta" id="sales-calc-meta"></div>
-                    <div class="sales-calc-scenarios" id="sales-calc-scenarios"></div>
-                </div>
-            </div>
+            <nav class="sales-section-nav" aria-label="Atalhos do painel de vendas">
+                <a href="#sales-summary"><i data-lucide="layout-dashboard"></i> Resumo</a>
+                <a href="#sales-product-ranking-card"><i data-lucide="package-search"></i> Produtos</a>
+                <a href="#sales-market-intelligence"><i data-lucide="map"></i> Mercados</a>
+                <a href="#sales-patterns-intelligence"><i data-lucide="sparkles"></i> Padrões</a>
+                <a href="#sales-orders-workspace"><i data-lucide="receipt-text"></i> Pedidos</a>
+            </nav>
+
+            <!-- Summary stays close to the filters so the page starts with the answer. -->
+            <div class="sales-summary" id="sales-summary"></div>
 
             <!-- Sales Ranking (Madgicx-style with period comparator) -->
-            <div class="dash-card dash-card-mdgx-ranking" style="margin-bottom:1rem">
+            <div class="dash-card dash-card-mdgx-ranking sales-decision-card" id="sales-product-ranking-card" style="margin-bottom:1rem">
                 <div class="mdgx-ranking-header">
                     <div class="mdgx-ranking-circle"><i data-lucide="package-search" style="width:22px;height:22px;color:white"></i></div>
                     <div class="mdgx-ranking-title-wrap">
-                        <div class="mdgx-ranking-label">Ranking — Período selecionado</div>
+                        <div class="mdgx-ranking-label">Vendas por produto</div>
                         <div class="mdgx-ranking-total" id="sales-mdgx-ranking-total">0</div>
                         <div class="mdgx-ranking-compare" id="sales-mdgx-ranking-compare"></div>
+                        <div class="sales-compare-explainer"><i data-lucide="info"></i> Os percentuais de cada produto comparam suas vendas com o período anterior equivalente.</div>
                     </div>
                     <button id="btn-sales-mdgx-ranking-all" class="btn btn-secondary btn-sm" type="button">Ver Tudo</button>
                 </div>
@@ -4328,9 +4295,12 @@
 
             <!-- Patterns / Insights -->
             <!-- Ranking geográfico: pedidos por país + produto que sustenta cada mercado -->
-            <div class="sales-patterns-card">
+            <div class="sales-patterns-card sales-decision-card" id="sales-market-intelligence">
                 <div class="sales-calc-head">
-                    <strong><i data-lucide="map-pin" style="width:14px;height:14px;vertical-align:-2px"></i> Ranking Geográfico</strong>
+                    <div>
+                        <strong><i data-lucide="map-pin" style="width:14px;height:14px;vertical-align:-2px"></i> Inteligência de mercados</strong>
+                        <span class="sales-calc-sub">Compare países, identifique produtos âncora e encontre oportunidades de expansão.</span>
+                    </div>
                     <button id="sales-geo-ranking-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
                 </div>
                 <div class="sales-geo-ranking-body" id="sales-geo-ranking-body">
@@ -4347,13 +4317,17 @@
                     </div>
 
                     <div class="sales-pattern-block">
-                        <div class="sales-pattern-title">Produtos âncora por país <span class="sales-tz-note" title="O produto que concentra a maior parte da receita em cada país — o que sustenta aquele mercado">o que sustenta cada mercado</span></div>
+                        <div class="sales-pattern-title sales-anchor-title">
+                            <span>Produtos âncora por país</span>
+                            <small>O que sustenta cada mercado e qual deve ser a próxima ação.</small>
+                        </div>
+                        <div id="sales-market-opportunities" class="sales-market-opportunities"></div>
                         <div id="sales-anchor-table"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="sales-patterns-card">
+            <div class="sales-patterns-card sales-decision-card" id="sales-patterns-intelligence">
                 <div class="sales-calc-head">
                     <strong><i data-lucide="sparkles" style="width:14px;height:14px;vertical-align:-2px"></i> Padrões &amp; Insights</strong>
                     <button id="sales-patterns-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
@@ -4384,10 +4358,15 @@
                 </div>
             </div>
 
-            <!-- Summary -->
-            <div class="sales-summary" id="sales-summary"></div>
-
             <!-- Viz toggle bar -->
+            <div class="sales-orders-workspace sales-decision-card" id="sales-orders-workspace">
+                <div class="sales-orders-heading">
+                    <div>
+                        <span class="sales-page-eyebrow">Análise detalhada</span>
+                        <h3>Pedidos e comportamento</h3>
+                    </div>
+                    <span>Use a mesma segmentação do topo em todas as visualizações.</span>
+                </div>
             <div class="sales-viz-bar">
                 <button class="sales-viz-tab active" data-viz="tabela"><i data-lucide="table-2" style="width:14px;height:14px;vertical-align:-2px"></i> <span class="viz-tab-label">Tabela</span></button>
                 <button class="sales-viz-tab" data-viz="calendario"><i data-lucide="calendar-days" style="width:14px;height:14px;vertical-align:-2px"></i> <span class="viz-tab-label">Calendário</span></button>
@@ -4500,6 +4479,7 @@
                 <div class="sales-table-footer">
                     <button id="btn-sales-load-more" class="btn btn-secondary btn-sm" style="display:none">Mostrar mais</button>
                 </div>
+            </div>
             </div>
         </section>
 
@@ -7187,7 +7167,7 @@
     <script src="js/projects.js"></script>
     <script src="js/importer.js"></script>
     <script src="js/country-tz.js"></script>
-    <script src="js/sales.js"></script>
+    <script src="js/sales.js?v=20260813-sales-v2"></script>
     <script src="js/fiscal.js"></script>
     <script src="js/reconciliation.js"></script>
     <script src="js/remote-captures.js"></script>

@@ -112,6 +112,112 @@ const SalesModule = (() => {
         },
     };
 
+    // Preview branch only: a deterministic, aggregate-safe sales snapshot lets the
+    // redesigned dashboard be reviewed locally without copying customer records or
+    // touching Shopify. It is activated explicitly with ?salesPreview=1.
+    const _isSalesPreview = (() => {
+        try { return new URLSearchParams(window.location.search).get('salesPreview') === '1'; }
+        catch { return false; }
+    })();
+
+    const _previewCatalog = [
+        { id:'preview-p1', shopifyId:'p1', name:'RY-BN FERRARI GTC SUNGLASSES [EN]', price:33.86, language:'Ingles', languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.86}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/WhatsAppImage2021-02-09at12.34.00_1024x1024_2x_09605793-25a7-4e58-8df7-e6ba76a1ccbc.webp?v=1747336998'] },
+        { id:'preview-p2', shopifyId:'p2', name:'MB GT Line Sunglasses [US+DE]', price:33.45, languages:['Ingles','Alemao'], countryPrices:[{country:'US',currency:'USD',price:33.45},{country:'DE',currency:'EUR',price:33.45}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/ChatGPTImage24deabr.de2026_21_43_02.jpg?v=1777077841'] },
+        { id:'preview-p3', shopifyId:'p3', name:'RY-BN® FERRARI GTC SUNGLASSES [US+DE]', price:33.82, languages:['Ingles','Alemao'], countryPrices:[{country:'US',currency:'USD',price:33.82},{country:'DE',currency:'EUR',price:33.82}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/ChatGPTImage24deabr.de2026_21_43_02.jpg?v=1777077841'] },
+        { id:'preview-p4', shopifyId:'p4', name:'BMW X7 Series – Polarized Sunglasses – Limited Edition [EN+DE]', price:33.65, languages:['Ingles','Alemao'], countryPrices:[{country:'GB',currency:'GBP',price:33.65},{country:'DE',currency:'EUR',price:33.65}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/magnific_quero-que-adicione-a-logo_2885625568_1.jpg?v=1777419384'] },
+        { id:'preview-p5', shopifyId:'p5', name:'Audi Sportback Sunglasses', price:30.38, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:30.38}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/PRATA_8d9db877-1f06-463f-9815-dd0821aee75d.webp?v=1753810866'] },
+        { id:'preview-p6', shopifyId:'p6', name:'Carrera War Sunglasses', price:33.90, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.90}], gallery:[] },
+        { id:'preview-p7', shopifyId:'p7', name:'Shm Polarized Sunglasses', price:33.92, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.92}], gallery:[] },
+    ];
+
+    const _previewCountry = {
+        GB: ['United Kingdom', 'Manchester'], US: ['United States', 'Orlando'],
+        DE: ['Germany', 'Berlin'], AU: ['Australia', 'Sydney'], IE: ['Ireland', 'Dublin'],
+    };
+
+    function _buildPreviewOrders(previous = false) {
+        const groups = previous ? [
+            ['GB','p1',16,15], ['GB','p2',5,4], ['GB','p4',7,6], ['GB','p5',4,4], ['GB','p6',5,4], ['GB','p7',2,2],
+            ['US','p3',6,5], ['US','p2',6,6], ['US','p4',2,2], ['US','p5',2,2], ['US','p6',1,1],
+            ['DE','p2',3,3], ['AU','p5',2,2], ['AU','p7',2,2], ['IE','p2',1,1], ['IE','p5',1,1], ['IE','p7',1,1],
+        ] : [
+            ['GB','p1',18,17], ['GB','p2',5,5], ['GB','p4',5,5], ['GB','p5',5,4], ['GB','p6',4,4], ['GB','p7',2,2],
+            ['US','p3',14,13], ['US','p2',5,4], ['DE','p2',8,7], ['DE','p4',3,2],
+            ['AU','p1',3,3], ['AU','p4',1,1], ['AU','p5',1,1], ['AU','p7',1,1],
+            ['IE','p2',1,1], ['IE','p1',1,1], ['IE','p5',1,1],
+        ];
+        const start = new Date(previous ? '2026-06-16T08:00:00Z' : '2026-07-16T08:00:00Z');
+        const out = [];
+        let seq = 0;
+        groups.forEach(([cc, pid, units, orderCount]) => {
+            const product = _previewCatalog.find(p => p.shopifyId === pid);
+            for (let i = 0; i < orderCount; i++) {
+                const quantity = i === 0 ? units - (orderCount - 1) : 1;
+                const when = new Date(start);
+                when.setUTCDate(start.getUTCDate() + (seq % 30));
+                when.setUTCHours(8 + (seq * 3) % 15, (seq * 11) % 60, 0, 0);
+                const [country, city] = _previewCountry[cc];
+                const number = (previous ? 16000 : 17200) + seq;
+                out.push({
+                    id: `preview-${previous ? 'prev' : 'cur'}-${seq}`,
+                    name: `#${number}`,
+                    created_at: when.toISOString(),
+                    total_price: (product.price * quantity).toFixed(2),
+                    currency: 'EUR',
+                    financial_status: 'paid',
+                    shipping_address: { country_code: cc, country, city },
+                    line_items: [{ product_id: pid, title: product.name, quantity, price: product.price.toFixed(2) }],
+                });
+                seq++;
+            }
+        });
+        return out;
+    }
+
+    const _previewCurrentOrders = _isSalesPreview ? _buildPreviewOrders(false) : [];
+    const _previewPreviousOrders = _isSalesPreview ? _buildPreviewOrders(true) : [];
+
+    function _ensurePreviewCatalog() {
+        if (!_isSalesPreview || typeof AppState === 'undefined') return;
+        const existing = AppState.allProducts || AppState.products || [];
+        if (!existing.length) {
+            AppState.allProducts = _previewCatalog.map(p => ({ ...p }));
+            AppState.products = AppState.allProducts;
+        }
+        const existingDiary = AppState.allDiary || AppState.diary || [];
+        if (!existingDiary.length) {
+            const current = [
+                ['preview-p1',220,745,22], ['preview-p2',260,636,19], ['preview-p3',180,473,14],
+                ['preview-p4',150,303,9], ['preview-p5',170,213,7], ['preview-p6',95,136,4], ['preview-p7',70,102,3],
+            ];
+            const previous = [
+                ['preview-p1',200,542,16], ['preview-p2',235,502,15], ['preview-p3',120,203,6],
+                ['preview-p4',145,303,9], ['preview-p5',150,273,9], ['preview-p6',105,203,6], ['preview-p7',85,169,5],
+            ];
+            AppState.allDiary = [
+                ...current.map(([productId,budget,revenue,sales], i) => ({ id:`preview-diary-current-${i}`, date:'2026-08-10', productId, budget, budgetCurrency:'EUR', revenue, revenueCurrency:'EUR', sales, shopifySales:sales })),
+                ...previous.map(([productId,budget,revenue,sales], i) => ({ id:`preview-diary-prev-${i}`, date:'2026-07-10', productId, budget, budgetCurrency:'EUR', revenue, revenueCurrency:'EUR', sales, shopifySales:sales })),
+            ];
+            AppState.diary = AppState.allDiary;
+        }
+    }
+
+    function _canFetchOrders() {
+        return _isSalesPreview || (typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders);
+    }
+
+    async function _fetchOrders(from, to, options = {}) {
+        if (_isSalesPreview) {
+            _ensurePreviewCatalog();
+            const source = String(from || '') < '2026-07-16' ? _previewPreviousOrders : _previewCurrentOrders;
+            return source.filter(o => {
+                const d = String(o.created_at || '').slice(0, 10);
+                return (!from || d >= from) && (!to || d <= to);
+            });
+        }
+        return ShopifyModule.fetchOrders(from, to, options);
+    }
+
     function _saveCalc() {
         try { localStorage.setItem(CALC_KEY, JSON.stringify(_state.calc)); } catch {}
     }
@@ -697,7 +803,7 @@ const SalesModule = (() => {
         }
         const max = Math.max(...counts, 1);
         const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-        const displayCcy = _state.calc?.spendCurrency || _state.currency || 'BRL';
+        const displayCcy = _state.currency || 'BRL';
         const order = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun
         wrap.innerHTML = order.map(i => {
             const w = max ? (counts[i] / max) * 100 : 0;
@@ -731,7 +837,7 @@ const SalesModule = (() => {
         }
         const list = [...byCountry.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
         const totalOrders = orders.length || 1;
-        const displayCcy = _state.calc?.spendCurrency || _state.currency || 'BRL';
+        const displayCcy = _state.currency || 'BRL';
         if (!list.length) {
             wrap.innerHTML = '<p class="sales-empty" style="padding:1rem">—</p>';
             return;
@@ -855,6 +961,39 @@ const SalesModule = (() => {
         if (wkd > wke * 2.5) insights.push(`Vendas concentram em dias úteis: ${wkd} úteis vs ${wke} fim de semana.`);
         else if (wke > wkd) insights.push(`Fim de semana puxa as vendas: ${wke} sáb/dom vs ${wkd} dias úteis.`);
 
+        // Paid-performance insights combine ad spend/history from Diário with the
+        // product context. This keeps CPA/ROAS actionable without duplicating the Diary.
+        const paidRows = _diaryPerformanceRows().filter(r => r.budgetUSD > 0);
+        if (paidRows.length) {
+            const bestRoas = paidRows.filter(r => r.roas > 0).sort((a, b) => b.roas - a.roas)[0];
+            const bestCpa = paidRows.filter(r => r.cpaUSD > 0).sort((a, b) => a.cpaUSD - b.cpaUSD)[0];
+            if (bestRoas) insights.unshift(`<strong>Melhor ROAS:</strong> ${_esc(bestRoas.name)} retorna <strong>${bestRoas.roas.toFixed(2)}x</strong> no Diário.`);
+            if (bestCpa) {
+                const ccy = _state.currency || 'BRL';
+                const shown = (typeof convertCurrency === 'function') ? convertCurrency(bestCpa.cpaUSD, 'USD', ccy) : _convertFromUSD(bestCpa.cpaUSD, ccy);
+                insights.unshift(`<strong>Melhor CPA:</strong> ${_esc(bestCpa.name)} está em <strong>${_fmtMoney(shown, ccy)}</strong>.`);
+            }
+
+            const { from: prevFrom, to: prevTo } = _previousRange(_state.from, _state.to);
+            const prevMap = new Map(_diaryPerformanceRows(prevFrom, prevTo).map(r => [String(r.productId), r]));
+            const deteriorations = paidRows.map(cur => {
+                const prev = prevMap.get(String(cur.productId));
+                if (!prev) return null;
+                const cpaChange = prev.cpaUSD > 0 && cur.cpaUSD > 0 ? ((cur.cpaUSD - prev.cpaUSD) / prev.cpaUSD) * 100 : 0;
+                const roasChange = prev.roas > 0 && cur.roas > 0 ? ((cur.roas - prev.roas) / prev.roas) * 100 : 0;
+                return { cur, cpaChange, roasChange, severity: Math.max(cpaChange, -roasChange) };
+            }).filter(Boolean).sort((a, b) => b.severity - a.severity);
+            const warning = deteriorations.find(x => x.cpaChange >= 20 || x.roasChange <= -20);
+            if (warning) {
+                const parts = [];
+                if (warning.cpaChange >= 20) parts.push(`CPA subiu ${warning.cpaChange.toFixed(0)}%`);
+                if (warning.roasChange <= -20) parts.push(`ROAS caiu ${Math.abs(warning.roasChange).toFixed(0)}%`);
+                insights.unshift(`<strong>Atenção em ${_esc(warning.cur.name)}:</strong> ${parts.join(' e ')} contra o período anterior.`);
+            }
+        } else {
+            insights.push('CPA e ROAS aparecerão aqui quando houver gasto registrado no Diário para o período selecionado.');
+        }
+
         if (!insights.length) {
             wrap.innerHTML = '<li>Sem padrões fortes detectados no período.</li>';
             return;
@@ -948,14 +1087,14 @@ const SalesModule = (() => {
         let prevByCountry = new Map();
         let prevTotal = 0;
         let pairedHourLabel = '';
-        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+        if (pFrom && pTo && _canFetchOrders()) {
             try {
                 const cacheKey = `${pFrom}|${pTo}`;
                 let prevOrders;
                 if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
                     prevOrders = _mdgxPrevCache.orders;
                 } else {
-                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    prevOrders = await _fetchOrders(pFrom, pTo, { silent: true });
                     _mdgxPrevCache = { key: cacheKey, orders: prevOrders };
                 }
                 prevOrders = (prevOrders || []).filter(_buildFilterPredicate());
@@ -996,7 +1135,7 @@ const SalesModule = (() => {
             }
         }
 
-        const displayCcy = _state.calc?.spendCurrency || _state.currency || 'BRL';
+        const displayCcy = _state.currency || 'BRL';
         const ranked = [...byCountry.values()].map(e => {
             const prev = prevByCountry.get(e.cc);
             const prevCount = prev?.count || 0;
@@ -1062,6 +1201,10 @@ const SalesModule = (() => {
                 return lp;
             };
 
+            const globalProducts = Object.entries(_aggregateByProduct(curOrders))
+                .map(([pid, p]) => ({ pid, ...p }))
+                .sort((a, b) => b.revenue - a.revenue);
+
             const rows = ranked.filter(e => e.products.size > 0).map(e => {
                 const prods = [...e.products.entries()].map(([pid, p]) => ({ pid, ...p })).sort((a, b) => b.revenue - a.revenue);
                 const anchor = prods[0];
@@ -1069,23 +1212,111 @@ const SalesModule = (() => {
                 const productTotalRevenue = prods.reduce((s, p) => s + p.revenue, 0);
                 const share = productTotalRevenue > 0 ? (anchor.revenue / productTotalRevenue) * 100 : 0;
                 const lp = localProductFor(anchor.pid, anchor.title);
-                return { ...e, anchor, runnerUp, share, dispName: lp?.name || anchor.title || anchor.pid };
+                const previousCountry = prevByCountry.get(e.cc);
+                const prevAnchorSales = previousCountry?.products?.get(anchor.pid)?.sales || 0;
+                const anchorDeltaPct = prevAnchorSales > 0
+                    ? ((anchor.sales - prevAnchorSales) / prevAnchorSales) * 100
+                    : (anchor.sales > 0 ? null : 0);
+                const countryDeltaPct = previousCountry?.count > 0
+                    ? ((e.count - previousCountry.count) / previousCountry.count) * 100
+                    : (e.count > 0 ? null : 0);
+
+                // Produto forte em outros mercados, mas ainda sem venda neste país.
+                // É um sinal para investigar expansão — nunca uma ordem automática.
+                const expansionCandidate = globalProducts.find(p =>
+                    p.sales >= 2 && !e.products.has(p.pid) && String(p.pid) !== String(anchor.pid)
+                ) || null;
+                const candidateLocal = expansionCandidate
+                    ? localProductFor(expansionCandidate.pid, expansionCandidate.title)
+                    : null;
+                const candidateConfigured = !!candidateLocal?.countryPrices?.some(cp =>
+                    String(cp?.country || '').toUpperCase() === String(e.cc || '').toUpperCase()
+                );
+
+                let nextAction = 'Manter e observar';
+                let actionTone = 'neutral';
+                if (expansionCandidate && e.count >= 5) {
+                    nextAction = `${candidateConfigured ? 'Aumentar presença de' : 'Preparar'} ${candidateLocal?.name || expansionCandidate.title}`;
+                    actionTone = 'expand';
+                } else if (share >= 60 && runnerUp) {
+                    nextAction = `Testar mais ${runnerUp.title}`;
+                    actionTone = 'diversify';
+                } else if (anchorDeltaPct != null && anchorDeltaPct >= 20) {
+                    nextAction = 'Escalar produto âncora';
+                    actionTone = 'scale';
+                } else if (anchorDeltaPct != null && anchorDeltaPct <= -15) {
+                    nextAction = 'Investigar queda';
+                    actionTone = 'review';
+                }
+
+                return {
+                    ...e, anchor, runnerUp, share, lp, prevAnchorSales, anchorDeltaPct,
+                    countryDeltaPct, expansionCandidate, candidateLocal, candidateConfigured,
+                    nextAction, actionTone,
+                    dispName: lp?.name || anchor.title || anchor.pid,
+                };
             });
 
             if (!rows.length) {
                 anchorEl.innerHTML = '<p class="sales-empty" style="padding:1rem">—</p>';
             } else {
+                const opportunitiesEl = document.getElementById('sales-market-opportunities');
+                if (opportunitiesEl) {
+                    const scaleRows = rows.filter(r => r.anchorDeltaPct != null && r.anchorDeltaPct >= 20);
+                    const expandRows = rows.filter(r => r.expansionCandidate && r.count >= 5);
+                    const concentrationRows = rows.filter(r => r.share >= 60);
+                    const firstScale = scaleRows[0];
+                    const firstExpand = expandRows[0];
+                    const firstConcentration = concentrationRows[0];
+                    const signal = (label, count, title, description, color) => `
+                        <article class="sales-market-signal" style="--signal-color:${color}">
+                            <div class="sales-market-signal-head">
+                                <span class="sales-market-signal-label">${label}</span>
+                                <span class="sales-market-signal-count">${count}</span>
+                            </div>
+                            <strong>${_esc(title)}</strong>
+                            <p>${_esc(description)}</p>
+                        </article>`;
+                    opportunitiesEl.innerHTML = [
+                        signal(
+                            'Potencial de escala', scaleRows.length,
+                            firstScale ? `${firstScale.dispName} · ${firstScale.cc}` : 'Nenhum salto confirmado',
+                            firstScale ? `Cresceu ${firstScale.anchorDeltaPct.toFixed(0)}% contra o período anterior.` : 'O crescimento do produto âncora ainda não passou de 20%.',
+                            '#10b981'
+                        ),
+                        signal(
+                            'Expansão para avaliar', expandRows.length,
+                            firstExpand ? `${firstExpand.candidateLocal?.name || firstExpand.expansionCandidate.title} → ${firstExpand.cc}` : 'Sem lacunas fortes agora',
+                            firstExpand
+                                ? `${firstExpand.expansionCandidate.sales} vendas fora deste país e nenhuma venda nele no período. ${firstExpand.candidateConfigured ? 'O mercado já está configurado.' : 'Prepare preço, idioma e mídia antes do teste.'}`
+                                : 'Não há evidência suficiente para sugerir outro mercado neste recorte.',
+                            '#8b5cf6'
+                        ),
+                        signal(
+                            'Concentração alta', concentrationRows.length,
+                            firstConcentration ? `${firstConcentration.cc} depende de ${firstConcentration.dispName}` : 'Mercados equilibrados',
+                            firstConcentration ? `${firstConcentration.share.toFixed(0)}% da receita do país vem de um único produto.` : 'Nenhum país depende 60% ou mais de um só produto.',
+                            '#f59e0b'
+                        ),
+                    ].join('');
+                }
+
                 anchorEl.innerHTML = `<table class="sales-geo-table">
-                    <thead><tr><th>País</th><th>Produto âncora</th><th class="num">Vendas</th><th class="num">Receita</th><th class="num">% do país</th><th>2º colocado</th></tr></thead>
+                    <thead><tr><th>País</th><th>Produto âncora</th><th class="num">Vendas</th><th class="num">Receita</th><th class="num">% do país</th><th class="num">Variação</th><th>Próxima ação</th></tr></thead>
                     <tbody>${rows.map(r => {
                         const domina = r.share >= 60;
+                        const trendClass = r.anchorDeltaPct == null ? 'neutral' : r.anchorDeltaPct > 0 ? 'up' : r.anchorDeltaPct < 0 ? 'down' : 'neutral';
+                        const trendLabel = r.anchorDeltaPct == null
+                            ? 'Novo'
+                            : `${r.anchorDeltaPct > 0 ? '+' : ''}${r.anchorDeltaPct.toFixed(0)}%`;
                         return `<tr>
                             <td><strong>${_esc(r.name)}</strong> <span class="sales-tz-note">${_esc(r.cc)}</span></td>
                             <td>${_esc(r.dispName)}${domina ? ' <span class="sales-anchor-badge" title="Este produto concentra a maior parte da receita do país">Domina</span>' : ''}</td>
                             <td class="num">${_fmtNumber(r.anchor.sales)}</td>
                             <td class="num">${_fmtMoney(_convertFromUSD(r.anchor.revenue, displayCcy), displayCcy)}</td>
                             <td class="num">${r.share.toFixed(1)}%</td>
-                            <td>${r.runnerUp ? _esc(r.runnerUp.title) : '—'}</td>
+                            <td class="num"><span class="sales-market-trend ${trendClass}" title="${r.anchor.sales} vendas agora versus ${r.prevAnchorSales} no período anterior equivalente">${trendLabel}</span></td>
+                            <td><span class="sales-market-action" title="Recomendação baseada somente no recorte selecionado; confirme estoque, margem, idioma e campanhas antes de agir">${_esc(r.nextAction)}</span></td>
                         </tr>`;
                     }).join('')}</tbody>
                 </table>`;
@@ -1225,7 +1456,7 @@ const SalesModule = (() => {
         let prevByProd = {};
         let prevTotal = 0;
         let pairedHourLabel = '';
-        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+        if (pFrom && pTo && _canFetchOrders()) {
             // Raw orders from yesterday — cache normally
             const cacheKey = `${pFrom}|${pTo}`;
             try {
@@ -1233,7 +1464,7 @@ const SalesModule = (() => {
                 if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
                     prevOrders = _mdgxPrevCache.orders;
                 } else {
-                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    prevOrders = await _fetchOrders(pFrom, pTo, { silent: true });
                     _mdgxPrevCache = { key: cacheKey, orders: prevOrders }; // cache RAW (unfiltered)
                 }
 
@@ -1303,6 +1534,7 @@ const SalesModule = (() => {
                 pid,
                 title: info.title,
                 sales: info.sales,
+                prevSales,
                 revenue: info.revenue,
                 currency: info.currency,
                 avgPrice: info.sales > 0 ? info.revenue / info.sales : 0,
@@ -1320,7 +1552,10 @@ const SalesModule = (() => {
             ? ShopifyModule.getShopifyProducts() : [];
         const coverOf = (pid) => {
             const sp = shopifyProds.find(p => String(p.id) === String(pid));
-            return sp?.image || '';
+            if (sp?.image) return sp.image;
+            const local = (AppState.allProducts || AppState.products || [])
+                .find(p => String(p.shopifyId || '') === String(pid));
+            return local?.gallery?.[0] || local?.image || '';
         };
 
         const fmtMoney = (v, cur) => {
@@ -1370,7 +1605,7 @@ const SalesModule = (() => {
         let itemsHtml = visible.map(p => {
             const thumb = coverOf(p.pid);
             const deltaHtml = p.delta
-                ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}">${p.delta.label}</span>`
+                ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}" title="Vendas deste produto: ${p.sales} no período atual versus ${p.prevSales} no período anterior equivalente">${p.delta.label}<span class="sr-only"> versus período anterior</span></span>`
                 : '';
             const lp = localProductFor(p.pid, p.title);
             // Nome sempre do produto local (renomear em Produtos reflete aqui).
@@ -1378,10 +1613,19 @@ const SalesModule = (() => {
             const dispName = lp?.name || p.title || p.pid;
             const badges = (lp && typeof renderProductMetaBadges === 'function') ? renderProductMetaBadges(lp) : '';
             const conv = convForProduct(lp?.id);
+            const paid = _paidPerformanceForProduct(lp?.id, p.sales, p.revenue, p.currency);
+            const paidCcy = _state.currency || p.currency || 'BRL';
+            const paidCpa = (typeof convertCurrency === 'function')
+                ? convertCurrency(paid.cpaUSD, 'USD', paidCcy)
+                : _convertFromUSD(paid.cpaUSD, paidCcy);
             const convHtml = `<span class="mdgx-conv-chips">
                 ${conv.fb != null ? `<span class="mdgx-conv-chip mdgx-conv-fb" title="Conversão Facebook = compras FB ÷ cliques FB"><svg class="brand-icon" viewBox="0 0 24 24" style="width:11px;height:11px;vertical-align:-2px"><path fill="#1877F2" d="M24 12.07C24 5.44 18.63.07 12 .07S0 5.44 0 12.07c0 5.99 4.39 10.95 10.13 11.85v-8.38H7.08v-3.47h3.05V9.43c0-3.01 1.79-4.67 4.53-4.67 1.31 0 2.69.24 2.69.24v2.95h-1.52c-1.49 0-1.96.93-1.96 1.87v2.25h3.33l-.53 3.47h-2.8v8.38C19.61 23.02 24 18.06 24 12.07z"/></svg> ${conv.fb.toFixed(1)}%</span>` : ''}
                 ${conv.shopify != null ? `<span class="mdgx-conv-chip mdgx-conv-shop" title="Conversão Shopify = vendas ÷ visitas"><i data-lucide="shopping-bag" style="width:12px;height:12px;vertical-align:-2px"></i> ${conv.shopify.toFixed(1)}%</span>` : ''}
             </span>`;
+            const paidHtml = paid.budgetUSD > 0 ? `<span class="sales-paid-chips">
+                <span class="sales-paid-chip sales-paid-cpa" title="CPA real = gasto registrado no Diário ÷ vendas Shopify">CPA ${_fmtMoney(paidCpa, paidCcy)}</span>
+                <span class="sales-paid-chip sales-paid-roas" title="ROAS real = receita Shopify ÷ gasto registrado no Diário">ROAS ${paid.roas.toFixed(2)}x</span>
+            </span>` : '';
             // Campaign access buttons — open the campaign in a NEW TAB (no Mapa de Ads).
             // Country context = active País filter. Without filter, show one chip per country link.
             // Country context for per-country campaigns: only when exactly ONE country is selected
@@ -1430,19 +1674,22 @@ const SalesModule = (() => {
                 }
             }
             const btns = `<span class="mdgx-ranking-actions">${btnsInner}</span>`;
-            return `<div class="mdgx-ranking-item">
+            return `<div class="mdgx-ranking-item sales-ranking-product" data-sales-product-id="${esc(p.pid)}" data-sales-product-name="${esc(dispName)}" data-sales-product-currency="${esc(p.currency || _state.currency || 'BRL')}" title="Abrir vendas, calendário e países deste produto">
                 ${thumb
                     ? `<img class="mdgx-ranking-thumb" src="${thumb}" alt="">`
                     : '<div class="mdgx-ranking-thumb-empty"><i data-lucide="package" style="width:22px;height:22px"></i></div>'
                 }
                 <div class="mdgx-ranking-info">
-                    <div class="mdgx-ranking-name" title="${lp ? 'Clique para editar ' + (dispName || '').replace(/"/g, '&quot;') : (dispName || '').replace(/"/g, '&quot;')}">${lp
-                        ? `<button type="button" class="mdgx-name-edit" data-edit-product="${esc(lp.id)}">${dispName}<i data-lucide="pencil" style="width:11px;height:11px;margin-left:4px;opacity:0.55"></i></button>`
-                        : dispName}${badges}${!lp ? '<span class="mdgx-nocad" title="Vende na Shopify mas ainda não tem cadastro aqui — sem custo, não entra em lucro nem em meta">sem cadastro</span>' : ''}</div>
+                    <div class="mdgx-ranking-name" title="Abrir detalhes de vendas de ${(dispName || '').replace(/"/g, '&quot;')}">
+                        <button type="button" class="mdgx-name-sales" data-open-sales-product="${esc(p.pid)}">${dispName}<i data-lucide="calendar-range" style="width:12px;height:12px;margin-left:5px;opacity:0.62"></i></button>
+                        ${lp ? `<button type="button" class="mdgx-name-edit" data-edit-product="${esc(lp.id)}" title="Editar cadastro do produto"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>` : ''}
+                        ${badges}${!lp ? '<span class="mdgx-nocad" title="Vende na Shopify mas ainda não tem cadastro aqui — sem custo, não entra em lucro nem em meta">sem cadastro</span>' : ''}
+                    </div>
                     <div class="mdgx-ranking-meta">
                         <span class="mdgx-ranking-price">${fmtMoney(p.avgPrice, p.currency)}</span>
                         <span class="mdgx-ranking-sold">${p.sales} Vendido${p.sales !== 1 ? 's' : ''}</span>
                         ${convHtml}
+                        ${paidHtml}
                     </div>
                 </div>
                 ${btns}
@@ -1519,6 +1766,21 @@ const SalesModule = (() => {
             });
         });
 
+        const openSalesDetail = (el) => _openProductSalesModal(
+            el.dataset.salesProductId || el.dataset.openSalesProduct,
+            el.dataset.salesProductName || el.closest('[data-sales-product-name]')?.dataset.salesProductName || '',
+            el.dataset.salesProductCurrency || el.closest('[data-sales-product-currency]')?.dataset.salesProductCurrency || _state.currency || 'BRL'
+        );
+        listEl.querySelectorAll('[data-open-sales-product]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); openSalesDetail(btn); });
+        });
+        listEl.querySelectorAll('.sales-ranking-product').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('a, button')) return;
+                openSalesDetail(row);
+            });
+        });
+
         // "Ver campanhas no Mapa de Ads" buttons → switch tab + select product
         listEl.querySelectorAll('[data-map-product]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -1559,6 +1821,124 @@ const SalesModule = (() => {
             });
         });
 
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+    }
+
+    function _openProductSalesModal(productId, productName, currency) {
+        const daily = new Map();
+        const countries = new Map();
+        let totalSales = 0;
+        let totalRevenue = 0;
+        let localId = '';
+
+        (_state.filtered || []).forEach(order => {
+            const matching = (order.line_items || []).filter(li => String(li.product_id || '') === String(productId));
+            if (!matching.length) return;
+            const date = _orderDateInShopTz(order.created_at);
+            const country = order.shipping_address?.country || order.shipping_address?.country_code || 'Sem país no pedido';
+            matching.forEach(li => {
+                const qty = Number(li.quantity) || 0;
+                const revenue = (Number(li.price) || 0) * qty;
+                totalSales += qty;
+                totalRevenue += revenue;
+                const day = daily.get(date) || { sales: 0, revenue: 0 };
+                day.sales += qty; day.revenue += revenue; daily.set(date, day);
+                const market = countries.get(country) || { sales: 0, revenue: 0 };
+                market.sales += qty; market.revenue += revenue; countries.set(country, market);
+            });
+        });
+
+        const lp = _localProductFor(productId, productName);
+        localId = lp?.id || '';
+        const paid = _paidPerformanceForProduct(localId, totalSales, totalRevenue, currency);
+        const displayCcy = currency || _state.currency || 'BRL';
+        const paidCpa = (typeof convertCurrency === 'function')
+            ? convertCurrency(paid.cpaUSD, 'USD', displayCcy)
+            : _convertFromUSD(paid.cpaUSD, displayCcy);
+        const money = value => _fmtMoney(value, displayCcy);
+        const dates = [...daily.keys()].filter(Boolean).sort();
+        const formatDate = value => {
+            const [y, m, d] = String(value || '').split('-');
+            return y && m && d ? `${d}/${m}/${y}` : value;
+        };
+        const week = ['dom','seg','ter','qua','qui','sex','sáb'];
+        const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+        document.getElementById('sales-product-detail-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'sales-product-detail-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content mdgx-daily-content sales-product-detail-content">
+                <div class="modal-header">
+                    <div>
+                        <span class="sales-page-eyebrow">Detalhe do período selecionado</span>
+                        <h3 title="${_esc(productName)}">${_esc(productName)}</h3>
+                    </div>
+                    <button class="btn-close" id="sales-product-detail-close" aria-label="Fechar">&times;</button>
+                </div>
+                <div class="mdgx-daily-summary sales-product-detail-summary">
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${_fmtNumber(totalSales)}</span><span class="mdgx-daily-stat-lbl">vendas</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${money(totalRevenue)}</span><span class="mdgx-daily-stat-lbl">receita</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${dates.length}</span><span class="mdgx-daily-stat-lbl">dias com venda</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${paid.cpaUSD > 0 ? money(paidCpa) : '—'}</span><span class="mdgx-daily-stat-lbl">CPA real</span></div>
+                    <div class="mdgx-daily-stat"><span class="mdgx-daily-stat-num">${paid.roas > 0 ? `${paid.roas.toFixed(2)}x` : '—'}</span><span class="mdgx-daily-stat-lbl">ROAS real</span></div>
+                </div>
+                <div class="mdgx-daily-tabs">
+                    <button class="mdgx-daily-tab active" data-view="list"><i data-lucide="list"></i> Lista</button>
+                    <button class="mdgx-daily-tab" data-view="calendar"><i data-lucide="calendar-days"></i> Calendário</button>
+                    <button class="mdgx-daily-tab" data-view="countries"><i data-lucide="globe"></i> Países</button>
+                </div>
+                <div id="sales-product-detail-body"></div>
+            </div>`;
+        document.body.appendChild(modal);
+        const body = modal.querySelector('#sales-product-detail-body');
+
+        const renderList = () => {
+            if (!dates.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            body.innerHTML = `<table class="mdgx-daily-table"><thead><tr><th>Dia</th><th class="num">Vendas</th><th class="num">Receita</th></tr></thead><tbody>
+                ${dates.slice().reverse().map(date => `<tr><td>${formatDate(date)}</td><td class="num"><strong>${daily.get(date).sales}</strong></td><td class="num">${money(daily.get(date).revenue)}</td></tr>`).join('')}
+            </tbody></table>`;
+        };
+        const renderCalendar = () => {
+            const monthKeys = [...new Set(dates.map(d => d.slice(0, 7)))].sort();
+            if (!monthKeys.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            const max = Math.max(1, ...dates.map(d => daily.get(d).sales));
+            body.innerHTML = monthKeys.map(key => {
+                const [year, month] = key.split('-').map(Number);
+                const firstWeekday = new Date(year, month - 1, 1).getDay();
+                const dayCount = new Date(year, month, 0).getDate();
+                let cells = '<div class="mdgx-cal-cell mdgx-cal-empty"></div>'.repeat(firstWeekday);
+                for (let day = 1; day <= dayCount; day++) {
+                    const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                    const info = daily.get(date);
+                    const intensity = info ? (0.16 + 0.84 * (info.sales / max)) : 0;
+                    cells += `<div class="mdgx-cal-cell${info ? ' mdgx-cal-has' : ''}" ${info ? `style="background:rgba(199,255,0,${intensity.toFixed(2)})" title="${formatDate(date)}: ${info.sales} venda(s) · ${money(info.revenue)}"` : ''}>
+                        <span class="mdgx-cal-num">${day}</span>${info ? `<span class="mdgx-cal-sales">${info.sales}</span>` : ''}</div>`;
+                }
+                return `<div class="mdgx-cal-month"><div class="mdgx-cal-title">${months[month - 1]} ${year}</div><div class="mdgx-cal-grid">${week.map(w => `<div class="mdgx-cal-wd">${w}</div>`).join('')}${cells}</div></div>`;
+            }).join('');
+        };
+        const renderCountries = () => {
+            const rows = [...countries.entries()].map(([country, values]) => ({ country, ...values })).sort((a, b) => b.sales - a.sales);
+            if (!rows.length) { body.innerHTML = '<div class="mdgx-daily-empty">Sem vendas no período.</div>'; return; }
+            body.innerHTML = `<table class="mdgx-daily-table"><thead><tr><th>País</th><th class="num">Vendas</th><th class="num">Participação</th><th class="num">Receita</th></tr></thead><tbody>
+                ${rows.map(row => `<tr><td>${_esc(row.country)}</td><td class="num"><strong>${row.sales}</strong></td><td class="num">${totalSales ? ((row.sales / totalSales) * 100).toFixed(1) : '0.0'}%</td><td class="num">${money(row.revenue)}</td></tr>`).join('')}
+            </tbody></table>`;
+        };
+
+        renderList();
+        modal.querySelectorAll('.mdgx-daily-tab').forEach(tab => tab.addEventListener('click', () => {
+            modal.querySelectorAll('.mdgx-daily-tab').forEach(item => item.classList.toggle('active', item === tab));
+            if (tab.dataset.view === 'calendar') renderCalendar();
+            else if (tab.dataset.view === 'countries') renderCountries();
+            else renderList();
+            if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
+        }));
+        const close = () => modal.remove();
+        modal.querySelector('#sales-product-detail-close')?.addEventListener('click', close);
+        modal.querySelector('.modal-overlay')?.addEventListener('click', close);
         if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     }
 
@@ -1711,8 +2091,75 @@ const SalesModule = (() => {
         if (typeof ShopifyModule !== 'undefined' && ShopifyModule.getLink) {
             lp = localProducts.find(p => String(ShopifyModule.getLink(p.id)) === String(pid)) || null;
         }
+        if (!lp) lp = localProducts.find(p => String(p.shopifyId || '') === String(pid)) || null;
         if (!lp && title) lp = localProducts.find(p => _normName(p.name) === _normName(title)) || null;
         return lp;
+    }
+
+    function _diaryEntriesInRange(from = _state.from, to = _state.to) {
+        const entries = (AppState.allDiary || AppState.diary || []);
+        return entries.filter(d => !d.isCampaign && !d.parentId &&
+            (!from || !d.date || d.date >= from) && (!to || !d.date || d.date <= to));
+    }
+
+    function _diaryPerformanceRows(from = _state.from, to = _state.to) {
+        const grouped = new Map();
+        _diaryEntriesInRange(from, to).forEach(d => {
+            const pid = String(d.productId || '');
+            if (!pid) return;
+            const row = grouped.get(pid) || { productId: pid, budgetUSD: 0, revenueUSD: 0, sales: 0 };
+            const budget = Number(d.budget || 0);
+            const revenue = Number(d.revenue || 0);
+            row.budgetUSD += (typeof convertToUSD === 'function') ? convertToUSD(budget, d.budgetCurrency || 'BRL') : budget;
+            row.revenueUSD += (typeof convertToUSD === 'function') ? convertToUSD(revenue, d.revenueCurrency || d.budgetCurrency || 'BRL') : revenue;
+            row.sales += Number(d.shopifySales != null ? d.shopifySales : d.sales) || 0;
+            grouped.set(pid, row);
+        });
+        return [...grouped.values()].map(r => ({
+            ...r,
+            name: (AppState.allProducts || AppState.products || []).find(p => String(p.id) === r.productId)?.name || r.productId,
+            cpaUSD: r.sales > 0 ? r.budgetUSD / r.sales : 0,
+            roas: r.budgetUSD > 0 ? r.revenueUSD / r.budgetUSD : 0,
+        }));
+    }
+
+    function _paidPerformanceForProduct(localId, sales, revenue, revenueCurrency) {
+        if (!localId) return { budgetUSD: 0, cpaUSD: 0, roas: 0 };
+        const entries = _diaryEntriesInRange().filter(d => String(d.productId || '') === String(localId));
+        const budgetUSD = entries.reduce((sum, d) => {
+            const value = Number(d.budget || 0);
+            return sum + ((typeof convertToUSD === 'function') ? convertToUSD(value, d.budgetCurrency || 'BRL') : value);
+        }, 0);
+        const revenueUSD = (typeof convertToUSD === 'function')
+            ? convertToUSD(Number(revenue || 0), revenueCurrency || _state.currency || 'USD')
+            : Number(revenue || 0);
+        return {
+            budgetUSD,
+            cpaUSD: sales > 0 ? budgetUSD / sales : 0,
+            roas: budgetUSD > 0 ? revenueUSD / budgetUSD : 0,
+        };
+    }
+
+    function _paidPerformanceSummary() {
+        let entries = _diaryEntriesInRange();
+        if (_state.productFilter) {
+            const local = _localProductFor(_state.productFilter, '');
+            if (local) entries = entries.filter(d => String(d.productId || '') === String(local.id));
+        }
+        const budgetUSD = entries.reduce((sum, d) => {
+            const value = Number(d.budget || 0);
+            return sum + ((typeof convertToUSD === 'function') ? convertToUSD(value, d.budgetCurrency || 'BRL') : value);
+        }, 0);
+        const sales = _state.filtered.reduce((sum, o) => sum + (o.line_items || []).reduce((s, li) => s + (Number(li.quantity) || 0), 0), 0);
+        const revenueUSD = _state.filtered.reduce((sum, o) => {
+            const value = Number(o.total_price || 0);
+            return sum + ((typeof convertToUSD === 'function') ? convertToUSD(value, o.currency || _state.currency || 'USD') : value);
+        }, 0);
+        return {
+            budgetUSD,
+            cpaUSD: sales > 0 ? budgetUSD / sales : 0,
+            roas: budgetUSD > 0 ? revenueUSD / budgetUSD : 0,
+        };
     }
 
     function _renderSummary() {
@@ -1723,6 +2170,11 @@ const SalesModule = (() => {
         const totalRevenue = orders.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
         const itemsTotal = orders.reduce((s, o) => s + (o.line_items || []).reduce((a, li) => a + (li.quantity || 0), 0), 0);
         const avgTicket = totalOrders ? totalRevenue / totalOrders : 0;
+        const paid = _paidPerformanceSummary();
+        const displayCcy = _state.currency || 'BRL';
+        const cpaDisplay = (typeof convertCurrency === 'function')
+            ? convertCurrency(paid.cpaUSD, 'USD', displayCcy)
+            : _convertFromUSD(paid.cpaUSD, displayCcy);
 
         // Top country
         const byCountry = new Map();
@@ -1767,6 +2219,16 @@ const SalesModule = (() => {
                 <span class="sales-stat-lbl">Receita</span>
                 <span class="sales-stat-val">${_fmtMoney(totalRevenue)}</span>
                 <span class="sales-stat-sub">Ticket médio ${_fmtMoney(avgTicket)}</span>
+            </div>
+            <div class="sales-stat-card sales-stat-paid">
+                <span class="sales-stat-lbl">CPA real</span>
+                <span class="sales-stat-val">${paid.cpaUSD > 0 ? _fmtMoney(cpaDisplay, displayCcy) : '—'}</span>
+                <span class="sales-stat-sub">Gasto do Diário ÷ vendas Shopify</span>
+            </div>
+            <div class="sales-stat-card sales-stat-paid">
+                <span class="sales-stat-lbl">ROAS real</span>
+                <span class="sales-stat-val">${paid.roas > 0 ? `${paid.roas.toFixed(2)}x` : '—'}</span>
+                <span class="sales-stat-sub">Receita Shopify ÷ gasto do Diário</span>
             </div>
             <div class="sales-stat-card">
                 <span class="sales-stat-lbl">Top país</span>
@@ -2010,7 +2472,7 @@ const SalesModule = (() => {
 
     // ── Load orders ──────────────────────────────────────────────
     async function _loadOrders(force = false) {
-        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured?.()) {
+        if (!_isSalesPreview && (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured?.())) {
             _state.orders = [];
             _state.loaded = true;
             _applyFilters();
@@ -2030,20 +2492,19 @@ const SalesModule = (() => {
         try {
             // Pull shop info for TZ + currency
             try {
-                const cfg = ShopifyModule.getConfig?.();
+                const cfg = _isSalesPreview ? { shopTimezone:'Europe/Paris', shopName:'PRÉVIA · dados agregados', shopCurrency:'EUR' } : ShopifyModule.getConfig?.();
                 _state.shopTz = cfg?.shopTimezone || 'UTC';
                 _state.shopName = cfg?.shopName || '';
                 _state.currency = cfg?.shopCurrency || '';
             } catch {}
 
-            const orders = await ShopifyModule.fetchOrders(_state.from, _state.to, { force });
+            const orders = await _fetchOrders(_state.from, _state.to, { force });
             _state.orders = orders || [];
             _state.loaded = true;
             _applyFilters();
             _populateFilters();
             _renderSummary();
             _renderTable();
-            _renderCalculator();
             _renderPatterns();
             _renderShopTzBadge();
             _refreshActiveViz();
@@ -2703,8 +3164,6 @@ const SalesModule = (() => {
         _setQuickPeriod(30);
         _renderSummary();
         _renderTable();
-        _bindCalculator();
-        _renderCalculator();
         _bindPatternsToggle();
         _bindGeoRankingToggle();
         _renderPatterns();
@@ -2784,7 +3243,7 @@ const SalesModule = (() => {
         const _renderAll = () => {
             _applyFilters();
             _populateFilters(); // refresh dependent lists (e.g. cities) + mirror both bars + country dropdowns
-            _renderSummary(); _renderTable(); _renderCalculator(); _renderPatterns(); _refreshActiveViz();
+            _renderSummary(); _renderTable(); _renderPatterns(); _refreshActiveViz();
         };
         const _setFilter = (type, value) => {
             if (type === 'product') { _state.productFilter = value; }
