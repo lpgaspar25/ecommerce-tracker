@@ -145,6 +145,7 @@ const DiaryWorkspacePreview = {
                     </div>
                 </div>
                 <div class="dw-history-summary" id="dw-history-summary"></div>
+                <div class="dw-history-sticky-head" id="dw-history-sticky-head" aria-hidden="true"><div><table><thead></thead></table></div></div>
                 <div class="dw-history-table-wrap">
                     <table class="dw-history-table">
                         <thead><tr>
@@ -199,6 +200,7 @@ const DiaryWorkspacePreview = {
         });
         document.getElementById('diary-date-apply')?.addEventListener('click', () => setTimeout(() => this.refresh(), 80));
         document.getElementById('diary-product-menu')?.addEventListener('click', () => setTimeout(() => this.refresh(), 80));
+        window.addEventListener('resize', () => this._syncHistoryStickyHeader());
 
         if (typeof EventBus !== 'undefined') {
             EventBus.on('dataLoaded', () => this.refresh());
@@ -528,6 +530,7 @@ const DiaryWorkspacePreview = {
         }));
         this._applyHistoryColumnVisibility();
         if (typeof lucide !== 'undefined') lucide.createIcons();
+        requestAnimationFrame(() => this._syncHistoryStickyHeader());
     },
 
     _loadHistoryColumns() {
@@ -552,12 +555,14 @@ const DiaryWorkspacePreview = {
             this.historyColumns[input.dataset.historyColumnChoice] = input.checked;
             this._saveHistoryColumns();
             this._applyHistoryColumnVisibility();
+            this._syncHistoryStickyHeader();
         }));
         menu.querySelector('[data-history-columns-reset]')?.addEventListener('click', () => {
             this.historyColumns = Object.fromEntries(this.historyColumnDefs.map(column => [column.id, column.default]));
             this._saveHistoryColumns();
             this._renderHistoryColumnsMenu();
             this._applyHistoryColumnVisibility();
+            this._syncHistoryStickyHeader();
             document.getElementById('dw-history-columns-menu')?.classList.add('open');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         });
@@ -568,6 +573,32 @@ const DiaryWorkspacePreview = {
         document.querySelectorAll('#dw-history-view [data-history-col]').forEach(cell => {
             cell.classList.toggle('dw-col-user-hidden', this.historyColumns[cell.dataset.historyCol] === false);
         });
+    },
+
+    _syncHistoryStickyHeader() {
+        const host = document.getElementById('dw-history-sticky-head');
+        const wrapper = document.querySelector('#dw-history-view .dw-history-table-wrap');
+        const sourceTable = document.querySelector('#dw-history-view .dw-history-table');
+        const sourceHead = sourceTable?.querySelector('thead');
+        const targetTable = host?.querySelector('table');
+        const targetHead = targetTable?.querySelector('thead');
+        if (!host || !wrapper || !sourceTable || !sourceHead || !targetTable || !targetHead) return;
+
+        targetHead.innerHTML = sourceHead.innerHTML;
+        const sourceCells = [...sourceHead.querySelectorAll('th')];
+        const targetCells = [...targetHead.querySelectorAll('th')];
+        targetTable.style.width = `${sourceTable.scrollWidth}px`;
+        sourceCells.forEach((cell, index) => {
+            const width = cell.getBoundingClientRect().width;
+            if (!targetCells[index]) return;
+            targetCells[index].style.width = `${width}px`;
+            targetCells[index].style.minWidth = `${width}px`;
+            targetCells[index].style.maxWidth = `${width}px`;
+        });
+        host.style.width = `${wrapper.clientWidth}px`;
+        const syncScroll = () => { targetTable.style.transform = `translateX(${-wrapper.scrollLeft}px)`; };
+        wrapper.onscroll = syncScroll;
+        syncScroll();
     },
 
     _setHistoryMode(mode) {

@@ -184,7 +184,7 @@
 .dw-empty-icon svg { width: 18px; }
 .dw-empty-test p { margin: 0 0 5px; color: var(--dw-muted); font-size: 11px; }
 
-.dw-history-view { margin: 18px 0 30px; color: var(--dw-ink); background: var(--dw-surface); border: 1px solid var(--dw-line); border-radius: 19px; box-shadow: 0 14px 38px rgba(20,21,18,.05); overflow: hidden; }
+.dw-history-view { margin: 18px 0 30px; color: var(--dw-ink); background: var(--dw-surface); border: 1px solid var(--dw-line); border-radius: 19px; box-shadow: 0 14px 38px rgba(20,21,18,.05); overflow: visible; }
 .dw-history-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 24px 25px 20px; border-bottom: 1px solid var(--dw-line); }
 .dw-history-head > div:first-child { display: grid; gap: 5px; }
 .dw-history-head h3 { margin: 0; color: var(--dw-ink); font: 600 19px/1.25 "Sora", sans-serif; letter-spacing: -.03em; }
@@ -232,6 +232,11 @@
 .dw-history-view[data-history-mode="percent"] .dw-history-table { min-width: 1080px; }
 .dw-history-view[data-history-mode="both"] .dw-history-table { min-width: 1280px; }
 .dw-history-table th { padding: 12px 13px; color: var(--dw-muted); background: var(--dw-surface); border-bottom: 1px solid var(--dw-line); font-size: 8px; font-weight: 800; letter-spacing: .065em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.dw-history-sticky-head { position: sticky; top: 68px; z-index: 35; height: 0; width: 100%; pointer-events: none; }
+.dw-history-sticky-head > div { position: absolute; top: 0; left: 0; width: 100%; overflow: hidden; background: var(--dw-surface); border-top: 1px solid var(--dw-line); border-bottom: 1px solid var(--dw-line); box-shadow: 0 9px 20px rgba(20,21,18,.13); }
+.dw-history-sticky-head table { border-collapse: collapse; table-layout: fixed; transition: transform .04s linear; }
+.dw-history-sticky-head th { box-sizing: border-box; height: 41px; padding: 12px 13px; color: var(--dw-muted); background: var(--dw-surface); font-size: 8px; font-weight: 800; letter-spacing: .065em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.dw-history-sticky-head th.num { text-align: right; }
 .dw-history-table th.num, .dw-history-table td.num { text-align: right; }
 .dw-history-row { position: relative; transition: background .14s ease; }
 .dw-history-row:hover { background: rgba(118,100,255,.035); }
