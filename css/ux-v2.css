@@ -1194,6 +1194,44 @@ body.ux-v2-ready {
     margin: 0 0 12px;
 }
 
+/* ---- Botão "Painel" com menu das 3 opções (Comparar/Personalizar/Reorganizar) ---- */
+.dash-tools-wrap { position: relative; display: inline-flex; }
+.dash-tools-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 60;
+    min-width: 240px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+}
+.dash-tools-menu[hidden] { display: none; }
+.dash-tools-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 9px 10px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background .13s;
+}
+.dash-tools-item:hover { background: var(--bg-input); }
+.dash-tools-item i { width: 17px; height: 17px; flex: none; color: var(--text-secondary); }
+.dash-tools-item span { display: flex; flex-direction: column; line-height: 1.25; }
+.dash-tools-item strong { font-size: 0.85rem; font-weight: 600; }
+.dash-tools-item small { color: var(--text-muted); font-size: 0.72rem; }
+
 .ux-v2-ready .dash-card,
 .ux-v2-ready .dash-card-cal,
 .ux-v2-ready .dash-card-dates {

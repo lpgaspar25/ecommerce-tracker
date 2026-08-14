@@ -144,6 +144,26 @@ const DashboardModule = {
             }
         });
 
+        // Menu "Painel": um único botão abre as 3 opções (Comparar Páginas,
+        // Personalizar, Reorganizar). Os botões mantêm seus IDs/handlers — aqui
+        // só controlamos abrir/fechar o menu.
+        const toolsBtn = document.getElementById('btn-dash-tools');
+        const toolsMenu = document.getElementById('dash-tools-menu');
+        if (toolsBtn && toolsMenu) {
+            const closeTools = () => { toolsMenu.hidden = true; toolsBtn.setAttribute('aria-expanded', 'false'); };
+            toolsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const abrir = toolsMenu.hidden;
+                toolsMenu.hidden = !abrir;
+                toolsBtn.setAttribute('aria-expanded', String(abrir));
+            });
+            toolsMenu.querySelectorAll('.dash-tools-item').forEach(it =>
+                it.addEventListener('click', () => closeTools()));
+            document.addEventListener('click', (e) => {
+                if (!toolsMenu.hidden && !toolsBtn.contains(e.target) && !toolsMenu.contains(e.target)) closeTools();
+            });
+        }
+
         // Compare presets
         document.querySelectorAll('.dash-compare-preset').forEach(btn => {
             btn.addEventListener('click', (e) => {
