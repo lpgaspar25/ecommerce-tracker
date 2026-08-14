@@ -4278,55 +4278,6 @@
             <!-- Summary stays close to the filters so the page starts with the answer. -->
             <div class="sales-summary" id="sales-summary"></div>
 
-            <!-- Break-even / Target Calculator -->
-            <div class="sales-calc-card">
-                <div class="sales-calc-head">
-                    <div>
-                        <strong><i data-lucide="target" style="width:14px;height:14px;vertical-align:-2px"></i> Calculadora de Metas (período)</strong>
-                        <span class="sales-calc-sub" id="sales-calc-period-label"></span>
-                    </div>
-                    <button id="sales-calc-toggle" class="btn btn-secondary btn-sm" type="button">▼</button>
-                </div>
-                <div class="sales-calc-body" id="sales-calc-body">
-                    <div class="sales-calc-actions-row">
-                        <button id="btn-sales-calc-autofill" class="btn btn-secondary btn-sm" type="button" title="Puxar gasto + visitantes do Diário (relatório do Facebook)"><i data-lucide="zap" style="width:14px;height:14px;vertical-align:-2px"></i> Auto-preencher do Diário</button>
-                        <span id="sales-calc-source" class="sales-calc-source"></span>
-                    </div>
-                    <div class="sales-calc-inputs">
-                        <div class="form-group">
-                            <label>Gasto em ads (período)</label>
-                            <div style="display:flex;gap:0.3rem">
-                                <input type="text" id="sales-calc-spend" class="input input-sm" inputmode="decimal" placeholder="0,00">
-                                <select id="sales-calc-spend-currency" class="input input-sm" style="width:auto">
-                                    <option value="BRL">BRL</option>
-                                    <option value="USD">USD</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="GBP">GBP</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Visitantes / sessões</label>
-                            <input type="text" id="sales-calc-visitors" class="input input-sm" inputmode="numeric" placeholder="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Lucro alvo (% receita)</label>
-                            <input type="number" id="sales-calc-target-profit" class="input input-sm" min="0" step="1" value="30">
-                        </div>
-                        <div class="form-group">
-                            <label>Conversão alvo (%)</label>
-                            <input type="number" id="sales-calc-target-conv" class="input input-sm" min="0" step="0.1" value="2">
-                        </div>
-                        <div class="form-group">
-                            <label>Margem unitária (override)</label>
-                            <input type="text" id="sales-calc-margin-override" class="input input-sm" inputmode="decimal" placeholder="auto">
-                        </div>
-                    </div>
-                    <div class="sales-calc-meta" id="sales-calc-meta"></div>
-                    <div class="sales-calc-scenarios" id="sales-calc-scenarios"></div>
-                </div>
-            </div>
-
             <!-- Sales Ranking (Madgicx-style with period comparator) -->
             <div class="dash-card dash-card-mdgx-ranking sales-decision-card" id="sales-product-ranking-card" style="margin-bottom:1rem">
                 <div class="mdgx-ranking-header">

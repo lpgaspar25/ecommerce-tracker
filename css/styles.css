@@ -14178,6 +14178,82 @@ body.privacy-mode img.product-thumb {
 }
 .sales-orders-heading h3 { margin: .1rem 0 0; font-size: 1.05rem; }
 .sales-orders-heading > span { color: var(--text-muted); font-size: .72rem; }
+.sales-stat-paid {
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    background: color-mix(in srgb, var(--bg-card) 94%, var(--accent) 6%);
+}
+.sales-paid-chips {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .28rem;
+}
+.sales-paid-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0 .42rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: .64rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.sales-paid-cpa {
+    color: #f59e0b;
+    background: rgba(245,158,11,.11);
+    border-color: rgba(245,158,11,.18);
+}
+.sales-paid-roas {
+    color: #10b981;
+    background: rgba(16,185,129,.11);
+    border-color: rgba(16,185,129,.18);
+}
+.mdgx-name-sales {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.mdgx-name-sales:hover { color: var(--accent); }
+.mdgx-name-edit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 23px;
+    height: 23px;
+    margin-left: .2rem;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.mdgx-name-edit:hover { background: var(--bg-input); color: var(--text-primary); }
+.sales-ranking-product { cursor: pointer; }
+.mdgx-daily-content.sales-product-detail-content { max-width: 760px; }
+.sales-product-detail-content .modal-header { align-items: flex-start; }
+.sales-product-detail-content .modal-header h3 { margin: .1rem 0 0; }
+.sales-product-detail-summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .65rem;
+}
+.sales-product-detail-summary .mdgx-daily-stat {
+    min-width: 0;
+    padding: .7rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+}
+.sales-product-detail-content .mdgx-daily-tab svg { width: 14px; height: 14px; }
 @media (max-width: 900px) {
     .sales-market-opportunities { grid-template-columns: 1fr; }
     .sales-anchor-title, .sales-orders-heading { align-items: flex-start; flex-direction: column; }
@@ -14191,6 +14267,7 @@ body.privacy-mode img.product-thumb {
         max-height: calc(100vh - 7rem);
         overflow: auto;
     }
+    .sales-product-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .sales-filters-inline {
     display: flex;
