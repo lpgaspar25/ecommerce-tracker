@@ -282,6 +282,15 @@ const PipelineModule = {
             const existingProduct = (AppState.allProducts || []).find(p => p.id === card.productId);
             if (existingProduct) continue;
 
+            // Produto EXCLUÍDO não ressuscita. Este era o motor da ressurreição:
+            // o card do pipeline sobrevive à exclusão do produto e, a cada carga,
+            // recriava o produto (id novo, sem shopifyId) — burlando a tombstone.
+            // Se o produto do card foi excluído (por id, shopifyId ou nome), pula.
+            if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned
+                && ProductsModule.isTombstoned({ id: card.productId, name: card.title, shopifyId: card.shopifyId, storeId: card.storeId })) {
+                continue;
+            }
+
             // Check if a product with the same name already exists in the same store
             const normalizedName = this._normalizeName(card.title);
             const sameNameProduct = (AppState.allProducts || []).find(p =>
@@ -2485,6 +2494,11 @@ const PipelineModule = {
         };
 
         AppState.allProducts = Array.isArray(AppState.allProducts) ? AppState.allProducts : [];
+        // Criar produto manualmente a partir do card é intenção explícita:
+        // destombstona pra não ser escondido/re-excluído no próximo reload.
+        if (typeof ProductsModule !== 'undefined' && ProductsModule._removeTombstones) {
+            ProductsModule._removeTombstones([{ localId: product.id, name: product.name, shopifyId: product.shopifyId }]);
+        }
         AppState.allProducts.push(product);
 
         if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
