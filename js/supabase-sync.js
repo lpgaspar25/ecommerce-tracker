@@ -288,7 +288,7 @@ const SupabaseSync = (() => {
             btnSync.addEventListener('click', async () => {
                 document.getElementById('profile-dropdown')?.classList.remove('open');
                 if (typeof showToast === 'function') showToast('Sincronizando...', 'info');
-                await Promise.all([syncStores(), syncProducts(), syncGoals(), syncDiary()]);
+                await Promise.all([syncStores(), syncProducts(), syncGoals(), syncDiary(), window.CloudBackup?.backupNow?.({ quiet: true })]);
                 if (typeof showToast === 'function') showToast('Dados sincronizados!', 'success');
             });
         }
@@ -742,6 +742,7 @@ const SupabaseSync = (() => {
                 // Already logged in — hide login, load data
                 _hideLoginScreen();
                 await loadAll();
+                await window.CloudBackup?.init?.();
             } else if (localStorage.getItem('etracker_skip_login')) {
                 // Previously skipped login
                 _hideLoginScreen();
@@ -761,6 +762,7 @@ const SupabaseSync = (() => {
             _hideLoginScreen();
             if (typeof showToast === 'function') showToast('Bem-vindo, ' + _getInitial(email) + '!', 'success');
             await loadAll();
+            await window.CloudBackup?.init?.();
         },
 
         async signUp(email, password) {
@@ -774,6 +776,7 @@ const SupabaseSync = (() => {
                 _hideLoginScreen();
                 if (typeof showToast === 'function') showToast('Conta criada!', 'success');
                 await loadAll();
+                await window.CloudBackup?.init?.();
             } else {
                 if (typeof showToast === 'function') showToast('Verifique seu email para confirmar a conta.', 'info');
             }
