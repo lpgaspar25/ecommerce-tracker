@@ -372,6 +372,9 @@ const SheetsAPI = {
             // mesclamos em vez de sobrescrever (senão apaga fotos+descrição — bug).
             const _tombP = (p) => (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned)
                 ? ProductsModule.isTombstoned(p) : false;
+            // Espera o IndexedDB hidratar: sem isto, no boot AppState.allProducts
+            // está vazio e o merge apagaria fotos/descrição da cópia local rica.
+            if (typeof LocalStore !== 'undefined' && LocalStore.ready) { try { await LocalStore.ready; } catch {} }
             const _locaisP = AppState.allProducts || [];
             const _localPorId = new Map(_locaisP.map(p => [p.id, p]));
             const _remotosP = (ranges[0].values || []).map(row => ({
@@ -1051,9 +1054,20 @@ const LocalStore = {
     // sem perder campos de anúncios, países, variantes ou integrações.
     _IDB_KEYS: new Set(['diary', 'products']),
     _mem: {},
+    // `ready` resolve quando o hydrate() do IndexedDB termina. Enquanto false,
+    // os dados reais ainda estão só no IndexedDB e AppState.* está vazio no boot.
+    _ready: false,
+    _resolveReady: null,
 
     save(key, data) {
         if (this._IDB_KEYS.has(key)) {
+            // Rede de segurança anti-corrida: antes do hydrate terminar, um array
+            // vazio NUNCA é intenção real do usuário — é só o estado "ainda não
+            // carregado" do boot. Persistir [] aqui apagaria o IndexedDB rico
+            // (fotos/descrição) antes do hydrate lê-lo. Ignora o save vazio.
+            if (!this._ready && Array.isArray(data) && data.length === 0) {
+                return;
+            }
             this._mem[key] = data;
             // some com a cópia legada do localStorage (libera espaço na hora)
             try { localStorage.removeItem(`etracker_${key}`); } catch {}
@@ -1108,6 +1122,10 @@ const LocalStore = {
         return carregadas;
     }
 };
+// Promise que sinaliza "IndexedDB já hidratou". Carregadores de nuvem
+// (Supabase/Sheets) esperam por ela antes de mesclar/salvar produtos, senão
+// mesclam contra AppState.allProducts vazio e gravam cópia magra por cima.
+LocalStore.ready = new Promise(res => { LocalStore._resolveReady = res; });
 
 // On app load, ALWAYS load from localStorage first (instant data).
 // If Sheets is connected, loadAllData() will overwrite later when GAPI is ready.
@@ -1188,7 +1206,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 populateProductDropdowns();
                 EventBus.emit('dataLoaded');
             }
-        }).catch(() => {});
+        }).catch(() => {}).finally(() => {
+            LocalStore._ready = true;
+            if (typeof LocalStore._resolveReady === 'function') LocalStore._resolveReady();
+        });
+    } else {
+        // Sem hydrate (KVStore indisponível): libera os carregadores mesmo assim.
+        LocalStore._ready = true;
+        if (typeof LocalStore._resolveReady === 'function') LocalStore._resolveReady();
     }
 
     // Initialize Supabase cloud sync

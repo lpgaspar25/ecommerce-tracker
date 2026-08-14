@@ -402,6 +402,11 @@ const SupabaseSync = (() => {
             const remoteGoals = goalsRes.data || [];
             const remoteDiary = diaryRes.data || [];
 
+            // Espera o IndexedDB hidratar antes de decidir/mesclar: senão, no boot
+            // AppState.allProducts está vazio, o merge não preserva nada e a cópia
+            // magra da nuvem (sem fotos/descrição) sobrescreve o local rico.
+            if (typeof LocalStore !== 'undefined' && LocalStore.ready) { try { await LocalStore.ready; } catch {} }
+
             const isFirstTime = remoteStores.length === 0 && remoteProducts.length === 0
                 && remoteGoals.length === 0 && remoteDiary.length === 0;
 

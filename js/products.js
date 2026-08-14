@@ -1050,6 +1050,17 @@ const ProductsModule = {
         return set.has(`local:${product.id}`) ||
                (product.shopifyId && set.has(`shopify:${product.shopifyId}`));
     },
+    // Remove tombstones (reimportar/recriar é uma intenção explícita de TER o
+    // produto de volta — senão o filtro de boot esconde o item recém-importado).
+    _removeTombstones(entries) {
+        const set = this._getTombstones();
+        let mudou = false;
+        entries.forEach(e => {
+            if (e.localId && set.delete(`local:${e.localId}`)) mudou = true;
+            if (e.shopifyId && set.delete(`shopify:${e.shopifyId}`)) mudou = true;
+        });
+        if (mudou) localStorage.setItem(this._TOMBSTONE_KEY, JSON.stringify(Array.from(set)));
+    },
     // Limpa todas as tombstones (caso usuário queira recuperar)
     clearTombstones() {
         localStorage.removeItem(this._TOMBSTONE_KEY);
@@ -3973,6 +3984,10 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             shopifyImportedAt: new Date().toISOString(),
         };
 
+        // Reimportar é intenção explícita de ter o produto: destombstona por
+        // localId e shopifyId, senão o filtro de boot o esconde no próximo reload.
+        this._removeTombstones([{ localId: registro.id, shopifyId }]);
+
         if (existente) {
             Object.assign(existente, registro);
             if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
@@ -4038,6 +4053,9 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                 shopifyImage: sp.image || '',
                 shopifyImportedAt: new Date().toISOString(),
             };
+            // Reimportar destombstona: se o produto foi excluído antes, o tombstone
+            // por shopifyId esconderia o recém-importado no próximo reload.
+            this._removeTombstones([{ localId: newProduct.id, shopifyId: sp.id }]);
             AppState.allProducts.push(newProduct);
             if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
                 try { await SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(newProduct)); } catch {}

@@ -18,6 +18,16 @@ const CloudBackup = (() => {
     function _syncModule() { return typeof SupabaseSync !== 'undefined' ? SupabaseSync : null; }
     function _appState() { return typeof AppState !== 'undefined' ? AppState : null; }
 
+    // Nunca ressuscita produtos que o usuário excluiu: o snapshot da nuvem faz
+    // união por id (remoto+local) e traria de volta itens deletados. Respeita a
+    // lista de tombstones tanto na coleta quanto na aplicação.
+    function _dropTombstoned(list) {
+        if (!Array.isArray(list)) return list;
+        const PM = typeof ProductsModule !== 'undefined' ? ProductsModule : null;
+        if (!PM || typeof PM.isTombstoned !== 'function') return list;
+        return list.filter(p => !PM.isTombstoned(p));
+    }
+
     function _deviceId() {
         let id = localStorage.getItem(DEVICE_KEY);
         if (!id) {
@@ -85,7 +95,7 @@ const CloudBackup = (() => {
             kv: await _collectKv(),
             data: {
                 stores: app?.stores || [],
-                products: fullProducts || app?.allProducts || [],
+                products: _dropTombstoned(fullProducts || app?.allProducts || []),
                 goals: app?.allGoals || [],
                 diary: fullDiary || app?.allDiary || [],
                 creatives: app?.allCreatives || [],
@@ -217,7 +227,9 @@ const CloudBackup = (() => {
             }
         }
         const data = snapshot.data || {};
-        if (data.products) await KVStore.set('etracker_products', data.products);
+        // localStorage (com as tombstones atuais) já foi escrito acima, então o
+        // filtro reflete o que o usuário excluiu de fato — não ressuscita.
+        if (data.products) await KVStore.set('etracker_products', _dropTombstoned(data.products));
         if (data.diary) await KVStore.set('etracker_diary', data.diary);
         if (typeof LocalStore !== 'undefined') {
             if (data.stores) LocalStore.save('stores', data.stores);
