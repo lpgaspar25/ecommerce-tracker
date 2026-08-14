@@ -131,7 +131,7 @@ const DiaryWorkspacePreview = {
                         <thead><tr>
                             <th>Dia / fase</th><th>Produto</th><th class="num hist-number hist-money">Gasto</th><th class="num hist-number hist-funnel-count">Visitantes</th>
                             <th class="num hist-number hist-funnel-count">Carrinhos</th><th class="num hist-number hist-funnel-count">Checkouts</th><th class="num hist-number hist-money hist-sales">Vendas Shopify</th>
-                            <th class="num hist-percent">Pág. → Carrinho</th><th class="num hist-percent">Carrinho → Checkout</th><th class="num hist-percent">Conv. página</th>
+                            <th class="num hist-percent">Pág. → Carrinho</th><th class="num hist-percent">Carrinho → Checkout</th><th class="num hist-conversion">Conversão</th><th class="num hist-real-conversion">Conversão real</th>
                             <th class="num hist-combined">Visitantes</th><th class="num hist-combined">Carrinhos</th><th class="num hist-combined">Checkouts</th><th class="num hist-combined">Vendas</th>
                             <th class="num">CPA real</th><th class="num">ROAS real</th><th>Leitura</th><th></th>
                         </tr></thead>
@@ -460,7 +460,11 @@ const DiaryWorkspacePreview = {
                 : { key: 'neutral', label: 'Estável', icon: 'minus' };
             const atcRate = entry.pageViews ? Number(entry.addToCart || 0) / Number(entry.pageViews) * 100 : 0;
             const checkoutRate = entry.addToCart ? Number(entry.checkout || 0) / Number(entry.addToCart) * 100 : 0;
-            const convRate = entry.pageViews ? sales / Number(entry.pageViews) * 100 : 0;
+            const mediaSales = Number(entry.fbSales != null ? entry.fbSales : entry.sales || 0);
+            const mediaVisits = Number(entry.pageViews || entry.clicks || 0);
+            const shopifyVisits = Number(entry.shopifyViews || entry.pageViews || 0);
+            const convRate = mediaVisits ? mediaSales / mediaVisits * 100 : 0;
+            const realConvRate = shopifyVisits ? sales / shopifyVisits * 100 : 0;
             const detailOpen = this.openHistoryRows.has(String(index));
             return `<tr class="dw-history-row ${isTest ? 'is-test' : 'is-base'}" data-history-row="${index}">
                 <td><div class="dw-history-date"><strong>${this._date(entry.date)}</strong><span class="${isTest ? 'test' : 'base'}">${isTest ? '<i data-lucide="flask-conical"></i> Durante o teste' : 'Antes da alteração'}</span></div></td>
@@ -470,23 +474,25 @@ const DiaryWorkspacePreview = {
                 <td class="num dw-real-sales hist-number hist-money hist-sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
                 <td class="num hist-percent"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
                 <td class="num hist-percent"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
-                <td class="num hist-percent"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Conversão</small></td>
+                <td class="num hist-conversion"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Mídia</small></td>
+                <td class="num hist-real-conversion"><strong>${realConvRate.toFixed(2).replace('.', ',')}%</strong><small>Shopify</small></td>
                 <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.pageViews)}</strong><small>entrada</small></div></td>
                 <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
                 <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
-                <td class="num hist-combined"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>${convRate.toFixed(2).replace('.', ',')}%</small></div></td>
+                <td class="num hist-combined"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>Shopify</small></div></td>
                 <td class="num"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td class="num"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
                 <td><button class="dw-row-toggle${detailOpen ? ' open' : ''}" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
             </tr>
-            <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="18"><div>
+            <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="19"><div>
                 <span><small>Visitante → carrinho</small><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong></span>
                 <span><small>Carrinho → checkout</small><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong></span>
-                <span><small>Conversão da página</small><strong>${convRate.toFixed(2).replace('.', ',')}%</strong></span>
+                <span><small>Conversão da mídia</small><strong>${convRate.toFixed(2).replace('.', ',')}%</strong></span>
+                <span><small>Conversão real Shopify</small><strong>${realConvRate.toFixed(2).replace('.', ',')}%</strong></span>
                 <span class="dw-detail-note"><small>O que estava rodando</small><strong>${isTest ? this._esc(selectedTest?.title || entry.testGoal || 'Teste do Laboratório') : 'Período usado como referência'}</strong></span>
             </div></td></tr>`;
-        }).join('') || `<tr><td colspan="18"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
+        }).join('') || `<tr><td colspan="19"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
 
         body.querySelectorAll('[data-history-toggle]').forEach(btn => btn.addEventListener('click', event => {
             event.stopPropagation();
@@ -662,7 +668,7 @@ const DiaryWorkspacePreview = {
             ['2026-08-11', 292, 62, 38, 14, 247, 948], ['2026-08-12', 305, 66, 40, 15, 255, 1022],
             ['2026-08-13', 318, 70, 43, 16, 264, 1088],
         ];
-        return rows.map(([date, pageViews, addToCart, checkout, sales, budget, revenue]) => ({ id: `preview-${date}`, productId: 'preview-product', date, pageViews, addToCart, checkout, sales, budget, revenue, budgetCurrency: 'USD', revenueCurrency: 'USD', platform: 'Meta Ads', region: 'US', isTest: date >= '2026-08-07', labTestId: date >= '2026-08-07' ? 'preview-test' : '', testGoal: 'ROAS', testEndDate: '2026-08-16' }));
+        return rows.map(([date, pageViews, addToCart, checkout, sales, budget, revenue], index) => ({ id: `preview-${date}`, productId: 'preview-product', date, pageViews, shopifyViews: Math.round(pageViews * .96), addToCart, checkout, sales, fbSales: Math.max(0, sales - (index % 3 === 0 ? 1 : 0)), budget, revenue, budgetCurrency: 'USD', revenueCurrency: 'USD', platform: 'Meta Ads', region: 'US', isTest: date >= '2026-08-07', labTestId: date >= '2026-08-07' ? 'preview-test' : '', testGoal: 'ROAS', testEndDate: '2026-08-16' }));
     },
 };
 
