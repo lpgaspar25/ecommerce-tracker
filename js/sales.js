@@ -112,6 +112,96 @@ const SalesModule = (() => {
         },
     };
 
+    // Preview branch only: a deterministic, aggregate-safe sales snapshot lets the
+    // redesigned dashboard be reviewed locally without copying customer records or
+    // touching Shopify. It is activated explicitly with ?salesPreview=1.
+    const _isSalesPreview = (() => {
+        try { return new URLSearchParams(window.location.search).get('salesPreview') === '1'; }
+        catch { return false; }
+    })();
+
+    const _previewCatalog = [
+        { id:'preview-p1', shopifyId:'p1', name:'RY-BN FERRARI GTC SUNGLASSES [EN]', price:33.86, language:'Ingles', languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.86}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/WhatsAppImage2021-02-09at12.34.00_1024x1024_2x_09605793-25a7-4e58-8df7-e6ba76a1ccbc.webp?v=1747336998'] },
+        { id:'preview-p2', shopifyId:'p2', name:'MB GT Line Sunglasses [US+DE]', price:33.45, languages:['Ingles','Alemao'], countryPrices:[{country:'US',currency:'USD',price:33.45},{country:'DE',currency:'EUR',price:33.45}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/ChatGPTImage24deabr.de2026_21_43_02.jpg?v=1777077841'] },
+        { id:'preview-p3', shopifyId:'p3', name:'RY-BN® FERRARI GTC SUNGLASSES [US+DE]', price:33.82, languages:['Ingles','Alemao'], countryPrices:[{country:'US',currency:'USD',price:33.82},{country:'DE',currency:'EUR',price:33.82}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/ChatGPTImage24deabr.de2026_21_43_02.jpg?v=1777077841'] },
+        { id:'preview-p4', shopifyId:'p4', name:'BMW X7 Series – Polarized Sunglasses – Limited Edition [EN+DE]', price:33.65, languages:['Ingles','Alemao'], countryPrices:[{country:'GB',currency:'GBP',price:33.65},{country:'DE',currency:'EUR',price:33.65}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/magnific_quero-que-adicione-a-logo_2885625568_1.jpg?v=1777419384'] },
+        { id:'preview-p5', shopifyId:'p5', name:'Audi Sportback Sunglasses', price:30.38, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:30.38}], gallery:['https://cdn.shopify.com/s/files/1/0888/7641/7388/files/PRATA_8d9db877-1f06-463f-9815-dd0821aee75d.webp?v=1753810866'] },
+        { id:'preview-p6', shopifyId:'p6', name:'Carrera War Sunglasses', price:33.90, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.90}], gallery:[] },
+        { id:'preview-p7', shopifyId:'p7', name:'Shm Polarized Sunglasses', price:33.92, languages:['Ingles'], countryPrices:[{country:'GB',currency:'GBP',price:33.92}], gallery:[] },
+    ];
+
+    const _previewCountry = {
+        GB: ['United Kingdom', 'Manchester'], US: ['United States', 'Orlando'],
+        DE: ['Germany', 'Berlin'], AU: ['Australia', 'Sydney'], IE: ['Ireland', 'Dublin'],
+    };
+
+    function _buildPreviewOrders(previous = false) {
+        const groups = previous ? [
+            ['GB','p1',16,15], ['GB','p2',5,4], ['GB','p4',7,6], ['GB','p5',4,4], ['GB','p6',5,4], ['GB','p7',2,2],
+            ['US','p3',6,5], ['US','p2',6,6], ['US','p4',2,2], ['US','p5',2,2], ['US','p6',1,1],
+            ['DE','p2',3,3], ['AU','p5',2,2], ['AU','p7',2,2], ['IE','p2',1,1], ['IE','p5',1,1], ['IE','p7',1,1],
+        ] : [
+            ['GB','p1',18,17], ['GB','p2',5,5], ['GB','p4',5,5], ['GB','p5',5,4], ['GB','p6',4,4], ['GB','p7',2,2],
+            ['US','p3',14,13], ['US','p2',5,4], ['DE','p2',8,7], ['DE','p4',3,2],
+            ['AU','p1',3,3], ['AU','p4',1,1], ['AU','p5',1,1], ['AU','p7',1,1],
+            ['IE','p2',1,1], ['IE','p1',1,1], ['IE','p5',1,1],
+        ];
+        const start = new Date(previous ? '2026-06-16T08:00:00Z' : '2026-07-16T08:00:00Z');
+        const out = [];
+        let seq = 0;
+        groups.forEach(([cc, pid, units, orderCount]) => {
+            const product = _previewCatalog.find(p => p.shopifyId === pid);
+            for (let i = 0; i < orderCount; i++) {
+                const quantity = i === 0 ? units - (orderCount - 1) : 1;
+                const when = new Date(start);
+                when.setUTCDate(start.getUTCDate() + (seq % 30));
+                when.setUTCHours(8 + (seq * 3) % 15, (seq * 11) % 60, 0, 0);
+                const [country, city] = _previewCountry[cc];
+                const number = (previous ? 16000 : 17200) + seq;
+                out.push({
+                    id: `preview-${previous ? 'prev' : 'cur'}-${seq}`,
+                    name: `#${number}`,
+                    created_at: when.toISOString(),
+                    total_price: (product.price * quantity).toFixed(2),
+                    currency: 'EUR',
+                    financial_status: 'paid',
+                    shipping_address: { country_code: cc, country, city },
+                    line_items: [{ product_id: pid, title: product.name, quantity, price: product.price.toFixed(2) }],
+                });
+                seq++;
+            }
+        });
+        return out;
+    }
+
+    const _previewCurrentOrders = _isSalesPreview ? _buildPreviewOrders(false) : [];
+    const _previewPreviousOrders = _isSalesPreview ? _buildPreviewOrders(true) : [];
+
+    function _ensurePreviewCatalog() {
+        if (!_isSalesPreview || typeof AppState === 'undefined') return;
+        const existing = AppState.allProducts || AppState.products || [];
+        if (!existing.length) {
+            AppState.allProducts = _previewCatalog.map(p => ({ ...p }));
+            AppState.products = AppState.allProducts;
+        }
+    }
+
+    function _canFetchOrders() {
+        return _isSalesPreview || (typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders);
+    }
+
+    async function _fetchOrders(from, to, options = {}) {
+        if (_isSalesPreview) {
+            _ensurePreviewCatalog();
+            const source = String(from || '') < '2026-07-16' ? _previewPreviousOrders : _previewCurrentOrders;
+            return source.filter(o => {
+                const d = String(o.created_at || '').slice(0, 10);
+                return (!from || d >= from) && (!to || d <= to);
+            });
+        }
+        return ShopifyModule.fetchOrders(from, to, options);
+    }
+
     function _saveCalc() {
         try { localStorage.setItem(CALC_KEY, JSON.stringify(_state.calc)); } catch {}
     }
@@ -948,14 +1038,14 @@ const SalesModule = (() => {
         let prevByCountry = new Map();
         let prevTotal = 0;
         let pairedHourLabel = '';
-        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+        if (pFrom && pTo && _canFetchOrders()) {
             try {
                 const cacheKey = `${pFrom}|${pTo}`;
                 let prevOrders;
                 if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
                     prevOrders = _mdgxPrevCache.orders;
                 } else {
-                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    prevOrders = await _fetchOrders(pFrom, pTo, { silent: true });
                     _mdgxPrevCache = { key: cacheKey, orders: prevOrders };
                 }
                 prevOrders = (prevOrders || []).filter(_buildFilterPredicate());
@@ -1062,6 +1152,10 @@ const SalesModule = (() => {
                 return lp;
             };
 
+            const globalProducts = Object.entries(_aggregateByProduct(curOrders))
+                .map(([pid, p]) => ({ pid, ...p }))
+                .sort((a, b) => b.revenue - a.revenue);
+
             const rows = ranked.filter(e => e.products.size > 0).map(e => {
                 const prods = [...e.products.entries()].map(([pid, p]) => ({ pid, ...p })).sort((a, b) => b.revenue - a.revenue);
                 const anchor = prods[0];
@@ -1069,23 +1163,111 @@ const SalesModule = (() => {
                 const productTotalRevenue = prods.reduce((s, p) => s + p.revenue, 0);
                 const share = productTotalRevenue > 0 ? (anchor.revenue / productTotalRevenue) * 100 : 0;
                 const lp = localProductFor(anchor.pid, anchor.title);
-                return { ...e, anchor, runnerUp, share, dispName: lp?.name || anchor.title || anchor.pid };
+                const previousCountry = prevByCountry.get(e.cc);
+                const prevAnchorSales = previousCountry?.products?.get(anchor.pid)?.sales || 0;
+                const anchorDeltaPct = prevAnchorSales > 0
+                    ? ((anchor.sales - prevAnchorSales) / prevAnchorSales) * 100
+                    : (anchor.sales > 0 ? null : 0);
+                const countryDeltaPct = previousCountry?.count > 0
+                    ? ((e.count - previousCountry.count) / previousCountry.count) * 100
+                    : (e.count > 0 ? null : 0);
+
+                // Produto forte em outros mercados, mas ainda sem venda neste país.
+                // É um sinal para investigar expansão — nunca uma ordem automática.
+                const expansionCandidate = globalProducts.find(p =>
+                    p.sales >= 2 && !e.products.has(p.pid) && String(p.pid) !== String(anchor.pid)
+                ) || null;
+                const candidateLocal = expansionCandidate
+                    ? localProductFor(expansionCandidate.pid, expansionCandidate.title)
+                    : null;
+                const candidateConfigured = !!candidateLocal?.countryPrices?.some(cp =>
+                    String(cp?.country || '').toUpperCase() === String(e.cc || '').toUpperCase()
+                );
+
+                let nextAction = 'Manter e observar';
+                let actionTone = 'neutral';
+                if (expansionCandidate && e.count >= 5) {
+                    nextAction = `${candidateConfigured ? 'Aumentar presença de' : 'Preparar'} ${candidateLocal?.name || expansionCandidate.title}`;
+                    actionTone = 'expand';
+                } else if (share >= 60 && runnerUp) {
+                    nextAction = `Testar mais ${runnerUp.title}`;
+                    actionTone = 'diversify';
+                } else if (anchorDeltaPct != null && anchorDeltaPct >= 20) {
+                    nextAction = 'Escalar produto âncora';
+                    actionTone = 'scale';
+                } else if (anchorDeltaPct != null && anchorDeltaPct <= -15) {
+                    nextAction = 'Investigar queda';
+                    actionTone = 'review';
+                }
+
+                return {
+                    ...e, anchor, runnerUp, share, lp, prevAnchorSales, anchorDeltaPct,
+                    countryDeltaPct, expansionCandidate, candidateLocal, candidateConfigured,
+                    nextAction, actionTone,
+                    dispName: lp?.name || anchor.title || anchor.pid,
+                };
             });
 
             if (!rows.length) {
                 anchorEl.innerHTML = '<p class="sales-empty" style="padding:1rem">—</p>';
             } else {
+                const opportunitiesEl = document.getElementById('sales-market-opportunities');
+                if (opportunitiesEl) {
+                    const scaleRows = rows.filter(r => r.anchorDeltaPct != null && r.anchorDeltaPct >= 20);
+                    const expandRows = rows.filter(r => r.expansionCandidate && r.count >= 5);
+                    const concentrationRows = rows.filter(r => r.share >= 60);
+                    const firstScale = scaleRows[0];
+                    const firstExpand = expandRows[0];
+                    const firstConcentration = concentrationRows[0];
+                    const signal = (label, count, title, description, color) => `
+                        <article class="sales-market-signal" style="--signal-color:${color}">
+                            <div class="sales-market-signal-head">
+                                <span class="sales-market-signal-label">${label}</span>
+                                <span class="sales-market-signal-count">${count}</span>
+                            </div>
+                            <strong>${_esc(title)}</strong>
+                            <p>${_esc(description)}</p>
+                        </article>`;
+                    opportunitiesEl.innerHTML = [
+                        signal(
+                            'Potencial de escala', scaleRows.length,
+                            firstScale ? `${firstScale.dispName} · ${firstScale.cc}` : 'Nenhum salto confirmado',
+                            firstScale ? `Cresceu ${firstScale.anchorDeltaPct.toFixed(0)}% contra o período anterior.` : 'O crescimento do produto âncora ainda não passou de 20%.',
+                            '#10b981'
+                        ),
+                        signal(
+                            'Expansão para avaliar', expandRows.length,
+                            firstExpand ? `${firstExpand.candidateLocal?.name || firstExpand.expansionCandidate.title} → ${firstExpand.cc}` : 'Sem lacunas fortes agora',
+                            firstExpand
+                                ? `${firstExpand.expansionCandidate.sales} vendas fora deste país e nenhuma venda nele no período. ${firstExpand.candidateConfigured ? 'O mercado já está configurado.' : 'Prepare preço, idioma e mídia antes do teste.'}`
+                                : 'Não há evidência suficiente para sugerir outro mercado neste recorte.',
+                            '#8b5cf6'
+                        ),
+                        signal(
+                            'Concentração alta', concentrationRows.length,
+                            firstConcentration ? `${firstConcentration.cc} depende de ${firstConcentration.dispName}` : 'Mercados equilibrados',
+                            firstConcentration ? `${firstConcentration.share.toFixed(0)}% da receita do país vem de um único produto.` : 'Nenhum país depende 60% ou mais de um só produto.',
+                            '#f59e0b'
+                        ),
+                    ].join('');
+                }
+
                 anchorEl.innerHTML = `<table class="sales-geo-table">
-                    <thead><tr><th>País</th><th>Produto âncora</th><th class="num">Vendas</th><th class="num">Receita</th><th class="num">% do país</th><th>2º colocado</th></tr></thead>
+                    <thead><tr><th>País</th><th>Produto âncora</th><th class="num">Vendas</th><th class="num">Receita</th><th class="num">% do país</th><th class="num">Variação</th><th>Próxima ação</th></tr></thead>
                     <tbody>${rows.map(r => {
                         const domina = r.share >= 60;
+                        const trendClass = r.anchorDeltaPct == null ? 'neutral' : r.anchorDeltaPct > 0 ? 'up' : r.anchorDeltaPct < 0 ? 'down' : 'neutral';
+                        const trendLabel = r.anchorDeltaPct == null
+                            ? 'Novo'
+                            : `${r.anchorDeltaPct > 0 ? '+' : ''}${r.anchorDeltaPct.toFixed(0)}%`;
                         return `<tr>
                             <td><strong>${_esc(r.name)}</strong> <span class="sales-tz-note">${_esc(r.cc)}</span></td>
                             <td>${_esc(r.dispName)}${domina ? ' <span class="sales-anchor-badge" title="Este produto concentra a maior parte da receita do país">Domina</span>' : ''}</td>
                             <td class="num">${_fmtNumber(r.anchor.sales)}</td>
                             <td class="num">${_fmtMoney(_convertFromUSD(r.anchor.revenue, displayCcy), displayCcy)}</td>
                             <td class="num">${r.share.toFixed(1)}%</td>
-                            <td>${r.runnerUp ? _esc(r.runnerUp.title) : '—'}</td>
+                            <td class="num"><span class="sales-market-trend ${trendClass}" title="${r.anchor.sales} vendas agora versus ${r.prevAnchorSales} no período anterior equivalente">${trendLabel}</span></td>
+                            <td><span class="sales-market-action" title="Recomendação baseada somente no recorte selecionado; confirme estoque, margem, idioma e campanhas antes de agir">${_esc(r.nextAction)}</span></td>
                         </tr>`;
                     }).join('')}</tbody>
                 </table>`;
@@ -1225,7 +1407,7 @@ const SalesModule = (() => {
         let prevByProd = {};
         let prevTotal = 0;
         let pairedHourLabel = '';
-        if (pFrom && pTo && typeof ShopifyModule !== 'undefined' && ShopifyModule.fetchOrders) {
+        if (pFrom && pTo && _canFetchOrders()) {
             // Raw orders from yesterday — cache normally
             const cacheKey = `${pFrom}|${pTo}`;
             try {
@@ -1233,7 +1415,7 @@ const SalesModule = (() => {
                 if (_mdgxPrevCache.key === cacheKey && _mdgxPrevCache.orders) {
                     prevOrders = _mdgxPrevCache.orders;
                 } else {
-                    prevOrders = await ShopifyModule.fetchOrders(pFrom, pTo, { silent: true });
+                    prevOrders = await _fetchOrders(pFrom, pTo, { silent: true });
                     _mdgxPrevCache = { key: cacheKey, orders: prevOrders }; // cache RAW (unfiltered)
                 }
 
@@ -1303,6 +1485,7 @@ const SalesModule = (() => {
                 pid,
                 title: info.title,
                 sales: info.sales,
+                prevSales,
                 revenue: info.revenue,
                 currency: info.currency,
                 avgPrice: info.sales > 0 ? info.revenue / info.sales : 0,
@@ -1320,7 +1503,10 @@ const SalesModule = (() => {
             ? ShopifyModule.getShopifyProducts() : [];
         const coverOf = (pid) => {
             const sp = shopifyProds.find(p => String(p.id) === String(pid));
-            return sp?.image || '';
+            if (sp?.image) return sp.image;
+            const local = (AppState.allProducts || AppState.products || [])
+                .find(p => String(p.shopifyId || '') === String(pid));
+            return local?.gallery?.[0] || local?.image || '';
         };
 
         const fmtMoney = (v, cur) => {
@@ -1370,7 +1556,7 @@ const SalesModule = (() => {
         let itemsHtml = visible.map(p => {
             const thumb = coverOf(p.pid);
             const deltaHtml = p.delta
-                ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}">${p.delta.label}</span>`
+                ? `<span class="mdgx-ranking-delta mdgx-ranking-delta-${p.delta.type}" title="Vendas deste produto: ${p.sales} no período atual versus ${p.prevSales} no período anterior equivalente">${p.delta.label}<span class="sr-only"> versus período anterior</span></span>`
                 : '';
             const lp = localProductFor(p.pid, p.title);
             // Nome sempre do produto local (renomear em Produtos reflete aqui).
@@ -2010,7 +2196,7 @@ const SalesModule = (() => {
 
     // ── Load orders ──────────────────────────────────────────────
     async function _loadOrders(force = false) {
-        if (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured?.()) {
+        if (!_isSalesPreview && (typeof ShopifyModule === 'undefined' || !ShopifyModule.isConfigured?.())) {
             _state.orders = [];
             _state.loaded = true;
             _applyFilters();
@@ -2030,13 +2216,13 @@ const SalesModule = (() => {
         try {
             // Pull shop info for TZ + currency
             try {
-                const cfg = ShopifyModule.getConfig?.();
+                const cfg = _isSalesPreview ? { shopTimezone:'Europe/Paris', shopName:'PRÉVIA · dados agregados', shopCurrency:'EUR' } : ShopifyModule.getConfig?.();
                 _state.shopTz = cfg?.shopTimezone || 'UTC';
                 _state.shopName = cfg?.shopName || '';
                 _state.currency = cfg?.shopCurrency || '';
             } catch {}
 
-            const orders = await ShopifyModule.fetchOrders(_state.from, _state.to, { force });
+            const orders = await _fetchOrders(_state.from, _state.to, { force });
             _state.orders = orders || [];
             _state.loaded = true;
             _applyFilters();
