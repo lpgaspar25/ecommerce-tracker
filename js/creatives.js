@@ -261,9 +261,10 @@ const CreativesModule = {
     async _handleMediaFile(file) {
         if (!file) return;
         const isVideo = (file.type || '').startsWith('video');
-        const MAX = 60 * 1024 * 1024; // 60MB guard
-        if (file.size > MAX) {
-            showToast('Arquivo muito grande (máx. 60MB).', 'error');
+        // Vídeo agora é comprimido, então aceitamos fontes maiores (viram menores).
+        const MAXMB = isVideo ? 200 : 60;
+        if (file.size > MAXMB * 1024 * 1024) {
+            showToast(`Arquivo muito grande (máx. ${MAXMB}MB).`, 'error');
             return;
         }
 
@@ -279,6 +280,23 @@ const CreativesModule = {
                     arquivoFinal = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
                 }
             } catch (e) { console.warn('compressão falhou, usando arquivo original', e); }
+        } else if (typeof comprimirVideo === 'function') {
+            // Vídeo: re-encoda pra WebM menor (mantém áudio). Mostra progresso
+            // porque roda enquanto o vídeo toca uma vez. Só troca se ficar menor.
+            this._renderVideoCompressProgress(0);
+            try {
+                const { blob, comprimiu, de, para } = await comprimirVideo(file, {
+                    onProgress: (p) => this._renderVideoCompressProgress(p),
+                });
+                if (comprimiu) {
+                    const base = (file.name || 'video').replace(/\.[^.]+$/, '');
+                    arquivoFinal = new File([blob], `${base}.webm`, { type: 'video/webm' });
+                    const pct = de ? Math.round((1 - para / de) * 100) : 0;
+                    showToast(`Vídeo comprimido: ${(de / 1048576).toFixed(1)}MB → ${(para / 1048576).toFixed(1)}MB (−${pct}%).`, 'success');
+                } else {
+                    showToast('Vídeo mantido no original (já estava enxuto).', 'info');
+                }
+            } catch (e) { console.warn('compressão de vídeo falhou, usando original', e); }
         }
 
         let thumb = '';
@@ -314,6 +332,22 @@ const CreativesModule = {
         const prev = this._formMedia || {};
         this._formMedia = { file: null, mediaType: '', mediaThumb: '', mediaName: '', mediaId: '', prevMediaId: prev.prevMediaId || prev.mediaId || '', changed: true, removed: true };
         this._renderFormMediaPreview();
+    },
+
+    // Progresso da compressão de vídeo (o re-encode roda em tempo real).
+    _renderVideoCompressProgress(p) {
+        const box = document.getElementById('creative-media-preview');
+        if (!box) return;
+        const pct = Math.round(Math.max(0, Math.min(1, p || 0)) * 100);
+        box.classList.remove('creative-media-empty');
+        box.innerHTML = `<div class="creative-media-compress" style="padding:12px;text-align:center;font-size:0.85rem">
+            <i data-lucide="loader-2" style="width:18px;height:18px;animation:spin 1s linear infinite;vertical-align:-3px"></i>
+            Comprimindo vídeo… ${pct}%
+            <div style="height:6px;background:rgba(127,127,127,.25);border-radius:3px;margin-top:8px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:var(--ux-acid,#7c9700);transition:width .2s"></div>
+            </div>
+        </div>`;
+        if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {}
     },
 
     _renderFormMediaPreview() {
@@ -782,6 +816,18 @@ const CreativesModule = {
                             file = new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
                         }
                     } catch (err) { console.warn('compressão falhou para', arquivoOriginal.name, err); }
+                } else if (typeof comprimirVideo === 'function') {
+                    // Vídeo: re-encoda pra WebM menor (mantém áudio). Atualiza o
+                    // texto de progresso com o % da compressão do item atual.
+                    try {
+                        const { blob, comprimiu } = await comprimirVideo(arquivoOriginal, {
+                            onProgress: (p) => { if (text) text.textContent = `Comprimindo vídeo ${i + 1}/${total}… ${Math.round(p * 100)}%`; },
+                        });
+                        if (comprimiu) {
+                            const base = (arquivoOriginal.name || 'video').replace(/\.[^.]+$/, '');
+                            file = new File([blob], `${base}.webm`, { type: 'video/webm' });
+                        }
+                    } catch (err) { console.warn('compressão de vídeo falhou para', arquivoOriginal.name, err); }
                 }
 
                 // Generate thumbnail

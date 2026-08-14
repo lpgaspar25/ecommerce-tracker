@@ -1006,6 +1006,96 @@ async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9, op
     });
 }
 
+// Comprime vídeo NO NAVEGADOR (sem dependência externa, respeita o CSP):
+// re-encoda via canvas + MediaRecorder pra WebM menor, mantendo o áudio.
+// Roda enquanto o vídeo toca uma vez (~duração do vídeo). Degrada com
+// segurança: se algo falhar ou não ficar menor, devolve o arquivo original.
+// Retorna { blob, comprimiu, de, para } (tamanhos em bytes).
+async function comprimirVideo(file, { maxDim = 1080, fps = 30, onProgress = null } = {}) {
+    const semMexer = { blob: file, comprimiu: false, de: file?.size || 0, para: file?.size || 0 };
+    if (!file || !(file.type || '').startsWith('video')) return semMexer;
+    // Precisa de MediaRecorder + captureStream do canvas.
+    if (typeof MediaRecorder === 'undefined' ||
+        typeof HTMLCanvasElement === 'undefined' ||
+        !HTMLCanvasElement.prototype.captureStream) return semMexer;
+    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+        .find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } });
+    if (!mime) return semMexer;
+
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    try {
+        video.src = url; video.muted = true; video.playsInline = true; video.preload = 'auto';
+        await new Promise((res, rej) => {
+            video.onloadedmetadata = res;
+            video.onerror = () => rej(new Error('vídeo inválido'));
+            setTimeout(() => rej(new Error('timeout ao ler o vídeo')), 15000);
+        });
+
+        const vw = video.videoWidth || maxDim, vh = video.videoHeight || maxDim;
+        const scale = Math.min(1, maxDim / Math.max(vw, vh));
+        // dimensões pares (alguns encoders exigem)
+        const w = Math.max(2, Math.round(vw * scale / 2) * 2);
+        const h = Math.max(2, Math.round(vh * scale / 2) * 2);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        // Bitrate alvo ~ pixels*fps*0.08 (heurística equilibrada p/ anúncios).
+        const bitrate = Math.max(600_000, Math.round(w * h * fps * 0.08));
+
+        const canvasStream = canvas.captureStream(fps);
+        // tenta levar o áudio junto
+        let audioTracks = [];
+        try {
+            const cap = video.captureStream ? video.captureStream()
+                : (video.mozCaptureStream ? video.mozCaptureStream() : null);
+            if (cap) audioTracks = cap.getAudioTracks();
+        } catch {}
+        const mixed = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+
+        const chunks = [];
+        const rec = new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: bitrate });
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        const parou = new Promise(res => { rec.onstop = res; });
+        rec.start(1000);
+
+        const dur = video.duration || 0;
+        await video.play().catch(() => {});
+        await new Promise(res => {
+            let terminou = false;
+            const fim = () => { if (terminou) return; terminou = true; res(); };
+            video.onended = fim;
+            const draw = () => {
+                if (terminou) return;
+                try { ctx.drawImage(video, 0, 0, w, h); } catch {}
+                if (onProgress && dur) { try { onProgress(Math.min(0.99, video.currentTime / dur)); } catch {} }
+                if (video.ended) { fim(); return; }
+                requestAnimationFrame(draw);
+            };
+            requestAnimationFrame(draw);
+            // trava de segurança: duração+5s, ou 2min se a duração vier Infinity
+            // (acontece em alguns WebM de MediaRecorder até o primeiro seek).
+            const maxWait = Number.isFinite(dur) ? Math.max(10000, (dur + 5) * 1000) : 120000;
+            setTimeout(fim, maxWait);
+        });
+        try { video.pause(); } catch {}
+        try { rec.stop(); } catch {}
+        await parou;
+        if (onProgress) { try { onProgress(1); } catch {} }
+
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        if (blob.size > 0 && blob.size < file.size) {
+            return { blob, comprimiu: true, de: file.size, para: blob.size };
+        }
+        return semMexer;
+    } catch (e) {
+        console.warn('comprimirVideo falhou, mantendo original:', e);
+        return semMexer;
+    } finally {
+        try { URL.revokeObjectURL(url); } catch {}
+    }
+}
+
 // "Estúdio branco" → "estudio-branco". Para nome de arquivo, sem acento nem
 // espaço. ̀-ͯ é a faixa dos acentos combinantes depois do NFD —
 // escrita escapada de propósito: o caractere literal some em cópia/colagem.
