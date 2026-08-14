@@ -17,6 +17,7 @@ const TeamModule = (() => {
         { id: 'creatives', label: 'Criativos', icon: 'image' },
         { id: 'mineracao', label: 'Mineração', icon: 'pickaxe' },
         { id: 'diagnostico', label: 'Diagnóstico', icon: 'stethoscope' },
+        { id: 'operations', label: 'Central de execução', icon: 'command' },
         { id: 'pipeline', label: 'Pipeline', icon: 'kanban' },
         { id: 'projects', label: 'Projetos', icon: 'folder-kanban' },
     ];

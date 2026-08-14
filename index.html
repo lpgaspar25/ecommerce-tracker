@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="css/product-merger.css?v=20260813a">
     <link rel="stylesheet" href="css/diary-workspace.css?v=20260813-prod1">
     <link rel="stylesheet" href="css/importer-workspace.css?v=20260813-prod1">
+    <link rel="stylesheet" href="css/operations-center.css?v=20260814-preview1">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
          refresh do dashboard, Supabase no SupabaseSync.init, lucide no
          createIcons — todos rodam em DOMContentLoaded). Sem defer elas
@@ -100,6 +101,7 @@
         <button class="tab-btn tab-btn-hidden" data-tab="mineracao" hidden><i data-lucide="pickaxe" style="width:14px;height:14px;vertical-align:-2px"></i>️ Mineração</button>
         <button class="tab-btn" data-tab="diagnostico">Diagnóstico</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+        <button class="tab-btn" data-tab="operations">Operação</button>
         <button class="tab-btn" data-tab="laboratorio"><i data-lucide="flask-conical" style="width:14px;height:14px;vertical-align:-2px"></i> Laboratório</button>
         <button class="tab-btn" data-tab="projects">Projetos</button>
         <button class="tab-btn" data-tab="ai-ad-generator" hidden>AI Ad Generator</button>
@@ -4036,6 +4038,11 @@
 
         </section>
 
+        <!-- ==================== CENTRAL DE OPERAÇÕES ==================== -->
+        <section id="tab-operations" class="tab-panel">
+            <div id="operations-center-root"></div>
+        </section>
+
         <!-- ==================== PIPELINE KANBAN ==================== -->
         <section id="tab-pipeline" class="tab-panel">
             <div class="section-header">
@@ -7125,7 +7132,7 @@
     <script defer src="js/sidebar.js"></script>
     <script defer src="js/image-ai.js?v=20260812c"></script>
     <script defer src="js/higgsfield.js?v=20260812c"></script>
-    <script defer src="js/ux-shell.js?v=20260811c"></script>
+    <script defer src="js/ux-shell.js?v=20260814-operations-preview1"></script>
     <script defer src="js/ai-ad-generator.js?v=20260811d"></script>
     <script defer src="js/ai-generations.js"></script>
     <script defer src="js/prompt-templates.js"></script>
@@ -7153,6 +7160,7 @@
     <script defer src="js/pending-approvals.js"></script>
     <script defer src="js/ai-consultant.js?v=20260811b"></script>
     <script defer src="js/pipeline.js"></script>
+    <script defer src="js/operations-center.js?v=20260814-preview1"></script>
     <script defer src="js/swipe.js"></script>
     <script defer src="js/mining.js"></script>
     <script defer src="js/ad-library.js"></script>
@@ -7161,7 +7169,7 @@
     <script defer src="js/lab-tests.js"></script>
     <script defer src="js/lab-test-ai.js"></script>
     <script defer src="js/usage-panel.js"></script>
-    <script defer src="js/team.js"></script>
+    <script defer src="js/team.js?v=20260814-operations-preview1"></script>
     <script defer src="js/onboarding.js"></script>
     <script defer src="js/shopify.js"></script>
     <script defer src="js/product-merger.js?v=20260813a"></script>

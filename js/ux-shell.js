@@ -146,6 +146,13 @@ const UXShell = {
             icon: 'trending-up',
             description: 'Projete crescimento e investimento com segurança.'
         },
+        operations: {
+            label: 'Central de execução',
+            shortLabel: 'Central',
+            group: 'Operação',
+            icon: 'command',
+            description: 'Prioridades, responsáveis e ritmo dos fluxos operacionais.'
+        },
         pipeline: {
             label: 'Pipeline',
             group: 'Operação',
@@ -195,7 +202,7 @@ const UXShell = {
         { id: 'creative', label: 'Marketing & criação', icon: 'sparkles', tabs: ['ad-library', 'ai-generations', 'studio', 'gerar-modelo', 'creatives', 'creative-insights', 'brands', 'recent-edits', 'saved-inspirations'] },
         { id: 'paid-media', label: 'Mídia paga', icon: 'megaphone', tabs: ['analisador-criativos', 'ad-launcher', 'ads-manager', 'ad-hierarchy'] },
         { id: 'performance', label: 'Performance', icon: 'gauge', tabs: ['goals', 'diary', 'diagnostico', 'calculator', 'scale-sim'] },
-        { id: 'operations', label: 'Operação', icon: 'workflow', tabs: ['pipeline', 'laboratorio', 'projects', 'mineracao'] },
+        { id: 'operations', label: 'Operação', icon: 'workflow', tabs: ['operations', 'pipeline', 'laboratorio', 'projects', 'mineracao'] },
         { id: 'finance', label: 'Financeiro', icon: 'circle-dollar-sign', tabs: ['fiscal', 'reconciliation', 'captures'] }
     ],
 
@@ -268,7 +275,7 @@ const UXShell = {
         'ad-library': 'creative', 'ai-generations': 'creative', studio: 'creative', 'gerar-modelo': 'creative',
         creatives: 'creative', 'recent-edits': 'creative', 'saved-inspirations': 'creative',
         'analisador-criativos': 'launch', 'ad-launcher': 'launch', 'ads-manager': 'launch', 'ad-hierarchy': 'launch', pipeline: 'launch',
-        laboratorio: 'execucao', projects: 'execucao', mineracao: 'execucao',
+        operations: 'execucao', laboratorio: 'execucao', projects: 'execucao', mineracao: 'execucao',
         'loja-codigo': 'loja', 'loja-empresa': 'loja',
     },
 
@@ -926,6 +933,10 @@ const UXShell = {
                 window.setTimeout(() => panel.classList.remove('ux-page-enter'), 520);
             }
             document.querySelector('.tab-content')?.scrollTo?.({ top: 0, behavior: 'smooth' });
+            // A página usa o documento como área de rolagem em desktops. Sem
+            // isso, trocar de módulo preservava a altura da tela anterior e a
+            // nova página podia abrir no meio do conteúdo.
+            window.scrollTo?.({ top: 0, behavior: 'auto' });
         }
         this._toggleMobileNav(false);
         this._refreshIcons();
