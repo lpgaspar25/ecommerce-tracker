@@ -1566,6 +1566,11 @@ function gisLoaded() {
     maybeAutoConnect();
 }
 
+// With deferred app modules, either Google or the application may finish
+// loading first. Replay callbacks when the remote scripts won that race.
+if (window.__gapiScriptLoaded) gapiLoaded();
+if (window.__gisScriptLoaded) gisLoaded();
+
 function maybeAutoConnect() {
     if (gapiInited && gisInited && AppState.config.clientId && AppState.config.apiKey) {
         console.log('Auto-connecting to Google Sheets...');

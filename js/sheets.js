@@ -9,6 +9,7 @@ const SheetsAPI = {
     TOKEN_STORAGE_KEY: 'etracker_google_access_token',
     PIPELINE_DRIVE_FOLDER_KEY: 'etracker_pipeline_drive_folder_id',
     _isManualConnect: false,
+    _googleLibrariesPromise: null,
 
     TABS: {
         PRODUCTS: 'Produtos',
@@ -23,6 +24,42 @@ const SheetsAPI = {
         PROJECTS: 'Projetos'
     },
 
+    _loadGoogleScript(src, marker) {
+        if (document.querySelector(`script[data-google-lib="${marker}"]`)) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.dataset.googleLib = marker;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error(`Falha ao carregar ${marker}`));
+            document.head.appendChild(script);
+        });
+    },
+
+    async _ensureGoogleLibraries() {
+        if (typeof gapi !== 'undefined' && gapi.client && typeof google !== 'undefined' && google.accounts?.oauth2) return;
+        if (!this._googleLibrariesPromise) {
+            this._googleLibrariesPromise = (async () => {
+                await Promise.all([
+                    typeof gapi === 'undefined' ? this._loadGoogleScript('https://apis.google.com/js/api.js', 'gapi') : Promise.resolve(),
+                    typeof google === 'undefined' ? this._loadGoogleScript('https://accounts.google.com/gsi/client', 'gis') : Promise.resolve(),
+                ]);
+                if (typeof gapi === 'undefined' || typeof google === 'undefined') throw new Error('As bibliotecas do Google não ficaram disponíveis');
+                if (!gapi.client) {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => reject(new Error('Tempo esgotado ao carregar Google API')), 12000);
+                        gapi.load('client', () => { clearTimeout(timeout); resolve(); });
+                    });
+                }
+            })().catch(error => {
+                this._googleLibrariesPromise = null;
+                throw error;
+            });
+        }
+        return this._googleLibrariesPromise;
+    },
+
     async init(manual = false) {
         const { clientId, apiKey, spreadsheetId } = AppState.config;
         this._isManualConnect = !!manual;
@@ -32,21 +69,9 @@ const SheetsAPI = {
             return;
         }
 
-        // Check if Google APIs are loaded
-        if (typeof gapi === 'undefined') {
-            showToast('Google API ainda carregando. Tente novamente em alguns segundos.', 'error');
-            console.error('gapi is not loaded yet');
-            return;
-        }
-
-        if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-            showToast('Google Identity Services ainda carregando. Tente novamente em alguns segundos.', 'error');
-            console.error('google.accounts.oauth2 is not loaded yet');
-            return;
-        }
-
         try {
-            if (manual) showToast('Conectando ao Google Sheets...', 'info');
+            if (manual) showToast('Carregando integração com Google Sheets...', 'info');
+            await this._ensureGoogleLibraries();
 
             // Initialize gapi client
             await gapi.client.init({

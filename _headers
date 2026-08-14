@@ -1,5 +1,6 @@
 # Cloudflare Pages headers
-# HTML + JS/CSS: always revalidate so new deploys show up immediately (no stale cache)
+# HTML always revalidates. Static assets get a short browser cache so repeat
+# visits do not redownload dozens of modules; five minutes limits stale deploys.
 /index.html
   Cache-Control: no-cache, must-revalidate
 /
@@ -7,6 +8,6 @@
 /*.html
   Cache-Control: no-cache, must-revalidate
 /js/*
-  Cache-Control: no-cache, must-revalidate
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
 /css/*
-  Cache-Control: no-cache, must-revalidate
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
