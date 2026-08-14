@@ -1,10 +1,11 @@
 /* ================================================================
-   Diary Workspace — isolated local preview
-   Enabled only with ?diaryPreview=1. It never writes demo data to storage.
+   Diary Workspace — performance cockpit
+   Demo data is available only with ?diaryPreview=1 and is never persisted.
    ================================================================ */
 
 const DiaryWorkspacePreview = {
     enabled: false,
+    previewRequested: false,
     activeView: 'overview',
     usingDemo: false,
     historyMode: 'percent',
@@ -25,7 +26,9 @@ const DiaryWorkspacePreview = {
     ],
 
     init() {
-        this.enabled = new URLSearchParams(window.location.search).get('diaryPreview') === '1';
+        const params = new URLSearchParams(window.location.search);
+        this.previewRequested = params.get('diaryPreview') === '1';
+        this.enabled = params.get('legacyDiary') !== '1';
         if (!this.enabled) return;
 
         const panel = document.getElementById('tab-diary');
@@ -42,10 +45,12 @@ const DiaryWorkspacePreview = {
         this._bind();
 
         setTimeout(() => {
-            document.querySelector('.sidebar-link[data-tab="diary"]')?.click();
             this.refresh();
-            const requestedView = new URLSearchParams(window.location.search).get('view');
-            this.setView(['overview', 'history', 'tests', 'funnel', 'creatives', 'compare', 'calendar'].includes(requestedView) ? requestedView : 'overview');
+            if (this.previewRequested) {
+                document.querySelector('.sidebar-link[data-tab="diary"]')?.click();
+                const requestedView = params.get('view');
+                this.setView(['overview', 'history', 'tests', 'funnel', 'creatives', 'compare', 'calendar'].includes(requestedView) ? requestedView : 'overview');
+            }
         }, 350);
     },
 
@@ -55,7 +60,7 @@ const DiaryWorkspacePreview = {
         header.innerHTML = `
             <header class="dw-hero">
                 <div class="dw-hero-copy">
-                    <div class="dw-kicker"><span class="dw-live-dot"></span> Sala de performance <b>PRÉVIA LOCAL</b></div>
+                    <div class="dw-kicker"><span class="dw-live-dot"></span> Sala de performance <b>NOVO WORKSPACE</b></div>
                     <h2>O que mudou — e qual foi o efeito?</h2>
                     <p>Testes, alterações e funil reunidos numa leitura de causa e efeito.</p>
                     <div class="dw-freshness">
@@ -275,7 +280,7 @@ const DiaryWorkspacePreview = {
         if (!this.enabled || !document.getElementById('dw-overview')) return;
         let entries = [];
         try { entries = DiaryModule.getFilteredEntries() || []; } catch (_) {}
-        this.usingDemo = entries.length === 0;
+        this.usingDemo = this.previewRequested && entries.length === 0;
         if (this.usingDemo) entries = this._demoEntries();
         const tests = this._getTests(entries);
         const selectedTest = this._selectTest(tests, entries);
@@ -635,7 +640,7 @@ const DiaryWorkspacePreview = {
             });
             return [...map.values()];
         }
-        return [this._demoTest()];
+        return this.previewRequested ? [this._demoTest()] : [];
     },
 
     _selectTest(tests, entries) {
