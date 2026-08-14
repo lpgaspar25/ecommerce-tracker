@@ -7,6 +7,8 @@ const DiaryWorkspacePreview = {
     enabled: false,
     activeView: 'overview',
     usingDemo: false,
+    historyMode: 'percent',
+    openHistoryRows: new Set(),
 
     init() {
         this.enabled = new URLSearchParams(window.location.search).get('diaryPreview') === '1';
@@ -18,6 +20,8 @@ const DiaryWorkspacePreview = {
         if (!panel || !main || !filter) return;
 
         panel.classList.add('diary-preview-active');
+        try { this.historyMode = localStorage.getItem('etracker_diary_history_view') || 'percent'; } catch (_) {}
+        if (!['numbers', 'percent', 'both'].includes(this.historyMode)) this.historyMode = 'percent';
         this._buildShell(main, filter);
         this._bind();
 
@@ -112,6 +116,11 @@ const DiaryWorkspacePreview = {
                         <p id="dw-history-subtitle">Veja o que estava rodando e como as métricas reagiram em cada dia.</p>
                     </div>
                     <div class="dw-history-actions">
+                        <div class="dw-history-mode" role="group" aria-label="Visualização do histórico">
+                            <button type="button" data-history-mode="numbers">Números</button>
+                            <button type="button" data-history-mode="percent"><i data-lucide="percent"></i> Funil</button>
+                            <button type="button" data-history-mode="both">Ambos</button>
+                        </div>
                         <button type="button" class="dw-history-action" data-dw-action="columns"><i data-lucide="columns-3"></i> Colunas</button>
                         <button type="button" class="dw-history-action" data-dw-action="campaigns"><i data-lucide="megaphone"></i> Por campanha</button>
                     </div>
@@ -120,8 +129,9 @@ const DiaryWorkspacePreview = {
                 <div class="dw-history-table-wrap">
                     <table class="dw-history-table">
                         <thead><tr>
-                            <th>Dia / fase</th><th>Produto</th><th class="num">Gasto</th><th class="num">Visitantes</th>
-                            <th class="num">Carrinhos</th><th class="num">Checkouts</th><th class="num">Vendas Shopify</th>
+                            <th>Dia / fase</th><th>Produto</th><th class="num hist-number hist-money">Gasto</th><th class="num hist-number hist-funnel-count">Visitantes</th>
+                            <th class="num hist-number hist-funnel-count">Carrinhos</th><th class="num hist-number hist-funnel-count">Checkouts</th><th class="num hist-number hist-money">Vendas Shopify</th>
+                            <th class="num hist-percent">Pág. → Carrinho</th><th class="num hist-percent">Carrinho → Checkout</th><th class="num hist-percent">Conv. página</th>
                             <th class="num">CPA real</th><th class="num">ROAS real</th><th>Leitura</th><th></th>
                         </tr></thead>
                         <tbody id="dw-history-body"></tbody>
@@ -145,6 +155,7 @@ const DiaryWorkspacePreview = {
         document.querySelector('[data-dw-action="columns"]')?.addEventListener('click', () => document.getElementById('btn-diary-columns')?.click());
         document.querySelector('[data-dw-action="campaigns"]')?.addEventListener('click', () => document.getElementById('btn-diary-group-campaign')?.click());
         document.querySelector('[data-dw-action="full-table"]')?.addEventListener('click', () => this._toggleFullTable());
+        document.querySelectorAll('[data-history-mode]').forEach(btn => btn.addEventListener('click', () => this._setHistoryMode(btn.dataset.historyMode)));
         document.querySelector('[data-dw-action="tools"]')?.addEventListener('click', (event) => {
             event.stopPropagation();
             document.getElementById('dw-tools-menu')?.classList.toggle('open');
@@ -405,6 +416,9 @@ const DiaryWorkspacePreview = {
             ? entries.filter(e => (!selectedTest.productId || e.productId === selectedTest.productId) && e.date < selectedTest.dateStart)
             : [];
         const baseline = this._aggregate(baselineEntries);
+        const historyRoot = document.getElementById('dw-history-view');
+        historyRoot.dataset.historyMode = this.historyMode;
+        document.querySelectorAll('[data-history-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.historyMode === this.historyMode));
         const title = document.getElementById('dw-history-title');
         const subtitle = document.getElementById('dw-history-subtitle');
         const eyebrow = document.getElementById('dw-history-eyebrow');
@@ -446,33 +460,46 @@ const DiaryWorkspacePreview = {
             const atcRate = entry.pageViews ? Number(entry.addToCart || 0) / Number(entry.pageViews) * 100 : 0;
             const checkoutRate = entry.addToCart ? Number(entry.checkout || 0) / Number(entry.addToCart) * 100 : 0;
             const convRate = entry.pageViews ? sales / Number(entry.pageViews) * 100 : 0;
+            const detailOpen = this.openHistoryRows.has(String(index));
             return `<tr class="dw-history-row ${isTest ? 'is-test' : 'is-base'}" data-history-row="${index}">
                 <td><div class="dw-history-date"><strong>${this._date(entry.date)}</strong><span class="${isTest ? 'test' : 'base'}">${isTest ? '<i data-lucide="flask-conical"></i> Durante o teste' : 'Antes da alteração'}</span></div></td>
                 <td><div class="dw-history-product"><span>${this._esc(product)}</span><small>${this._esc(entry.platform || 'Sem plataforma')} ${entry.region ? `· ${this._esc(entry.region)}` : ''}</small></div></td>
-                <td class="num">${this._money(budget, false)}</td><td class="num">${this._number(entry.pageViews)}</td>
-                <td class="num">${this._number(entry.addToCart)}</td><td class="num">${this._number(entry.checkout)}</td>
-                <td class="num dw-real-sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
+                <td class="num hist-number hist-money">${this._money(budget, false)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.pageViews)}</td>
+                <td class="num hist-number hist-funnel-count">${this._number(entry.addToCart)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.checkout)}</td>
+                <td class="num dw-real-sales hist-number hist-money"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
+                <td class="num hist-percent"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
+                <td class="num hist-percent"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
+                <td class="num hist-percent"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Conversão</small></td>
                 <td class="num"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td class="num"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
-                <td><button class="dw-row-toggle" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
+                <td><button class="dw-row-toggle${detailOpen ? ' open' : ''}" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
             </tr>
-            <tr class="dw-history-detail" data-history-detail="${index}" style="display:none"><td colspan="11"><div>
+            <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="14"><div>
                 <span><small>Visitante → carrinho</small><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong></span>
                 <span><small>Carrinho → checkout</small><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong></span>
                 <span><small>Conversão da página</small><strong>${convRate.toFixed(2).replace('.', ',')}%</strong></span>
                 <span class="dw-detail-note"><small>O que estava rodando</small><strong>${isTest ? this._esc(selectedTest?.title || entry.testGoal || 'Teste do Laboratório') : 'Período usado como referência'}</strong></span>
             </div></td></tr>`;
-        }).join('') || `<tr><td colspan="11"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
+        }).join('') || `<tr><td colspan="14"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
 
         body.querySelectorAll('[data-history-toggle]').forEach(btn => btn.addEventListener('click', event => {
             event.stopPropagation();
             const detail = body.querySelector(`[data-history-detail="${btn.dataset.historyToggle}"]`);
             const open = detail.style.display === 'none';
+            if (open) this.openHistoryRows.add(String(btn.dataset.historyToggle));
+            else this.openHistoryRows.delete(String(btn.dataset.historyToggle));
             detail.style.display = open ? '' : 'none';
             btn.classList.toggle('open', open);
         }));
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _setHistoryMode(mode) {
+        if (!['numbers', 'percent', 'both'].includes(mode)) return;
+        this.historyMode = mode;
+        try { localStorage.setItem('etracker_diary_history_view', mode); } catch (_) {}
+        this._renderHistory(this.activeView === 'tests');
     },
 
     _toggleFullTable() {
