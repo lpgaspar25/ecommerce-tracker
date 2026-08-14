@@ -273,6 +273,16 @@ const PipelineModule = {
 
     // Sync existing pipeline cards -> Products (for cards that already exist but have no product)
     async _syncPipelineToProducts() {
+        // ESPERA o IndexedDB hidratar. No boot, 'dataLoaded' dispara ANTES do
+        // hydrate, com AppState.allProducts ainda VAZIO. Sem esperar, este método
+        // não encontrava os produtos existentes, criava versões POBRES novas
+        // (id novo, sem fotos/descrição/shopifyId) e salvava por cima do KVStore
+        // — apagando os dados ricos antes do hydrate carregá-los. Sintoma:
+        // depois de "Sincronizar Shopify", ao recarregar sumia foto/preço/
+        // descrição, desvinculava e o diário virava "Produto Removido".
+        if (typeof LocalStore !== 'undefined' && LocalStore.ready) {
+            try { await LocalStore.ready; } catch {}
+        }
         let synced = false;
 
         for (const card of this.cards) {
