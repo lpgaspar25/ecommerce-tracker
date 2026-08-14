@@ -1527,7 +1527,7 @@ const FunnelModule = {
             if (this._findHeaderIndex(headerMap, ['cliques no link', 'cliques']) >= 0) score += 1;
             if (this._findHeaderIndex(headerMap, ['visualizacoes da pagina de destino']) >= 0) score += 1;
             if (this._findHeaderIndex(headerMap, ['compras', 'resultados']) >= 0) score += 1;
-            if (this._findHeaderIndex(headerMap, ['valor usado', 'amount spent']) >= 0) score += 1;
+            if (this._findHeaderIndex(headerMap, ['valor usado', 'valor gasto', 'amount spent']) >= 0) score += 1;
             if (this._findHeaderIndex(headerMap, ['visu pagina add to cart', 'add to cart']) >= 0) score += 2;
             if (this._findHeaderIndex(headerMap, ['carrinho checkout', 'checkout']) >= 0) score += 2;
             if (this._findHeaderIndex(headerMap, ['ic compras', 'purchase checkout']) >= 0) score += 2;
@@ -3021,7 +3021,7 @@ const FunnelModule = {
         const has = (cands, opts) => this._findHeaderIndex(headerMap, cands, opts || {}) >= 0;
 
         const blocking = [];
-        if (!has(['valor usado usd', 'valor usado brl', 'valor usado', 'amount spent'])) blocking.push('Valor usado (gasto)');
+        if (!has(['valor usado usd', 'valor usado brl', 'valor usado', 'valor gasto usd', 'valor gasto brl', 'valor gasto', 'amount spent'])) blocking.push('Valor usado (gasto)');
         if (!has(['impressoes', 'impressions'])) blocking.push('Impressões');
 
         const missing = [];
@@ -3067,7 +3067,9 @@ const FunnelModule = {
     _extractCsvMetricsFromRow(row, headerMap) {
         const impressionsCandidates = ['impressoes', 'impressions'];
         const clicksCandidates = ['cliques todos', 'cliques no link', 'link clicks', 'outbound clicks', 'cliques'];
-        const spendCandidates = ['valor usado usd', 'valor usado brl', 'valor usado', 'amount spent usd', 'amount spent'];
+        // "Valor gasto" é sinônimo regional de "Valor usado" em alguns exports
+        // do Ads Manager (ex.: relatórios em GBP/libra) — mesma coluna, nome diferente.
+        const spendCandidates = ['valor usado usd', 'valor usado brl', 'valor usado', 'valor gasto usd', 'valor gasto brl', 'valor gasto', 'amount spent usd', 'amount spent'];
         const viewContentCandidates = [
             'visualizacoes da pagina de destino do site',
             'visualizacoes da pagina de destino',
@@ -3181,7 +3183,7 @@ const FunnelModule = {
             ? saleRateRaw
             : saleRateCalc;
 
-        const spendHeaderIdx = this._findHeaderIndex(headerMap, ['valor usado usd', 'amount spent usd', 'valor usado']);
+        const spendHeaderIdx = this._findHeaderIndex(headerMap, ['valor usado usd', 'amount spent usd', 'valor usado', 'valor gasto']);
         const spendHeader = spendHeaderIdx >= 0
             ? this._normalizeCsvKey(Object.keys(headerMap).find(k => headerMap[k] === spendHeaderIdx) || '')
             : '';
@@ -4262,9 +4264,14 @@ const FunnelModule = {
         if (!adName || typeof AppState === 'undefined') return;
         AppState.allCreatives = Array.isArray(AppState.allCreatives) ? AppState.allCreatives : [];
 
-        // Check if creative with this name already exists for this product
+        // Casamento por nome NORMALIZADO (minúsculo, sem acento, sem espaço nas
+        // pontas) — não exato. O nome do anúncio na planilha do Facebook raramente
+        // difere do que o usuário digitou ao subir o criativo, mas maiúscula ou
+        // espaço a mais não pode virar um criativo duplicado com o mesmo conteúdo.
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+        const adNameNorm = norm(adName);
         const existing = AppState.allCreatives.find(c =>
-            c.name === adName && c.productId === productId
+            norm(c.name) === adNameNorm && c.productId === productId
         );
         if (existing) return existing.id;
 
