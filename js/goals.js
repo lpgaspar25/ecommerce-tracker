@@ -171,6 +171,11 @@ const GoalsModule = {
             if (AppState.sheetsConnected) {
                 await SheetsAPI.deleteRowById(SheetsAPI.TABS.GOALS, id);
             }
+            // Propaga a exclusão pra nuvem: sem isto o upsert reenviava as metas
+            // restantes mas a excluída ficava no Supabase e voltava no reload.
+            if (typeof SupabaseSync !== 'undefined' && SupabaseSync.deleteGoalById) {
+                try { SupabaseSync.deleteGoalById(id); } catch {}
+            }
             filterDataByStore();
             this.render();
             EventBus.emit('goalsChanged');

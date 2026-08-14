@@ -159,6 +159,12 @@ const ImporterModule = (() => {
             weightUnit: idx('Variant Weight Unit'),
         };
 
+        // Sem a coluna "Handle" todas as linhas seriam puladas e o toast diria
+        // "0 produtos carregados" (verde, enganoso). Avisa que não é export da Shopify.
+        if (H.handle < 0) {
+            throw new Error('o arquivo não parece ser um export de produtos da Shopify (falta a coluna "Handle").');
+        }
+
         // Group by Handle (Shopify CSV repeats handle for each variant/image row)
         const byHandle = new Map();
         for (let r = 1; r < rows.length; r++) {

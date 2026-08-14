@@ -14,7 +14,9 @@ const StorageManager = {
     // faz o usuário perder o histórico de edições sem nenhum aviso.
     _purgeable: [
         'etracker_shopify_orders_cache',
-        'etracker_creative_metrics',
+        // 'etracker_creative_metrics' NÃO é cache regenerável — é dado do usuário
+        // (métricas de criativos importadas). Foi movido pro IndexedDB (_IDB_KEYS)
+        // pra não ser apagado sob pressão de quota nem estourar o localStorage.
         'ai_ad_generations_v1',   // índice das gerações de IA (a chave real; os bytes ficam no IndexedDB)
         'etracker_adl_uploads',
         'etracker_usage_data',
@@ -248,6 +250,7 @@ function addStore(name) {
         SheetsAPI.appendRow(SheetsAPI.TABS.STORES, SheetsAPI.storeToRow(store));
     }
     renderStoreSelector();
+    if (typeof EventBus !== 'undefined') EventBus.emit('storeChanged');
     return store;
 }
 
@@ -264,11 +267,15 @@ function deleteStore(id) {
         if (AppState.sheetsConnected && SheetsAPI.TABS.STORES) {
             SheetsAPI.deleteRowById(SheetsAPI.TABS.STORES, id);
         }
+        if (typeof SupabaseSync !== 'undefined' && SupabaseSync.deleteStoreById) {
+            try { SupabaseSync.deleteStoreById(id); } catch {}
+        }
         if (AppState.currentStoreId === id) {
             const firstStore = AppState.stores.find(s => s.status === 'ativo') || AppState.stores[0];
             switchStore(firstStore ? firstStore.id : '');
         }
         renderStoreSelector();
+        if (typeof EventBus !== 'undefined') EventBus.emit('storeChanged');
     }
 }
 
@@ -281,6 +288,7 @@ function renameStore(id, newName) {
         SheetsAPI.updateRowById(SheetsAPI.TABS.STORES, id, SheetsAPI.storeToRow(store));
     }
     renderStoreSelector();
+    if (typeof EventBus !== 'undefined') EventBus.emit('storeChanged');
 }
 
 function toggleStoreStatus(id) {
@@ -301,6 +309,7 @@ function toggleStoreStatus(id) {
         if (firstActive) switchStore(firstActive.id);
     }
     renderStoreSelector();
+    if (typeof EventBus !== 'undefined') EventBus.emit('storeChanged');
 }
 
 function renderStoreSelector() {
@@ -1369,8 +1378,8 @@ function calculateProfitPerSale(product, cpaCurrency, cpaValue) {
     const price = convertToUSD(product.price, product.priceCurrency);
     const cost = convertToUSD(product.cost, product.costCurrency);
     const cpa = convertToUSD(cpaValue || product.cpa, cpaCurrency || product.cpaCurrency);
-    const taxAmount = price * (product.tax / 100);
-    const variableAmount = price * (product.variableCosts / 100);
+    const taxAmount = price * ((product.tax || 0) / 100);
+    const variableAmount = price * ((product.variableCosts || 0) / 100);
 
     return price - cost - taxAmount - variableAmount - cpa;
 }

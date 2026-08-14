@@ -586,7 +586,7 @@ const ModelGenModule = (() => {
                 <p class="section-subtitle" style="margin:.25rem 0 0">Envie fotos de um modelo e gere a mesma pessoa em vários ângulos e enquadramentos.</p>
             </div>
             <div class="mg-header-acoes">
-                <input type="text" id="mg-nome" class="input input-sm" placeholder="Nome do modelo" value="${_esc(rec?.nome || '')}" style="width:170px">
+                <input type="text" id="mg-nome" class="input input-sm" placeholder="Nome do modelo" value="${_esc(rec?.nome || _state.nomePendente || '')}" style="width:170px">
                 ${_state.modeloId ? '<button class="btn btn-secondary btn-sm" id="mg-novo"><i data-lucide="plus" style="width:14px;height:14px"></i> Novo</button>' : ''}
             </div>
         </div>`;

@@ -232,7 +232,16 @@ const CloudBackup = (() => {
         const data = snapshot.data || {};
         // localStorage (com as tombstones atuais) já foi escrito acima, então o
         // filtro reflete o que o usuário excluiu de fato — não ressuscita.
-        if (data.products) await KVStore.set('etracker_products', _dropTombstoned(data.products));
+        // Mescla com o KVStore local rico ANTES de deduplicar (que mantém a cópia
+        // mais rica): sem isto um snapshot remoto mais pobre apagava fotos/descrição.
+        if (data.products) {
+            let _prods = data.products;
+            try {
+                const _atuais = await KVStore.get('etracker_products', null);
+                if (Array.isArray(_atuais) && _atuais.length) _prods = [..._atuais, ..._prods];
+            } catch {}
+            await KVStore.set('etracker_products', _dropTombstoned(_prods));
+        }
         if (data.diary) await KVStore.set('etracker_diary', data.diary);
         if (typeof LocalStore !== 'undefined') {
             if (data.stores) LocalStore.save('stores', data.stores);

@@ -4322,9 +4322,11 @@ const FunnelModule = {
     // Returns array of rows, each with region, interest, label, and metrics.
     _aggregateByRegion() {
         const productId = this.state.productId;
-        const startDate = this.state.actual.startDate;
-        const endDate = this.state.actual.endDate;
-        const subs = (AppState.allDiary || []).filter(d => {
+        // this.state.actual.startDate/endDate nunca eram atribuídos → a tabela
+        // ignorava o período e somava o histórico todo. Usa o período real
+        // selecionado + o diário JÁ filtrado por loja (não o allDiary global).
+        const { startDate, endDate } = this.getSelectedPeriod();
+        const subs = (AppState.diary || []).filter(d => {
             if (!d.isCampaign) return false;
             if (productId && productId !== 'todos' && d.productId !== productId) return false;
             if (startDate && d.date < startDate) return false;

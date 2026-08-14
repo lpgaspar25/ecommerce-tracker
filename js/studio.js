@@ -313,6 +313,7 @@ const StudioModule = (() => {
     }
 
     async function gerarFotos(presetIds, extra = '') {
+        if (_state.gerando) { showToast('Geração em andamento — aguarde terminar.', 'info'); return; }
         const pid = _state.productId;
         if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
         const d = _dados(pid);
@@ -747,6 +748,7 @@ Responda APENAS com JSON válido:
 
     // Gera uma imagem aplicando o padrão à foto base do produto.
     async function gerarComPadrao(padraoId) {
+        if (_state.gerando) { showToast('Geração em andamento — aguarde terminar.', 'info'); return; }
         const pid = _state.productId;
         if (!pid) { showToast('Escolha um produto primeiro', 'error'); return; }
         const d = _dados(pid);
@@ -1678,6 +1680,7 @@ Você está REFINANDO uma página que já existe. O usuário pede ajustes em por
     }
 
     async function _gerarVersoes(f, dims) {
+        if (_state.gerando) { showToast('Geração em andamento — aguarde terminar.', 'info'); return; }
         const prov = _provedorImagem();
         const chave = _chaveParaProvedor(prov);
         if (!chave) { showToast('Configure a chave de IA em Chaves de API', 'error'); return; }

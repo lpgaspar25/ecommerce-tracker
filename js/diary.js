@@ -835,8 +835,8 @@ const DiaryModule = {
 
                 const profit = revenueUSD
                     - (costUSD * sales)
-                    - (revenueUSD * product.tax / 100)
-                    - (revenueUSD * product.variableCosts / 100)
+                    - (revenueUSD * (product.tax || 0) / 100)
+                    - (revenueUSD * (product.variableCosts || 0) / 100)
                     - budgetUSD;
 
                 profitEl.textContent = formatDualCurrency(profit, 'USD');
@@ -1288,8 +1288,8 @@ const DiaryModule = {
 
         return revenueUSD
             - (costUSD * entry.sales)
-            - (revenueUSD * product.tax / 100)
-            - (revenueUSD * product.variableCosts / 100)
+            - (revenueUSD * (product.tax || 0) / 100)
+            - (revenueUSD * (product.variableCosts || 0) / 100)
             - budgetUSD;
     },
 

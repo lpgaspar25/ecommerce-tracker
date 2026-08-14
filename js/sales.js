@@ -341,7 +341,10 @@ const SalesModule = (() => {
                     const tax = (prod.tax || 0) / 100;
                     const varCost = (prod.variableCosts || 0) / 100;
                     const unitMargin = conv(unitPrice, o.currency || 'USD') * (1 - tax - varCost) - costUSD;
-                    totalCostUSD += conv(unitPrice, o.currency || 'USD') - unitMargin;
+                    // × qty: a receita já conta a quantidade (unitPrice*qty), então o
+                    // custo também tem que contar — senão a margem sai superestimada
+                    // em pedidos com quantidade > 1.
+                    totalCostUSD += (conv(unitPrice, o.currency || 'USD') - unitMargin) * qty;
                     totalCostUSD = Math.max(0, totalCostUSD); // sanity
                 }
             }

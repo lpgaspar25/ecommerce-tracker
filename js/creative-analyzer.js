@@ -627,6 +627,9 @@ const CreativeAnalyzerModule = {
         root.querySelector('#ca-import')?.addEventListener('click', () => this._importCsv());
         root.querySelector('#ca-fb')?.addEventListener('click', () => this._importFb());
         root.querySelectorAll('.ca-row, .ca-open').forEach(el => el.addEventListener('click', (e) => {
+            // .ca-open é botão DENTRO de .ca-row: sem stopPropagation o clique
+            // no botão dispara o handler dele E borbulha pra linha → drill 2x.
+            e.stopPropagation();
             const id = el.dataset.id || e.currentTarget.dataset.id;
             if (id) this._openDrill(id);
         }));

@@ -519,7 +519,11 @@ const ShopifyModule = (() => {
             id: o.id,
             name: o.name,
             created_at: o.createdAt,
-            currency: o.currencyCode,
+            // total_price e os preços de linha usam shopMoney (SEMPRE na moeda da
+            // LOJA). Parear com a moeda da loja — não com currencyCode, que no
+            // Shopify Markets é a moeda de apresentação do cliente e faria a
+            // conversão pra USD usar a taxa errada em pedidos multi-moeda.
+            currency: _config.shopCurrency || o.currencyCode,
             total_price: o.totalPriceSet?.shopMoney?.amount,
             financial_status: o.displayFinancialStatus,
             customer: o.customer ? {

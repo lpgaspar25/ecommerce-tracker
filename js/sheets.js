@@ -1052,7 +1052,7 @@ const LocalStore = {
     // descrição. Mantê-los no localStorage recriaria o limite de ~5 MB que já
     // foi resolvido para o Diário; o objeto inteiro vai para o mesmo KVStore
     // sem perder campos de anúncios, países, variantes ou integrações.
-    _IDB_KEYS: new Set(['diary', 'products']),
+    _IDB_KEYS: new Set(['diary', 'products', 'creative_metrics']),
     _mem: {},
     // `ready` resolve quando o hydrate() do IndexedDB termina. Enquanto false,
     // os dados reais ainda estão só no IndexedDB e AppState.* está vazio no boot.
@@ -1200,6 +1200,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 normalizeAllDataStoreIds();
                 filterDataByStore();
                 populateProductDropdowns();
+                EventBus.emit('dataLoaded');
+            }
+            if (carregadas && carregadas.includes('creative_metrics')) {
+                AppState.allCreativeMetrics = LocalStore.load('creative_metrics') || [];
                 EventBus.emit('dataLoaded');
             }
         }).catch(() => {}).finally(() => {

@@ -336,6 +336,25 @@ const SupabaseSync = (() => {
         } catch (err) { console.error('[Sync] deleteProduct:', err); }
     }
 
+    // Sem isto o upsert nunca removia a linha e a meta/loja excluída ressuscitava
+    // no próximo loadAll (ramo "remote authoritative"). Espelha deleteProductById.
+    async function deleteGoalById(id) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            const { error } = await client.from('goals').delete().eq('id', id).eq('user_id', _user.id);
+            if (error) throw error;
+        } catch (err) { console.error('[Sync] deleteGoal:', err); }
+    }
+    async function deleteStoreById(id) {
+        const client = _getClient();
+        if (!client || !_user) return;
+        try {
+            const { error } = await client.from('stores').delete().eq('id', id).eq('user_id', _user.id);
+            if (error) throw error;
+        } catch (err) { console.error('[Sync] deleteStore:', err); }
+    }
+
     async function syncGoals() {
         const client = _getClient();
         if (!client || !_user) return;
@@ -440,7 +459,11 @@ const SupabaseSync = (() => {
             } else {
                 // Remote data is authoritative — use it
                 if (remoteStores.length > 0) {
-                    AppState.stores = remoteStores.map(_rowToStore);
+                    // Preserva lojas locais-only (criadas offline, ainda não subiram)
+                    // — sem isto o loadAll remoto apagava a loja nova no reload.
+                    const _idsR = new Set(remoteStores.map(r => r.id));
+                    const _soLocais = (AppState.stores || []).filter(s => !_idsR.has(s.id));
+                    AppState.stores = [...remoteStores.map(_rowToStore), ..._soLocais];
                     if (typeof LocalStore !== 'undefined') LocalStore.save('stores', AppState.stores);
                 }
                 if (remoteProducts.length > 0) {
@@ -466,7 +489,10 @@ const SupabaseSync = (() => {
                     if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
                 }
                 if (remoteGoals.length > 0) {
-                    AppState.allGoals = remoteGoals.map(_rowToGoal);
+                    // Preserva metas locais-only ainda não sincronizadas.
+                    const _idsRG = new Set(remoteGoals.map(r => r.id));
+                    const _soLocaisG = (AppState.allGoals || []).filter(g => !_idsRG.has(g.id));
+                    AppState.allGoals = [...remoteGoals.map(_rowToGoal), ..._soLocaisG];
                     if (typeof LocalStore !== 'undefined') LocalStore.save('goals', AppState.allGoals);
                 }
                 if (remoteDiary.length > 0) {
@@ -740,6 +766,9 @@ const SupabaseSync = (() => {
                 EventBus.on('diaryChanged', () => _debounce('diary', syncDiary, 1500));
                 EventBus.on('productsChanged', () => _debounce('products', syncProducts, 1500));
                 EventBus.on('goalsChanged', () => _debounce('goals', syncGoals, 1500));
+                // storeChanged não estava ligado → mudanças de loja (criar/renomear/
+                // excluir/ativar) nunca subiam e o loadAll remoto as revertia.
+                EventBus.on('storeChanged', () => _debounce('stores', syncStores, 1500));
             }
 
             // Setup UI
@@ -808,6 +837,8 @@ const SupabaseSync = (() => {
         syncGoals: () => _debounce('goals', syncGoals, 1500),
         syncStores: () => _debounce('stores', syncStores, 1500),
         deleteProductById,
+        deleteGoalById,
+        deleteStoreById,
         fetchDesignerSubmissions,
         insertDesignerSubmission,
         updateDesignerSubmission,
