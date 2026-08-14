@@ -1020,6 +1020,10 @@ const ProductsModule = {
             }
         } catch (e) { console.warn('Shopify link save failed:', e); }
 
+        // Salvar (criar ou editar) é intenção explícita de ter o produto:
+        // destombstona pra não ser escondido no reload caso o nome/id/shopifyId
+        // tenha sido excluído antes.
+        this._removeTombstones([{ localId: data.id, shopifyId: data.shopifyId, name: data.name }]);
         LocalStore.save('products', AppState.allProducts);
         this._markProductEditorSaved();
         filterDataByStore();
@@ -1036,19 +1040,30 @@ const ProductsModule = {
         try { return new Set(JSON.parse(localStorage.getItem(this._TOMBSTONE_KEY) || '[]')); }
         catch { return new Set(); }
     },
+    // Nome normalizado: chave estável que sobrevive em TODAS as fontes (Supabase
+    // guarda o nome; cloud-backup também). id local diverge entre reimports e o
+    // Supabase descarta shopifyId — por isso a tombstone por nome é a que pega
+    // as linhas órfãs que ressuscitavam no reload.
+    _normName(s) {
+        return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '').trim();
+    },
     _addTombstones(entries) {
         const set = this._getTombstones();
         entries.forEach(e => {
             if (e.localId) set.add(`local:${e.localId}`);
             if (e.shopifyId) set.add(`shopify:${e.shopifyId}`);
+            const n = this._normName(e.name);
+            if (n) set.add(`name:${n}`);
         });
         localStorage.setItem(this._TOMBSTONE_KEY, JSON.stringify(Array.from(set)));
     },
     isTombstoned(product) {
         if (!product) return false;
         const set = this._getTombstones();
+        const n = this._normName(product.name);
         return set.has(`local:${product.id}`) ||
-               (product.shopifyId && set.has(`shopify:${product.shopifyId}`));
+               (product.shopifyId && set.has(`shopify:${product.shopifyId}`)) ||
+               (!!n && set.has(`name:${n}`));
     },
     // Remove tombstones (reimportar/recriar é uma intenção explícita de TER o
     // produto de volta — senão o filtro de boot esconde o item recém-importado).
@@ -1058,6 +1073,8 @@ const ProductsModule = {
         entries.forEach(e => {
             if (e.localId && set.delete(`local:${e.localId}`)) mudou = true;
             if (e.shopifyId && set.delete(`shopify:${e.shopifyId}`)) mudou = true;
+            const n = this._normName(e.name);
+            if (n && set.delete(`name:${n}`)) mudou = true;
         });
         if (mudou) localStorage.setItem(this._TOMBSTONE_KEY, JSON.stringify(Array.from(set)));
     },
@@ -1075,7 +1092,7 @@ const ProductsModule = {
         if (idx >= 0) {
             AppState.allProducts.splice(idx, 1);
             // Tombstone para impedir reimportação
-            this._addTombstones([{ localId: id, shopifyId: product?.shopifyId }]);
+            this._addTombstones([{ localId: id, shopifyId: product?.shopifyId, name: product?.name }]);
             if (AppState.sheetsConnected) {
                 await SheetsAPI.deleteRowById(SheetsAPI.TABS.PRODUCTS, id);
             }
@@ -1100,7 +1117,7 @@ const ProductsModule = {
             const idx = AppState.allProducts.findIndex(p => p.id === id);
             if (idx >= 0) {
                 AppState.allProducts.splice(idx, 1);
-                tombstones.push({ localId: id, shopifyId: product?.shopifyId });
+                tombstones.push({ localId: id, shopifyId: product?.shopifyId, name: product?.name });
                 if (AppState.sheetsConnected) {
                     try { await SheetsAPI.deleteRowById(SheetsAPI.TABS.PRODUCTS, id); } catch {}
                 }
@@ -3985,8 +4002,8 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
         };
 
         // Reimportar é intenção explícita de ter o produto: destombstona por
-        // localId e shopifyId, senão o filtro de boot o esconde no próximo reload.
-        this._removeTombstones([{ localId: registro.id, shopifyId }]);
+        // localId, shopifyId e nome, senão o filtro de boot o esconde no reload.
+        this._removeTombstones([{ localId: registro.id, shopifyId, name: registro.name }]);
 
         if (existente) {
             Object.assign(existente, registro);
@@ -4054,8 +4071,8 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                 shopifyImportedAt: new Date().toISOString(),
             };
             // Reimportar destombstona: se o produto foi excluído antes, o tombstone
-            // por shopifyId esconderia o recém-importado no próximo reload.
-            this._removeTombstones([{ localId: newProduct.id, shopifyId: sp.id }]);
+            // (por shopifyId ou nome) esconderia o recém-importado no próximo reload.
+            this._removeTombstones([{ localId: newProduct.id, shopifyId: sp.id, name: newProduct.name }]);
             AppState.allProducts.push(newProduct);
             if (AppState.sheetsConnected && typeof SheetsAPI !== 'undefined') {
                 try { await SheetsAPI.appendRow(SheetsAPI.TABS.PRODUCTS, SheetsAPI.productToRow(newProduct)); } catch {}

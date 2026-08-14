@@ -1383,6 +1383,14 @@ const SalesModule = (() => {
             shopifyImportedAt: new Date().toISOString(),
         };
         AppState.allProducts = AppState.allProducts || [];
+        // Reimportar é intenção explícita de ter o produto: destombstona por
+        // localId e shopifyId, senão o filtro de boot o esconde no próximo reload
+        // (mesmo bug do import em Produtos/Shopify — "reimporto pela aba Vendas e some").
+        try {
+            if (typeof ProductsModule !== 'undefined' && ProductsModule._removeTombstones) {
+                ProductsModule._removeTombstones([{ localId: novo.id, shopifyId: shopifyPid, name: novo.name }]);
+            }
+        } catch {}
         AppState.allProducts.push(novo);
         // Vincula explicitamente: sem o link o ranking só casaria por nome,
         // que quebra assim que o título mudar num dos lados.
