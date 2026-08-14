@@ -95,19 +95,96 @@ const CloudBackup = (() => {
         };
     }
 
+    function _mergeArray(remote, local) {
+        const out = [];
+        const positions = new Map();
+        [...(Array.isArray(remote) ? remote : []), ...(Array.isArray(local) ? local : [])].forEach((item, index) => {
+            if (item == null) return;
+            const id = item && typeof item === 'object' ? item.id : null;
+            const key = id != null ? `id:${id}` : `value:${JSON.stringify(item)}:${index}`;
+            if (positions.has(key)) out[positions.get(key)] = item;
+            else { positions.set(key, out.length); out.push(item); }
+        });
+        return out;
+    }
+
+    function _mergeValue(remote, local) {
+        if (Array.isArray(remote) || Array.isArray(local)) return _mergeArray(remote, local);
+        if (local && typeof local === 'object') return { ...(remote || {}), ...local };
+        return local !== undefined && local !== null && local !== '' ? local : remote;
+    }
+
+    function _mergeSnapshots(remote, local) {
+        const data = {};
+        const dataKeys = new Set([...Object.keys(remote?.data || {}), ...Object.keys(local?.data || {})]);
+        dataKeys.forEach(key => { data[key] = _mergeValue(remote?.data?.[key], local?.data?.[key]); });
+
+        const kv = {};
+        const kvKeys = new Set([...Object.keys(remote?.kv || {}), ...Object.keys(local?.kv || {})]);
+        kvKeys.forEach(key => { kv[key] = _mergeValue(remote?.kv?.[key], local?.kv?.[key]); });
+
+        return {
+            ...(remote || {}),
+            schema: 1,
+            capturedAt: new Date().toISOString(),
+            deviceId: local?.deviceId || remote?.deviceId || _deviceId(),
+            localStorage: { ...(remote?.localStorage || {}), ...(local?.localStorage || {}) },
+            kv,
+            data,
+        };
+    }
+
+    function _dataFingerprint(snapshot) {
+        const ids = [];
+        Object.entries(snapshot?.data || {}).forEach(([key, value]) => {
+            if (!Array.isArray(value)) return;
+            value.forEach((item, index) => ids.push(`data:${key}:${item?.id ?? index}`));
+        });
+        Object.entries(snapshot?.kv || {}).forEach(([key, value]) => {
+            if (!Array.isArray(value)) return;
+            value.forEach((item, index) => ids.push(`kv:${key}:${item?.id ?? index}`));
+        });
+        Object.keys(snapshot?.localStorage || {}).forEach(key => ids.push(`ls:${key}`));
+        return new Set(ids);
+    }
+
+    function _localHasUniqueData(remote, local) {
+        const remoteIds = _dataFingerprint(remote);
+        if ([..._dataFingerprint(local)].some(id => !remoteIds.has(id))) return true;
+        const richness = value => {
+            if (value == null || value === '') return 0;
+            try {
+                const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+                if (Array.isArray(parsed)) return parsed.length;
+                if (parsed && Array.isArray(parsed.cards)) return parsed.cards.length;
+                if (parsed && typeof parsed === 'object') return Object.keys(parsed).length;
+            } catch {}
+            return String(value).length > 2 ? 1 : 0;
+        };
+        return Object.entries(local?.localStorage || {}).some(([key, value]) =>
+            richness(value) > richness(remote?.localStorage?.[key])
+        );
+    }
+
+    async function _putSnapshot(snapshot) {
+        const response = await _request(API, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(snapshot),
+        });
+        const result = await response.json();
+        const version = result.updatedAt || new Date().toISOString();
+        localStorage.setItem(VERSION_KEY, version);
+        state.lastSync = version;
+        return version;
+    }
+
     async function backupNow({ quiet = false } = {}) {
         if (!_syncModule()?.isLoggedIn || state.syncing) return false;
         state.syncing = true; state.error = '';
         try {
             const snapshot = await _collectSnapshot();
-            const response = await _request(API, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(snapshot),
-            });
-            const result = await response.json();
-            state.lastSync = result.updatedAt || new Date().toISOString();
-            localStorage.setItem(VERSION_KEY, state.lastSync);
+            await _putSnapshot(snapshot);
             if (!quiet && typeof showToast === 'function') showToast('Conta salva na nuvem.', 'success');
             syncMedia().catch(error => console.warn('[CloudBackup] media:', error));
             return true;
@@ -163,7 +240,17 @@ const CloudBackup = (() => {
                 await backupNow({ quiet: true });
                 return;
             }
-            const changed = await _applySnapshot(snapshot);
+            const local = await _collectSnapshot();
+            let source = snapshot;
+            // Limpar cookies pode zerar o navegador enquanto uma aba antiga
+            // ainda guarda dados válidos em memória. Nunca deixe uma nuvem
+            // incompleta apagar itens que existem localmente: mescle e grave
+            // primeiro, preservando os dois lados.
+            if (_localHasUniqueData(snapshot, local)) {
+                source = _mergeSnapshots(snapshot, local);
+                source.updatedAt = await _putSnapshot(source);
+            }
+            const changed = await _applySnapshot(source);
             if (changed) {
                 sessionStorage.setItem('etracker_cloud_just_restored', '1');
                 location.reload();

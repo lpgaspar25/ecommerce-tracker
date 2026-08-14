@@ -3,6 +3,17 @@ import { authenticatedUser, decryptSnapshot, encryptSnapshot, json } from '../cl
 // Encrypted JSON is base64 encoded before KV storage; keep enough headroom
 // below Cloudflare KV's 25 MB per-value limit.
 const MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;
+const HISTORY_LIMIT = 12;
+
+async function preservePrevious(env, userId, raw) {
+  if (!raw) return;
+  const prefix = `cloud:${userId}:history:`;
+  const historyKey = `${prefix}${new Date().toISOString()}`;
+  await env.SHOPIFY_TOKENS.put(historyKey, raw);
+  const listed = await env.SHOPIFY_TOKENS.list({ prefix });
+  const old = (listed.keys || []).sort((a, b) => b.name.localeCompare(a.name)).slice(HISTORY_LIMIT);
+  await Promise.all(old.map(item => env.SHOPIFY_TOKENS.delete(item.name)));
+}
 
 export async function onRequest({ request, env }) {
   if (!env.SHOPIFY_TOKENS) return json({ error: 'Cloud storage indisponível' }, 503);
@@ -25,6 +36,8 @@ export async function onRequest({ request, env }) {
     snapshot.userId = user.id;
     snapshot.updatedAt = new Date().toISOString();
     const encrypted = await encryptSnapshot(env, snapshot);
+    const previous = await env.SHOPIFY_TOKENS.get(key);
+    await preservePrevious(env, user.id, previous);
     await env.SHOPIFY_TOKENS.put(key, encrypted);
     return json({ ok: true, updatedAt: snapshot.updatedAt });
   }
