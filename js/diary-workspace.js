@@ -24,7 +24,8 @@ const DiaryWorkspacePreview = {
         setTimeout(() => {
             document.querySelector('.sidebar-link[data-tab="diary"]')?.click();
             this.refresh();
-            this.setView('overview');
+            const requestedView = new URLSearchParams(window.location.search).get('view');
+            this.setView(['overview', 'history', 'tests', 'funnel', 'creatives', 'compare', 'calendar'].includes(requestedView) ? requestedView : 'overview');
         }, 350);
     },
 
@@ -102,6 +103,35 @@ const DiaryWorkspacePreview = {
                 </article>
             </section>`;
         filter.insertAdjacentElement('afterend', workspace);
+        workspace.insertAdjacentHTML('afterend', `
+            <section id="dw-history-view" class="dw-history-view" style="display:none">
+                <div class="dw-history-head">
+                    <div>
+                        <span class="dw-eyebrow" id="dw-history-eyebrow">HISTÓRICO DE PERFORMANCE</span>
+                        <h3 id="dw-history-title">Cada alteração, com o resultado ao lado</h3>
+                        <p id="dw-history-subtitle">Veja o que estava rodando e como as métricas reagiram em cada dia.</p>
+                    </div>
+                    <div class="dw-history-actions">
+                        <button type="button" class="dw-history-action" data-dw-action="columns"><i data-lucide="columns-3"></i> Colunas</button>
+                        <button type="button" class="dw-history-action" data-dw-action="campaigns"><i data-lucide="megaphone"></i> Por campanha</button>
+                    </div>
+                </div>
+                <div class="dw-history-summary" id="dw-history-summary"></div>
+                <div class="dw-history-table-wrap">
+                    <table class="dw-history-table">
+                        <thead><tr>
+                            <th>Dia / fase</th><th>Produto</th><th class="num">Gasto</th><th class="num">Visitantes</th>
+                            <th class="num">Carrinhos</th><th class="num">Checkouts</th><th class="num">Vendas Shopify</th>
+                            <th class="num">CPA real</th><th class="num">ROAS real</th><th>Leitura</th><th></th>
+                        </tr></thead>
+                        <tbody id="dw-history-body"></tbody>
+                    </table>
+                </div>
+                <div class="dw-history-footer">
+                    <div><i data-lucide="shield-check"></i><span>Dados da Shopify prevalecem sobre a atribuição da mídia.</span></div>
+                    <button type="button" data-dw-action="full-table">Abrir tabela completa atual <i data-lucide="arrow-right"></i></button>
+                </div>
+            </section>`);
         filter.insertAdjacentHTML('beforebegin', '<div class="dw-filter-title"><div><span class="dw-eyebrow">ESCOPO DA ANÁLISE</span><strong>Filtre antes de decidir</strong></div><span>Todos os blocos abaixo acompanham estes filtros</span></div>');
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
@@ -112,6 +142,9 @@ const DiaryWorkspacePreview = {
         });
         document.querySelector('[data-dw-action="new"]')?.addEventListener('click', () => document.getElementById('btn-add-entry')?.click());
         document.querySelector('[data-dw-action="sync"]')?.addEventListener('click', () => document.getElementById('btn-diary-sync-shopify')?.click());
+        document.querySelector('[data-dw-action="columns"]')?.addEventListener('click', () => document.getElementById('btn-diary-columns')?.click());
+        document.querySelector('[data-dw-action="campaigns"]')?.addEventListener('click', () => document.getElementById('btn-diary-group-campaign')?.click());
+        document.querySelector('[data-dw-action="full-table"]')?.addEventListener('click', () => this._toggleFullTable());
         document.querySelector('[data-dw-action="tools"]')?.addEventListener('click', (event) => {
             event.stopPropagation();
             document.getElementById('dw-tools-menu')?.classList.toggle('open');
@@ -144,6 +177,7 @@ const DiaryWorkspacePreview = {
         this.activeView = view;
         document.querySelectorAll('[data-dw-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.dwView === view));
         const overview = document.getElementById('dw-overview');
+        const history = document.getElementById('dw-history-view');
         const list = document.getElementById('diary-notion-list');
         const chart = document.querySelector('#diary-main-sub > .diary-chart-section');
         const creatives = document.getElementById('diary-creatives-panel');
@@ -156,6 +190,7 @@ const DiaryWorkspacePreview = {
         if (view === 'compare') {
             if (!DiaryModule._compareMode) document.getElementById('btn-diary-compare')?.click();
             if (overview) overview.style.display = 'none';
+            if (history) history.style.display = 'none';
             if (chart) chart.style.display = 'none';
             return;
         }
@@ -165,6 +200,7 @@ const DiaryWorkspacePreview = {
             DiaryModule._activeView = 'all';
             DiaryModule.render();
             if (overview) overview.style.display = '';
+            if (history) history.style.display = 'none';
             if (list) list.style.display = 'none';
             if (chart) chart.style.display = 'none';
             if (creatives) creatives.style.display = 'none';
@@ -173,13 +209,16 @@ const DiaryWorkspacePreview = {
             DiaryModule._activeView = view === 'tests' ? 'tests' : 'all';
             DiaryModule.render();
             if (overview) overview.style.display = 'none';
-            if (list) list.style.display = '';
+            if (history) history.style.display = '';
+            if (list) list.style.display = 'none';
             if (chart) chart.style.display = 'none';
             if (creatives) creatives.style.display = 'none';
+            this._renderHistory(view === 'tests');
         } else if (view === 'funnel') {
             DiaryModule._activeView = 'all';
             DiaryModule.render();
             if (overview) overview.style.display = 'none';
+            if (history) history.style.display = 'none';
             if (list) list.style.display = 'none';
             if (chart) chart.style.display = '';
             if (creatives) creatives.style.display = 'none';
@@ -187,6 +226,7 @@ const DiaryWorkspacePreview = {
             DiaryModule._activeView = 'creatives';
             DiaryModule.render();
             if (overview) overview.style.display = 'none';
+            if (history) history.style.display = 'none';
             if (list) list.style.display = 'none';
             if (chart) chart.style.display = 'none';
             if (creatives) creatives.style.display = '';
@@ -211,17 +251,36 @@ const DiaryWorkspacePreview = {
         this._renderDecision(selectedTest, comparison);
         this._renderTimeline(selectedTest, entries, comparison);
         this._renderFunnel(metrics, comparison);
+        this._renderHistory(this.activeView === 'tests', entries, selectedTest);
         document.getElementById('dw-test-count').textContent = String(tests.filter(t => t.status === 'ativo' || t.status === 'active').length || tests.length);
         if (typeof lucide !== 'undefined') lucide.createIcons();
         this._syncVisibility();
     },
 
     _syncVisibility() {
+        const overview = document.getElementById('dw-overview');
+        const history = document.getElementById('dw-history-view');
+        const list = document.getElementById('diary-notion-list');
+        const chart = document.querySelector('#diary-main-sub > .diary-chart-section');
+        const creatives = document.getElementById('diary-creatives-panel');
         if (this.activeView === 'overview') {
-            const list = document.getElementById('diary-notion-list');
-            const chart = document.querySelector('#diary-main-sub > .diary-chart-section');
+            if (overview) overview.style.display = '';
+            if (history) history.style.display = 'none';
             if (list) list.style.display = 'none';
             if (chart) chart.style.display = 'none';
+            if (creatives) creatives.style.display = 'none';
+        } else if (this.activeView === 'history' || this.activeView === 'tests') {
+            if (overview) overview.style.display = 'none';
+            if (history) history.style.display = '';
+            if (list) list.style.display = 'none';
+            if (chart) chart.style.display = 'none';
+            if (creatives) creatives.style.display = 'none';
+        } else if (this.activeView === 'funnel') {
+            if (overview) overview.style.display = 'none';
+            if (history) history.style.display = 'none';
+            if (list) list.style.display = 'none';
+            if (chart) chart.style.display = '';
+            if (creatives) creatives.style.display = 'none';
         }
     },
 
@@ -329,6 +388,105 @@ const DiaryWorkspacePreview = {
         document.getElementById('dw-funnel-note').innerHTML = d == null
             ? '<i data-lucide="sparkles"></i><span>Selecione um produto com teste para comparar a eficiência do funil.</span>'
             : `<i data-lucide="${d >= 0 ? 'trending-up' : 'trending-down'}"></i><span>A conversão da página ficou <strong>${Math.abs(d).toFixed(1).replace('.', ',')}% ${d >= 0 ? 'melhor' : 'pior'}</strong> durante o teste.</span>`;
+    },
+
+    _renderHistory(testOnly = false, suppliedEntries = null, suppliedTest = null) {
+        const body = document.getElementById('dw-history-body');
+        if (!body) return;
+        let entries = suppliedEntries;
+        if (!entries) {
+            try { entries = DiaryModule.getFilteredEntries() || []; } catch (_) { entries = []; }
+            if (!entries.length) entries = this._demoEntries();
+        }
+        const tests = this._getTests(entries);
+        const selectedTest = suppliedTest || this._selectTest(tests, entries);
+        const visible = testOnly ? entries.filter(e => e.isTest || e.labTestId) : entries;
+        const baselineEntries = selectedTest?.dateStart
+            ? entries.filter(e => (!selectedTest.productId || e.productId === selectedTest.productId) && e.date < selectedTest.dateStart)
+            : [];
+        const baseline = this._aggregate(baselineEntries);
+        const title = document.getElementById('dw-history-title');
+        const subtitle = document.getElementById('dw-history-subtitle');
+        const eyebrow = document.getElementById('dw-history-eyebrow');
+        if (testOnly) {
+            eyebrow.textContent = 'TESTES NO PERÍODO';
+            title.textContent = 'O histórico do teste, dia por dia';
+            subtitle.textContent = 'Acompanhe a evolução até haver amostra suficiente para decidir.';
+        } else {
+            eyebrow.textContent = 'HISTÓRICO DE PERFORMANCE';
+            title.textContent = 'Cada alteração, com o resultado ao lado';
+            subtitle.textContent = 'Veja o que estava rodando e como as métricas reagiram em cada dia.';
+        }
+
+        const testedDays = visible.filter(e => e.isTest || e.labTestId).length;
+        const latest = visible.map(e => e.date).filter(Boolean).sort().pop();
+        document.getElementById('dw-history-summary').innerHTML = `
+            <div><span>Registros visíveis</span><strong>${visible.length}</strong><small>respeitando os filtros</small></div>
+            <div><span>Dias sob teste</span><strong>${testedDays}</strong><small>conectados ao Laboratório</small></div>
+            <div><span>Última atualização</span><strong>${this._date(latest) || '—'}</strong><small>${this.usingDemo ? 'demonstração local' : 'dados atuais'}</small></div>
+            <div><span>Linha de base</span><strong>${baseline.sales || '—'}</strong><small>vendas antes do teste</small></div>`;
+
+        body.innerHTML = visible.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map((entry, index) => {
+            const isTest = !!(entry.isTest || entry.labTestId);
+            const product = entry.productId === 'preview-product' ? 'Sophia Bag — Black' : (window.getProductName?.(entry.productId) || 'Loja');
+            const budget = this._usd(entry.budget, entry.budgetCurrency);
+            const revenue = this._usd(entry.revenue, entry.revenueCurrency);
+            const sales = Number(entry.sales || 0);
+            const cpa = sales ? budget / sales : 0;
+            const roas = budget ? revenue / budget : 0;
+            const baselineCpa = baseline.cpa;
+            const baselineRoas = baseline.roas;
+            const cpaDelta = baselineCpa ? (cpa - baselineCpa) / baselineCpa * 100 : null;
+            const roasDelta = baselineRoas ? (roas - baselineRoas) / baselineRoas * 100 : null;
+            const score = (cpaDelta == null ? 0 : -cpaDelta) + (roasDelta == null ? 0 : roasDelta);
+            const reading = !isTest ? { key: 'base', label: 'Linha de base', icon: 'minus' }
+                : score > 12 ? { key: 'positive', label: 'Melhorou', icon: 'trending-up' }
+                : score < -12 ? { key: 'negative', label: 'Piorou', icon: 'trending-down' }
+                : { key: 'neutral', label: 'Estável', icon: 'minus' };
+            const atcRate = entry.pageViews ? Number(entry.addToCart || 0) / Number(entry.pageViews) * 100 : 0;
+            const checkoutRate = entry.addToCart ? Number(entry.checkout || 0) / Number(entry.addToCart) * 100 : 0;
+            const convRate = entry.pageViews ? sales / Number(entry.pageViews) * 100 : 0;
+            return `<tr class="dw-history-row ${isTest ? 'is-test' : 'is-base'}" data-history-row="${index}">
+                <td><div class="dw-history-date"><strong>${this._date(entry.date)}</strong><span class="${isTest ? 'test' : 'base'}">${isTest ? '<i data-lucide="flask-conical"></i> Durante o teste' : 'Antes da alteração'}</span></div></td>
+                <td><div class="dw-history-product"><span>${this._esc(product)}</span><small>${this._esc(entry.platform || 'Sem plataforma')} ${entry.region ? `· ${this._esc(entry.region)}` : ''}</small></div></td>
+                <td class="num">${this._money(budget, false)}</td><td class="num">${this._number(entry.pageViews)}</td>
+                <td class="num">${this._number(entry.addToCart)}</td><td class="num">${this._number(entry.checkout)}</td>
+                <td class="num dw-real-sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
+                <td class="num"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td class="num"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
+                <td><button class="dw-row-toggle" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
+            </tr>
+            <tr class="dw-history-detail" data-history-detail="${index}" style="display:none"><td colspan="11"><div>
+                <span><small>Visitante → carrinho</small><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong></span>
+                <span><small>Carrinho → checkout</small><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong></span>
+                <span><small>Conversão da página</small><strong>${convRate.toFixed(2).replace('.', ',')}%</strong></span>
+                <span class="dw-detail-note"><small>O que estava rodando</small><strong>${isTest ? this._esc(selectedTest?.title || entry.testGoal || 'Teste do Laboratório') : 'Período usado como referência'}</strong></span>
+            </div></td></tr>`;
+        }).join('') || `<tr><td colspan="11"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
+
+        body.querySelectorAll('[data-history-toggle]').forEach(btn => btn.addEventListener('click', event => {
+            event.stopPropagation();
+            const detail = body.querySelector(`[data-history-detail="${btn.dataset.historyToggle}"]`);
+            const open = detail.style.display === 'none';
+            detail.style.display = open ? '' : 'none';
+            btn.classList.toggle('open', open);
+        }));
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _toggleFullTable() {
+        const history = document.getElementById('dw-history-view');
+        const list = document.getElementById('diary-notion-list');
+        if (!history || !list) return;
+        const showingLegacy = history.style.display === 'none';
+        history.style.display = showingLegacy ? '' : 'none';
+        list.style.display = showingLegacy ? 'none' : '';
+        if (!showingLegacy && this.usingDemo) {
+            history.style.display = '';
+            list.style.display = 'none';
+            if (typeof showToast === 'function') showToast('A tabela completa usa seus dados reais. Nesta prévia local, mostramos o histórico demonstrativo.', 'info');
+        }
     },
 
     _getTests(entries) {
