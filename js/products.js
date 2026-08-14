@@ -87,6 +87,7 @@ const ProductsModule = {
             this.openShopifyImport();
         });
         document.getElementById('btn-import-shopify-details-bulk')?.addEventListener('click', () => this.importarDetalhesEmMassa());
+        document.getElementById('btn-shopify-connect-all')?.addEventListener('click', () => this.conectarTodosShopify());
         const confirmBtn = document.getElementById('btn-shopify-import-confirm');
         if (confirmBtn) confirmBtn.addEventListener('click', () => this._importSelectedShopifyProducts());
         const selectAll = document.getElementById('shopify-import-select-all');
@@ -3699,6 +3700,44 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
             showToast(`Sincronizado com a Shopify: ${custos} custo(s), ${precos} preço(s), ${comDesc} descrição(ões), ${fotos} foto(s), ${vars} variante(s).${semDados ? ` ${semDados} sem match.` : ''}`, 'success');
         } catch (err) {
             showToast('Falha na sincronização: ' + (err.message || err), 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
+        }
+    },
+
+    // Conecta TODOS os produtos à Shopify casando pelo nome (rápido: só vincula,
+    // grava shopifyId; sem puxar fotos/descrição — pra isso use Sincronizar).
+    async conectarTodosShopify() {
+        const btn = document.getElementById('btn-shopify-connect-all');
+        const orig = btn?.innerHTML;
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Conectando…'; }
+        try {
+            if (typeof ShopifyModule === 'undefined') throw new Error('Shopify não disponível.');
+            if (!(ShopifyModule.getShopifyProducts?.() || []).length && ShopifyModule.fetchShopifyProducts) {
+                await ShopifyModule.fetchShopifyProducts();
+            }
+            const cat = ShopifyModule.getShopifyProducts?.() || [];
+            if (!cat.length) { showToast('Conecte a Shopify primeiro (catálogo vazio).', 'error'); return; }
+            const porNome = new Map();
+            cat.forEach(sp => { const n = this._normName(sp.title); if (n && !porNome.has(n)) porNome.set(n, sp); });
+            let conectados = 0, jaTinha = 0, semMatch = 0;
+            (AppState.allProducts || []).forEach(p => {
+                if (p.shopifyId) { jaTinha++; return; }
+                const sp = porNome.get(this._normName(p.name));
+                if (sp) {
+                    p.shopifyId = String(sp.id);
+                    p.shopifyHandle = sp.handle || p.shopifyHandle || '';
+                    if (ShopifyModule.linkProduct) { try { ShopifyModule.linkProduct(p.id, sp.id); } catch {} }
+                    conectados++;
+                } else semMatch++;
+            });
+            LocalStore.save('products', AppState.allProducts);
+            if (typeof filterDataByStore === 'function') filterDataByStore();
+            EventBus.emit('productsChanged');
+            this.render();
+            showToast(`${conectados} produto(s) conectado(s) à Shopify por nome.${jaTinha ? ` ${jaTinha} já estavam.` : ''}${semMatch ? ` ${semMatch} sem correspondência.` : ''}`, 'success');
+        } catch (err) {
+            showToast('Falha ao conectar: ' + (err.message || err), 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
         }
