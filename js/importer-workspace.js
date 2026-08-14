@@ -1,12 +1,14 @@
-/* Importer Workspace — isolated preview enabled with ?importerPreview=1. */
+/* Importer Workspace — operational catalog workflow. */
 const ImporterWorkspacePreview = {
     enabled: false,
+    previewRequested: false,
     step: 'source',
     observer: null,
 
     init() {
         const params = new URLSearchParams(location.search);
-        this.enabled = params.get('importerPreview') === '1';
+        this.previewRequested = params.get('importerPreview') === '1';
+        this.enabled = params.get('legacyImporter') !== '1';
         if (!this.enabled) return;
         const panel = document.getElementById('tab-importador');
         if (!panel || typeof ImporterModule === 'undefined') return;
@@ -14,8 +16,8 @@ const ImporterWorkspacePreview = {
         this._build(panel);
         this._bind();
         setTimeout(() => {
-            if (typeof UXShell !== 'undefined' && typeof UXShell.navigate === 'function') UXShell.navigate('importador');
-            else document.querySelector('.tab-btn[data-tab="importador"], .sidebar-link[data-tab="importador"]')?.click();
+            if (this.previewRequested && typeof UXShell !== 'undefined' && typeof UXShell.navigate === 'function') UXShell.navigate('importador');
+            else if (this.previewRequested) document.querySelector('.tab-btn[data-tab="importador"], .sidebar-link[data-tab="importador"]')?.click();
             this.refresh();
         }, 700);
     },
@@ -33,7 +35,7 @@ const ImporterWorkspacePreview = {
         workspace.innerHTML = `
           <header class="iw-hero">
             <div class="iw-heading">
-              <div class="iw-eyebrow"><span></span> CENTRAL DE CATÁLOGO <b>PRÉVIA LOCAL</b></div>
+              <div class="iw-eyebrow"><span></span> CENTRAL DE CATÁLOGO <b>NOVO WORKSPACE</b></div>
               <h2>Traga, prepare e publique produtos</h2>
               <p>Um fluxo único para importar, revisar e enviar à loja — sem perder nenhuma ferramenta.</p>
             </div>
@@ -106,7 +108,7 @@ const ImporterWorkspacePreview = {
         if (shop) workspace.querySelector('.iw-shop-slot').append(shop);
         if (mode) workspace.querySelector('.iw-mode-slot').append(mode);
         if (publish) workspace.querySelector('.iw-publish-btn-slot').append(publish);
-        this._renderDemo();
+        if (this.previewRequested) this._renderDemo();
     },
 
     _stepButton(id, number, title, copy, active = false) {
@@ -168,7 +170,7 @@ const ImporterWorkspacePreview = {
         if (!this.enabled) return;
         const state = ImporterModule._state || {};
         const products = Array.isArray(state.rawProducts) ? state.rawProducts : [];
-        const usingDemo = products.length === 0;
+        const usingDemo = this.previewRequested && products.length === 0;
         const selected = usingDemo ? 2 : (state.selected?.size || 0);
         const selectedProducts = products.filter(p => state.selected?.has(p.id));
         const images = usingDemo ? 12 : selectedProducts.reduce((sum,p) => sum + (p.images?.length || 0), 0);
@@ -191,7 +193,7 @@ const ImporterWorkspacePreview = {
         document.querySelector('[data-iw-ready]').textContent = `${ready}%`;
         document.querySelector('.iw-progress-ring')?.style.setProperty('--iw-ready', `${ready * 3.6}deg`);
         document.querySelector('[data-iw-status]').textContent = usingDemo ? 'Demonstração' : ready === 100 ? 'Pronto' : products.length ? 'Em preparo' : 'Aguardando';
-        document.querySelector('.iw-demo-list')?.classList.toggle('hidden', products.length > 0);
+        document.querySelector('.iw-demo-list')?.classList.toggle('hidden', !usingDemo);
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 };
