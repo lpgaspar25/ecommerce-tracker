@@ -1183,7 +1183,38 @@ const ShopifyModule = (() => {
     // opts.countryCode (opcional, DASH-02): filtra os pedidos pelo país de
     // entrega (shipping_address.country_code, ISO-2) ANTES de agregar —
     // usado só pra Conversão Real por país no Calendário de Métricas.
+    // Resolve o id Shopify de um produto local pra casar com os pedidos: vínculo
+    // explícito (getLink) → campo shopifyId do produto → casamento por NOME com o
+    // catálogo. Sem os dois últimos fallbacks, "vendas reais" só funcionava pra
+    // quem tinha vínculo manual (por isso calendário/ranking/conversão real
+    // zeravam pra produtos sincronizados por nome).
+    function _normNomeShopify(s) {
+        return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '').trim();
+    }
+    function _buildNameToShopifyId() {
+        const map = {};
+        (getShopifyProducts() || []).forEach(sp => {
+            const n = _normNomeShopify(sp.title);
+            if (n && !(n in map)) map[n] = String(sp.id);
+        });
+        return map;
+    }
+    function _resolveShopifyId(p, nameMap) {
+        const link = getLink(p.id);
+        if (link) return String(link);
+        if (p && p.shopifyId) return String(p.shopifyId);
+        const n = _normNomeShopify(p && p.name);
+        return (nameMap && n) ? (nameMap[n] || null) : null;
+    }
+    // Garante o catálogo carregado (necessário pro casamento por nome).
+    async function _ensureCatalog() {
+        if (!(getShopifyProducts() || []).length) {
+            try { await fetchShopifyProducts(); } catch {}
+        }
+    }
+
     async function getRealSalesMapByDate(dateFrom, dateTo, opts = {}) {
+        await _ensureCatalog();
         let orders = await fetchOrders(dateFrom, dateTo, opts);
         if (opts.countryCode) {
             orders = orders.filter(o => (o.shipping_address?.country_code || '') === opts.countryCode);
@@ -1201,8 +1232,9 @@ const ShopifyModule = (() => {
         }
 
         const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);
+        const nameMap = _buildNameToShopifyId();
         for (const p of products) {
-            const sid = getLink(p.id);
+            const sid = _resolveShopifyId(p, nameMap);
             if (!sid) continue;
             for (const key in perProductDate) {
                 if (key.endsWith('|' + sid)) {
@@ -1498,11 +1530,18 @@ const ShopifyModule = (() => {
     }
 
     async function getRealSalesMap(dateFrom, dateTo) {
+        await _ensureCatalog();
         const orders = await fetchOrders(dateFrom, dateTo);
         const agg = aggregateByProduct(orders);
         const result = {};
-        for (const [localId, shopifyId] of Object.entries(_productLinks)) {
-            result[localId] = agg[String(shopifyId)] || { sales: 0, revenue: 0, currency: _config.shopCurrency || 'BRL' };
+        // Casa por vínculo → shopifyId → nome (não só _productLinks): senão as
+        // vendas reais zeravam pra produtos sincronizados por nome.
+        const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);
+        const nameMap = _buildNameToShopifyId();
+        for (const p of products) {
+            const sid = _resolveShopifyId(p, nameMap);
+            if (!sid) continue;
+            result[p.id] = agg[String(sid)] || { sales: 0, revenue: 0, currency: _config.shopCurrency || 'BRL' };
         }
         return result;
     }
@@ -1525,12 +1564,14 @@ const ShopifyModule = (() => {
             d.date >= s && d.date <= e && !d.isCampaign
         );
 
+        await _ensureCatalog();
         const orders = await fetchOrders(s, e);
         const agg = aggregateByProduct(orders);
+        const nameMap = _buildNameToShopifyId();
 
         const results = [];
         for (const p of products) {
-            const shopifyId = getLink(p.id);
+            const shopifyId = _resolveShopifyId(p, nameMap);
             if (!shopifyId) continue;
 
             const shopifyData = agg[String(shopifyId)] || { sales: 0, revenue: 0 };
@@ -1576,12 +1617,14 @@ const ShopifyModule = (() => {
         const products = AppState.allProducts || AppState.products || [];
         const diaryEntries = (AppState.allDiary || AppState.diary || []).filter(e => e.date === date);
 
+        await _ensureCatalog();
         const orders = await fetchOrders(date, date);
         const agg = aggregateByProduct(orders);
+        const nameMap = _buildNameToShopifyId();
 
         const results = [];
         for (const p of products) {
-            const shopifyId = getLink(p.id);
+            const shopifyId = _resolveShopifyId(p, nameMap);
             if (!shopifyId) continue;
 
             const shopifyData = agg[String(shopifyId)] || { sales: 0, revenue: 0 };
