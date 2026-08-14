@@ -7,7 +7,11 @@ const CloudBackup = (() => {
     const MEDIA_API = '/api/cloud-media';
     const VERSION_KEY = 'etracker_cloud_snapshot_version';
     const DEVICE_KEY = 'etracker_cloud_device_id';
-    const EXCLUDED_KEYS = /(^sb-|supabase|_cache|cache_|orders_cache|day_cache|etracker_skip_login|etracker_cloud_snapshot_version)/i;
+    // etracker_deleted_product_ids (tombstones) é um guard LOCAL de exclusão: o
+    // pipeline já o respeita e a exclusão já propaga pro Supabase. Sincronizá-lo
+    // pelo backup causava cabo-de-guerra — um snapshot antigo reintroduzia
+    // exclusões já limpas e escondia produtos válidos. Fica fora do backup.
+    const EXCLUDED_KEYS = /(^sb-|supabase|_cache|cache_|orders_cache|day_cache|etracker_skip_login|etracker_cloud_snapshot_version|etracker_deleted_product_ids)/i;
     const state = { ready: false, syncing: false, lastSync: '', error: '', media: { uploaded: 0, downloaded: 0 } };
     let _timer = null;
     let _mediaQueue = Promise.resolve();
