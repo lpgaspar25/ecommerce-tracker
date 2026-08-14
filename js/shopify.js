@@ -1241,6 +1241,7 @@ const ShopifyModule = (() => {
                       id title sku price compareAtPrice availableForSale inventoryQuantity
                       selectedOptions { name value }
                       image { url }
+                      inventoryItem { unitCost { amount } }
                     }
                   }
                 }
@@ -1281,10 +1282,19 @@ const ShopifyModule = (() => {
                         compareAtPrice: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
                         availableForSale: !!v.availableForSale,
                         inventory: Number.isFinite(v.inventoryQuantity) ? v.inventoryQuantity : null,
+                        unitCost: v.inventoryItem?.unitCost?.amount ? parseFloat(v.inventoryItem.unitCost.amount) : null,
                         options: (v.selectedOptions || []).map(o => ({ name: o.name, value: o.value })),
                         image: v.image?.url || '',
                     })),
                 };
+                // Custo/preço representativos do produto (pro sync em massa preencher
+                // o que está vazio). unitCost vem sempre na moeda da LOJA.
+                const _vars = out[numId].variants;
+                const _custos = _vars.map(v => v.unitCost).filter(c => c != null && c > 0);
+                const _precos = _vars.map(v => v.price).filter(p => p > 0);
+                out[numId].unitCost = _custos.length ? Math.min(..._custos) : null;
+                out[numId].price = _precos.length ? Math.min(..._precos) : null;
+                out[numId].currency = _config.shopCurrency || null;   // moeda da loja
             });
         }
         return out;

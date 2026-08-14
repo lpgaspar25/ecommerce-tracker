@@ -3562,8 +3562,23 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
     // Aplica os detalhes num produto local. Não sobrescreve o que o usuário
     // escreveu: por padrão só preenche o que está vazio.
     _aplicarDetalhesShopify(produto, det, { sobrescrever = false } = {}) {
-        if (!produto || !det) return { descricao: false, fotos: 0, variantes: 0 };
-        const res = { descricao: false, fotos: 0, variantes: 0 };
+        if (!produto || !det) return { descricao: false, fotos: 0, variantes: 0, custo: false, preco: false };
+        const res = { descricao: false, fotos: 0, variantes: 0, custo: false, preco: false };
+
+        // Vincula o produto à Shopify (grava o id) + preenche custo/preço vazios.
+        // unitCost/price vêm na moeda da loja (det.currency). Só preenche o que
+        // está vazio pra não sobrescrever o que o usuário já ajustou.
+        if (det.id && !produto.shopifyId) produto.shopifyId = String(det.id);
+        if (Number(det.unitCost) > 0 && !(Number(produto.cost) > 0)) {
+            produto.cost = det.unitCost;
+            produto.costCurrency = det.currency || produto.costCurrency || 'USD';
+            res.custo = true;
+        }
+        if (Number(det.price) > 0 && !(Number(produto.price) > 0)) {
+            produto.price = det.price;
+            produto.priceCurrency = det.currency || produto.priceCurrency || 'USD';
+            res.preco = true;
+        }
 
         const descAtual = String(produto.description || '').replace(/<[^>]*>/g, '').trim();
         if (det.descriptionHtml && (sobrescrever || !descAtual)) {
@@ -3648,33 +3663,42 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
         }
     },
 
-    // Importa em MASSA para todos os produtos vinculados
+    // Sincroniza em MASSA com a Shopify: casa por nome, vincula (grava shopifyId)
+    // e puxa custo, preço, descrição, fotos e variantes — preenchendo só o vazio.
     async importarDetalhesEmMassa() {
-        const produtos = (AppState.allProducts || []).filter(p => this._shopifyIdDe(p));
-        if (!produtos.length) { showToast('Nenhum produto vinculado à Shopify.', 'warning'); return; }
-        if (!confirm(`Importar descrição, fotos e variantes da Shopify para ${produtos.length} produto(s)?\n\nDescrições já preenchidas na ferramenta são preservadas.`)) return;
-
         const btn = document.getElementById('btn-import-shopify-details-bulk');
         const orig = btn?.innerHTML;
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Importando…'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" style="width:13px;height:13px;animation:spin 1s linear infinite"></i> Sincronizando…'; }
         try {
+            // Garante o catálogo carregado (pro casamento por nome) e vincula por nome.
+            if (typeof ShopifyModule === 'undefined') throw new Error('Shopify não disponível.');
+            if (!(ShopifyModule.getShopifyProducts?.() || []).length && ShopifyModule.fetchShopifyProducts) {
+                await ShopifyModule.fetchShopifyProducts();
+            }
+            if (ShopifyModule.autoLinkByName) ShopifyModule.autoLinkByName();
+
+            const produtos = (AppState.allProducts || []).filter(p => this._shopifyIdDe(p));
+            if (!produtos.length) { showToast('Nenhum produto casou com a Shopify (por vínculo ou nome).', 'warning'); return; }
+
             const ids = produtos.map(p => this._shopifyIdDe(p));
             const mapa = await ShopifyModule.fetchProductDetails(ids);
-            let comDesc = 0, fotos = 0, vars = 0, semDados = 0;
+            let comDesc = 0, fotos = 0, vars = 0, custos = 0, precos = 0, semDados = 0;
             produtos.forEach(p => {
                 const det = mapa[this._shopifyIdDe(p)];
                 if (!det) { semDados++; return; }
                 const r = this._aplicarDetalhesShopify(p, det, { sobrescrever: false });
                 if (r.descricao) comDesc++;
+                if (r.custo) custos++;
+                if (r.preco) precos++;
                 fotos += r.fotos; vars += r.variantes;
             });
             LocalStore.save('products', AppState.allProducts);
             if (typeof filterDataByStore === 'function') filterDataByStore();
             EventBus.emit('productsChanged');
             this.render();
-            showToast(`${comDesc} descrição(ões), ${fotos} foto(s) e ${vars} variante(s) importadas.${semDados ? ` ${semDados} sem dados na Shopify.` : ''}`, 'success');
+            showToast(`Sincronizado com a Shopify: ${custos} custo(s), ${precos} preço(s), ${comDesc} descrição(ões), ${fotos} foto(s), ${vars} variante(s).${semDados ? ` ${semDados} sem match.` : ''}`, 'success');
         } catch (err) {
-            showToast('Falha na importação: ' + (err.message || err), 'error');
+            showToast('Falha na sincronização: ' + (err.message || err), 'error');
         } finally {
             if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide?.createIcons) try { lucide.createIcons(); } catch {} }
         }
