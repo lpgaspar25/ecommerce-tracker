@@ -130,8 +130,9 @@ const DiaryWorkspacePreview = {
                     <table class="dw-history-table">
                         <thead><tr>
                             <th>Dia / fase</th><th>Produto</th><th class="num hist-number hist-money">Gasto</th><th class="num hist-number hist-funnel-count">Visitantes</th>
-                            <th class="num hist-number hist-funnel-count">Carrinhos</th><th class="num hist-number hist-funnel-count">Checkouts</th><th class="num hist-number hist-money">Vendas Shopify</th>
+                            <th class="num hist-number hist-funnel-count">Carrinhos</th><th class="num hist-number hist-funnel-count">Checkouts</th><th class="num hist-number hist-money hist-sales">Vendas Shopify</th>
                             <th class="num hist-percent">Pág. → Carrinho</th><th class="num hist-percent">Carrinho → Checkout</th><th class="num hist-percent">Conv. página</th>
+                            <th class="num hist-combined">Visitantes</th><th class="num hist-combined">Carrinhos</th><th class="num hist-combined">Checkouts</th><th class="num hist-combined">Vendas</th>
                             <th class="num">CPA real</th><th class="num">ROAS real</th><th>Leitura</th><th></th>
                         </tr></thead>
                         <tbody id="dw-history-body"></tbody>
@@ -466,22 +467,26 @@ const DiaryWorkspacePreview = {
                 <td><div class="dw-history-product"><span>${this._esc(product)}</span><small>${this._esc(entry.platform || 'Sem plataforma')} ${entry.region ? `· ${this._esc(entry.region)}` : ''}</small></div></td>
                 <td class="num hist-number hist-money">${this._money(budget, false)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.pageViews)}</td>
                 <td class="num hist-number hist-funnel-count">${this._number(entry.addToCart)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.checkout)}</td>
-                <td class="num dw-real-sales hist-number hist-money"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
+                <td class="num dw-real-sales hist-number hist-money hist-sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
                 <td class="num hist-percent"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
                 <td class="num hist-percent"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
                 <td class="num hist-percent"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Conversão</small></td>
+                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.pageViews)}</strong><small>entrada</small></div></td>
+                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
+                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
+                <td class="num hist-combined"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>${convRate.toFixed(2).replace('.', ',')}%</small></div></td>
                 <td class="num"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td class="num"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
                 <td><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
                 <td><button class="dw-row-toggle${detailOpen ? ' open' : ''}" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
             </tr>
-            <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="14"><div>
+            <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="18"><div>
                 <span><small>Visitante → carrinho</small><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong></span>
                 <span><small>Carrinho → checkout</small><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong></span>
                 <span><small>Conversão da página</small><strong>${convRate.toFixed(2).replace('.', ',')}%</strong></span>
                 <span class="dw-detail-note"><small>O que estava rodando</small><strong>${isTest ? this._esc(selectedTest?.title || entry.testGoal || 'Teste do Laboratório') : 'Período usado como referência'}</strong></span>
             </div></td></tr>`;
-        }).join('') || `<tr><td colspan="14"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
+        }).join('') || `<tr><td colspan="18"><div class="dw-history-empty"><i data-lucide="search-x"></i><strong>Nenhum registro neste recorte</strong><span>Altere os filtros ou amplie o período.</span></div></td></tr>`;
 
         body.querySelectorAll('[data-history-toggle]').forEach(btn => btn.addEventListener('click', event => {
             event.stopPropagation();
