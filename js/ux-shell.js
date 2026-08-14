@@ -7,6 +7,8 @@
 
 const UXShell = {
     STORAGE_KEY: 'ect_ux_shell_v2',
+    RECENTS_KEY: 'ect_ux_recent_search_v1',
+    MAX_RECENTS: 6,
     _commandItems: [],
     _commandIndex: 0,
 
@@ -971,6 +973,49 @@ const UXShell = {
         document.body.classList.remove('ux-overlay-open');
     },
 
+    // Chave de identidade estável de um resultado (independe do texto exibido,
+    // só a rota/ação real importa) — usada tanto pra gravar quanto pra deduplicar.
+    _commandKey(item) {
+        return item.type === 'action' ? `action:${item.label}` : `page:${item.tab}`;
+    },
+
+    _getRecents() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(this.RECENTS_KEY) || '[]');
+            return Array.isArray(raw) ? raw : [];
+        } catch { return []; }
+    },
+
+    // Grava o item ativado no topo dos recentes (mais-recente-primeiro), sem
+    // duplicar — se já estava na lista, só sobe pro topo.
+    _recordRecent(item) {
+        if (!item) return;
+        const key = this._commandKey(item);
+        const entry = item.type === 'action' ? { type: 'action', label: item.label } : { type: 'page', tab: item.tab };
+        const rest = this._getRecents().filter(r => this._commandKey(r) !== key);
+        const next = [entry, ...rest].slice(0, this.MAX_RECENTS);
+        try { localStorage.setItem(this.RECENTS_KEY, JSON.stringify(next)); } catch {}
+    },
+
+    // Resolve os recentes salvos (só {type, tab|label}) de volta pros itens
+    // completos (ícone, grupo, descrição) a partir de `pages`/`quickActions`
+    // atuais — assim a lista nunca fica com dado velho se um rótulo mudar, e
+    // itens removidos numa atualização somem sozinhos em vez de dar erro.
+    _resolveRecents() {
+        const out = [];
+        this._getRecents().forEach(r => {
+            if (r.type === 'page') {
+                const page = this.pages[r.tab];
+                if (page && document.getElementById(`tab-${r.tab}`)) out.push({ type: 'page', tab: r.tab, ...page, group: 'Recente' });
+            } else if (r.type === 'action') {
+                const action = this.quickActions.find(a => a.label === r.label);
+                const index = this.quickActions.indexOf(action);
+                if (action) out.push({ type: 'action', action, index, label: action.label, group: 'Recente', icon: action.icon, description: action.detail });
+            }
+        });
+        return out;
+    },
+
     _renderCommandResults(query = '', mode) {
         const results = document.getElementById('ux-command-results');
         const input = document.getElementById('ux-command-input');
@@ -984,6 +1029,14 @@ const UXShell = {
         let items = currentMode === 'actions' ? actions : [...actions, ...pages];
         if (normalized) {
             items = items.filter(item => `${item.label} ${item.group} ${item.description || ''}`.toLocaleLowerCase('pt-BR').includes(normalized));
+        } else {
+            // Campo vazio (busca recém-aberta): recentes primeiro, sem repetir
+            // no restante da lista.
+            const recents = this._resolveRecents();
+            if (recents.length) {
+                const recentKeys = new Set(recents.map(r => this._commandKey(r)));
+                items = [...recents, ...items.filter(item => !recentKeys.has(this._commandKey(item)))];
+            }
         }
         this._commandItems = items.slice(0, 12);
         this._commandIndex = 0;
@@ -1040,6 +1093,7 @@ const UXShell = {
     _activateCommand(index) {
         const item = this._commandItems[index];
         if (!item) return;
+        this._recordRecent(item);
         this.closeCommand();
         if (item.type === 'action') this._runAction(item.action);
         else this.navigate(item.tab);
