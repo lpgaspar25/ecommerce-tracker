@@ -1137,12 +1137,9 @@ document.addEventListener('DOMContentLoaded', () => {
         : (LocalStore.load('stores') || []);
     ensureStoreSetup();
 
-    AppState.allProducts = (LocalStore.load('products') || []).filter(p => {
-        if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) {
-            return !ProductsModule.isTombstoned(p);
-        }
-        return true;
-    });
+    AppState.allProducts = (typeof ProductsModule !== 'undefined' && ProductsModule._cleanProducts)
+        ? ProductsModule._cleanProducts(LocalStore.load('products') || [])
+        : (LocalStore.load('products') || []);
     AppState.allGoals = LocalStore.load('goals') || [];
     AppState.allDiary = LocalStore.load('diary') || [];
     AppState.allCreatives = LocalStore.load('creatives') || [];
@@ -1197,10 +1194,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 EventBus.emit('dataLoaded');
             }
             if (carregadas && carregadas.includes('products')) {
-                AppState.allProducts = (LocalStore.load('products') || []).filter(p => {
-                    if (typeof ProductsModule !== 'undefined' && ProductsModule.isTombstoned) return !ProductsModule.isTombstoned(p);
-                    return true;
-                });
+                AppState.allProducts = (typeof ProductsModule !== 'undefined' && ProductsModule._cleanProducts)
+                    ? ProductsModule._cleanProducts(LocalStore.load('products') || [])
+                    : (LocalStore.load('products') || []);
                 normalizeAllDataStoreIds();
                 filterDataByStore();
                 populateProductDropdowns();

@@ -24,8 +24,11 @@ const CloudBackup = (() => {
     function _dropTombstoned(list) {
         if (!Array.isArray(list)) return list;
         const PM = typeof ProductsModule !== 'undefined' ? ProductsModule : null;
-        if (!PM || typeof PM.isTombstoned !== 'function') return list;
-        return list.filter(p => !PM.isTombstoned(p));
+        // _cleanProducts remove excluídos E deduplica por nome — sem isto o
+        // snapshot da nuvem acumulava o mesmo produto 30x (união por id).
+        if (PM && typeof PM._cleanProducts === 'function') return PM._cleanProducts(list);
+        if (PM && typeof PM.isTombstoned === 'function') return list.filter(p => !PM.isTombstoned(p));
+        return list;
     }
 
     function _deviceId() {

@@ -1078,6 +1078,39 @@ const ProductsModule = {
         });
         if (mudou) localStorage.setItem(this._TOMBSTONE_KEY, JSON.stringify(Array.from(set)));
     },
+    // Riqueza de um produto: quanto mais fotos/descrição/economia, mais "fonte
+    // da verdade" ele é. Usado pra escolher qual cópia sobrevive na deduplicação.
+    _richness(p) {
+        return (Array.isArray(p.images) ? p.images.length : 0) * 10
+            + (p.description ? 5 : 0)
+            + (p.shopifyId ? 4 : 0)
+            + (Number(p.cost) > 0 ? 2 : 0)
+            + (Array.isArray(p.countryPrices) ? p.countryPrices.length : 0)
+            + (Array.isArray(p.shopifyVariants) ? p.shopifyVariants.length : 0);
+    },
+    // Colapsa duplicatas por (loja + nome normalizado), mantendo a cópia mais
+    // rica. Sem isto, cada import/backup criava id novo (não há shopifyId pra
+    // deduplicar) e o produto aparecia 30x. Produtos sem nome nunca são fundidos.
+    _dedupeByName(list) {
+        if (!Array.isArray(list)) return list || [];
+        const melhor = new Map();
+        const ordem = [];
+        for (const p of list) {
+            if (!p) continue;
+            const n = this._normName(p.name);
+            const key = n ? `${p.storeId || ''}|${n}` : `__noname__:${p.id}`;
+            const cur = melhor.get(key);
+            if (!cur) { melhor.set(key, p); ordem.push(key); }
+            else if (this._richness(p) > this._richness(cur)) melhor.set(key, p);
+        }
+        return ordem.map(k => melhor.get(k));
+    },
+    // Pipeline padrão ao carregar produtos de QUALQUER fonte (boot, IndexedDB,
+    // Supabase, cloud-backup): remove excluídos (tombstone) e deduplica por nome.
+    _cleanProducts(list) {
+        const arr = (Array.isArray(list) ? list : []).filter(p => p && !this.isTombstoned(p));
+        return this._dedupeByName(arr);
+    },
     // Limpa todas as tombstones (caso usuário queira recuperar)
     clearTombstones() {
         localStorage.removeItem(this._TOMBSTONE_KEY);

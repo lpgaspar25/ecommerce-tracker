@@ -458,7 +458,11 @@ const SupabaseSync = (() => {
                     // ser apagados pelo sync — mantém até o próximo upload.
                     const idsRemotos = new Set(remoteProducts.map(r => r.id));
                     const soLocais = locais.filter(p => !idsRemotos.has(p.id) && !tomb(p));
-                    AppState.allProducts = [...mesclados, ...soLocais];
+                    // Deduplica por nome: o Supabase acumulou cópias (sem shopifyId,
+                    // ids divergentes por reimport) — sem isto o mesmo produto vinha 30x.
+                    AppState.allProducts = (typeof ProductsModule !== 'undefined' && ProductsModule._dedupeByName)
+                        ? ProductsModule._dedupeByName([...mesclados, ...soLocais])
+                        : [...mesclados, ...soLocais];
                     if (typeof LocalStore !== 'undefined') LocalStore.save('products', AppState.allProducts);
                 }
                 if (remoteGoals.length > 0) {
