@@ -9,6 +9,20 @@ const DiaryWorkspacePreview = {
     usingDemo: false,
     historyMode: 'percent',
     openHistoryRows: new Set(),
+    historyColumnsKey: 'etracker_diary_history_columns_v1',
+    historyColumns: {},
+    historyColumnDefs: [
+        { id: 'spend', label: 'Gasto', default: true },
+        { id: 'visitors', label: 'Visitantes', default: true },
+        { id: 'carts', label: 'Carrinhos / taxa', default: true },
+        { id: 'checkout', label: 'Checkouts / taxa', default: true },
+        { id: 'sales', label: 'Vendas Shopify', default: true },
+        { id: 'conversion', label: 'Conversão', default: true },
+        { id: 'realConversion', label: 'Conversão real', default: true },
+        { id: 'cpa', label: 'CPA real', default: true },
+        { id: 'roas', label: 'ROAS real', default: false },
+        { id: 'reading', label: 'Leitura', default: true },
+    ],
 
     init() {
         this.enabled = new URLSearchParams(window.location.search).get('diaryPreview') === '1';
@@ -22,7 +36,9 @@ const DiaryWorkspacePreview = {
         panel.classList.add('diary-preview-active');
         try { this.historyMode = localStorage.getItem('etracker_diary_history_view') || 'percent'; } catch (_) {}
         if (!['numbers', 'percent', 'both'].includes(this.historyMode)) this.historyMode = 'percent';
+        this.historyColumns = this._loadHistoryColumns();
         this._buildShell(main, filter);
+        this._renderHistoryColumnsMenu();
         this._bind();
 
         setTimeout(() => {
@@ -121,7 +137,10 @@ const DiaryWorkspacePreview = {
                             <button type="button" data-history-mode="percent"><i data-lucide="percent"></i> Funil</button>
                             <button type="button" data-history-mode="both">Ambos</button>
                         </div>
-                        <button type="button" class="dw-history-action" data-dw-action="columns"><i data-lucide="columns-3"></i> Colunas</button>
+                        <div class="dw-history-columns-wrap">
+                            <button type="button" class="dw-history-action" data-dw-action="history-columns"><i data-lucide="columns-3"></i> Colunas</button>
+                            <div class="dw-history-columns-menu" id="dw-history-columns-menu"></div>
+                        </div>
                         <button type="button" class="dw-history-action" data-dw-action="campaigns"><i data-lucide="megaphone"></i> Por campanha</button>
                     </div>
                 </div>
@@ -129,11 +148,11 @@ const DiaryWorkspacePreview = {
                 <div class="dw-history-table-wrap">
                     <table class="dw-history-table">
                         <thead><tr>
-                            <th>Dia / fase</th><th>Produto</th><th class="num hist-number hist-money">Gasto</th><th class="num hist-number hist-funnel-count">Visitantes</th>
-                            <th class="num hist-number hist-funnel-count">Carrinhos</th><th class="num hist-number hist-funnel-count">Checkouts</th><th class="num hist-number hist-money hist-sales">Vendas Shopify</th>
-                            <th class="num hist-percent">Pág. → Carrinho</th><th class="num hist-percent">Carrinho → Checkout</th><th class="num hist-conversion">Conversão</th><th class="num hist-real-conversion">Conversão real</th>
-                            <th class="num hist-combined">Visitantes</th><th class="num hist-combined">Carrinhos</th><th class="num hist-combined">Checkouts</th><th class="num hist-combined">Vendas</th>
-                            <th class="num">CPA real</th><th class="num">ROAS real</th><th>Leitura</th><th></th>
+                            <th>Dia / fase</th><th>Produto</th><th class="num hist-number hist-money" data-history-col="spend">Gasto</th><th class="num hist-number hist-funnel-count" data-history-col="visitors">Visitantes</th>
+                            <th class="num hist-number hist-funnel-count" data-history-col="carts">Carrinhos</th><th class="num hist-number hist-funnel-count" data-history-col="checkout">Checkouts</th><th class="num hist-number hist-money hist-sales" data-history-col="sales">Vendas Shopify</th>
+                            <th class="num hist-percent" data-history-col="carts">Pág. → Carrinho</th><th class="num hist-percent" data-history-col="checkout">Carrinho → Checkout</th><th class="num hist-conversion" data-history-col="conversion">Conversão</th><th class="num hist-real-conversion" data-history-col="realConversion">Conversão real</th>
+                            <th class="num hist-combined" data-history-col="visitors">Visitantes</th><th class="num hist-combined" data-history-col="carts">Carrinhos</th><th class="num hist-combined" data-history-col="checkout">Checkouts</th><th class="num hist-combined" data-history-col="sales">Vendas</th>
+                            <th class="num" data-history-col="cpa">CPA real</th><th class="num" data-history-col="roas">ROAS real</th><th data-history-col="reading">Leitura</th><th></th>
                         </tr></thead>
                         <tbody id="dw-history-body"></tbody>
                     </table>
@@ -153,7 +172,10 @@ const DiaryWorkspacePreview = {
         });
         document.querySelector('[data-dw-action="new"]')?.addEventListener('click', () => document.getElementById('btn-add-entry')?.click());
         document.querySelector('[data-dw-action="sync"]')?.addEventListener('click', () => document.getElementById('btn-diary-sync-shopify')?.click());
-        document.querySelector('[data-dw-action="columns"]')?.addEventListener('click', () => document.getElementById('btn-diary-columns')?.click());
+        document.querySelector('[data-dw-action="history-columns"]')?.addEventListener('click', event => {
+            event.stopPropagation();
+            document.getElementById('dw-history-columns-menu')?.classList.toggle('open');
+        });
         document.querySelector('[data-dw-action="campaigns"]')?.addEventListener('click', () => document.getElementById('btn-diary-group-campaign')?.click());
         document.querySelector('[data-dw-action="full-table"]')?.addEventListener('click', () => this._toggleFullTable());
         document.querySelectorAll('[data-history-mode]').forEach(btn => btn.addEventListener('click', () => this._setHistoryMode(btn.dataset.historyMode)));
@@ -169,6 +191,7 @@ const DiaryWorkspacePreview = {
         });
         document.addEventListener('click', event => {
             if (!event.target.closest('.dw-tools-wrap')) document.getElementById('dw-tools-menu')?.classList.remove('open');
+            if (!event.target.closest('.dw-history-columns-wrap')) document.getElementById('dw-history-columns-menu')?.classList.remove('open');
         });
 
         ['diary-platform-filter', 'diary-type-filter', 'diary-region-filter'].forEach(id => {
@@ -469,20 +492,20 @@ const DiaryWorkspacePreview = {
             return `<tr class="dw-history-row ${isTest ? 'is-test' : 'is-base'}" data-history-row="${index}">
                 <td><div class="dw-history-date"><strong>${this._date(entry.date)}</strong><span class="${isTest ? 'test' : 'base'}">${isTest ? '<i data-lucide="flask-conical"></i> Durante o teste' : 'Antes da alteração'}</span></div></td>
                 <td><div class="dw-history-product"><span>${this._esc(product)}</span><small>${this._esc(entry.platform || 'Sem plataforma')} ${entry.region ? `· ${this._esc(entry.region)}` : ''}</small></div></td>
-                <td class="num hist-number hist-money">${this._money(budget, false)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.pageViews)}</td>
-                <td class="num hist-number hist-funnel-count">${this._number(entry.addToCart)}</td><td class="num hist-number hist-funnel-count">${this._number(entry.checkout)}</td>
-                <td class="num dw-real-sales hist-number hist-money hist-sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
-                <td class="num hist-percent"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
-                <td class="num hist-percent"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
-                <td class="num hist-conversion"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Mídia</small></td>
-                <td class="num hist-real-conversion"><strong>${realConvRate.toFixed(2).replace('.', ',')}%</strong><small>Shopify</small></td>
-                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.pageViews)}</strong><small>entrada</small></div></td>
-                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
-                <td class="num hist-combined"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
-                <td class="num hist-combined"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>Shopify</small></div></td>
-                <td class="num"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
-                <td class="num"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
-                <td><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
+                <td class="num hist-number hist-money" data-history-col="spend">${this._money(budget, false)}</td><td class="num hist-number hist-funnel-count" data-history-col="visitors">${this._number(entry.pageViews)}</td>
+                <td class="num hist-number hist-funnel-count" data-history-col="carts">${this._number(entry.addToCart)}</td><td class="num hist-number hist-funnel-count" data-history-col="checkout">${this._number(entry.checkout)}</td>
+                <td class="num dw-real-sales hist-number hist-money hist-sales" data-history-col="sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
+                <td class="num hist-percent" data-history-col="carts"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
+                <td class="num hist-percent" data-history-col="checkout"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
+                <td class="num hist-conversion" data-history-col="conversion"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Mídia</small></td>
+                <td class="num hist-real-conversion" data-history-col="realConversion"><strong>${realConvRate.toFixed(2).replace('.', ',')}%</strong><small>Shopify</small></td>
+                <td class="num hist-combined" data-history-col="visitors"><div class="dw-stage-combined"><strong>${this._number(entry.pageViews)}</strong><small>entrada</small></div></td>
+                <td class="num hist-combined" data-history-col="carts"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
+                <td class="num hist-combined" data-history-col="checkout"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
+                <td class="num hist-combined" data-history-col="sales"><div class="dw-stage-combined sales"><strong>${this._number(sales)}</strong><small>Shopify</small></div></td>
+                <td class="num" data-history-col="cpa"><strong>${cpa ? this._money(cpa, false) : '—'}</strong>${cpaDelta != null && isTest ? `<small class="${cpaDelta <= 0 ? 'positive' : 'negative'}">${cpaDelta >= 0 ? '+' : ''}${cpaDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td class="num" data-history-col="roas"><strong>${roas ? roas.toFixed(2) + 'x' : '—'}</strong>${roasDelta != null && isTest ? `<small class="${roasDelta >= 0 ? 'positive' : 'negative'}">${roasDelta >= 0 ? '+' : ''}${roasDelta.toFixed(1).replace('.', ',')}%</small>` : ''}</td>
+                <td data-history-col="reading"><span class="dw-reading ${reading.key}"><i data-lucide="${reading.icon}"></i>${reading.label}</span></td>
                 <td><button class="dw-row-toggle${detailOpen ? ' open' : ''}" aria-label="Ver detalhes" data-history-toggle="${index}"><i data-lucide="chevron-down"></i></button></td>
             </tr>
             <tr class="dw-history-detail" data-history-detail="${index}"${detailOpen ? '' : ' style="display:none"'}><td colspan="19"><div>
@@ -503,7 +526,48 @@ const DiaryWorkspacePreview = {
             detail.style.display = open ? '' : 'none';
             btn.classList.toggle('open', open);
         }));
+        this._applyHistoryColumnVisibility();
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _loadHistoryColumns() {
+        const defaults = Object.fromEntries(this.historyColumnDefs.map(column => [column.id, column.default]));
+        try {
+            const saved = JSON.parse(localStorage.getItem(this.historyColumnsKey) || '{}');
+            return { ...defaults, ...(saved && typeof saved === 'object' ? saved : {}) };
+        } catch (_) { return defaults; }
+    },
+
+    _saveHistoryColumns() {
+        try { localStorage.setItem(this.historyColumnsKey, JSON.stringify(this.historyColumns)); } catch (_) {}
+    },
+
+    _renderHistoryColumnsMenu() {
+        const menu = document.getElementById('dw-history-columns-menu');
+        if (!menu) return;
+        menu.innerHTML = `<div class="dw-columns-title"><span>Colunas do Histórico</span><small>Data e produto ficam sempre visíveis</small></div>
+            <div class="dw-columns-list">${this.historyColumnDefs.map(column => `<label><input type="checkbox" data-history-column-choice="${column.id}" ${this.historyColumns[column.id] ? 'checked' : ''}><span>${column.label}</span>${column.id === 'roas' ? '<small>Oculto no padrão</small>' : ''}</label>`).join('')}</div>
+            <button type="button" class="dw-columns-reset" data-history-columns-reset><i data-lucide="rotate-ccw"></i> Restaurar padrão</button>`;
+        menu.querySelectorAll('[data-history-column-choice]').forEach(input => input.addEventListener('change', () => {
+            this.historyColumns[input.dataset.historyColumnChoice] = input.checked;
+            this._saveHistoryColumns();
+            this._applyHistoryColumnVisibility();
+        }));
+        menu.querySelector('[data-history-columns-reset]')?.addEventListener('click', () => {
+            this.historyColumns = Object.fromEntries(this.historyColumnDefs.map(column => [column.id, column.default]));
+            this._saveHistoryColumns();
+            this._renderHistoryColumnsMenu();
+            this._applyHistoryColumnVisibility();
+            document.getElementById('dw-history-columns-menu')?.classList.add('open');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+
+    _applyHistoryColumnVisibility() {
+        document.querySelectorAll('#dw-history-view [data-history-col]').forEach(cell => {
+            cell.classList.toggle('dw-col-user-hidden', this.historyColumns[cell.dataset.historyCol] === false);
+        });
     },
 
     _setHistoryMode(mode) {
