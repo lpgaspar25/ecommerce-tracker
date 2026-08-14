@@ -1074,10 +1074,16 @@ const DashboardModule = {
     _sumRealSales(realMap, pid, start, end) {
         if (!realMap) return { sales: 0, revenue: 0 };
         let sales = 0, revenue = 0;
-        for (const [key, data] of Object.entries(realMap)) {
+        const entries = Object.entries(realMap);
+        const wantsAll = !pid || pid === 'todos';
+        const hasStoreTotals = wantsAll && entries.some(([key]) => key.endsWith('|__all__'));
+        for (const [key, data] of entries) {
             const [date, productId] = key.split('|');
             if (date < start || date > end) continue;
-            if (pid && pid !== 'todos' && productId !== pid) continue;
+            // Quando o mapa novo contém o total oficial da loja, usa somente
+            // essa linha para não somá-la novamente com os produtos vinculados.
+            if (hasStoreTotals && productId !== '__all__') continue;
+            if (!wantsAll && productId !== pid) continue;
             sales += Number(data.sales || 0);
             revenue += Number(data.revenue || 0);
         }

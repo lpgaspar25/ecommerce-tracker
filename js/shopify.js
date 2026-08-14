@@ -1186,6 +1186,16 @@ const ShopifyModule = (() => {
         }
         const perProductDate = aggregateByProductAndDate(orders);
         const result = {};
+
+        // O total da loja não pode depender do vínculo entre o catálogo local e
+        // o Shopify. Esse vínculo só é necessário ao filtrar um produto. Antes,
+        // "Todos os produtos" ficava zerado sempre que os pedidos continham
+        // itens ainda não vinculados na ferramenta.
+        const perDate = aggregateByDate(orders);
+        for (const [date, data] of Object.entries(perDate)) {
+            result[`${date}|__all__`] = data;
+        }
+
         const products = (typeof AppState !== 'undefined' ? (AppState.allProducts || AppState.products || []) : []);
         for (const p of products) {
             const sid = getLink(p.id);

@@ -22,8 +22,8 @@
     --border: rgba(255, 255, 255, 0.09);
     --border-strong: rgba(255, 255, 255, 0.16);
     --text-primary: #f4f5f1;
-    --text-secondary: #a7aaa4;
-    --text-muted: #72756f;
+    --text-secondary: #c1c5bd;
+    --text-muted: #989d94;
     --green: #bde70a;
     --green-bg: rgba(189, 231, 10, 0.12);
     --red: #ff6b70;
@@ -85,12 +85,24 @@ body[data-theme="light"] {
 
 html {
     scroll-behavior: smooth;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
 body.ux-v2-ready {
     font-family: 'DM Sans', sans-serif;
     background: var(--bg-primary);
     letter-spacing: -0.012em;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* A largura declarada passa a incluir padding e borda. Sem isso, cada painel
+   com width:100% ganhava mais 64px e escapava por baixo da sidebar. */
+.ux-v2-ready *,
+.ux-v2-ready *::before,
+.ux-v2-ready *::after {
+    box-sizing: border-box;
 }
 
 .ux-v2-ready h1,
@@ -132,6 +144,9 @@ body.ux-v2-ready {
 
 .ux-v2-ready .app-body {
     grid-template-columns: 268px minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     background: var(--bg-primary);
     transition: grid-template-columns 220ms cubic-bezier(.2, .8, .2, 1);
 }
@@ -496,7 +511,8 @@ body.ux-v2-ready {
     min-width: 0;
     margin: 0;
     padding: 0;
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-x: clip;
     background:
         radial-gradient(circle at 82% 5%, rgba(221, 255, 25, 0.025), transparent 24%),
         var(--bg-primary);
@@ -735,8 +751,25 @@ body.ux-v2-ready {
 .ux-v2-ready .tab-panel {
     width: 100%;
     max-width: 1540px;
+    min-width: 0;
     margin: 0 auto;
     padding: 30px 32px 60px;
+}
+
+/* Filhos de grids usam min-width:auto por padrão e podem forçar a coluna
+   principal a atravessar a sidebar. O overflow fica no componente que
+   realmente precisa rolar (tabela/KPIs), não na página inteira. */
+.ux-v2-ready .tab-panel > *,
+.ux-v2-ready .dash-block,
+.ux-v2-ready .dash-row-2 > *,
+.ux-v2-ready .dash-row-3 > *,
+.ux-v2-ready .dash-row-4 > *,
+.ux-v2-ready .dash-row-cal > *,
+.ux-v2-ready .dash-card,
+.ux-v2-ready .dash-card-cal,
+.ux-v2-ready .dash-card-dates {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .ux-v2-ready .tab-panel.active {
