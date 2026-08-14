@@ -502,10 +502,10 @@ const DiaryWorkspacePreview = {
                 <td class="num hist-number hist-money" data-history-col="spend">${this._money(budget, false)}</td><td class="num hist-number hist-funnel-count" data-history-col="visitors">${this._number(entry.pageViews)}</td>
                 <td class="num hist-number hist-funnel-count" data-history-col="carts">${this._number(entry.addToCart)}</td><td class="num hist-number hist-funnel-count" data-history-col="checkout">${this._number(entry.checkout)}</td>
                 <td class="num dw-real-sales hist-number hist-money hist-sales" data-history-col="sales"><strong>${this._number(sales)}</strong><small>Shopify</small></td>
-                <td class="num hist-percent" data-history-col="carts"><strong>${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
-                <td class="num hist-percent" data-history-col="checkout"><strong>${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
-                <td class="num hist-conversion" data-history-col="conversion"><strong>${convRate.toFixed(2).replace('.', ',')}%</strong><small>Mídia</small></td>
-                <td class="num hist-real-conversion" data-history-col="realConversion"><strong>${realConvRate.toFixed(2).replace('.', ',')}%</strong><small>Shopify</small></td>
+                <td class="num hist-percent" data-history-col="carts"><strong class="${this._hc(atcRate, 'atcRate')}">${atcRate.toFixed(1).replace('.', ',')}%</strong><small>Pág. → ATC</small></td>
+                <td class="num hist-percent" data-history-col="checkout"><strong class="${this._hc(checkoutRate, 'icRate')}">${checkoutRate.toFixed(1).replace('.', ',')}%</strong><small>ATC → IC</small></td>
+                <td class="num hist-conversion" data-history-col="conversion"><strong class="${this._hc(convRate, 'convPage')}">${convRate.toFixed(2).replace('.', ',')}%</strong><small>Mídia</small></td>
+                <td class="num hist-real-conversion" data-history-col="realConversion"><strong class="${this._hc(realConvRate, 'convPage')}">${realConvRate.toFixed(2).replace('.', ',')}%</strong><small>Shopify</small></td>
                 <td class="num hist-combined" data-history-col="visitors"><div class="dw-stage-combined"><strong>${this._number(entry.pageViews)}</strong><small>entrada</small></div></td>
                 <td class="num hist-combined" data-history-col="carts"><div class="dw-stage-combined"><strong>${this._number(entry.addToCart)}</strong><small>${atcRate.toFixed(1).replace('.', ',')}%</small></div></td>
                 <td class="num hist-combined" data-history-col="checkout"><div class="dw-stage-combined"><strong>${this._number(entry.checkout)}</strong><small>${checkoutRate.toFixed(1).replace('.', ',')}%</small></div></td>
@@ -751,6 +751,15 @@ const DiaryWorkspacePreview = {
     },
 
     _number(value) { return Math.round(Number(value || 0)).toLocaleString('pt-BR'); },
+    // Classe de saúde por etapa do funil (verde/amarelo/vermelho) reaproveitando
+    // as "Métricas Alvo" já configuráveis do DiaryModule — o motor de limiares
+    // sempre existiu; o cockpit novo só não estava chamando. inverse=true para
+    // métricas onde menor é melhor (CPA/CPC/CPM).
+    _hc(value, metricKey, inverse = false) {
+        if (typeof DiaryModule === 'undefined') return '';
+        const fn = inverse ? DiaryModule._metricClassInverse : DiaryModule._metricClass;
+        try { return fn ? fn.call(DiaryModule, Number(value) || 0, metricKey) : ''; } catch { return ''; }
+    },
     _date(value) { if (!value) return ''; const p = String(value).slice(0, 10).split('-'); return p.length === 3 ? `${p[2]}/${p[1]}` : value; },
     _esc(value) { const div = document.createElement('div'); div.textContent = value || ''; return div.innerHTML; },
 
