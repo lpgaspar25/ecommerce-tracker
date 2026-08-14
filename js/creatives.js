@@ -285,7 +285,7 @@ const CreativesModule = {
             // porque roda enquanto o vídeo toca uma vez. Só troca se ficar menor.
             this._renderVideoCompressProgress(0);
             try {
-                const { blob, comprimiu, de, para } = await comprimirVideo(file, {
+                const { blob, comprimiu, de, para, motivo } = await comprimirVideo(file, {
                     onProgress: (p) => this._renderVideoCompressProgress(p),
                 });
                 if (comprimiu) {
@@ -293,6 +293,11 @@ const CreativesModule = {
                     arquivoFinal = new File([blob], `${base}.webm`, { type: 'video/webm' });
                     const pct = de ? Math.round((1 - para / de) * 100) : 0;
                     showToast(`Vídeo comprimido: ${(de / 1048576).toFixed(1)}MB → ${(para / 1048576).toFixed(1)}MB (−${pct}%).`, 'success');
+                } else if (motivo === 'degradado') {
+                    // A aba foi pra segundo plano durante a compressão (troca de
+                    // app, minimizar) e o navegador pausou o vídeo — descartamos
+                    // o resultado degradado por segurança e mantivemos o original.
+                    showToast('Não deu pra comprimir agora (aba ficou em segundo plano) — vídeo original mantido.', 'info');
                 } else {
                     showToast('Vídeo mantido no original (já estava enxuto).', 'info');
                 }

@@ -1012,7 +1012,7 @@ async function comprimirImagemParaDataUrl(blob, maxDim = 1500, quality = 0.9, op
 // segurança: se algo falhar ou não ficar menor, devolve o arquivo original.
 // Retorna { blob, comprimiu, de, para } (tamanhos em bytes).
 async function comprimirVideo(file, { maxDim = 1080, fps = 30, onProgress = null } = {}) {
-    const semMexer = { blob: file, comprimiu: false, de: file?.size || 0, para: file?.size || 0 };
+    const semMexer = { blob: file, comprimiu: false, de: file?.size || 0, para: file?.size || 0, motivo: 'sem-suporte' };
     if (!file || !(file.type || '').startsWith('video')) return semMexer;
     // Precisa de MediaRecorder + captureStream do canvas.
     if (typeof MediaRecorder === 'undefined' ||
@@ -1060,37 +1060,72 @@ async function comprimirVideo(file, { maxDim = 1080, fps = 30, onProgress = null
         rec.start(1000);
 
         const dur = video.duration || 0;
+        let viaTimeout = false;
+        let drawCount = 0;
         await video.play().catch(() => {});
         await new Promise(res => {
             let terminou = false;
-            const fim = () => { if (terminou) return; terminou = true; res(); };
-            video.onended = fim;
-            const draw = () => {
-                if (terminou) return;
-                try { ctx.drawImage(video, 0, 0, w, h); } catch {}
+            const fim = (timeout) => { if (terminou) return; terminou = true; viaTimeout = !!timeout; res(); };
+            video.onended = () => fim(false);
+            const desenhar = () => {
+                try { ctx.drawImage(video, 0, 0, w, h); drawCount++; } catch {}
                 if (onProgress && dur) { try { onProgress(Math.min(0.99, video.currentTime / dur)); } catch {} }
-                if (video.ended) { fim(); return; }
-                requestAnimationFrame(draw);
             };
-            requestAnimationFrame(draw);
+            // requestVideoFrameCallback é acoplado à DECODIFICAÇÃO real do vídeo,
+            // não à renderização da página — continua disparando normalmente
+            // mesmo com a aba em segundo plano. requestAnimationFrame, por outro
+            // lado, é o que o Chrome estrangula quando a aba fica oculta (pode
+            // cair a ~1 chamada/s ou menos), o que fazia o vídeo comprimido virar
+            // uma sequência de frames quase congelados — bug real encontrado ao
+            // validar esta função. Usa rVFC quando disponível; rAF é só fallback.
+            const temRVFC = typeof video.requestVideoFrameCallback === 'function';
+            const loopRVFC = () => {
+                if (terminou) return;
+                desenhar();
+                if (video.ended) { fim(false); return; }
+                video.requestVideoFrameCallback(loopRVFC);
+            };
+            const loopRAF = () => {
+                if (terminou) return;
+                desenhar();
+                if (video.ended) { fim(false); return; }
+                requestAnimationFrame(loopRAF);
+            };
+            if (temRVFC) video.requestVideoFrameCallback(loopRVFC); else requestAnimationFrame(loopRAF);
             // trava de segurança: duração+5s, ou 2min se a duração vier Infinity
             // (acontece em alguns WebM de MediaRecorder até o primeiro seek).
             const maxWait = Number.isFinite(dur) ? Math.max(10000, (dur + 5) * 1000) : 120000;
-            setTimeout(fim, maxWait);
+            setTimeout(() => fim(true), maxWait);
         });
         try { video.pause(); } catch {}
         try { rec.stop(); } catch {}
         await parou;
         if (onProgress) { try { onProgress(1); } catch {} }
 
+        // Sanidade #1: terminou pela trava de segurança (não pelo fim natural)
+        // e a reprodução mal avançou → o navegador pausou o vídeo de verdade
+        // (ex.: aba foi pra segundo plano — troca de app no celular, minimizar).
+        // Sanidade #2: mesmo chegando ao fim, se poucos frames reais foram
+        // desenhados pro tempo de vídeo (rVFC indisponível + rAF estrangulado em
+        // segundo plano), o resultado é uma sequência de frames quase congelados
+        // — comprime MUITO no tamanho mas destrói o conteúdo visual. Em ambos os
+        // casos o resultado seria pior que não comprimir: descarta e mantém o original.
+        const framesEsperados = Number.isFinite(dur) ? Math.max(1, dur * fps) : 1;
+        const capturaIncompleta = viaTimeout && Number.isFinite(dur) && dur > 0.5 && video.currentTime < dur * 0.9;
+        const framesInsuficientes = Number.isFinite(dur) && dur > 0.5 && drawCount < framesEsperados * 0.3;
+        if (capturaIncompleta || framesInsuficientes) {
+            console.warn('comprimirVideo: captura degradada (aba em segundo plano?) — mantendo original.', { capturaIncompleta, framesInsuficientes, drawCount, framesEsperados });
+            return { ...semMexer, motivo: 'degradado' };
+        }
+
         const blob = new Blob(chunks, { type: 'video/webm' });
         if (blob.size > 0 && blob.size < file.size) {
             return { blob, comprimiu: true, de: file.size, para: blob.size };
         }
-        return semMexer;
+        return { ...semMexer, motivo: 'ja-enxuto' };
     } catch (e) {
         console.warn('comprimirVideo falhou, mantendo original:', e);
-        return semMexer;
+        return { ...semMexer, motivo: 'falha' };
     } finally {
         try { URL.revokeObjectURL(url); } catch {}
     }
