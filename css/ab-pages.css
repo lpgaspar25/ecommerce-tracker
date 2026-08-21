@@ -261,3 +261,74 @@
     .ab-field-row { flex-direction: column; }
     .ab-toolbar { flex-direction: column; align-items: stretch; }
 }
+
+/* ── Abas Chrome-style das Páginas A/B (topo do editor de produto) ── */
+.prod-ab-tabbar {
+    display: flex;
+    align-items: flex-end;
+    gap: .5rem;
+    padding: .45rem .9rem 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.prod-ab-tabbar.hidden { display: none; }
+.prod-ab-tabs { display: flex; align-items: flex-end; gap: .25rem; }
+.prod-ab-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    max-width: 220px;
+    padding: .5rem .8rem;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    background: var(--bg-tertiary, var(--bg-input));
+    color: var(--text-secondary);
+    font-size: .82rem;
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    top: 1px;                 /* cobre a borda do bar quando ativa (efeito Chrome) */
+    transition: background .12s, color .12s;
+    user-select: none;
+}
+.prod-ab-tab:hover { background: var(--bg-hover, var(--bg-card)); color: var(--text-primary); }
+.prod-ab-tab.is-active {
+    background: var(--bg-card, #fff);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, .05);
+}
+.prod-ab-tab-star { width: 13px; height: 13px; color: var(--green, #22c55e); flex: 0 0 auto; }
+.prod-ab-tab-label { overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.prod-ab-tab-x {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 .15rem;
+    border-radius: 4px;
+    flex: 0 0 auto;
+}
+.prod-ab-tab-x:hover { background: var(--red-bg, rgba(239, 68, 68, .12)); color: var(--red, #ef4444); }
+.prod-ab-add {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .42rem .7rem;
+    margin-bottom: .3rem;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: .8rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+.prod-ab-add:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--accent); }
+.prod-ab-add i { width: 14px; height: 14px; }

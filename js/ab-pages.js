@@ -74,6 +74,9 @@ const ABPagesModule = (() => {
             variantes: Array.isArray(dados.variantes) ? dados.variantes.map(_normalizarVariante) : [],
             blocos: Array.isArray(dados.blocos) ? dados.blocos : [],
             fotos: Array.isArray(dados.fotos) ? dados.fotos : [],   // { id, mediaId, thumb, origem }
+            // Snapshot no formato-de-produto (usado pelas abas Chrome do editor
+            // de produto). Quando presente, é a fonte de verdade da página.
+            dados: (dados.dados && typeof dados.dados === 'object') ? dados.dados : null,
             capaFotoId: dados.capaFotoId || '',
             descricaoHtml: dados.descricaoHtml || '',                // cache de preview quando não há blocos
             ativa: false,
@@ -338,6 +341,10 @@ const ABPagesModule = (() => {
             const url = await MediaStore.getObjectUrl(capa.mediaId);
             if (url) { _thumbUrls.push(url); capaSrc = url; }
         }
+        // Página criada pelo editor de produto (só tem .dados) — usa a 1ª imagem.
+        if (!capaSrc && page.dados && Array.isArray(page.dados.images) && page.dados.images[0]) {
+            capaSrc = page.dados.images[0].dataUrl || page.dados.images[0].url || '';
+        }
         const nVar = (page.variantes || []).length;
         const nFotos = (page.fotos || []).length;
         const nBlocos = (page.blocos || []).length;
@@ -379,7 +386,7 @@ const ABPagesModule = (() => {
             </div>
             <div class="ab-card-acoes">
                 ${page.ativa ? '' : '<button type="button" class="btn btn-secondary btn-sm ab-ativar" title="Marcar como página ativa"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Tornar ativa</button>'}
-                <button type="button" class="btn btn-secondary btn-sm ab-editar" title="Abrir no Estúdio pra editar descrição e fotos"><i data-lucide="wand-2" style="width:13px;height:13px"></i> Editar no Estúdio</button>
+                <button type="button" class="btn btn-secondary btn-sm ab-editar" title="Abrir esta página como aba no editor de produto"><i data-lucide="pencil" style="width:13px;height:13px"></i> Editar</button>
                 <button type="button" class="btn btn-secondary btn-sm ab-publicar" title="Publicar esta página na Shopify"><i data-lucide="upload-cloud" style="width:13px;height:13px"></i> Publicar</button>
                 <button type="button" class="btn-icon ab-duplicar" title="Duplicar"><i data-lucide="copy" style="width:13px;height:13px"></i></button>
                 <button type="button" class="btn-icon ab-excluir" title="Excluir"><i data-lucide="trash-2" style="width:13px;height:13px"></i></button>
@@ -465,15 +472,14 @@ const ABPagesModule = (() => {
                 if (!confirm(`Excluir a página "${page?.nome || ''}"? As fotos continuam guardadas.`)) return;
                 await remove(id); _renderManager();
             });
-            card.querySelector('.ab-editar')?.addEventListener('click', async () => {
-                const page = await getPage(); if (!page) return;
-                if (typeof LancamentoModule === 'undefined' || !LancamentoModule.editarPaginaAB) {
-                    showToast('Módulo de Lançamento indisponível — recarregue a página.', 'error');
+            card.querySelector('.ab-editar')?.addEventListener('click', () => {
+                if (typeof ProductsModule === 'undefined' || !ProductsModule.openProductEditorOnPage) {
+                    showToast('Editor de produto indisponível — recarregue a página.', 'error');
                     return;
                 }
                 _revogarThumbs();
                 document.getElementById('ab-pages-modal')?.remove();
-                LancamentoModule.editarPaginaAB(page);
+                ProductsModule.openProductEditorOnPage(productId, id);
             });
             card.querySelector('.ab-publicar')?.addEventListener('click', async (e) => {
                 const btn = e.currentTarget; btn.disabled = true;
@@ -512,6 +518,116 @@ const ABPagesModule = (() => {
             await save(page);
             _renderManager();
         });
+    }
+
+    // ── Snapshot no formato-de-produto (abas Chrome do editor de produto) ──
+    function _blobParaDataUrl(blob) {
+        return new Promise((res) => {
+            try {
+                const r = new FileReader();
+                r.onload = () => res(r.result);
+                r.onerror = () => res('');
+                r.readAsDataURL(blob);
+            } catch { res(''); }
+        });
+    }
+
+    // Devolve os dados da página no MESMO formato do formulário do editor de
+    // produto (o que ProductsModule._getFormData() produz). Se a página já tem
+    // .dados, é ele; senão converte o legado (blocos/fotos/preço/custo).
+    async function getEditorData(page) {
+        if (!page) return null;
+        if (page.dados && typeof page.dados === 'object') {
+            const d = JSON.parse(JSON.stringify(page.dados));
+            d.id = page.productId;
+            d.storeId = page.storeId || d.storeId || '';
+            return d;
+        }
+        const prod = _findProduct(page.productId);
+        // Descrição: blocos → HTML (imagens do MediaStore viram <img> base64)
+        let descHtml = '';
+        if (Array.isArray(page.blocos) && page.blocos.length) {
+            const parts = [];
+            for (const b of page.blocos) {
+                if (b.tipo === 'texto') { parts.push(_semScript(b.html || '')); continue; }
+                if (b.tipo === 'imagem' && b.fotoId) {
+                    const f = (page.fotos || []).find(x => x.id === b.fotoId);
+                    if (f && f.mediaId) {
+                        const rec = await MediaStore.get(f.mediaId);
+                        if (rec && rec.blob) { const u = await _blobParaDataUrl(rec.blob); if (u) parts.push(`<img src="${u}" alt="">`); }
+                    }
+                }
+            }
+            descHtml = parts.join('');
+        } else {
+            descHtml = _semScript(page.descricaoHtml || '');
+        }
+        // Fotos → imagens base64 (formato do editor: { dataUrl, name })
+        const images = [];
+        for (const f of (page.fotos || [])) {
+            if (f && f.mediaId) {
+                const rec = await MediaStore.get(f.mediaId);
+                if (rec && rec.blob) { const u = await _blobParaDataUrl(rec.blob); if (u) { images.push({ dataUrl: u, name: f.origem || '' }); continue; } }
+            }
+            if (f && f.thumb) images.push({ dataUrl: f.thumb, name: f.origem || '' });
+        }
+        return {
+            id: page.productId,
+            name: page.nome || '',
+            description: descHtml,
+            price: Number(page.preco) || 0, priceCurrency: page.precoMoeda || 'USD',
+            cost: Number(page.custo) || 0, costCurrency: page.custoMoeda || 'USD',
+            tax: prod ? Number(prod.tax) || 0 : 0,
+            variableCosts: prod ? Number(prod.variableCosts) || 0 : 0,
+            cpa: 0, cpaCurrency: page.precoMoeda || 'USD',
+            status: 'ativo', vendor: (prod && prod.vendor) || '', sku: '', tags: [],
+            countryPrices: [], images, translations: {},
+            languages: prod ? (prod.languages || []) : [],
+            platforms: prod ? (prod.platforms || []) : [],
+            fbAdAccountIds: prod ? (prod.fbAdAccountIds || []) : [],
+            googleAdAccountIds: prod ? (prod.googleAdAccountIds || []) : [],
+            fbAdAccountLabels: prod ? (prod.fbAdAccountLabels || {}) : {},
+            googleAdAccountLabels: prod ? (prod.googleAdAccountLabels || {}) : {},
+            campaignGroupUrl: prod ? (prod.campaignGroupUrl || '') : '',
+            pageUrl: prod ? (prod.pageUrl || '') : '',
+            storeId: page.storeId || '',
+        };
+    }
+
+    // Cria uma página a partir de um snapshot no formato-de-produto (o "+" das
+    // abas Chrome duplica a aba atual com estes dados).
+    async function createFromDados(productId, nome, dados) {
+        await _ensureLoaded();
+        const page = _novaPagina(productId, {
+            nome: nome || (dados && dados.name) || 'Nova página',
+            preco: dados ? Number(dados.price) || 0 : 0,
+            precoMoeda: (dados && dados.priceCurrency) || 'USD',
+            custo: dados ? Number(dados.cost) || 0 : 0,
+            custoMoeda: (dados && dados.costCurrency) || 'USD',
+            origem: 'editor',
+        });
+        page.dados = dados ? JSON.parse(JSON.stringify(dados)) : null;
+        await save(page);
+        return page;
+    }
+
+    // Grava o snapshot de edição de volta na página, espelhando os campos que o
+    // gerenciador mostra (nome/preço/custo). meta: { nome, ativa }.
+    async function saveEditorData(pageId, dados, meta = {}) {
+        await _ensureLoaded();
+        const page = _pages.find(p => p.id === pageId);
+        if (!page) return null;
+        page.dados = dados ? JSON.parse(JSON.stringify(dados)) : null;
+        page.nome = (meta.nome != null) ? meta.nome : ((dados && dados.name) || page.nome);
+        if (dados) {
+            page.preco = Number(dados.price) || 0;
+            page.precoMoeda = dados.priceCurrency || page.precoMoeda || 'USD';
+            page.custo = Number(dados.cost) || 0;
+            page.custoMoeda = dados.costCurrency || page.custoMoeda || 'USD';
+        }
+        if (meta.ativa != null) page.ativa = !!meta.ativa;
+        await save(page);
+        return page;
     }
 
     // ── Publicação na Shopify (reaproveita o fluxo do Importador) ──────────
@@ -634,6 +750,10 @@ const ABPagesModule = (() => {
         duplicate,
         createFromProduct,
         publish,
+        // Snapshot no formato-de-produto (abas Chrome do editor de produto)
+        getEditorData,
+        createFromDados,
+        saveEditorData,
         // fábrica exposta pro Estúdio salvar variações geradas como páginas
         _novaPagina,
         _blobParaThumb,

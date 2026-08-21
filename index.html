@@ -30,7 +30,7 @@
     <link rel="stylesheet" href="css/product-merger.css?v=20260813a">
     <link rel="stylesheet" href="css/diary-workspace.css?v=20260813-prod1">
     <link rel="stylesheet" href="css/importer-workspace.css?v=20260813-prod1">
-    <link rel="stylesheet" href="css/ab-pages.css?v=20260821a">
+    <link rel="stylesheet" href="css/ab-pages.css?v=20260821b">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
          refresh do dashboard, Supabase no SupabaseSync.init, lucide no
          createIcons — todos rodam em DOMContentLoaded). Sem defer elas
@@ -812,6 +812,8 @@
                             <button type="button" class="btn-close" id="product-modal-close" aria-label="Fechar">&times;</button>
                         </div>
                     </div>
+                    <!-- Abas Chrome-style das Páginas A/B (preenchidas por ProductsModule._renderAbTabBar) -->
+                    <div id="prod-ab-tabbar" class="prod-ab-tabbar hidden" aria-label="Páginas A/B do produto"></div>
                     <div class="prod-modal-scroll">
                         <form id="product-form" class="prod-modal-layout">
                             <input type="hidden" id="product-id">
@@ -7162,7 +7164,7 @@
          todos os scripts abaixo dele. -->
     <script async src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script defer src="js/sheets.js?v=20260813-products-workspace"></script>
-    <script defer src="js/products.js?v=20260813-products-workspace"></script>
+    <script defer src="js/products.js?v=20260821-abtabs"></script>
     <script defer src="js/goals.js"></script>
     <script defer src="js/store-goal.js"></script>
     <script defer src="js/diary.js"></script>
@@ -7222,7 +7224,7 @@
     <script defer src="js/reconciliation.js"></script>
     <script defer src="js/remote-captures.js"></script>
     <script defer src="js/loja.js"></script>
-    <script defer src="js/ab-pages.js"></script>
+    <script defer src="js/ab-pages.js?v=20260821-abtabs"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">
