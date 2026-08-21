@@ -1,0 +1,27 @@
+name = "telegram-cron"
+main = "worker.js"
+compatibility_date = "2024-10-01"
+
+# Agenda (UTC!). De hora em hora — o worker decide, pelo fuso do cliente (TZ),
+# quando é hora de resumo vs. só snapshot/alertas.
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+SUPABASE_URL = "https://clqsjcestdvmdxsemwdc.supabase.co"
+TZ = "America/Sao_Paulo"          # fuso do CLIENTE — corte do dia e horários
+SUMMARY_HOURS = "9,12,15,18,21"   # horas (no fuso acima) que enviam o resumo
+QUIET_START = ""                  # ex.: "23" — silêncio a partir dessa hora
+QUIET_END = ""                    # ex.: "7"  — silêncio até essa hora
+USER_ID = ""                      # opcional: filtra o diário/produtos por user
+
+# Secrets (NÃO colocar aqui — usar `wrangler secret put`):
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN
+#   npx wrangler secret put TELEGRAM_CHAT_ID
+#   npx wrangler secret put SUPABASE_KEY      # service_role se as tabelas usam RLS
+
+# KV compartilhado (guarda snapshots/estado do dia). Opcional: sem ele o worker
+# ainda envia, mas sem comparar leituras (perde os alertas de variação).
+[[kv_namespaces]]
+binding = "SHOPIFY_TOKENS"
+id = "7a0644d773434354ab55bda8ab047a58"
