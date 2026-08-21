@@ -361,6 +361,18 @@ const ProductsModule = {
     },
 
     openForm(product = null) {
+        this._loadIntoEditor(product);
+        openModal('product-modal');
+        this._setProductEditorSection('geral');
+        this._markProductEditorSaved();
+        this._abInit(product);
+    },
+
+    // Popula TODO o formulário do editor a partir de um objeto no formato-de-
+    // produto (ou reseta, se null) SEM abrir/fechar o modal. openForm() faz a
+    // abertura; a troca de abas A/B (Chrome-style) reutiliza isto pra carregar
+    // o snapshot de cada página no MESMO editor.
+    _loadIntoEditor(product = null) {
         const form = document.getElementById('product-form');
         form.reset();
 
@@ -464,9 +476,199 @@ const ProductsModule = {
         const saveBtn = document.getElementById('product-save');
         if (saveBtn) saveBtn.textContent = product ? 'Salvar alterações' : 'Criar produto';
         this._renderShopifySection(product);
-        openModal('product-modal');
-        this._setProductEditorSection('geral');
-        this._markProductEditorSaved();
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Páginas A/B como abas Chrome no topo do editor de produto.
+    // Cada aba é um snapshot no formato-de-produto (mesmo shape de _getFormData).
+    // Aba "Original" = o produto real; demais = páginas da biblioteca (ABPages).
+    // Trocar de aba commita o form atual no snapshot da aba ativa e carrega o
+    // snapshot da aba alvo (mantendo a seção). "+" duplica a aba atual. Salvar
+    // grava o produto (aba Original) e TODAS as páginas.
+    // ═══════════════════════════════════════════════════════════════════════
+    _abInit(product) {
+        const bar = document.getElementById('prod-ab-tabbar');
+        if (!product || !product.id || typeof ABPagesModule === 'undefined') {
+            this._abState = null;
+            this._abPendingPage = null;
+            if (bar) { bar.classList.add('hidden'); bar.innerHTML = ''; }
+            return;
+        }
+        // Snapshot da aba Original = estado atual do form (== produto carregado),
+        // preservando os campos read-only da Shopify que _getFormData() não coleta.
+        const orig = { key: 'orig', label: 'Original', pageId: null, ativa: false, snapshot: this._abSnapshotComShopify(product) };
+        const st = { productId: product.id, active: 'orig', tabs: [orig] };
+        this._abState = st;
+        this._renderAbTabBar();
+        const token = (this._abLoadToken = (this._abLoadToken || 0) + 1);
+        ABPagesModule.getForProduct(product.id).then(async (pages) => {
+            for (const pg of pages) {
+                let dados;
+                // Uma página com foto corrompida/erro de IndexedDB não pode abortar
+                // o carregamento das demais — pula essa e segue.
+                try { dados = await ABPagesModule.getEditorData(pg); }
+                catch (e) { console.warn('[ABtabs] falha ao carregar página', pg && pg.id, e); continue; }
+                // O editor pode ter trocado de produto (ou recarregado) DURANTE o
+                // await — nunca empurre a página de um produto no estado de outro.
+                if (token !== this._abLoadToken || this._abState !== st) return;
+                st.tabs.push({ key: pg.id, label: pg.nome || 'Página', pageId: pg.id, ativa: !!pg.ativa, snapshot: dados });
+            }
+            if (token !== this._abLoadToken || this._abState !== st) return;
+            this._renderAbTabBar();
+            if (this._abPendingPage) {
+                const pk = this._abPendingPage; this._abPendingPage = null;
+                if (st.tabs.some(t => t.key === pk)) this._switchAbTab(pk);
+            }
+        }).catch((e) => { console.warn('[ABtabs] getForProduct falhou', e); });
+    },
+
+    // Snapshot do form + os campos read-only da Shopify (variantes/opções) que
+    // _getFormData() não coleta — sem isso eles somem ao voltar pra aba Original.
+    _abSnapshotComShopify(product) {
+        const snap = this._getFormData();
+        if (product && product.shopifyVariants) snap.shopifyVariants = product.shopifyVariants;
+        if (product && product.shopifyOptions) snap.shopifyOptions = product.shopifyOptions;
+        return snap;
+    },
+
+    _renderAbTabBar() {
+        const bar = document.getElementById('prod-ab-tabbar');
+        if (!bar) return;
+        const st = this._abState;
+        if (!st) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+        bar.classList.remove('hidden');
+        const tabs = st.tabs.map(t => {
+            const active = t.key === st.active;
+            return `<div class="prod-ab-tab${active ? ' is-active' : ''}${t.ativa ? ' is-ativa' : ''}" data-ab-key="${this._esc(t.key)}" role="tab" aria-selected="${active}" tabindex="0" title="${this._esc(t.label)}${t.ativa ? ' · página ativa no produto' : ''}">
+                ${t.ativa ? '<i data-lucide="check" class="prod-ab-tab-star"></i>' : ''}
+                <span class="prod-ab-tab-label">${this._esc(t.label)}</span>
+                ${t.key !== 'orig' ? `<button type="button" class="prod-ab-tab-x" data-ab-close="${this._esc(t.key)}" title="Excluir página" aria-label="Excluir página">&times;</button>` : ''}
+            </div>`;
+        }).join('');
+        bar.innerHTML = `
+            <div class="prod-ab-tabs" role="tablist">${tabs}</div>
+            <button type="button" class="prod-ab-add" id="prod-ab-add" title="Nova página A/B — duplica a aba atual com os mesmos dados"><i data-lucide="plus"></i><span>Página A/B</span></button>`;
+        bar.querySelectorAll('.prod-ab-tab').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target.closest('[data-ab-close]')) return;
+                this._switchAbTab(el.dataset.abKey);
+            });
+            el.addEventListener('dblclick', (e) => {
+                if (e.target.closest('[data-ab-close]')) return;
+                this._renameAbTab(el.dataset.abKey);
+            });
+            el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this._switchAbTab(el.dataset.abKey); } });
+        });
+        bar.querySelectorAll('[data-ab-close]').forEach(btn => {
+            btn.addEventListener('click', (e) => { e.stopPropagation(); this._closeAbTab(btn.dataset.abClose); });
+        });
+        document.getElementById('prod-ab-add')?.addEventListener('click', () => this._addAbTab());
+        if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
+    },
+
+    _abCommitActive() {
+        const st = this._abState; if (!st) return;
+        const cur = st.tabs.find(t => t.key === st.active);
+        if (!cur) return;
+        const snap = this._getFormData();
+        // _getFormData() não coleta variantes/opções da Shopify (read-only) —
+        // carrega adiante o que já estava no snapshot pra não perdê-los.
+        if (cur.snapshot && cur.snapshot.shopifyVariants) snap.shopifyVariants = cur.snapshot.shopifyVariants;
+        if (cur.snapshot && cur.snapshot.shopifyOptions) snap.shopifyOptions = cur.snapshot.shopifyOptions;
+        cur.snapshot = snap;
+    },
+
+    _switchAbTab(key) {
+        const st = this._abState; if (!st || key === st.active) return;
+        const tgt = st.tabs.find(t => t.key === key); if (!tgt) return;
+        this._abCommitActive();
+        st.active = key;
+        const section = this._productEditorSection || 'geral';
+        this._loadIntoEditor(tgt.snapshot);
+        this._setProductEditorSection(section);
+        this._renderAbTabBar();
+    },
+
+    _abNextName(baseName) {
+        const st = this._abState;
+        const n = st ? st.tabs.filter(t => t.key !== 'orig').length : 0;
+        const base = String(baseName || 'Página').trim() || 'Página';
+        return `${base} • v${n + 2}`; // Original conta como v1
+    },
+
+    _addAbTab() {
+        const st = this._abState;
+        if (!st) { showToast('Salve o produto antes de criar páginas A/B.', 'info'); return; }
+        if (typeof ABPagesModule === 'undefined') { showToast('Módulo de Páginas A/B indisponível.', 'error'); return; }
+        this._abCommitActive();
+        const cur = st.tabs.find(t => t.key === st.active);
+        const base = cur ? cur.snapshot : this._getFormData();
+        const dados = JSON.parse(JSON.stringify(base));
+        dados.id = st.productId;
+        const nome = this._abNextName(base.name || this._nomeDoProduto(st.productId));
+        ABPagesModule.createFromDados(st.productId, nome, dados).then(page => {
+            if (!this._abState || this._abState.productId !== st.productId) return;
+            this._abState.tabs.push({ key: page.id, label: page.nome, pageId: page.id, ativa: false, snapshot: dados });
+            this._abState.active = page.id;
+            const section = this._productEditorSection || 'geral';
+            this._loadIntoEditor(dados);
+            this._setProductEditorSection(section);
+            this._renderAbTabBar();
+            showToast('Página A/B criada (cópia da atual). Edite e clique em Salvar.', 'success');
+        }).catch(e => showToast('Falha ao criar página: ' + (e.message || e), 'error'));
+    },
+
+    _closeAbTab(key) {
+        const st = this._abState; if (!st || key === 'orig') return;
+        const t = st.tabs.find(x => x.key === key); if (!t) return;
+        if (!confirm(`Excluir a página "${t.label}"? Isso não afeta o produto original.`)) return;
+        if (typeof ABPagesModule !== 'undefined' && t.pageId) ABPagesModule.remove(t.pageId);
+        st.tabs = st.tabs.filter(x => x.key !== key);
+        if (st.active === key) {
+            st.active = 'orig';
+            const orig = st.tabs.find(x => x.key === 'orig');
+            const section = this._productEditorSection || 'geral';
+            if (orig) { this._loadIntoEditor(orig.snapshot); this._setProductEditorSection(section); }
+        }
+        this._renderAbTabBar();
+        showToast('Página excluída.', 'success');
+    },
+
+    _renameAbTab(key) {
+        const st = this._abState; if (!st) return;
+        const t = st.tabs.find(x => x.key === key); if (!t) return;
+        if (t.key === 'orig') { showToast('A aba Original é o produto — renomeie pelo campo Título.', 'info'); return; }
+        const novo = prompt('Nome da página:', t.label);
+        if (novo == null) return;
+        t.label = (String(novo).trim() || t.label);
+        this._renderAbTabBar();
+        if (typeof ABPagesModule !== 'undefined' && t.pageId) {
+            ABPagesModule.getById(t.pageId).then(pg => { if (pg) { pg.nome = t.label; ABPagesModule.save(pg); } });
+        }
+    },
+
+    _nomeDoProduto(id) {
+        const p = (AppState.allProducts || []).find(x => x.id === id);
+        return p ? p.name : 'Página';
+    },
+
+    async _abPersistPages() {
+        const st = this._abState;
+        if (!st || typeof ABPagesModule === 'undefined') return;
+        for (const t of st.tabs) {
+            if (t.key === 'orig' || !t.pageId) continue;
+            try {
+                await ABPagesModule.saveEditorData(t.pageId, t.snapshot, { nome: t.label, ativa: t.ativa });
+            } catch (e) { console.warn('[ABtabs] falha ao salvar página', t.pageId, e); }
+        }
+    },
+
+    // Abre o editor do produto e ativa a aba da página informada (do gerenciador).
+    openProductEditorOnPage(productId, pageId) {
+        const product = (AppState.allProducts || []).find(item => item.id === productId);
+        if (!product) { showToast('Produto não encontrado.', 'error'); return; }
+        this._abPendingPage = pageId;
+        this.openForm(product);
     },
 
     async _renderShopifySection(product) {
@@ -979,7 +1181,18 @@ const ProductsModule = {
 
     async handleSubmit(e) {
         e.preventDefault();
-        let data = this._getFormData();
+        // Abas A/B: commita a aba ativa e persiste TODAS as páginas. O PRODUTO é
+        // salvo a partir do snapshot da aba "Original" — nunca do form quando uma
+        // aba de página está aberta (senão os dados da página virariam o produto).
+        let data;
+        if (this._abState) {
+            this._abCommitActive();
+            await this._abPersistPages();
+            const orig = this._abState.tabs.find(t => t.key === 'orig');
+            data = orig ? { ...orig.snapshot } : this._getFormData();
+        } else {
+            data = this._getFormData();
+        }
         const existingIdx = AppState.allProducts.findIndex(p => p.id === data.id);
 
         if (!data.storeId && existingIdx < 0) {
