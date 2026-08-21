@@ -490,28 +490,45 @@ const ProductsModule = {
         const bar = document.getElementById('prod-ab-tabbar');
         if (!product || !product.id || typeof ABPagesModule === 'undefined') {
             this._abState = null;
+            this._abPendingPage = null;
             if (bar) { bar.classList.add('hidden'); bar.innerHTML = ''; }
             return;
         }
-        // Snapshot da aba Original = estado atual do form (== produto carregado).
-        const orig = { key: 'orig', label: 'Original', pageId: null, ativa: false, snapshot: this._getFormData() };
-        this._abState = { productId: product.id, active: 'orig', tabs: [orig] };
+        // Snapshot da aba Original = estado atual do form (== produto carregado),
+        // preservando os campos read-only da Shopify que _getFormData() não coleta.
+        const orig = { key: 'orig', label: 'Original', pageId: null, ativa: false, snapshot: this._abSnapshotComShopify(product) };
+        const st = { productId: product.id, active: 'orig', tabs: [orig] };
+        this._abState = st;
         this._renderAbTabBar();
         const token = (this._abLoadToken = (this._abLoadToken || 0) + 1);
         ABPagesModule.getForProduct(product.id).then(async (pages) => {
-            // Editor pode ter trocado de produto no meio do carregamento assíncrono.
-            if (token !== this._abLoadToken || !this._abState || this._abState.productId !== product.id) return;
             for (const pg of pages) {
-                const dados = await ABPagesModule.getEditorData(pg);
-                this._abState.tabs.push({ key: pg.id, label: pg.nome || 'Página', pageId: pg.id, ativa: !!pg.ativa, snapshot: dados });
+                let dados;
+                // Uma página com foto corrompida/erro de IndexedDB não pode abortar
+                // o carregamento das demais — pula essa e segue.
+                try { dados = await ABPagesModule.getEditorData(pg); }
+                catch (e) { console.warn('[ABtabs] falha ao carregar página', pg && pg.id, e); continue; }
+                // O editor pode ter trocado de produto (ou recarregado) DURANTE o
+                // await — nunca empurre a página de um produto no estado de outro.
+                if (token !== this._abLoadToken || this._abState !== st) return;
+                st.tabs.push({ key: pg.id, label: pg.nome || 'Página', pageId: pg.id, ativa: !!pg.ativa, snapshot: dados });
             }
-            if (token !== this._abLoadToken) return;
+            if (token !== this._abLoadToken || this._abState !== st) return;
             this._renderAbTabBar();
             if (this._abPendingPage) {
                 const pk = this._abPendingPage; this._abPendingPage = null;
-                if (this._abState.tabs.some(t => t.key === pk)) this._switchAbTab(pk);
+                if (st.tabs.some(t => t.key === pk)) this._switchAbTab(pk);
             }
-        }).catch(() => {});
+        }).catch((e) => { console.warn('[ABtabs] getForProduct falhou', e); });
+    },
+
+    // Snapshot do form + os campos read-only da Shopify (variantes/opções) que
+    // _getFormData() não coleta — sem isso eles somem ao voltar pra aba Original.
+    _abSnapshotComShopify(product) {
+        const snap = this._getFormData();
+        if (product && product.shopifyVariants) snap.shopifyVariants = product.shopifyVariants;
+        if (product && product.shopifyOptions) snap.shopifyOptions = product.shopifyOptions;
+        return snap;
     },
 
     _renderAbTabBar() {
@@ -552,7 +569,13 @@ const ProductsModule = {
     _abCommitActive() {
         const st = this._abState; if (!st) return;
         const cur = st.tabs.find(t => t.key === st.active);
-        if (cur) cur.snapshot = this._getFormData();
+        if (!cur) return;
+        const snap = this._getFormData();
+        // _getFormData() não coleta variantes/opções da Shopify (read-only) —
+        // carrega adiante o que já estava no snapshot pra não perdê-los.
+        if (cur.snapshot && cur.snapshot.shopifyVariants) snap.shopifyVariants = cur.snapshot.shopifyVariants;
+        if (cur.snapshot && cur.snapshot.shopifyOptions) snap.shopifyOptions = cur.snapshot.shopifyOptions;
+        cur.snapshot = snap;
     },
 
     _switchAbTab(key) {
