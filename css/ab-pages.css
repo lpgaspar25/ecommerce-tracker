@@ -1,0 +1,263 @@
+/* ===========================
+   Páginas A/B — gerenciador (aba Produtos) + blocos no wizard do Estúdio.
+   Reaproveita .modal/.input/.btn já existentes; aqui só o específico da feature.
+   =========================== */
+
+/* ── Modal do gerenciador ─────────────────────────────────────────────── */
+.ab-modal-content {
+    max-width: 900px;
+    width: 94vw;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.ab-body {
+    padding: 1rem 1.25rem 1.5rem;
+    overflow-y: auto;
+}
+.ab-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin: 0.25rem 0;
+}
+
+.ab-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.9rem;
+    margin-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+.ab-toolbar-left,
+.ab-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.ab-gerar-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-right: 0.15rem;
+}
+.ab-gerar {
+    min-width: 2.1rem;
+    font-weight: 700;
+}
+
+/* ── Estado vazio ─────────────────────────────────────────────────────── */
+.ab-empty {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--text-muted);
+}
+.ab-empty h4 {
+    margin: 0.6rem 0 0.3rem;
+    color: var(--text-primary);
+}
+.ab-empty p {
+    margin: 0 auto;
+    max-width: 34rem;
+    font-size: 0.88rem;
+}
+
+/* ── Grade de cards ───────────────────────────────────────────────────── */
+.ab-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.ab-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
+    background: var(--bg-card, var(--bg-secondary));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+}
+.ab-card:hover {
+    border-color: var(--accent);
+}
+.ab-card-ativa {
+    border-color: var(--green, #22c55e);
+    box-shadow: 0 0 0 1px var(--green, #22c55e) inset;
+}
+.ab-card-capa {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background: var(--bg-tertiary, var(--bg-input));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ab-card-capa img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.ab-card-capa-vazia {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+.ab-card-capa-vazia i { width: 32px; height: 32px; }
+.ab-badge-ativa {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: var(--green, #22c55e);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+}
+
+.ab-card-corpo {
+    padding: 0.7rem 0.8rem 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.ab-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    flex: 1;
+}
+.ab-field-row {
+    display: flex;
+    gap: 0.5rem;
+}
+.ab-money {
+    display: flex;
+    gap: 0.3rem;
+}
+.ab-money input { flex: 1; min-width: 0; }
+.ab-moeda { width: 4.6rem; flex: 0 0 auto; }
+
+.ab-variantes summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0;
+    user-select: none;
+}
+.ab-var-wrap { padding-top: 0.35rem; }
+.ab-var-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+}
+.ab-var-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 0.15rem 0.25rem;
+    font-size: 0.68rem;
+}
+.ab-var-table td {
+    padding: 0.12rem 0.2rem;
+}
+.ab-var-table input { width: 100%; }
+.ab-var-vazia td {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 0.35rem 0.2rem;
+}
+
+.ab-card-meta {
+    display: flex;
+    gap: 0.8rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    padding-top: 0.15rem;
+}
+
+.ab-card-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.55rem 0.8rem 0.75rem;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+    align-items: center;
+}
+.ab-card-acoes .btn { font-size: 0.74rem; }
+
+/* ── Wizard: banner + bloco de preço/variantes ────────────────────────── */
+.lanc-ab-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--accent-light, rgba(99, 102, 241, 0.12));
+    border: 1px solid var(--accent);
+    color: var(--text-primary);
+    border-radius: var(--radius, 8px);
+    padding: 0.55rem 0.8rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+}
+.lanc-ab-banner.hidden { display: none; }
+
+.lanc-preco-bloco {
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 8px);
+    padding: 0.85rem;
+    margin: 0.85rem 0;
+    background: var(--bg-secondary);
+}
+.lanc-preco-bloco h4 {
+    margin: 0 0 0.15rem;
+    font-size: 0.92rem;
+}
+.lanc-preco-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.7rem;
+    margin: 0.6rem 0;
+}
+.lanc-preco-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+.lanc-money {
+    display: flex;
+    gap: 0.35rem;
+}
+.lanc-money input { flex: 1; min-width: 0; }
+.lanc-money select { width: 4.8rem; flex: 0 0 auto; }
+
+.lanc-var-lanc-wrap { margin-top: 0.4rem; }
+.lanc-var-lanc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+.lanc-var-lanc-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    padding: 0.2rem 0.3rem;
+}
+.lanc-var-lanc-table td { padding: 0.15rem 0.25rem; }
+.lanc-var-lanc-table input { width: 100%; }
+
+@media (max-width: 560px) {
+    .ab-field-row { flex-direction: column; }
+    .ab-toolbar { flex-direction: column; align-items: stretch; }
+}
