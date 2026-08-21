@@ -3843,6 +3843,7 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                             ${adminUrl ? `<a href="${this._escapeHtml(adminUrl)}" target="_blank" rel="noopener"><i data-lucide="shopping-bag"></i> Abrir na Shopify</a>` : ''}
                             ${shopifyId ? `<button type="button" data-product-action="sync" data-id="${p.id}"><i data-lucide="refresh-cw"></i> Sincronizar da Shopify</button>` : ''}
                             <button type="button" data-product-action="duplicate" data-id="${p.id}"><i data-lucide="copy"></i> Duplicar</button>
+                            <button type="button" data-product-action="abpages" data-id="${p.id}"><i data-lucide="git-compare"></i> Páginas A/B</button>
                             <hr>
                             <button type="button" data-product-action="archive" data-id="${p.id}"><i data-lucide="${archiveIcon}"></i> ${archiveLabel}</button>
                             <button type="button" class="danger" data-product-action="delete" data-id="${p.id}"><i data-lucide="trash-2"></i> Excluir</button>
@@ -3870,6 +3871,10 @@ Coisas a checar: fundo bagunçado/mal recortado, iluminação ruim, corte estran
                 if (action === 'edit') this.openProductEditor(id);
                 if (action === 'sync') this.syncProductFromShopify(id);
                 if (action === 'duplicate') this.duplicateProduct(id);
+                if (action === 'abpages') {
+                    if (typeof ABPagesModule !== 'undefined') ABPagesModule.openManager(id);
+                    else showToast('Módulo de Páginas A/B indisponível — recarregue a página.', 'error');
+                }
                 if (action === 'archive') this.toggleArchiveProduct(id);
                 if (action === 'delete') this.deleteProduct(id);
             });

@@ -40,6 +40,18 @@ const LancamentoModule = (() => {
         rascunhoCriadoEm: '',
         shopifyProductId: '',
         shopifyHandle: '',
+        // Preço/custo/variantes — usados ao salvar como Página A/B e ao publicar.
+        preco: 0,
+        precoMoeda: 'USD',
+        custo: 0,
+        custoMoeda: 'USD',
+        compareAt: 0,
+        opcaoNome: 'Opção',
+        variantes: [], // { id, nome, preco, custo, sku }
+        // Contexto "Página A/B": quando setados, o wizard edita/gera páginas da
+        // biblioteca do produto (ABPagesModule) em vez de só um rascunho.
+        abPageId: '',
+        abProductId: '',
     };
 
     let _previewUrls = [];
@@ -52,6 +64,8 @@ const LancamentoModule = (() => {
         _bindPasso3();
         _bindPasso4();
         _bindPasso5();
+        _bindPassoPreco();
+        document.getElementById('lanc-salvar-abpage')?.addEventListener('click', () => _salvarPaginaAB());
         _bindMensagensExtensao();
 
         KVStore.get(RASCUNHOS_KEY).then(lista => _atualizarBadgeRascunhos((lista || []).length)).catch(() => {});
@@ -914,7 +928,7 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
                 <div id="lanc-var-config">
                     <label style="font-size:0.78rem;color:var(--text-muted)">Quantas variações?</label>
                     <div class="lanc-var-qtd-opcoes">
-                        ${[2, 3, 4].map(n => `<button type="button" class="lanc-base-opt" data-qtd="${n}"><strong>${n}</strong></button>`).join('')}
+                        ${[2, 3, 4, 8].map(n => `<button type="button" class="lanc-base-opt" data-qtd="${n}"><strong>${n}</strong></button>`).join('')}
                     </div>
                 </div>
                 <div id="lanc-var-progresso" style="display:none">
@@ -1034,7 +1048,73 @@ IDIOMA: escreva TODO o texto (título e blocos) no idioma pedido pelo usuário. 
                 showToast('Variação aplicada', 'success');
             });
         });
+
+        // "Salvar todas como páginas A/B" — guarda TODAS as variações geradas
+        // como páginas na biblioteca do produto (não descarta nenhuma). É o
+        // coração do fluxo A/B automático: gerar N páginas e trocar fácil.
+        const acoes = ov.querySelector('.lanc-ov-acoes');
+        if (acoes && typeof ABPagesModule !== 'undefined' && !acoes.querySelector('#lanc-var-salvar-todas')) {
+            const btnTodas = document.createElement('button');
+            btnTodas.type = 'button';
+            btnTodas.id = 'lanc-var-salvar-todas';
+            btnTodas.className = 'btn btn-primary';
+            btnTodas.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar todas como páginas A/B';
+            acoes.insertBefore(btnTodas, acoes.firstChild);
+            btnTodas.addEventListener('click', () => _salvarVariacoesComoPaginas(variacoes, ov, btnTodas));
+        }
         _icones();
+    }
+
+    // Persiste cada variação como uma Página A/B na biblioteca do produto-alvo.
+    // Precisa de um produto de destino: usa _state.abProductId (setado quando o
+    // fluxo veio da aba Produtos) ou pede pra escolher um produto da lista.
+    async function _salvarVariacoesComoPaginas(variacoes, ov, btn) {
+        if (typeof ABPagesModule === 'undefined') { showToast('Módulo de Páginas A/B indisponível.', 'error'); return; }
+        let productId = _state.abProductId;
+        if (!productId) productId = _escolherProdutoDestino();
+        if (!productId) return; // usuário cancelou
+        if (btn) { btn.disabled = true; btn.innerHTML = window.loadingHTML ? window.loadingHTML('Salvando…') : 'Salvando…'; }
+        try {
+            const pages = variacoes.map(v => {
+                const usados = new Set();
+                if (v.capaFotoId) usados.add(v.capaFotoId);
+                (v.blocos || []).forEach(b => { if (b.tipo === 'imagem' && b.fotoId) usados.add(b.fotoId); });
+                const fotos = _state.fotos.filter(f => usados.has(f.id))
+                    .map(f => ({ id: f.id, mediaId: f.mediaId, thumb: f.thumb, origem: f.origem || 'Variação' }));
+                return ABPagesModule._novaPagina(productId, {
+                    nome: v.titulo,
+                    blocos: v.blocos,
+                    fotos,
+                    capaFotoId: v.capaFotoId,
+                    preco: _state.preco,
+                    precoMoeda: _state.precoMoeda,
+                    custo: _state.custo,
+                    custoMoeda: _state.custoMoeda,
+                    variantes: _state.variantes,
+                    origem: 'variacao',
+                });
+            });
+            await ABPagesModule.saveMany(pages);
+            ov.remove();
+            showToast(`${pages.length} página(s) A/B salva(s). Abra "Páginas A/B" no produto pra trocar/editar.`, 'success');
+        } catch (e) {
+            console.warn('[Lançamento] salvar variações como páginas falhou', e);
+            showToast('Falha ao salvar páginas: ' + String(e.message || e).slice(0, 140), 'error');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar todas como páginas A/B'; _icones(); }
+        }
+    }
+
+    // Escolha simples de produto de destino via prompt numerado (sem produto no
+    // contexto). Retorna o id ou '' se cancelado.
+    function _escolherProdutoDestino() {
+        const prods = (AppState.products || AppState.allProducts || []).filter(p => p.status !== 'arquivado');
+        if (!prods.length) { showToast('Cadastre um produto primeiro pra vincular as páginas.', 'error'); return ''; }
+        const lista = prods.slice(0, 40).map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+        const resp = prompt(`A qual produto essas páginas pertencem? Digite o número:\n\n${lista}`);
+        if (resp == null) return '';
+        const idx = parseInt(resp, 10) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= prods.length) { showToast('Escolha inválida.', 'error'); return ''; }
+        return prods[idx].id;
     }
 
     // Reatribui, POR VISÃO, qual foto entra em cada slot de imagem — casando
@@ -2321,6 +2401,8 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
     function _prepararPasso5() {
         _renderResumo();
         _renderPreviewFinal();
+        _preencherCamposPreco();
+        _atualizarBannerAB();
     }
 
     function _renderResumo() {
@@ -2753,7 +2835,263 @@ Devolva APENAS um JSON: {"escolhas": [{"slot": 0, "indiceFoto": 2}, {"slot": 1, 
         if (typeof lucide !== 'undefined') try { lucide.createIcons(); } catch {}
     }
 
-    return { init, _state };
+    // ═══════════════════════════════════════════════════════════════════════
+    // Páginas A/B — integração com ABPagesModule (biblioteca por produto).
+    // O wizard do Estúdio é o editor rico dessas páginas (descrição + fotos),
+    // e também o gerador de variações. Entradas públicas: editarPaginaAB (abre
+    // uma página salva pra editar) e gerarVariacoesParaProduto (gera N páginas
+    // novas). Ambas caem no MESMO wizard, só mudando o contexto _state.ab*.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function _ativarEstudioLancamento() {
+        // Ativa a ABA Estúdio no app (não só o modo interno) e entra no modo
+        // "Lançar produto novo", que é onde vive o wizard.
+        const tabBtn = document.querySelector('.tab-btn[data-tab="studio"]');
+        if (tabBtn) tabBtn.click();
+        _alternarModo('lancamento');
+    }
+
+    // Zera o estado do wizard pra começar uma página A/B limpa (sem arrastar
+    // fotos/blocos de um lançamento anterior). Não apaga blobs do MediaStore.
+    function _resetParaAB() {
+        _state.passoAtual = 1;
+        _state.base = 'zero';
+        _state.moldeProductId = '';
+        _state.moldeDetalhes = null;
+        _state.titulo = '';
+        _state.fotos = [];
+        _state.blocos = [];
+        _state.brinde = { incluir: false, titulo: '', html: '', fotoId: '', mediaId: '', thumb: '' };
+        _state._brindeSugerido = true;
+        _state.rascunhoId = '';
+        _state.rascunhoCriadoEm = '';
+        _state.shopifyProductId = '';
+        _state.shopifyHandle = '';
+        _state.preco = 0; _state.precoMoeda = 'USD';
+        _state.custo = 0; _state.custoMoeda = 'USD';
+        _state.compareAt = 0; _state.opcaoNome = 'Opção';
+        _state.variantes = [];
+        _state.abPageId = '';
+        _state.abProductId = '';
+    }
+
+    async function _blobDeSrc(src) {
+        if (!src) return null;
+        try {
+            const r = await fetch(src, src.startsWith('data:') ? undefined : { mode: 'cors' });
+            if (r.ok) return await r.blob();
+        } catch {}
+        return null;
+    }
+
+    // Semeia título, fotos, preço/custo e variantes a partir de um produto do
+    // AppState (usado quando o fluxo A/B começa na aba Produtos).
+    async function _hidratarDeProduto(productId) {
+        const prod = (AppState.allProducts || []).find(p => p.id === productId);
+        if (!prod) return;
+        _state.titulo = prod.name || '';
+        _state.preco = Number(prod.price) || 0;
+        _state.precoMoeda = prod.priceCurrency || 'USD';
+        _state.custo = Number(prod.cost) || 0;
+        _state.custoMoeda = prod.costCurrency || prod.priceCurrency || 'USD';
+        _state.variantes = (prod.shopifyVariants || []).slice(0, 20).map(v => ({
+            id: 'lancvar_' + Math.random().toString(36).slice(2, 8),
+            nome: v.title || '', preco: Number(v.price) || _state.preco || 0, custo: 0, sku: v.sku || '',
+        }));
+        const tituloEl = document.getElementById('lanc-titulo');
+        if (tituloEl) tituloEl.value = _state.titulo;
+        // Importa as fotos do produto (base64/URL) pro MediaStore via o mesmo
+        // caminho do upload manual, pra ficarem editáveis por IA no wizard.
+        const imgs = (prod.images || []).slice(0, 8);
+        for (const img of imgs) {
+            const blob = await _blobDeSrc(img.dataUrl || img.url);
+            if (blob) await _adicionarFoto(blob, 'Produto');
+        }
+    }
+
+    // Abre uma página A/B salva pra edição no wizard.
+    async function editarPaginaAB(page) {
+        if (!page) return;
+        _ativarEstudioLancamento();
+        _resetParaAB();
+        _state.abPageId = page.id;
+        _state.abProductId = page.productId;
+        _state.titulo = page.nome || '';
+        _state.fotos = Array.isArray(page.fotos) ? page.fotos.slice() : [];
+        _state.blocos = Array.isArray(page.blocos) ? page.blocos.slice() : [];
+        _state.preco = Number(page.preco) || 0;
+        _state.precoMoeda = page.precoMoeda || 'USD';
+        _state.custo = Number(page.custo) || 0;
+        _state.custoMoeda = page.custoMoeda || 'USD';
+        _state.compareAt = Number(page.compareAt) || 0;
+        _state.opcaoNome = page.opcaoNome || 'Opção';
+        _state.variantes = Array.isArray(page.variantes) ? page.variantes.map(v => ({ ...v })) : [];
+
+        const tituloEl = document.getElementById('lanc-titulo');
+        if (tituloEl) tituloEl.value = _state.titulo;
+        _selecionarBase('zero');
+        _renderFotosGrid();
+        _renderBlocos();
+        _renderTrilho();
+        _irParaPasso(3);
+        _atualizarBannerAB();
+        showToast(`Editando a página "${page.nome}" no Estúdio. Salve pra atualizar a biblioteca.`, 'info');
+    }
+
+    // Gera qtd variações (páginas) novas pra um produto e abre o overlay de
+    // variações já rodando — cada uma pode ser salva como página A/B.
+    async function gerarVariacoesParaProduto(productId, qtd) {
+        _ativarEstudioLancamento();
+        _resetParaAB();
+        _state.abProductId = productId;
+        _selecionarBase('zero');
+        _irParaPasso(2);
+        showToast('Preparando fotos do produto…', 'info');
+        await _hidratarDeProduto(productId);
+        _atualizarBannerAB();
+        if (!_state.fotos.length) {
+            _irParaPasso(2);
+            showToast('Esse produto não tem fotos importadas. Suba fotos no Passo 2 e clique em "Gerar variações (A/B)".', 'error');
+            return;
+        }
+        _irParaPasso(3);
+        _abrirVariacoes();
+        const ov = document.querySelector('.lanc-ov');
+        if (ov) _gerarVariacoes(qtd || 3, ov);
+    }
+
+    // Salva o estado atual do wizard como Página A/B (cria ou atualiza).
+    async function _salvarPaginaAB() {
+        if (typeof ABPagesModule === 'undefined') { showToast('Módulo de Páginas A/B indisponível.', 'error'); return; }
+        if (typeof _sincronizarTextos === 'function') _sincronizarTextos();
+        let productId = _state.abProductId;
+        if (!productId) productId = _escolherProdutoDestino();
+        if (!productId) return;
+        _state.abProductId = productId;
+        if (!_state.titulo.trim()) { showToast('Dê um nome à página antes de salvar.', 'error'); return; }
+
+        const btn = document.getElementById('lanc-salvar-abpage');
+        if (btn) btn.disabled = true;
+        try {
+            const blocosSalvos = _state.blocos.map(b => b.tipo === 'texto' ? { ...b, html: _semImagens(b.html || '') } : b);
+            const fotos = _state.fotos.map(f => ({ id: f.id, mediaId: f.mediaId, thumb: f.thumb, origem: f.origem || 'Estúdio' }));
+            const capaAtual = _state.blocos.find(b => b.tipo === 'imagem' && b.fotoId)?.fotoId || fotos[0]?.id || '';
+
+            let page = _state.abPageId ? await ABPagesModule.getById(_state.abPageId) : null;
+            if (!page) {
+                page = ABPagesModule._novaPagina(productId, {});
+                _state.abPageId = page.id;
+            }
+            page.productId = productId;
+            page.nome = _state.titulo;
+            page.blocos = blocosSalvos;
+            page.fotos = fotos;
+            page.capaFotoId = capaAtual;
+            page.preco = Number(_state.preco) || 0;
+            page.precoMoeda = _state.precoMoeda || 'USD';
+            page.custo = Number(_state.custo) || 0;
+            page.custoMoeda = _state.custoMoeda || 'USD';
+            page.compareAt = Number(_state.compareAt) || 0;
+            page.opcaoNome = _state.opcaoNome || 'Opção';
+            page.variantes = (_state.variantes || []).map(v => ({
+                id: v.id || ('lancvar_' + Math.random().toString(36).slice(2, 8)),
+                nome: (v.nome || '').trim(), preco: Number(v.preco) || 0, custo: Number(v.custo) || 0, sku: (v.sku || '').trim(),
+            }));
+            await ABPagesModule.save(page);
+            const status = document.getElementById('lanc-revisar-status');
+            if (status) status.textContent = `Página A/B salva às ${new Date().toLocaleTimeString('pt-BR')}.`;
+            showToast('Página A/B salva na biblioteca do produto.', 'success');
+        } catch (e) {
+            console.warn('[Lançamento] salvar página A/B falhou', e);
+            showToast('Falha ao salvar página: ' + String(e.message || e).slice(0, 140), 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    function _atualizarBannerAB() {
+        const banner = document.getElementById('lanc-ab-banner');
+        const btnSalvar = document.getElementById('lanc-salvar-abpage');
+        const emAB = !!(_state.abProductId || _state.abPageId);
+        if (banner) {
+            banner.classList.toggle('hidden', !emAB);
+            if (emAB) {
+                const prod = (AppState.allProducts || []).find(p => p.id === _state.abProductId);
+                const txt = banner.querySelector('.lanc-ab-banner-txt');
+                if (txt) txt.textContent = _state.abPageId
+                    ? `Editando uma página A/B${prod ? ' de "' + prod.name + '"' : ''} — salvar atualiza a biblioteca.`
+                    : `Nova página A/B${prod ? ' de "' + prod.name + '"' : ''} — salvar adiciona à biblioteca do produto.`;
+            }
+        }
+        if (btnSalvar) btnSalvar.classList.toggle('hidden', !emAB);
+    }
+
+    // ── Passo Preço/Custo/Variantes (bloco no Passo 5) ────────────────────
+    function _bindPassoPreco() {
+        const bind = (id, campo, num) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('change', () => { _state[campo] = num ? (parseFloat(el.value) || 0) : el.value; });
+        };
+        bind('lanc-preco', 'preco', true);
+        bind('lanc-preco-moeda', 'precoMoeda', false);
+        bind('lanc-custo', 'custo', true);
+        bind('lanc-custo-moeda', 'custoMoeda', false);
+        bind('lanc-compareat', 'compareAt', true);
+        document.getElementById('lanc-var-add-lanc')?.addEventListener('click', () => {
+            if (!Array.isArray(_state.variantes)) _state.variantes = [];
+            _state.variantes.push({ id: 'lancvar_' + Math.random().toString(36).slice(2, 8), nome: '', preco: _state.preco || 0, custo: _state.custo || 0, sku: '' });
+            _renderVariantesLanc();
+        });
+    }
+
+    function _preencherCamposPreco() {
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        set('lanc-preco', Number(_state.preco) || 0);
+        set('lanc-custo', Number(_state.custo) || 0);
+        set('lanc-compareat', Number(_state.compareAt) || 0);
+        const moedas = ['USD', 'BRL', 'EUR', 'GBP', 'AUD', 'CAD'];
+        ['lanc-preco-moeda', 'lanc-custo-moeda'].forEach(id => {
+            const sel = document.getElementById(id);
+            if (sel && !sel.options.length) sel.innerHTML = moedas.map(m => `<option value="${m}">${m}</option>`).join('');
+        });
+        set('lanc-preco-moeda', _state.precoMoeda || 'USD');
+        set('lanc-custo-moeda', _state.custoMoeda || 'USD');
+        _renderVariantesLanc();
+    }
+
+    function _renderVariantesLanc() {
+        const tbody = document.getElementById('lanc-variantes-body');
+        if (!tbody) return;
+        const rows = (_state.variantes || []);
+        tbody.innerHTML = rows.length ? rows.map(v => `
+            <tr data-vid="${v.id}">
+                <td><input type="text" class="input input-sm lanc-var-in" data-vc="nome" value="${escapeHtml(v.nome)}" placeholder="Ex.: Preto / M"></td>
+                <td><input type="number" step="0.01" min="0" class="input input-sm lanc-var-in" data-vc="preco" value="${Number(v.preco) || 0}"></td>
+                <td><input type="number" step="0.01" min="0" class="input input-sm lanc-var-in" data-vc="custo" value="${Number(v.custo) || 0}"></td>
+                <td><input type="text" class="input input-sm lanc-var-in" data-vc="sku" value="${escapeHtml(v.sku)}" placeholder="SKU"></td>
+                <td><button type="button" class="btn-icon lanc-var-rm" title="Remover"><i data-lucide="x" style="width:12px;height:12px"></i></button></td>
+            </tr>`).join('') : '<tr><td colspan="5" style="color:var(--text-muted);font-size:0.8rem;padding:0.4rem">Sem variantes — preço/custo acima valem pro produto todo.</td></tr>';
+        tbody.querySelectorAll('.lanc-var-in').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const vid = inp.closest('tr').dataset.vid;
+                const v = (_state.variantes || []).find(x => x.id === vid);
+                if (!v) return;
+                const c = inp.dataset.vc;
+                v[c] = (c === 'preco' || c === 'custo') ? (parseFloat(inp.value) || 0) : inp.value;
+            });
+        });
+        tbody.querySelectorAll('.lanc-var-rm').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const vid = btn.closest('tr').dataset.vid;
+                _state.variantes = (_state.variantes || []).filter(x => x.id !== vid);
+                _renderVariantesLanc();
+            });
+        });
+        _icones();
+    }
+
+    return { init, _state, editarPaginaAB, gerarVariacoesParaProduto };
 })();
 
 window.LancamentoModule = LancamentoModule;

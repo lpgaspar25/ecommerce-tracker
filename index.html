@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="css/product-merger.css?v=20260813a">
     <link rel="stylesheet" href="css/diary-workspace.css?v=20260813-prod1">
     <link rel="stylesheet" href="css/importer-workspace.css?v=20260813-prod1">
+    <link rel="stylesheet" href="css/ab-pages.css?v=20260821a">
     <!-- defer: nenhuma dessas libs é usada antes do DOMContentLoaded (Chart no
          refresh do dashboard, Supabase no SupabaseSync.init, lucide no
          createIcons — todos rodam em DOMContentLoaded). Sem defer elas
@@ -4987,11 +4988,47 @@
                 <div class="lanc-painel hidden" data-painel="5">
                     <div class="studio-bloco">
                         <h3><i data-lucide="rocket" style="width:15px;height:15px;vertical-align:-2px"></i> Revisar</h3>
+                        <div id="lanc-ab-banner" class="lanc-ab-banner hidden">
+                            <i data-lucide="git-compare" style="width:15px;height:15px"></i>
+                            <span class="lanc-ab-banner-txt">Página A/B</span>
+                        </div>
                         <p class="lanc-hint">Publicar sobe as fotos pra Shopify e cria o produto como <strong>ativo, sem publicar em nenhum canal de venda</strong> — fica pronto pra você revisar e publicar manualmente na loja quando quiser.</p>
                         <div id="lanc-revisar-resumo" class="lanc-revisar-resumo"></div>
+
+                        <!-- Preço, custo e variantes — salvos na página A/B e usados ao publicar -->
+                        <div class="lanc-preco-bloco">
+                            <h4><i data-lucide="tag" style="width:14px;height:14px;vertical-align:-2px"></i> Preço, custo e variantes</h4>
+                            <p class="lanc-hint">Ficam salvos na página A/B e viram preço/custo do produto ao publicar na Shopify.</p>
+                            <div class="lanc-preco-grid">
+                                <label>Preço
+                                    <div class="lanc-money">
+                                        <input type="number" step="0.01" min="0" id="lanc-preco" class="input input-sm" value="0">
+                                        <select id="lanc-preco-moeda" class="input input-sm"></select>
+                                    </div>
+                                </label>
+                                <label>Custo
+                                    <div class="lanc-money">
+                                        <input type="number" step="0.01" min="0" id="lanc-custo" class="input input-sm" value="0">
+                                        <select id="lanc-custo-moeda" class="input input-sm"></select>
+                                    </div>
+                                </label>
+                                <label>Preço "de" (compare-at)
+                                    <input type="number" step="0.01" min="0" id="lanc-compareat" class="input input-sm" value="0">
+                                </label>
+                            </div>
+                            <div class="lanc-var-lanc-wrap">
+                                <table class="lanc-var-lanc-table">
+                                    <thead><tr><th>Variante</th><th>Preço</th><th>Custo</th><th>SKU</th><th></th></tr></thead>
+                                    <tbody id="lanc-variantes-body"></tbody>
+                                </table>
+                                <button type="button" class="btn btn-secondary btn-sm" id="lanc-var-add-lanc"><i data-lucide="plus" style="width:12px;height:12px"></i> Adicionar variante</button>
+                            </div>
+                        </div>
+
                         <div id="lanc-revisar-preview" class="lanc-revisar-preview"></div>
                         <div id="lanc-revisar-status" class="lanc-fotos-status"></div>
                         <div class="lanc-revisar-acoes">
+                            <button type="button" class="btn btn-primary hidden" id="lanc-salvar-abpage"><i data-lucide="git-compare" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar página A/B</button>
                             <button type="button" class="btn btn-secondary" id="lanc-salvar-rascunho"><i data-lucide="save" style="width:14px;height:14px;vertical-align:-2px"></i> Salvar rascunho</button>
                             <button type="button" class="btn btn-primary" id="lanc-publicar-shopify"><i data-lucide="upload-cloud" style="width:14px;height:14px;vertical-align:-2px"></i> Publicar na Shopify</button>
                         </div>
@@ -7185,6 +7222,7 @@
     <script defer src="js/reconciliation.js"></script>
     <script defer src="js/remote-captures.js"></script>
     <script defer src="js/loja.js"></script>
+    <script defer src="js/ab-pages.js"></script>
 
     <!-- Full-Screen Login Page -->
     <div id="login-screen" class="login-screen">
